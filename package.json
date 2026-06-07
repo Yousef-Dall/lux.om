@@ -1,0 +1,33 @@
+{
+  "name": "lux-om",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Premium Oman real estate and experiences marketplace.",
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "dev:frontend": "npm run dev -w frontend",
+    "dev:backend": "npm run dev -w backend",
+    "build": "npm run build -w backend && npm run build -w frontend",
+    "start": "npm run start -w backend",
+    "db:migrate": "npm run db:migrate -w backend",
+    "db:seed": "npm run db:seed -w backend",
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "devDependencies": {
+    "concurrently": "latest"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "overrides": {
+    "esbuild": "latest",
+    "or-headers": "latest",
+    "path-to-regexp": "latest",
+    "qs": "latest",
+    "@remix-run/router": "latest"
+  }
+}
