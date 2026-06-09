@@ -10,9 +10,10 @@ import {
   Sparkles,
   Star
 } from 'lucide-react';
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { getActivities, getDevelopers, getLandmarks, getListings } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
 import { ActivityCard, ListingCard } from '../components/Cards';
 import SectionHeader from '../components/SectionHeader';
@@ -23,9 +24,9 @@ import {
   marketplaceDiscoveryCategories,
   type DiscoveryCategoryValue
 } from '../config/marketplace';
-import { activities, developmentCompanies, landmarks, listings, stats } from '../data/mockData';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import type { Activity, DevelopmentCompany, Landmark, Listing } from '../types';
 
 export default function Home() {
   const { t, language } = useLanguage();
@@ -33,10 +34,17 @@ export default function Home() {
 
   useDocumentTitle('Premium Oman marketplace');
 
-  const [selectedLandmark, setSelectedLandmark] = useState(landmarks[0]?.slug ?? '');
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [developmentCompanies, setDevelopmentCompanies] = useState<DevelopmentCompany[]>([]);
+  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
+  const [selectedLandmark, setSelectedLandmark] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<DiscoveryCategoryValue>('all');
 
-  const featuredListings = listings.filter((listing) => listing.featured);
+  const featuredListings = listings.filter((listing) => listing.featured).slice(0, 3);
   const featuredActivities = activities.filter((activity) => activity.featured).slice(0, 3);
   const featuredDevelopers = developmentCompanies
     .filter((developer) => developer.featured)
@@ -45,9 +53,9 @@ export default function Home() {
   const localizedQuickSearches =
     language === 'ar'
       ? [
-          { label: 'فلل على البحر', to: '/listings?near=al-mouj-muscat&type=Sale' },
-          { label: 'شاليهات نهاية الأسبوع', to: '/listings?near=jebel-sifah&type=Short%20stay' },
-          { label: 'أنشطة قرب مطرح', to: '/activities?near=mutrah-corniche' },
+          { label: 'فلل على البحر', to: '/listings?near=mall-of-oman&type=Sale' },
+          { label: 'إيجارات فاخرة', to: '/listings?type=Rent' },
+          { label: 'أنشطة بحرية', to: '/activities?near=mall-of-oman' },
           { label: 'مشاريع جديدة', to: '/developers' }
         ]
       : homepageQuickSearches;
@@ -55,12 +63,20 @@ export default function Home() {
   const localizedStats =
     language === 'ar'
       ? [
-          { value: '+8', label: 'أنشطة مختارة' },
-          { value: '16', label: 'معالم ومناطق مفهرسة' },
-          { value: '+6', label: 'عقارات وإقامات مميزة' },
-          { value: '4', label: 'شركاء موثقون' }
+          { value: `${activities.length}+`, label: 'أنشطة مختارة' },
+          { value: `${landmarks.length}`, label: 'معالم ومناطق مفهرسة' },
+          { value: `${listings.length}+`, label: 'عقارات وإقامات مميزة' },
+          { value: `${developmentCompanies.filter((developer) => developer.verified).length}`, label: 'شركاء موثقون' }
         ]
-      : stats;
+      : [
+          { value: `${activities.length}+`, label: 'Curated activities' },
+          { value: `${landmarks.length}`, label: 'Indexed landmarks' },
+          { value: `${listings.length}+`, label: 'Premium properties' },
+          {
+            value: `${developmentCompanies.filter((developer) => developer.verified).length}`,
+            label: 'Verified partners'
+          }
+        ];
 
   const localizedDiscoveryCategories =
     language === 'ar'
@@ -79,7 +95,7 @@ export default function Home() {
           eyebrow: 'ابحث بالقرب من',
           title: 'اكتشف أفضل الأماكن حول أشهر المعالم والمناطق في عُمان.',
           description:
-            'ابحث عن عقارات للبيع، إيجارات، إقامات قصيرة، وأنشطة بالقرب من وجهات مثل مول عُمان، الموج، مسقط هيلز، كورنيش مطرح، وجبل السيفة.',
+            'ابحث عن عقارات للبيع، إيجارات، إقامات قصيرة، وأنشطة بالقرب من أهم الوجهات والمناطق في عُمان.',
           landmarkLabel: 'المعلم أو المنطقة',
           categoryLabel: 'ماذا تبحث عنه؟',
           submit: 'استكشف القريب',
@@ -99,13 +115,15 @@ export default function Home() {
           verifiedDeveloper: 'مطور موثق',
           developer: 'مطور',
           listedProperties: 'عقارات منشورة',
-          viewProfile: 'عرض ملف الشركة'
+          viewProfile: 'عرض ملف الشركة',
+          loading: 'جاري تحميل بيانات السوق...',
+          error: 'تعذر تحميل بيانات الصفحة الرئيسية. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
       : {
           eyebrow: 'Find places near',
           title: 'Search by Oman’s most important landmarks and lifestyle areas.',
           description:
-            'Discover properties for sale, rentals, short stays, and activities near key destinations like Mall of Oman, Al Mouj, Muscat Hills, Mutrah Corniche, and Jebel Sifah.',
+            'Discover properties for sale, rentals, short stays, and activities near key destinations across Oman.',
           landmarkLabel: 'Landmark or area',
           categoryLabel: 'What are you looking for?',
           submit: 'Explore nearby',
@@ -125,8 +143,54 @@ export default function Home() {
           verifiedDeveloper: 'Verified developer',
           developer: 'Developer',
           listedProperties: 'listed properties',
-          viewProfile: 'View company profile'
+          viewProfile: 'View company profile',
+          loading: 'Loading marketplace data...',
+          error: 'Could not load homepage data. Make sure the backend is running and try again.'
         };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadHomeData() {
+      try {
+        setLoading(true);
+        setLoadError('');
+
+        const [apiListings, apiActivities, apiDevelopers, apiLandmarks] = await Promise.all([
+          getListings(language, { take: 100 }),
+          getActivities(language, { take: 100 }),
+          getDevelopers(language, { take: 100 }),
+          getLandmarks(language, { take: 100 })
+        ]);
+
+        if (!isMounted) return;
+
+        setListings(apiListings);
+        setActivities(apiActivities);
+        setDevelopmentCompanies(apiDevelopers);
+        setLandmarks(apiLandmarks);
+
+        if (!selectedLandmark && apiLandmarks[0]) {
+          setSelectedLandmark(apiLandmarks[0].slug);
+        }
+      } catch (error) {
+        if (!isMounted) return;
+
+        console.error(error);
+        setLoadError(discoveryCopy.error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadHomeData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [language, discoveryCopy.error, selectedLandmark]);
 
   const discoveryPreview = useMemo(() => {
     const landmark = landmarks.find((item) => item.slug === selectedLandmark);
@@ -152,7 +216,7 @@ export default function Home() {
       properties: propertiesCount,
       activities: activitiesCount
     };
-  }, [selectedLandmark]);
+  }, [activities, landmarks, listings, selectedLandmark]);
 
   function handleDiscoverySearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -254,177 +318,209 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="page-section container">
-        <div className="landmark-discovery-panel">
-          <div>
-            <p className="eyebrow">{discoveryCopy.eyebrow}</p>
-            <h2>{discoveryCopy.title}</h2>
-            <p>{discoveryCopy.description}</p>
+      {loading ? (
+        <section className="page-section container">
+          <div className="empty-state empty-state--premium">
+            <Sparkles size={34} aria-hidden="true" />
+            <h2>{discoveryCopy.loading}</h2>
           </div>
+        </section>
+      ) : null}
 
-          <form className="landmark-discovery-form" onSubmit={handleDiscoverySearch}>
-            <label htmlFor="homepage-landmark">
-              {discoveryCopy.landmarkLabel}
-              <select
-                id="homepage-landmark"
-                name="landmark"
-                value={selectedLandmark}
-                onChange={(event) => setSelectedLandmark(event.target.value)}
-              >
-                {landmarks.map((landmark) => (
-                  <option key={landmark.id} value={landmark.slug}>
-                    {landmark.name} · {landmark.city}
-                  </option>
-                ))}
-              </select>
-            </label>
+      {!loading && loadError ? (
+        <section className="page-section container">
+          <div className="empty-state empty-state--premium">
+            <Sparkles size={34} aria-hidden="true" />
+            <h2>{loadError}</h2>
+          </div>
+        </section>
+      ) : null}
 
-            <label htmlFor="homepage-discovery-category">
-              {discoveryCopy.categoryLabel}
-              <select
-                id="homepage-discovery-category"
-                name="discoveryCategory"
-                value={selectedCategory}
-                onChange={(event) =>
-                  setSelectedCategory(event.target.value as DiscoveryCategoryValue)
-                }
-              >
-                {localizedDiscoveryCategories.map((category) => (
-                  <option key={category.value} value={category.value}>
-                    {category.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <button className="button-link button-link--primary" type="submit">
-              {discoveryCopy.submit}
-              <ArrowRight size={17} aria-hidden="true" />
-            </button>
-
-            <div className="landmark-discovery-summary" aria-live="polite">
-              <span>
-                <strong>{discoveryPreview.properties}</strong>
-                {discoveryCopy.properties}
-              </span>
-              <span>
-                <strong>{discoveryPreview.activities}</strong>
-                {discoveryCopy.activities}
-              </span>
-            </div>
-          </form>
-        </div>
-      </section>
-
-      <section className="page-section container">
-        <SectionHeader
-          eyebrow={t.home.featuredHomesEyebrow}
-          title={t.home.featuredHomesTitle}
-          description={t.home.featuredHomesDescription}
-          actions={
-            <ButtonLink to="/listings" variant="soft">
-              {t.common.exploreListings}
-              <ArrowRight size={16} aria-hidden="true" />
-            </ButtonLink>
-          }
-        />
-
-        <div className="listing-grid listing-grid--featured lux-featured-grid">
-          {featuredListings.map((listing) => (
-            <ListingCard key={listing.id} listing={listing} variant="featured" />
-          ))}
-        </div>
-      </section>
-
-      <section className="page-section container">
-        <SectionHeader
-          eyebrow={discoveryCopy.developersEyebrow}
-          title={discoveryCopy.developersTitle}
-          description={discoveryCopy.developersDescription}
-          actions={
-            <ButtonLink to="/developers" variant="soft">
-              {discoveryCopy.viewDevelopers}
-              <ArrowRight size={16} aria-hidden="true" />
-            </ButtonLink>
-          }
-        />
-
-        <div className="developer-preview-grid">
-          {featuredDevelopers.map((developer) => (
-            <article className="developer-preview-card" key={developer.id}>
-              <img src={developer.logo} alt={`${developer.name} logo`} loading="lazy" />
-
+      {!loading && !loadError ? (
+        <>
+          <section className="page-section container">
+            <div className="landmark-discovery-panel">
               <div>
-                <span className="developer-preview-card__badge">
-                  <ShieldCheck size={14} aria-hidden="true" />
-                  {developer.verified ? discoveryCopy.verifiedDeveloper : discoveryCopy.developer}
-                </span>
+                <p className="eyebrow">{discoveryCopy.eyebrow}</p>
+                <h2>{discoveryCopy.title}</h2>
+                <p>{discoveryCopy.description}</p>
+              </div>
 
-                <h3>{developer.name}</h3>
-                <p>{developer.description}</p>
+              <form className="landmark-discovery-form" onSubmit={handleDiscoverySearch}>
+                <label htmlFor="homepage-landmark">
+                  {discoveryCopy.landmarkLabel}
+                  <select
+                    id="homepage-landmark"
+                    name="landmark"
+                    value={selectedLandmark}
+                    onChange={(event) => setSelectedLandmark(event.target.value)}
+                  >
+                    {landmarks.map((landmark) => (
+                      <option key={landmark.id} value={landmark.slug}>
+                        {landmark.name} · {landmark.city}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-                <div className="developer-preview-card__meta">
+                <label htmlFor="homepage-discovery-category">
+                  {discoveryCopy.categoryLabel}
+                  <select
+                    id="homepage-discovery-category"
+                    name="discoveryCategory"
+                    value={selectedCategory}
+                    onChange={(event) =>
+                      setSelectedCategory(event.target.value as DiscoveryCategoryValue)
+                    }
+                  >
+                    {localizedDiscoveryCategories.map((category) => (
+                      <option key={category.value} value={category.value}>
+                        {category.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <button className="button-link button-link--primary" type="submit">
+                  {discoveryCopy.submit}
+                  <ArrowRight size={17} aria-hidden="true" />
+                </button>
+
+                <div className="landmark-discovery-summary" aria-live="polite">
                   <span>
-                    <Building2 size={15} aria-hidden="true" />
-                    {developer.listedPropertyIds.length} {discoveryCopy.listedProperties}
+                    <strong>{discoveryPreview.properties}</strong>
+                    {discoveryCopy.properties}
                   </span>
                   <span>
-                    <MapPin size={15} aria-hidden="true" />
-                    {developer.headquarters}
+                    <strong>{discoveryPreview.activities}</strong>
+                    {discoveryCopy.activities}
                   </span>
                 </div>
+              </form>
+            </div>
+          </section>
 
-                <Link to={`/developers/${developer.slug}`} className="text-link">
-                  {discoveryCopy.viewProfile}
+          <section className="page-section container">
+            <SectionHeader
+              eyebrow={t.home.featuredHomesEyebrow}
+              title={t.home.featuredHomesTitle}
+              description={t.home.featuredHomesDescription}
+              actions={
+                <ButtonLink to="/listings" variant="soft">
+                  {t.common.exploreListings}
                   <ArrowRight size={16} aria-hidden="true" />
-                </Link>
+                </ButtonLink>
+              }
+            />
+
+            <div className="listing-grid listing-grid--featured lux-featured-grid">
+              {featuredListings.map((listing) => (
+                <ListingCard key={listing.id} listing={listing} variant="featured" />
+              ))}
+            </div>
+          </section>
+
+          <section className="page-section container">
+            <SectionHeader
+              eyebrow={discoveryCopy.developersEyebrow}
+              title={discoveryCopy.developersTitle}
+              description={discoveryCopy.developersDescription}
+              actions={
+                <ButtonLink to="/developers" variant="soft">
+                  {discoveryCopy.viewDevelopers}
+                  <ArrowRight size={16} aria-hidden="true" />
+                </ButtonLink>
+              }
+            />
+
+            <div className="developer-preview-grid">
+              {featuredDevelopers.map((developer) => {
+                const developerListings = listings.filter(
+                  (listing) => listing.developerId === developer.id
+                );
+
+                return (
+                  <article className="developer-preview-card" key={developer.id}>
+                    {developer.logo ? (
+                      <img src={developer.logo} alt={`${developer.name} logo`} loading="lazy" />
+                    ) : null}
+
+                    <div>
+                      <span className="developer-preview-card__badge">
+                        <ShieldCheck size={14} aria-hidden="true" />
+                        {developer.verified
+                          ? discoveryCopy.verifiedDeveloper
+                          : discoveryCopy.developer}
+                      </span>
+
+                      <h3>{developer.name}</h3>
+                      <p>{developer.description}</p>
+
+                      <div className="developer-preview-card__meta">
+                        <span>
+                          <Building2 size={15} aria-hidden="true" />
+                          {developerListings.length} {discoveryCopy.listedProperties}
+                        </span>
+                        <span>
+                          <MapPin size={15} aria-hidden="true" />
+                          {developer.headquarters}
+                        </span>
+                      </div>
+
+                      <Link to={`/developers/${developer.slug}`} className="text-link">
+                        {discoveryCopy.viewProfile}
+                        <ArrowRight size={16} aria-hidden="true" />
+                      </Link>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="lux-trust-section">
+            <div className="container">
+              <SectionHeader eyebrow={t.home.whyEyebrow} title={t.home.whyTitle} align="center" />
+
+              <div className="benefit-grid lux-benefit-grid">
+                {t.home.benefits.map((item, index) => (
+                  <article className="benefit-card lux-benefit-card" key={item}>
+                    {index === 0 ? (
+                      <ShieldCheck aria-hidden="true" />
+                    ) : index === 1 ? (
+                      <CalendarDays aria-hidden="true" />
+                    ) : index === 2 ? (
+                      <Sparkles aria-hidden="true" />
+                    ) : (
+                      <CheckCircle2 aria-hidden="true" />
+                    )}
+                    <h3>{item}</h3>
+                  </article>
+                ))}
               </div>
-            </article>
-          ))}
-        </div>
-      </section>
+            </div>
+          </section>
 
-      <section className="lux-trust-section">
-        <div className="container">
-          <SectionHeader eyebrow={t.home.whyEyebrow} title={t.home.whyTitle} align="center" />
-
-          <div className="benefit-grid lux-benefit-grid">
-            {t.home.benefits.map((item, index) => (
-              <article className="benefit-card lux-benefit-card" key={item}>
-                {index === 0 ? (
-                  <ShieldCheck aria-hidden="true" />
-                ) : index === 1 ? (
-                  <CalendarDays aria-hidden="true" />
-                ) : index === 2 ? (
-                  <Sparkles aria-hidden="true" />
-                ) : (
-                  <CheckCircle2 aria-hidden="true" />
-                )}
-                <h3>{item}</h3>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="page-section container">
-        <SectionHeader
-          eyebrow={t.home.activitiesEyebrow}
-          title={t.home.activitiesTitle}
-          description={t.home.activitiesDescription}
-          actions={
-            <ButtonLink to="/activities" variant="soft">
-              {t.common.viewActivities}
-              <ArrowRight size={16} aria-hidden="true" />
-            </ButtonLink>
-          }
-        />
-        <div className="activity-grid lux-activity-row">
-          {featuredActivities.map((activity) => (
-            <ActivityCard key={activity.id} activity={activity} variant="featured" />
-          ))}
-        </div>
-      </section>
+          <section className="page-section container">
+            <SectionHeader
+              eyebrow={t.home.activitiesEyebrow}
+              title={t.home.activitiesTitle}
+              description={t.home.activitiesDescription}
+              actions={
+                <ButtonLink to="/activities" variant="soft">
+                  {t.common.viewActivities}
+                  <ArrowRight size={16} aria-hidden="true" />
+                </ButtonLink>
+              }
+            />
+            <div className="activity-grid lux-activity-row">
+              {featuredActivities.map((activity) => (
+                <ActivityCard key={activity.id} activity={activity} variant="featured" />
+              ))}
+            </div>
+          </section>
+        </>
+      ) : null}
     </>
   );
 }

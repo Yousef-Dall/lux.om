@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       open: true,
       proxy: {
-        '/auth': apiUrl,
+        '/api': apiUrl,
         '/uploads': apiUrl,
         '/health': apiUrl
       }

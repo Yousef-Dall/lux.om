@@ -1,11 +1,18 @@
-import type { ErrorRequestHandler } from 'express';
+import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { ZodError } from 'zod';
-import { AppError } from '../utils/http';
-import { isProduction } from '../config/env';
 
-export const notFoundHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+import { isProduction } from '../config/env';
+import { AppError } from '../utils/http';
+
+export const notFoundHandler: RequestHandler = (req, _res, next) => {
+  next(new AppError(404, `Route not found: ${req.method} ${req.originalUrl}`));
+};
+
+export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   if (error instanceof AppError) {
-    res.status(error.statusCode).json({ message: error.message });
+    res.status(error.statusCode).json({
+      message: error.message
+    });
     return;
   }
 
@@ -24,6 +31,10 @@ export const notFoundHandler: ErrorRequestHandler = (error, _req, res, _next) =>
 
   res.status(500).json({
     message: 'Server error',
-    ...(isProduction ? {} : { detail: error instanceof Error ? error.message : String(error) })
+    ...(isProduction
+      ? {}
+      : {
+          detail: error instanceof Error ? error.message : String(error)
+        })
   });
 };

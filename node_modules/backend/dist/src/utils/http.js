@@ -6,7 +6,9 @@ class AppError extends Error {
     statusCode;
     constructor(statusCode, message) {
         super(message);
+        this.name = 'AppError';
         this.statusCode = statusCode;
+        Object.setPrototypeOf(this, AppError.prototype);
     }
 }
 exports.AppError = AppError;

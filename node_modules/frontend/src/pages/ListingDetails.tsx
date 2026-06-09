@@ -11,20 +11,24 @@ import {
   Sparkles,
   Users
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+import { getListingBySlug } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
-import { listings } from '../data/mockData';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import type { Listing } from '../types';
 
 export default function ListingDetails() {
   const { t, language } = useLanguage();
   const { slug } = useParams();
 
-  const listing = listings.find((item) => item.slug === slug);
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  useDocumentTitle(listing ? listing.title : 'Listing not found');
+  useDocumentTitle(listing ? listing.title : 'Listing details');
 
   const copy =
     language === 'ar'
@@ -41,7 +45,9 @@ export default function ListingDetails() {
           developedBy: 'تم تطويره بواسطة',
           verifiedDeveloper: 'مطور موثق',
           viewCompanyProfile: 'عرض ملف الشركة',
-          viewDeveloperListings: 'عرض عقارات هذا المطور'
+          viewDeveloperListings: 'عرض عقارات هذا المطور',
+          loading: 'جاري تحميل العقار...',
+          error: 'تعذر تحميل تفاصيل العقار. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
       : {
           notFoundEyebrow: 'Listing not found',
@@ -56,14 +62,64 @@ export default function ListingDetails() {
           developedBy: 'Developed by',
           verifiedDeveloper: 'Verified developer',
           viewCompanyProfile: 'View company profile',
-          viewDeveloperListings: 'View properties by this developer'
+          viewDeveloperListings: 'View properties by this developer',
+          loading: 'Loading listing...',
+          error: 'Could not load listing details. Make sure the backend is running and try again.'
         };
 
-  if (!listing) {
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadListing() {
+      if (!slug) {
+        setLoading(false);
+        setListing(null);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setLoadError('');
+
+        const apiListing = await getListingBySlug(slug, language);
+
+        if (!isMounted) return;
+
+        setListing(apiListing);
+      } catch (error) {
+        if (!isMounted) return;
+
+        console.error(error);
+        setListing(null);
+        setLoadError(copy.error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadListing();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [slug, language, copy.error]);
+
+  if (loading) {
+    return (
+      <section className="page-section container not-found" aria-labelledby="listing-loading-title">
+        <p className="eyebrow">{t.listings.eyebrow}</p>
+        <h1 id="listing-loading-title">{copy.loading}</h1>
+      </section>
+    );
+  }
+
+  if (!listing || loadError) {
     return (
       <section className="page-section container not-found" aria-labelledby="listing-not-found-title">
         <p className="eyebrow">{copy.notFoundEyebrow}</p>
-        <h1 id="listing-not-found-title">{copy.notFoundTitle}</h1>
+        <h1 id="listing-not-found-title">{loadError || copy.notFoundTitle}</h1>
         <ButtonLink to="/listings">{t.common.backToListings}</ButtonLink>
       </section>
     );
@@ -182,13 +238,15 @@ export default function ListingDetails() {
 
             {listing.developer ? (
               <section className="developer-detail-card" aria-labelledby="listing-developer-title">
-                <div className="developer-detail-card__logo">
-                  <img
-                    src={listing.developer.logo}
-                    alt={`${listing.developer.name} logo`}
-                    loading="lazy"
-                  />
-                </div>
+                {listing.developer.logo ? (
+                  <div className="developer-detail-card__logo">
+                    <img
+                      src={listing.developer.logo}
+                      alt={`${listing.developer.name} logo`}
+                      loading="lazy"
+                    />
+                  </div>
+                ) : null}
 
                 <div className="developer-detail-card__content">
                   <p className="eyebrow">{copy.developmentCompany}</p>
@@ -300,11 +358,13 @@ export default function ListingDetails() {
               className="booking-panel-developer"
               aria-label={`${copy.viewCompanyProfile}: ${listing.developer.name}`}
             >
-              <img
-                src={listing.developer.logo}
-                alt={`${listing.developer.name} logo`}
-                loading="lazy"
-              />
+              {listing.developer.logo ? (
+                <img
+                  src={listing.developer.logo}
+                  alt={`${listing.developer.name} logo`}
+                  loading="lazy"
+                />
+              ) : null}
 
               <span>
                 <small>{copy.developedBy}</small>

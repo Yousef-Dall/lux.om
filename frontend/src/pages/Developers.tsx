@@ -1,19 +1,23 @@
 import { ArrowRight, Building2, MapPin, ShieldCheck, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { getDevelopers, getListings } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
 import SectionHeader from '../components/SectionHeader';
-import { developmentCompanies, listings } from '../data/mockData';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import type { DevelopmentCompany, Listing } from '../types';
 
 export default function Developers() {
   const { language } = useLanguage();
 
   useDocumentTitle('Development companies');
 
-  const featuredDevelopers = developmentCompanies.filter((developer) => developer.featured);
-  const linkedPropertyCount = listings.filter((listing) => listing.developerId).length;
+  const [developmentCompanies, setDevelopmentCompanies] = useState<DevelopmentCompany[]>([]);
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const copy =
     language === 'ar'
@@ -24,8 +28,7 @@ export default function Developers() {
             'تصفح شركات التطوير، المجتمعات السكنية، المشاريع المميزة، والعقارات المرتبطة بأهم مناطق النمو العقاري في عُمان.',
           partner: 'كن شريكاً مع lux.om',
           network: 'شبكة المطورين',
-          heroTitle:
-            'مصمم لشركات التطوير العقاري والإنشاءات والمشترين الجادين.',
+          heroTitle: 'مصمم لشركات التطوير العقاري والإنشاءات والمشترين الجادين.',
           heroText:
             'تمنح lux.om شركات التطوير حضوراً واضحاً يساعد المشترين والمستأجرين على فهم الشركة، استكشاف عقاراتها، ومتابعة مشاريعها القادمة.',
           developerProfiles: 'ملفات المطورين',
@@ -36,7 +39,11 @@ export default function Developers() {
           featured: 'مميز',
           listedProperties: 'عقارات منشورة',
           viewProfile: 'عرض الملف',
-          cardAria: 'عرض ملف المطور'
+          cardAria: 'عرض ملف المطور',
+          loading: 'جاري تحميل المطورين...',
+          error: 'تعذر تحميل المطورين. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.',
+          emptyTitle: 'لا يوجد مطورون حالياً',
+          emptyText: 'سيتم عرض شركات التطوير هنا بعد إضافتها واعتمادها.'
         }
       : {
           eyebrow: 'Developers',
@@ -45,8 +52,7 @@ export default function Developers() {
             'Browse development companies, master communities, premium projects, and properties connected to Oman’s most important real estate growth areas.',
           partner: 'Partner with lux.om',
           network: 'Developer network',
-          heroTitle:
-            'Built for construction companies, real estate developers, and serious buyers.',
+          heroTitle: 'Built for construction companies, real estate developers, and serious buyers.',
           heroText:
             'lux.om gives development companies a dedicated presence where buyers and renters can understand the company, explore its listed properties, and discover project pipelines.',
           developerProfiles: 'developer profiles',
@@ -57,8 +63,51 @@ export default function Developers() {
           featured: 'Featured',
           listedProperties: 'listed properties',
           viewProfile: 'View profile',
-          cardAria: 'View developer profile'
+          cardAria: 'View developer profile',
+          loading: 'Loading developers...',
+          error: 'Could not load developers. Make sure the backend is running and try again.',
+          emptyTitle: 'No developers yet',
+          emptyText: 'Development companies will appear here after they are added and approved.'
         };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPageData() {
+      try {
+        setLoading(true);
+        setLoadError('');
+
+        const [apiDevelopers, apiListings] = await Promise.all([
+          getDevelopers(language, { take: 100 }),
+          getListings(language, { take: 100 })
+        ]);
+
+        if (!isMounted) return;
+
+        setDevelopmentCompanies(apiDevelopers);
+        setListings(apiListings);
+      } catch (error) {
+        if (!isMounted) return;
+
+        console.error(error);
+        setLoadError(copy.error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadPageData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [language, copy.error]);
+
+  const featuredDevelopers = developmentCompanies.filter((developer) => developer.featured);
+  const linkedPropertyCount = listings.filter((listing) => listing.developerId).length;
 
   return (
     <section className="page-section container">
@@ -99,72 +148,105 @@ export default function Developers() {
         </div>
       </section>
 
-      <div className="developer-grid">
-        {developmentCompanies.map((developer) => {
-          const developerListings = listings.filter(
-            (listing) => listing.developerId === developer.id
-          );
+      {loading ? (
+        <div className="empty-state empty-state--premium">
+          <Sparkles size={34} aria-hidden="true" />
+          <h2>{copy.loading}</h2>
+        </div>
+      ) : null}
 
-          return (
-            <article className="developer-card" key={developer.id}>
-              <img src={developer.logo} alt={`${developer.name} logo`} loading="lazy" />
+      {!loading && loadError ? (
+        <div className="empty-state empty-state--premium">
+          <Sparkles size={34} aria-hidden="true" />
+          <h2>{copy.error}</h2>
+        </div>
+      ) : null}
 
-              <div className="developer-card__body">
-                <div className="developer-card__topline">
-                  {developer.verified ? (
-                    <span>
-                      <ShieldCheck size={14} aria-hidden="true" />
-                      {copy.verifiedDeveloper}
-                    </span>
-                  ) : (
-                    <span>
-                      <Building2 size={14} aria-hidden="true" />
-                      {copy.developer}
-                    </span>
-                  )}
+      {!loading && !loadError && developmentCompanies.length > 0 ? (
+        <div className="developer-grid">
+          {developmentCompanies.map((developer) => {
+            const developerListings = listings.filter(
+              (listing) => listing.developerId === developer.id
+            );
 
-                  {developer.featured ? (
-                    <span>
-                      <Sparkles size={14} aria-hidden="true" />
-                      {copy.featured}
-                    </span>
+            return (
+              <article className="developer-card" key={developer.id}>
+                {developer.logo ? (
+                  <img src={developer.logo} alt={`${developer.name} logo`} loading="lazy" />
+                ) : (
+                  <div className="developer-card__logo-placeholder" aria-hidden="true">
+                    <Building2 size={32} />
+                  </div>
+                )}
+
+                <div className="developer-card__body">
+                  <div className="developer-card__topline">
+                    {developer.verified ? (
+                      <span>
+                        <ShieldCheck size={14} aria-hidden="true" />
+                        {copy.verifiedDeveloper}
+                      </span>
+                    ) : (
+                      <span>
+                        <Building2 size={14} aria-hidden="true" />
+                        {copy.developer}
+                      </span>
+                    )}
+
+                    {developer.featured ? (
+                      <span>
+                        <Sparkles size={14} aria-hidden="true" />
+                        {copy.featured}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <h2>{developer.name}</h2>
+
+                  <p className="developer-card__location">
+                    <MapPin size={16} aria-hidden="true" />
+                    {developer.headquarters || developer.location}
+                  </p>
+
+                  <p>{developer.description}</p>
+
+                  {developer.specialties.length > 0 ? (
+                    <div className="developer-card__specialties">
+                      {developer.specialties.slice(0, 3).map((specialty) => (
+                        <span key={specialty}>{specialty}</span>
+                      ))}
+                    </div>
                   ) : null}
+
+                  <div className="developer-card__footer">
+                    <strong>
+                      {developerListings.length}{' '}
+                      {copy.listedProperties}
+                    </strong>
+
+                    <Link
+                      to={`/developers/${developer.slug}`}
+                      className="text-link"
+                      aria-label={`${copy.cardAria}: ${developer.name}`}
+                    >
+                      {copy.viewProfile}
+                      <ArrowRight size={16} aria-hidden="true" />
+                    </Link>
+                  </div>
                 </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
 
-                <h2>{developer.name}</h2>
-
-                <p className="developer-card__location">
-                  <MapPin size={16} aria-hidden="true" />
-                  {developer.headquarters}
-                </p>
-
-                <p>{developer.description}</p>
-
-                <div className="developer-card__specialties">
-                  {developer.specialties.slice(0, 3).map((specialty) => (
-                    <span key={specialty}>{specialty}</span>
-                  ))}
-                </div>
-
-                <div className="developer-card__footer">
-                  <strong>
-                    {developerListings.length} {copy.listedProperties}
-                  </strong>
-
-                  <Link
-                    to={`/developers/${developer.slug}`}
-                    className="text-link"
-                    aria-label={`${copy.cardAria}: ${developer.name}`}
-                  >
-                    {copy.viewProfile}
-                    <ArrowRight size={16} aria-hidden="true" />
-                  </Link>
-                </div>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+      {!loading && !loadError && developmentCompanies.length === 0 ? (
+        <div className="empty-state empty-state--premium">
+          <Sparkles size={34} aria-hidden="true" />
+          <h2>{copy.emptyTitle}</h2>
+          <p>{copy.emptyText}</p>
+        </div>
+      ) : null}
     </section>
   );
 }

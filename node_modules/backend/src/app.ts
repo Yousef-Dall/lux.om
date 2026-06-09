@@ -2,29 +2,43 @@ import path from 'path';
 import compression from 'compression';
 import cors from 'cors';
 import express from 'express';
-import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
+
 import { env, isProduction } from './config/env';
+import { errorHandler, notFoundHandler } from './middleware/error';
+import { activitiesRouter } from './routes/activities';
 import { authRouter } from './routes/auth';
-import { listingsRouter } from './routes/listings';
 import { bookingsRouter } from './routes/bookings';
+import { developersRouter } from './routes/developers';
+import { inquiriesRouter } from './routes/inquiries';
+import { landmarksRouter } from './routes/landmarks';
+import { listingsRouter } from './routes/listings';
 import { uploadsRouter } from './routes/uploads';
-import { notFoundHandler } from './middleware/error';
 
 export function createApp() {
   const app = express();
+  const uploadDirectory = path.resolve(process.cwd(), env.UPLOAD_DIR);
 
   app.set('trust proxy', 1);
-  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: {
+        policy: 'cross-origin'
+      }
+    })
+  );
+
   app.use(compression());
+
   app.use(
     cors({
-      origin: env.CORS_ORIGIN.split(',').map((origin) => origin.trim()),
+      origin: env.CORS_ORIGIN,
       credentials: true
     })
   );
-  app.use(express.json({ limit: '1mb' }));
-  app.use(express.urlencoded({ extended: false }));
+
   app.use(
     rateLimit({
       windowMs: 15 * 60 * 1000,
@@ -34,22 +48,57 @@ export function createApp() {
     })
   );
 
-  app.use('/uploads', express.static(path.resolve(process.cwd(), env.UPLOAD_DIR), { maxAge: '7d' }));
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: false }));
+
+  app.use(
+    '/uploads',
+    express.static(uploadDirectory, {
+      maxAge: isProduction ? '7d' : 0,
+      immutable: isProduction
+    })
+  );
 
   app.get('/health', (_req, res) => {
-    res.json({ ok: true, app: 'lux.om API' });
+    res.json({
+      ok: true,
+      app: 'lux.om API',
+      environment: env.NODE_ENV
+    });
   });
 
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      ok: true,
+      app: 'lux.om API',
+      environment: env.NODE_ENV
+    });
+  });
+
+  app.use('/api/auth', authRouter);
+  app.use('/api/listings', listingsRouter);
+  app.use('/api/activities', activitiesRouter);
+  app.use('/api/developers', developersRouter);
+  app.use('/api/landmarks', landmarksRouter);
+  app.use('/api/inquiries', inquiriesRouter);
+  app.use('/api/bookings', bookingsRouter);
+  app.use('/api/uploads', uploadsRouter);
+
+  /**
+   * Temporary legacy aliases while the frontend API client is being introduced.
+   * Remove these after all frontend service calls use /api routes.
+   */
   app.use('/auth', authRouter);
   app.use('/listings', listingsRouter);
+  app.use('/activities', activitiesRouter);
+  app.use('/developers', developersRouter);
+  app.use('/landmarks', landmarksRouter);
+  app.use('/inquiries', inquiriesRouter);
   app.use('/bookings', bookingsRouter);
   app.use('/uploads', uploadsRouter);
 
-  app.use((_req, res) => {
-    res.status(404).json({ message: 'Route not found' });
-  });
-
   app.use(notFoundHandler);
+  app.use(errorHandler);
 
   return app;
 }

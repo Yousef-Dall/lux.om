@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: lux_om_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lux_om
+    ports:
+      - "5433:5432"
+    volumes:
+      - lux_om_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  lux_om_postgres_data:

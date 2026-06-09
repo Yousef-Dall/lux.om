@@ -13,12 +13,12 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { getDevelopers, getLandmarks, getListings } from '../api/marketplace';
 import { ListingCard } from '../components/Cards';
 import SectionHeader from '../components/SectionHeader';
-import { developmentCompanies, landmarks, listings } from '../data/mockData';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
-import type { ListingTransaction } from '../types';
+import type { DevelopmentCompany, Landmark, Listing, ListingTransaction } from '../types';
 
 const transactionFilters = ['All', 'Sale', 'Rent', 'Short stay'] as const;
 
@@ -94,6 +94,12 @@ export default function Listings() {
   const initialType = searchParams.get('type');
   const initialDeveloper = searchParams.get('developer') ?? '';
 
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
+  const [developmentCompanies, setDevelopmentCompanies] = useState<DevelopmentCompany[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
   const [query, setQuery] = useState('');
   const [transaction, setTransaction] = useState<TransactionFilter>(
     isTransactionFilter(initialType) ? initialType : 'All'
@@ -115,16 +121,6 @@ export default function Listings() {
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortOption>('Recommended');
 
-  const selectedLandmark = useMemo(
-    () => landmarks.find((landmark) => landmark.slug === selectedLandmarkSlug),
-    [selectedLandmarkSlug]
-  );
-
-  const selectedDeveloper = useMemo(
-    () => developmentCompanies.find((developer) => developer.slug === selectedDeveloperSlug),
-    [selectedDeveloperSlug]
-  );
-
   const copy =
     language === 'ar'
       ? {
@@ -141,7 +137,9 @@ export default function Listings() {
           view: 'الإطلالة',
           sortBy: 'ترتيب حسب',
           quickFilters: 'فلاتر سريعة للغرف والحمامات',
-          activeFilters: 'الفلاتر النشطة'
+          activeFilters: 'الفلاتر النشطة',
+          loading: 'جاري تحميل العقارات...',
+          error: 'تعذر تحميل العقارات. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
       : {
           landmark: 'Landmark or area',
@@ -157,8 +155,58 @@ export default function Listings() {
           view: 'View',
           sortBy: 'Sort by',
           quickFilters: 'Quick bedroom and bathroom filters',
-          activeFilters: 'Active filters'
+          activeFilters: 'Active filters',
+          loading: 'Loading listings...',
+          error: 'Could not load listings. Make sure the backend is running and try again.'
         };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPageData() {
+      try {
+        setLoading(true);
+        setLoadError('');
+
+        const [apiListings, apiLandmarks, apiDevelopers] = await Promise.all([
+          getListings(language, { take: 100 }),
+          getLandmarks(language, { take: 100 }),
+          getDevelopers(language, { take: 100 })
+        ]);
+
+        if (!isMounted) return;
+
+        setListings(apiListings);
+        setLandmarks(apiLandmarks);
+        setDevelopmentCompanies(apiDevelopers);
+      } catch (error) {
+        if (!isMounted) return;
+
+        console.error(error);
+        setLoadError(copy.error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadPageData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [language, copy.error]);
+
+  const selectedLandmark = useMemo(
+    () => landmarks.find((landmark) => landmark.slug === selectedLandmarkSlug),
+    [landmarks, selectedLandmarkSlug]
+  );
+
+  const selectedDeveloper = useMemo(
+    () => developmentCompanies.find((developer) => developer.slug === selectedDeveloperSlug),
+    [developmentCompanies, selectedDeveloperSlug]
+  );
 
   useEffect(() => {
     const nextNear = searchParams.get('near') ?? '';
@@ -192,11 +240,7 @@ export default function Listings() {
     const chips: ActiveChip[] = [];
 
     if (query.trim()) {
-      chips.push({
-        key: 'query',
-        label: `Search: ${query}`,
-        onRemove: () => setQuery('')
-      });
+      chips.push({ key: 'query', label: `Search: ${query}`, onRemove: () => setQuery('') });
     }
 
     if (location.trim()) {
@@ -224,11 +268,7 @@ export default function Listings() {
     }
 
     if (transaction !== 'All') {
-      chips.push({
-        key: 'transaction',
-        label: transaction,
-        onRemove: () => setTransaction('All')
-      });
+      chips.push({ key: 'transaction', label: transaction, onRemove: () => setTransaction('All') });
     }
 
     if (propertyType !== 'All') {
@@ -239,45 +279,11 @@ export default function Listings() {
       });
     }
 
-    if (minBeds) {
-      chips.push({
-        key: 'minBeds',
-        label: `${minBeds}+ beds`,
-        onRemove: () => setMinBeds('')
-      });
-    }
-
-    if (minBaths) {
-      chips.push({
-        key: 'minBaths',
-        label: `${minBaths}+ baths`,
-        onRemove: () => setMinBaths('')
-      });
-    }
-
-    if (minSqm) {
-      chips.push({
-        key: 'minSqm',
-        label: `${minSqm}+ sqm`,
-        onRemove: () => setMinSqm('')
-      });
-    }
-
-    if (minGuests) {
-      chips.push({
-        key: 'minGuests',
-        label: `${minGuests}+ guests`,
-        onRemove: () => setMinGuests('')
-      });
-    }
-
-    if (minParking) {
-      chips.push({
-        key: 'minParking',
-        label: `${minParking}+ parking`,
-        onRemove: () => setMinParking('')
-      });
-    }
+    if (minBeds) chips.push({ key: 'minBeds', label: `${minBeds}+ beds`, onRemove: () => setMinBeds('') });
+    if (minBaths) chips.push({ key: 'minBaths', label: `${minBaths}+ baths`, onRemove: () => setMinBaths('') });
+    if (minSqm) chips.push({ key: 'minSqm', label: `${minSqm}+ sqm`, onRemove: () => setMinSqm('') });
+    if (minGuests) chips.push({ key: 'minGuests', label: `${minGuests}+ guests`, onRemove: () => setMinGuests('') });
+    if (minParking) chips.push({ key: 'minParking', label: `${minParking}+ parking`, onRemove: () => setMinParking('') });
 
     if (priceKeyword.trim()) {
       chips.push({
@@ -288,19 +294,11 @@ export default function Listings() {
     }
 
     if (furnishing !== 'All') {
-      chips.push({
-        key: 'furnishing',
-        label: furnishing,
-        onRemove: () => setFurnishing('All')
-      });
+      chips.push({ key: 'furnishing', label: furnishing, onRemove: () => setFurnishing('All') });
     }
 
     if (view !== 'All') {
-      chips.push({
-        key: 'view',
-        label: view,
-        onRemove: () => setView('All')
-      });
+      chips.push({ key: 'view', label: view, onRemove: () => setView('All') });
     }
 
     selectedAmenities.forEach((amenity) => {
@@ -369,7 +367,6 @@ export default function Listings() {
       const matchesBeds = !minBeds || listing.beds >= Number(minBeds);
       const matchesBaths = !minBaths || listing.baths >= Number(minBaths);
       const matchesSqm = !minSqm || listing.sqm >= Number(minSqm);
-
       const matchesGuests = !minGuests || (listing.maxGuests ?? 0) >= Number(minGuests);
       const matchesParking = !minParking || (listing.parkingSpaces ?? 0) >= Number(minParking);
 
@@ -403,25 +400,15 @@ export default function Listings() {
     });
 
     return [...filtered].sort((a, b) => {
-      if (sortBy === 'Price low to high') {
-        return getPriceValue(a.price) - getPriceValue(b.price);
-      }
-
-      if (sortBy === 'Price high to low') {
-        return getPriceValue(b.price) - getPriceValue(a.price);
-      }
-
-      if (sortBy === 'Largest area') {
-        return b.sqm - a.sqm;
-      }
-
-      if (sortBy === 'Newest') {
-        return b.id.localeCompare(a.id);
-      }
+      if (sortBy === 'Price low to high') return getPriceValue(a.price) - getPriceValue(b.price);
+      if (sortBy === 'Price high to low') return getPriceValue(b.price) - getPriceValue(a.price);
+      if (sortBy === 'Largest area') return b.sqm - a.sqm;
+      if (sortBy === 'Newest') return b.id.localeCompare(a.id);
 
       return Number(Boolean(b.featured)) - Number(Boolean(a.featured));
     });
   }, [
+    listings,
     query,
     transaction,
     propertyType,
@@ -832,13 +819,29 @@ export default function Listings() {
         </div>
       </div>
 
-      <div className="listing-grid">
-        {filteredListings.map((listing) => (
-          <ListingCard key={listing.id} listing={listing} />
-        ))}
-      </div>
+      {loading ? (
+        <div className="empty-state empty-state--premium">
+          <Sparkles size={34} aria-hidden="true" />
+          <h2>{copy.loading}</h2>
+        </div>
+      ) : null}
 
-      {filteredListings.length === 0 ? (
+      {!loading && loadError ? (
+        <div className="empty-state empty-state--premium">
+          <Sparkles size={34} aria-hidden="true" />
+          <h2>{copy.error}</h2>
+        </div>
+      ) : null}
+
+      {!loading && !loadError ? (
+        <div className="listing-grid">
+          {filteredListings.map((listing) => (
+            <ListingCard key={listing.id} listing={listing} />
+          ))}
+        </div>
+      ) : null}
+
+      {!loading && !loadError && filteredListings.length === 0 ? (
         <div className="empty-state empty-state--premium">
           <Sparkles size={34} aria-hidden="true" />
           <h2>{t.listings.noResultsTitle}</h2>

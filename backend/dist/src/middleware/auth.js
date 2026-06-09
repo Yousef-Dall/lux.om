@@ -10,8 +10,18 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const env_1 = require("../config/env");
 const prisma_1 = require("../lib/prisma");
 const http_1 = require("../utils/http");
+function isTokenPayload(payload) {
+    if (!payload || typeof payload !== 'object') {
+        return false;
+    }
+    const candidate = payload;
+    return typeof candidate.userId === 'string' && typeof candidate.role === 'string';
+}
 function signToken(user) {
-    return jsonwebtoken_1.default.sign({ userId: user.id, role: user.role }, env_1.env.JWT_SECRET, {
+    return jsonwebtoken_1.default.sign({
+        userId: user.id,
+        role: user.role
+    }, env_1.env.JWT_SECRET, {
         expiresIn: '7d',
         issuer: 'lux.om'
     });
@@ -22,19 +32,33 @@ function requireAuth(required = true) {
             const header = req.headers.authorization ?? '';
             const token = header.startsWith('Bearer ') ? header.slice(7) : null;
             if (!token) {
-                if (!required)
+                if (!required) {
                     return next();
+                }
                 throw new http_1.AppError(401, 'Unauthorized');
             }
-            const payload = jsonwebtoken_1.default.verify(token, env_1.env.JWT_SECRET, { issuer: 'lux.om' });
-            const user = await prisma_1.prisma.user.findUnique({ where: { id: payload.userId } });
-            if (!user)
+            const payload = jsonwebtoken_1.default.verify(token, env_1.env.JWT_SECRET, {
+                issuer: 'lux.om'
+            });
+            if (!isTokenPayload(payload)) {
+                throw new http_1.AppError(401, 'Invalid token');
+            }
+            const user = await prisma_1.prisma.user.findUnique({
+                where: {
+                    id: payload.userId
+                }
+            });
+            if (!user) {
                 throw new http_1.AppError(401, 'Unauthorized');
+            }
             req.user = user;
             return next();
         }
         catch (error) {
-            return next(error instanceof http_1.AppError ? error : new http_1.AppError(401, 'Unauthorized'));
+            if (error instanceof http_1.AppError) {
+                return next(error);
+            }
+            return next(new http_1.AppError(401, 'Unauthorized'));
         }
     };
 }

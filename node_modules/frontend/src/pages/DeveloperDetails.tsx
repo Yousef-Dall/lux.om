@@ -8,26 +8,27 @@ import {
   ShieldCheck,
   Sparkles
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+import { getDeveloperBySlug, getListings } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
 import { ListingCard } from '../components/Cards';
 import SectionHeader from '../components/SectionHeader';
-import { developmentCompanies, listings } from '../data/mockData';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import type { DevelopmentCompany, Listing } from '../types';
 
 export default function DeveloperDetails() {
   const { slug } = useParams();
   const { language } = useLanguage();
 
-  const developer = developmentCompanies.find((company) => company.slug === slug);
+  const [developer, setDeveloper] = useState<DevelopmentCompany | null>(null);
+  const [developerListings, setDeveloperListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  const developerListings = developer
-    ? listings.filter((listing) => listing.developerId === developer.id)
-    : [];
-
-  useDocumentTitle(developer ? developer.name : 'Developer not found');
+  useDocumentTitle(developer ? developer.name : 'Developer details');
 
   const copy =
     language === 'ar'
@@ -44,8 +45,7 @@ export default function DeveloperDetails() {
             'استكشف العقارات الحالية، الإقامات القصيرة، الإيجارات، وفرص البيع المرتبطة بهذه الشركة.',
           viewAll: 'عرض كل العقارات المرتبطة',
           noListingsTitle: 'لا توجد عقارات منشورة حالياً',
-          noListingsText:
-            'ملف الشركة جاهز، لكن لم تتم إضافة عقارات عامة بعد.',
+          noListingsText: 'ملف الشركة جاهز، لكن لم تتم إضافة عقارات عامة بعد.',
           companyProfile: 'ملف الشركة',
           specialties: 'التخصصات',
           location: 'الموقع',
@@ -53,7 +53,9 @@ export default function DeveloperDetails() {
           phone: 'الهاتف',
           email: 'البريد الإلكتروني',
           website: 'الموقع الإلكتروني',
-          partner: 'كن شريكاً مع lux.om'
+          partner: 'كن شريكاً مع lux.om',
+          loading: 'جاري تحميل ملف المطور...',
+          error: 'تعذر تحميل ملف المطور. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
       : {
           notFoundEyebrow: 'Developer not found',
@@ -68,8 +70,7 @@ export default function DeveloperDetails() {
             'Explore current listings, short stays, rentals, and sale opportunities connected to this development company.',
           viewAll: 'View all linked properties',
           noListingsTitle: 'No public listings yet',
-          noListingsText:
-            'This company profile is ready, but public properties have not been added yet.',
+          noListingsText: 'This company profile is ready, but public properties have not been added yet.',
           companyProfile: 'Company profile',
           specialties: 'Specialties',
           location: 'Location',
@@ -77,17 +78,75 @@ export default function DeveloperDetails() {
           phone: 'Phone',
           email: 'Email',
           website: 'Website',
-          partner: 'Partner with lux.om'
+          partner: 'Partner with lux.om',
+          loading: 'Loading developer profile...',
+          error: 'Could not load developer profile. Make sure the backend is running and try again.'
         };
 
-  if (!developer) {
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadDeveloper() {
+      if (!slug) {
+        setDeveloper(null);
+        setDeveloperListings([]);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setLoadError('');
+
+        const [apiDeveloper, apiListings] = await Promise.all([
+          getDeveloperBySlug(slug, language),
+          getListings(language, { take: 100 })
+        ]);
+
+        if (!isMounted) return;
+
+        setDeveloper(apiDeveloper);
+        setDeveloperListings(
+          apiListings.filter((listing) => listing.developerId === apiDeveloper.id)
+        );
+      } catch (error) {
+        if (!isMounted) return;
+
+        console.error(error);
+        setDeveloper(null);
+        setDeveloperListings([]);
+        setLoadError(copy.error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadDeveloper();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [slug, language, copy.error]);
+
+  if (loading) {
+    return (
+      <section className="page-section container not-found" aria-labelledby="developer-loading-title">
+        <p className="eyebrow">{copy.eyebrow}</p>
+        <h1 id="developer-loading-title">{copy.loading}</h1>
+      </section>
+    );
+  }
+
+  if (!developer || loadError) {
     return (
       <section
         className="page-section container not-found"
         aria-labelledby="developer-not-found-title"
       >
         <p className="eyebrow">{copy.notFoundEyebrow}</p>
-        <h1 id="developer-not-found-title">{copy.notFoundTitle}</h1>
+        <h1 id="developer-not-found-title">{loadError || copy.notFoundTitle}</h1>
         <ButtonLink to="/developers">{copy.backToDevelopers}</ButtonLink>
       </section>
     );
@@ -123,7 +182,7 @@ export default function DeveloperDetails() {
 
               <span>
                 <MapPin size={16} aria-hidden="true" />
-                {developer.headquarters}
+                {developer.headquarters || developer.location}
               </span>
 
               <span>
@@ -133,9 +192,15 @@ export default function DeveloperDetails() {
             </div>
           </div>
 
-          <div className="developer-profile-logo">
-            <img src={developer.logo} alt={`${developer.name} logo`} />
-          </div>
+          {developer.logo ? (
+            <div className="developer-profile-logo">
+              <img src={developer.logo} alt={`${developer.name} logo`} />
+            </div>
+          ) : (
+            <div className="developer-profile-logo" aria-hidden="true">
+              <Building2 size={48} />
+            </div>
+          )}
         </div>
       </section>
 
@@ -173,14 +238,16 @@ export default function DeveloperDetails() {
             <h2>{copy.companyProfile}</h2>
 
             <div className="developer-profile-panel__facts">
-              <span>
-                <Building2 size={17} aria-hidden="true" />
-                <strong>{copy.specialties}:</strong> {developer.specialties.join(', ')}
-              </span>
+              {developer.specialties.length > 0 ? (
+                <span>
+                  <Building2 size={17} aria-hidden="true" />
+                  <strong>{copy.specialties}:</strong> {developer.specialties.join(', ')}
+                </span>
+              ) : null}
 
               <span>
                 <MapPin size={17} aria-hidden="true" />
-                <strong>{copy.location}:</strong> {developer.location}
+                <strong>{copy.location}:</strong> {developer.location || developer.headquarters}
               </span>
 
               {developer.establishedYear ? (

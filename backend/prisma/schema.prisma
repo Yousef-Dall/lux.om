@@ -10,10 +10,18 @@ datasource db {
 enum Role {
   USER
   OWNER
+  ACTIVITY_PROVIDER
+  DEVELOPER
   ADMIN
 }
 
 enum ListingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ActivityStatus {
   PENDING
   APPROVED
   REJECTED
@@ -35,67 +43,274 @@ enum PaymentStatus {
   NOT_REQUIRED
 }
 
+enum InquiryType {
+  PROPERTY
+  ACTIVITY
+  DEVELOPER_PARTNERSHIP
+  OWNER_PARTNERSHIP
+  GENERAL
+}
+
 model User {
-  id        String    @id @default(cuid())
+  id        String   @id @default(cuid())
   name      String
-  email     String    @unique
+  email     String   @unique
   password  String
-  role      Role      @default(USER)
+  role      Role     @default(USER)
   phone     String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   listings  Listing[]
+  activities Activity[]
   bookings  Booking[]
+  inquiries Inquiry[]
 
   @@index([role])
+  @@index([createdAt])
+}
+
+model Landmark {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  nameEn    String
+  nameAr    String?
+  cityEn    String
+  cityAr    String?
+  category  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  listings   Listing[]
+  activities Activity[]
+
+  @@index([cityEn])
+  @@index([category])
+}
+
+model DeveloperCompany {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  nameEn          String
+  nameAr          String?
+  descriptionEn   String?
+  descriptionAr   String?
+  headquartersEn  String?
+  headquartersAr  String?
+  logo            String?
+  phone           String?
+  email           String?
+  website         String?
+  establishedYear Int?
+  verified        Boolean  @default(false)
+  featured        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  listings Listing[]
+
+  @@index([verified])
+  @@index([featured])
 }
 
 model Listing {
   id          String        @id @default(cuid())
   slug        String        @unique
+
+  /*
+   * Current single-language fields.
+   * Keep these for compatibility with existing backend/frontend routes.
+   * Later we will gradually move the frontend to titleEn/titleAr etc.
+   */
   title       String
   description String
   type        String
   transaction String
   location    String
+
+  /*
+   * Phase 3 bilingual fields.
+   * Optional for now so old create-listing route still works.
+   * Later, after frontend forms are upgraded, we can make these required.
+   */
+  titleEn       String?
+  titleAr       String?
+  descriptionEn String?
+  descriptionAr String?
+  locationEn    String?
+  locationAr    String?
+  typeEn        String?
+  typeAr        String?
+
   price       String
   beds        Int
   baths       Int
   sqm         Int
   image       String
   status      ListingStatus @default(PENDING)
+  rejectedReason String?
+
+  featured    Boolean @default(false)
+  maxGuests   Int?
+  minStayNights Int?
+  parking     Boolean?
+  floor       Int?
+  furnishing  String?
+  view        String?
+  paymentFrequency String?
+
   ownerId     String
-  owner       User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner       User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  developerId String?
+  developer   DeveloperCompany? @relation(fields: [developerId], references: [id], onDelete: SetNull)
+
+  nearestLandmarkId String?
+  nearestLandmark   Landmark? @relation(fields: [nearestLandmarkId], references: [id], onDelete: SetNull)
+  distanceFromLandmarkEn String?
+  distanceFromLandmarkAr String?
+
   amenities   Amenity[]
+  images      ListingImage[]
   bookings    Booking[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  inquiries   Inquiry[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([status, createdAt])
   @@index([ownerId])
+  @@index([developerId])
+  @@index([nearestLandmarkId])
   @@index([location])
+  @@index([transaction])
+  @@index([featured])
 }
 
 model Amenity {
   id        String  @id @default(cuid())
   name      String
+
+  nameEn    String?
+  nameAr    String?
+
   listingId String
   listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@index([listingId])
 }
 
+model ListingImage {
+  id        String   @id @default(cuid())
+  url       String
+  altEn     String?
+  altAr     String?
+  sortOrder Int      @default(0)
+
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([listingId])
+}
+
+model Activity {
+  id          String         @id @default(cuid())
+  slug        String         @unique
+
+  titleEn       String
+  titleAr       String?
+  descriptionEn String
+  descriptionAr String?
+  locationEn    String
+  locationAr    String?
+
+  categoryEn String
+  categoryAr String?
+  providerEn String?
+  providerAr String?
+
+  price           String
+  durationMinutes Int?
+  durationLabelEn String?
+  durationLabelAr String?
+  groupSize       String?
+  language        String?
+  difficulty      String?
+  activityType    String?
+
+  familyFriendly  Boolean @default(false)
+  includesTransfer Boolean @default(false)
+  mealIncluded    Boolean @default(false)
+  outdoor         Boolean @default(false)
+
+  status          ActivityStatus @default(PENDING)
+  rejectedReason  String?
+  featured        Boolean        @default(false)
+
+  ownerId String
+  owner   User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  nearestLandmarkId String?
+  nearestLandmark   Landmark? @relation(fields: [nearestLandmarkId], references: [id], onDelete: SetNull)
+  distanceFromLandmarkEn String?
+  distanceFromLandmarkAr String?
+
+  images     ActivityImage[]
+  highlights ActivityHighlight[]
+  inquiries  Inquiry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([ownerId])
+  @@index([nearestLandmarkId])
+  @@index([featured])
+  @@index([categoryEn])
+}
+
+model ActivityImage {
+  id        String   @id @default(cuid())
+  url       String
+  altEn     String?
+  altAr     String?
+  sortOrder Int      @default(0)
+
+  activityId String
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([activityId])
+}
+
+model ActivityHighlight {
+  id      String @id @default(cuid())
+  textEn  String
+  textAr  String?
+
+  activityId String
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([activityId])
+}
+
 model Booking {
   id        String        @id @default(cuid())
   message   String?
   status    BookingStatus @default(PENDING)
+
   listingId String
-  listing   Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   payment   Payment?
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([listingId])
   @@index([userId])
@@ -107,8 +322,37 @@ model Payment {
   amount     Decimal       @db.Decimal(10, 2)
   commission Decimal       @db.Decimal(10, 2)
   status     PaymentStatus @default(PENDING)
-  bookingId  String        @unique
-  booking    Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+
+  bookingId String  @unique
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Inquiry {
+  id      String      @id @default(cuid())
+  type    InquiryType
+  name    String
+  email   String
+  phone   String?
+  message String
+
+  userId String?
+  user   User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  listingId String?
+  listing   Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+
+  activityId String?
+  activity   Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([userId])
+  @@index([listingId])
+  @@index([activityId])
+  @@index([createdAt])
 }

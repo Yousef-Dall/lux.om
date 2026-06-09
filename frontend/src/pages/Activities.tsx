@@ -12,12 +12,13 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { getActivities, getLandmarks } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
 import { ActivityCard } from '../components/Cards';
 import SectionHeader from '../components/SectionHeader';
-import { activities, landmarks } from '../data/mockData';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import type { Activity, Landmark } from '../types';
 
 const categoryFilters = [
   'All',
@@ -54,6 +55,11 @@ export default function Activities() {
 
   const nearParam = searchParams.get('near') ?? '';
 
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<(typeof categoryFilters)[number]>('All');
   const [location, setLocation] = useState('');
@@ -85,7 +91,9 @@ export default function Activities() {
           allAreas: 'كل المناطق',
           resultsNear: 'بالقرب من',
           activityType: 'نوع النشاط',
-          activeFilters: 'الفلاتر النشطة'
+          activeFilters: 'الفلاتر النشطة',
+          loading: 'جاري تحميل الأنشطة...',
+          error: 'تعذر تحميل الأنشطة. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
       : {
           showingNear: 'Showing activities near',
@@ -94,16 +102,54 @@ export default function Activities() {
           allAreas: 'All areas',
           resultsNear: 'Near',
           activityType: 'Activity type',
-          activeFilters: 'Active filters'
+          activeFilters: 'Active filters',
+          loading: 'Loading activities...',
+          error: 'Could not load activities. Make sure the backend is running and try again.'
         };
 
   useEffect(() => {
     setNearLandmark(nearParam);
   }, [nearParam]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPageData() {
+      try {
+        setLoading(true);
+        setLoadError('');
+
+        const [apiActivities, apiLandmarks] = await Promise.all([
+          getActivities(language, { take: 100 }),
+          getLandmarks(language, { take: 100 })
+        ]);
+
+        if (!isMounted) return;
+
+        setActivities(apiActivities);
+        setLandmarks(apiLandmarks);
+      } catch (error) {
+        if (!isMounted) return;
+
+        console.error(error);
+        setLoadError(copy.error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadPageData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [language, copy.error]);
+
   const selectedLandmark = useMemo(() => {
     return landmarks.find((landmark) => landmark.slug === nearLandmark);
-  }, [nearLandmark]);
+  }, [landmarks, nearLandmark]);
 
   const hasTimeError =
     Boolean(freeFrom) &&
@@ -153,6 +199,7 @@ export default function Activities() {
     const normalizedQuery = query.trim().toLowerCase();
     const normalizedLocation = location.trim().toLowerCase();
     const normalizedPriceKeyword = priceKeyword.trim().toLowerCase();
+    const normalizedCategory = category.toLowerCase();
 
     return activities.filter((activity) => {
       const searchableText = [
@@ -172,7 +219,9 @@ export default function Activities() {
         .toLowerCase();
 
       const matchesQuery = !normalizedQuery || searchableText.includes(normalizedQuery);
-      const matchesCategory = category === 'All' || activity.category === category;
+
+      const matchesCategory =
+        category === 'All' || activity.category.toLowerCase().includes(normalizedCategory);
 
       const matchesLocation =
         !normalizedLocation ||
@@ -231,6 +280,7 @@ export default function Activities() {
       );
     });
   }, [
+    activities,
     query,
     category,
     location,
@@ -537,13 +587,29 @@ export default function Activities() {
         </span>
       </div>
 
-      <div className="activity-grid">
-        {filteredActivities.map((activity) => (
-          <ActivityCard key={activity.id} activity={activity} />
-        ))}
-      </div>
+      {loading ? (
+        <div className="empty-state empty-state--premium">
+          <Sparkles size={34} aria-hidden="true" />
+          <h2>{copy.loading}</h2>
+        </div>
+      ) : null}
 
-      {filteredActivities.length === 0 ? (
+      {!loading && loadError ? (
+        <div className="empty-state empty-state--premium">
+          <Sparkles size={34} aria-hidden="true" />
+          <h2>{copy.error}</h2>
+        </div>
+      ) : null}
+
+      {!loading && !loadError ? (
+        <div className="activity-grid">
+          {filteredActivities.map((activity) => (
+            <ActivityCard key={activity.id} activity={activity} />
+          ))}
+        </div>
+      ) : null}
+
+      {!loading && !loadError && filteredActivities.length === 0 ? (
         <div className="empty-state empty-state--premium">
           <Sparkles size={34} aria-hidden="true" />
           <h2>{activityCopy.noResultsTitle}</h2>

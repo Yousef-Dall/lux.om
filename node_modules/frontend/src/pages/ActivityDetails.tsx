@@ -10,21 +10,25 @@ import {
   Users,
   Utensils
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+import { getActivityBySlug } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
-import { activities } from '../data/mockData';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import type { Activity } from '../types';
 import { formatDayList, formatTimeRange } from '../utils/format';
 
 export default function ActivityDetails() {
   const { t, language } = useLanguage();
   const { slug } = useParams();
 
-  const activity = activities.find((item) => item.slug === slug);
+  const [activity, setActivity] = useState<Activity | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  useDocumentTitle(activity ? activity.title : 'Activity not found');
+  useDocumentTitle(activity ? activity.title : 'Activity details');
 
   const activityCopy = t.activities ?? t.experiences;
 
@@ -37,7 +41,9 @@ export default function ActivityDetails() {
           summary: 'ملخص النشاط',
           near: 'بالقرب من',
           hostedBy: 'بواسطة',
-          activityType: 'نوع النشاط'
+          activityType: 'نوع النشاط',
+          loading: 'جاري تحميل النشاط...',
+          error: 'تعذر تحميل تفاصيل النشاط. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
       : {
           notFoundEyebrow: 'Activity not found',
@@ -46,14 +52,64 @@ export default function ActivityDetails() {
           summary: 'Activity summary',
           near: 'Near',
           hostedBy: 'Hosted by',
-          activityType: 'Activity type'
+          activityType: 'Activity type',
+          loading: 'Loading activity...',
+          error: 'Could not load activity details. Make sure the backend is running and try again.'
         };
 
-  if (!activity) {
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadActivity() {
+      if (!slug) {
+        setActivity(null);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setLoadError('');
+
+        const apiActivity = await getActivityBySlug(slug, language);
+
+        if (!isMounted) return;
+
+        setActivity(apiActivity);
+      } catch (error) {
+        if (!isMounted) return;
+
+        console.error(error);
+        setActivity(null);
+        setLoadError(copy.error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadActivity();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [slug, language, copy.error]);
+
+  if (loading) {
+    return (
+      <section className="page-section container not-found" aria-labelledby="activity-loading-title">
+        <p className="eyebrow">{activityCopy.eyebrow}</p>
+        <h1 id="activity-loading-title">{copy.loading}</h1>
+      </section>
+    );
+  }
+
+  if (!activity || loadError) {
     return (
       <section className="page-section container not-found" aria-labelledby="activity-not-found-title">
         <p className="eyebrow">{copy.notFoundEyebrow}</p>
-        <h1 id="activity-not-found-title">{copy.notFoundTitle}</h1>
+        <h1 id="activity-not-found-title">{loadError || copy.notFoundTitle}</h1>
         <ButtonLink to="/activities">{t.common.backToActivities}</ButtonLink>
       </section>
     );
