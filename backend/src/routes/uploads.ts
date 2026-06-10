@@ -51,12 +51,30 @@ const upload = multer({
   }
 });
 
+function getUploadedFile(req: Express.Request) {
+  const files = req.files as
+    | {
+        image?: Express.Multer.File[];
+        file?: Express.Multer.File[];
+      }
+    | undefined;
+
+  return files?.image?.[0] ?? files?.file?.[0] ?? null;
+}
+
 uploadsRouter.post('/', requireAuth(), (req, res, next) => {
-  upload.single('file')(req, res, (error) => {
+  upload.fields([
+    { name: 'image', maxCount: 1 },
+    { name: 'file', maxCount: 1 }
+  ])(req, res, (error) => {
     try {
       if (error instanceof multer.MulterError) {
         if (error.code === 'LIMIT_FILE_SIZE') {
           throw new AppError(400, `File is too large. Maximum size is ${env.MAX_UPLOAD_MB}MB`);
+        }
+
+        if (error.code === 'LIMIT_UNEXPECTED_FILE') {
+          throw new AppError(400, 'Unexpected upload field. Use image or file.');
         }
 
         throw new AppError(400, error.message);
@@ -66,17 +84,24 @@ uploadsRouter.post('/', requireAuth(), (req, res, next) => {
         throw error;
       }
 
-      if (!req.file) {
+      const uploadedFile = getUploadedFile(req);
+
+      if (!uploadedFile) {
         throw new AppError(400, 'No file uploaded');
       }
 
+      const url = `/uploads/${uploadedFile.filename}`;
+
       res.status(201).json({
+        url,
+        fileUrl: url,
+        imageUrl: url,
         file: {
-          originalName: req.file.originalname,
-          filename: req.file.filename,
-          size: req.file.size,
-          mimetype: req.file.mimetype,
-          url: `/uploads/${req.file.filename}`
+          originalName: uploadedFile.originalname,
+          filename: uploadedFile.filename,
+          size: uploadedFile.size,
+          mimetype: uploadedFile.mimetype,
+          url
         }
       });
     } catch (caughtError) {

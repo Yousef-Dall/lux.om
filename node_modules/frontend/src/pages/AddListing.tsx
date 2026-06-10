@@ -11,10 +11,13 @@ import {
 } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
+import { ApiError, apiClient } from '../api/client';
+import { getDevelopers, getLandmarks } from '../api/marketplace';
+import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
-import { developmentCompanies, landmarks } from '../data/mockData';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import type { DevelopmentCompany, Landmark } from '../types';
 
 const amenityOptions = [
   'Private pool',
@@ -84,13 +87,91 @@ const initialForm = {
 
 type ImageMode = 'upload' | 'url';
 
+async function uploadImage(file: File, token: string) {
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await fetch('/api/uploads', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: formData
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      payload && typeof payload === 'object' && 'message' in payload
+        ? String(payload.message)
+        : 'Image upload failed'
+    );
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Image upload failed');
+  }
+
+  const uploadedUrl =
+    'url' in payload && typeof payload.url === 'string'
+      ? payload.url
+      : 'fileUrl' in payload && typeof payload.fileUrl === 'string'
+        ? payload.fileUrl
+        : 'imageUrl' in payload && typeof payload.imageUrl === 'string'
+          ? payload.imageUrl
+          : 'path' in payload && typeof payload.path === 'string'
+            ? payload.path
+            : 'file' in payload &&
+                payload.file &&
+                typeof payload.file === 'object' &&
+                'url' in payload.file &&
+                typeof payload.file.url === 'string'
+              ? payload.file.url
+              : null;
+
+  if (!uploadedUrl) {
+    throw new Error('Upload succeeded, but no image URL was returned');
+  }
+
+  if (uploadedUrl.startsWith('http://') || uploadedUrl.startsWith('https://')) {
+    return uploadedUrl;
+  }
+
+  return `${window.location.origin}${uploadedUrl.startsWith('/') ? uploadedUrl : `/${uploadedUrl}`}`;
+}
+
+function optionalNumber(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) return undefined;
+
+  const numberValue = Number(trimmed);
+
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function optionalText(value: string) {
+  const trimmed = value.trim();
+
+  return trimmed || undefined;
+}
+
 export default function AddListing() {
   const { t, language } = useLanguage();
+  const { token } = useAuth();
 
   useDocumentTitle('Add listing');
 
   const [form, setForm] = useState(initialForm);
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [loadingOptions, setLoadingOptions] = useState(true);
+
+  const [developers, setDevelopers] = useState<DevelopmentCompany[]>([]);
+  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
+
   const [imageMode, setImageMode] = useState<ImageMode>('upload');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [uploadedImagePreview, setUploadedImagePreview] = useState('');
@@ -115,7 +196,11 @@ export default function AddListing() {
           landmark: 'أقرب معلم أو منطقة',
           noLandmark: 'بدون معلم محدد',
           distance: 'المسافة من المعلم',
-          distancePlaceholder: 'مثال: 5 دقائق بالسيارة، داخل المنطقة'
+          distancePlaceholder: 'مثال: 5 دقائق بالسيارة، داخل المنطقة',
+          submitting: 'جاري الإرسال...',
+          submitError: 'تعذر إرسال العقار للمراجعة. حاولي مرة أخرى.',
+          authError: 'يجب تسجيل الدخول قبل إضافة عقار.',
+          optionsError: 'تعذر تحميل المطورين والمعالم من الخادم.'
         }
       : {
           qualityEyebrow: 'Listing quality',
@@ -134,8 +219,48 @@ export default function AddListing() {
           landmark: 'Nearest landmark or area',
           noLandmark: 'No landmark selected',
           distance: 'Distance from landmark',
-          distancePlaceholder: 'Example: 5 min drive, inside district'
+          distancePlaceholder: 'Example: 5 min drive, inside district',
+          submitting: 'Submitting...',
+          submitError: 'Could not submit this listing for review. Please try again.',
+          authError: 'You must be logged in before adding a listing.',
+          optionsError: 'Could not load developers and landmarks from the server.'
         };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadOptions() {
+      try {
+        setLoadingOptions(true);
+
+        const [apiDevelopers, apiLandmarks] = await Promise.all([
+          getDevelopers(language, { take: 100 }),
+          getLandmarks(language, { take: 100 })
+        ]);
+
+        if (!isMounted) return;
+
+        setDevelopers(apiDevelopers);
+        setLandmarks(apiLandmarks);
+      } catch (error) {
+        console.error(error);
+
+        if (isMounted) {
+          setSubmitError(copy.optionsError);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingOptions(false);
+        }
+      }
+    }
+
+    void loadOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [language]);
 
   useEffect(() => {
     if (!imageFile) {
@@ -170,11 +295,13 @@ export default function AddListing() {
 
   function updateForm(field: keyof typeof initialForm, value: string) {
     setSubmitted(false);
+    setSubmitError('');
     setForm((current) => ({ ...current, [field]: value }));
   }
 
   function toggleAmenity(amenity: string) {
     setSubmitted(false);
+    setSubmitError('');
     setSelectedAmenities((current) =>
       current.includes(amenity)
         ? current.filter((item) => item !== amenity)
@@ -186,8 +313,13 @@ export default function AddListing() {
     setImageFile(null);
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!token) {
+      setSubmitError(copy.authError);
+      return;
+    }
 
     if (imageMode === 'upload' && !imageFile) {
       alert(t.addListing.uploadRequired);
@@ -199,34 +331,72 @@ export default function AddListing() {
       return;
     }
 
-    const selectedDeveloper = developmentCompanies.find((developer) => developer.id === form.developerId);
-    const selectedLandmark = landmarks.find((landmark) => landmark.id === form.nearestLandmarkId);
+    try {
+      setSubmitting(true);
+      setSubmitted(false);
+      setSubmitError('');
 
-    const listingPayload = {
-      ...form,
-      status: 'PENDING',
-      amenities: [
+      const imageUrl =
+        imageMode === 'upload' && imageFile ? await uploadImage(imageFile, token) : form.image.trim();
+
+      const amenities = [
         ...selectedAmenities,
         ...form.amenities
           .split(',')
           .map((item) => item.trim())
           .filter(Boolean)
-      ],
-      developerId: selectedDeveloper?.id || undefined,
-      developerName: selectedDeveloper?.name || undefined,
-      nearestLandmarkId: selectedLandmark?.id || undefined,
-      nearestLandmarkName: selectedLandmark?.name || undefined,
-      imageSource: imageMode,
-      imageFileName: imageFile?.name ?? null
-    };
+      ];
 
-    console.log('Listing submitted:', listingPayload);
+      await apiClient.post(
+        '/api/listings',
+        {
+          title: form.title,
+          type: form.type,
+          transaction: form.transaction,
+          location: form.location,
+          price: form.price,
+          beds: Number(form.beds),
+          baths: Number(form.baths),
+          sqm: Number(form.sqm),
+          image: imageUrl,
+          description: form.description,
+          amenities,
+          developerId: optionalText(form.developerId),
+          nearestLandmarkId: optionalText(form.nearestLandmarkId),
+          distanceFromLandmark: optionalText(form.distanceFromLandmark),
+          minStayNights: optionalNumber(form.minStayNights),
+          maxGuests: optionalNumber(form.maxGuests),
+          parkingSpaces: optionalNumber(form.parkingSpaces),
+          floorNumber: optionalNumber(form.floorNumber),
+          furnishing:
+            form.furnishing === 'Not specified' ? undefined : optionalText(form.furnishing),
+          view: form.view === 'Not specified' ? undefined : optionalText(form.view),
+          paymentFrequency:
+            form.paymentFrequency === 'Not specified'
+              ? undefined
+              : optionalText(form.paymentFrequency)
+        },
+        { token }
+      );
 
-    setSubmitted(true);
-    setForm(initialForm);
-    setImageFile(null);
-    setImageMode('upload');
-    setSelectedAmenities([]);
+      setSubmitted(true);
+      setForm(initialForm);
+      setImageFile(null);
+      setImageMode('upload');
+      setSelectedAmenities([]);
+    } catch (error) {
+      console.error(error);
+
+      if (error instanceof ApiError) {
+        setSubmitError(error.message);
+      } else if (error instanceof Error) {
+        setSubmitError(error.message);
+      } else {
+        setSubmitError(copy.submitError);
+      }
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -251,6 +421,12 @@ export default function AddListing() {
             <span style={{ width: `${formCompletion}%` }} />
           </div>
         </div>
+
+        {submitError ? (
+          <p className="form-error" role="alert">
+            {submitError}
+          </p>
+        ) : null}
 
         <section className="form-section-card">
           <div className="form-group-heading">
@@ -377,10 +553,11 @@ export default function AddListing() {
               {copy.developer}
               <select
                 value={form.developerId}
+                disabled={loadingOptions}
                 onChange={(event) => updateForm('developerId', event.target.value)}
               >
                 <option value="">{copy.noDeveloper}</option>
-                {developmentCompanies.map((developer) => (
+                {developers.map((developer) => (
                   <option key={developer.id} value={developer.id}>
                     {developer.name}
                   </option>
@@ -392,6 +569,7 @@ export default function AddListing() {
               {copy.landmark}
               <select
                 value={form.nearestLandmarkId}
+                disabled={loadingOptions}
                 onChange={(event) => updateForm('nearestLandmarkId', event.target.value)}
               >
                 <option value="">{copy.noLandmark}</option>
@@ -538,6 +716,7 @@ export default function AddListing() {
                 onClick={() => {
                   setImageMode('upload');
                   setSubmitted(false);
+                  setSubmitError('');
                 }}
               >
                 <UploadCloud size={16} aria-hidden="true" />
@@ -550,6 +729,7 @@ export default function AddListing() {
                 onClick={() => {
                   setImageMode('url');
                   setSubmitted(false);
+                  setSubmitError('');
                 }}
               >
                 <LinkIcon size={16} aria-hidden="true" />
@@ -566,6 +746,7 @@ export default function AddListing() {
                     const file = event.target.files?.[0] ?? null;
                     setImageFile(file);
                     setSubmitted(false);
+                    setSubmitError('');
                   }}
                 />
                 <UploadCloud size={28} aria-hidden="true" />
@@ -630,8 +811,8 @@ export default function AddListing() {
             <span>{copy.submittedReview}</span>
           </div>
 
-          <button className="button-link button-link--primary" type="submit">
-            {t.common.submitForReview}
+          <button className="button-link button-link--primary" type="submit" disabled={submitting}>
+            {submitting ? copy.submitting : t.common.submitForReview}
           </button>
         </div>
 

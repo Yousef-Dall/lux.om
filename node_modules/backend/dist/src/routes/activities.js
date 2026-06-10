@@ -18,6 +18,7 @@ const activityCreateSchema = zod_1.z
     locationAr: zod_1.z.string().trim().min(2).max(160).optional(),
     categoryEn: zod_1.z.string().trim().min(2).max(80),
     categoryAr: zod_1.z.string().trim().min(2).max(80).optional(),
+    travelAgencyId: zod_1.z.string().min(1).optional(),
     providerEn: zod_1.z.string().trim().max(120).optional(),
     providerAr: zod_1.z.string().trim().max(120).optional(),
     price: zod_1.z.string().trim().min(1).max(80),
@@ -57,6 +58,7 @@ const activitiesQuerySchema = zod_1.z.object({
     search: zod_1.z.string().trim().optional(),
     category: zod_1.z.string().trim().optional(),
     difficulty: zod_1.z.string().trim().optional(),
+    travelAgencyId: zod_1.z.string().trim().optional(),
     featured: zod_1.z.coerce.boolean().optional(),
     take: zod_1.z.coerce.number().int().min(1).max(100).default(50),
     skip: zod_1.z.coerce.number().int().min(0).default(0)
@@ -82,6 +84,7 @@ const activityInclude = {
             phone: true
         }
     },
+    travelAgency: true,
     nearestLandmark: true,
     images: {
         orderBy: {
@@ -98,6 +101,7 @@ exports.activitiesRouter.get('/', async (req, res, next) => {
             where: {
                 status: 'APPROVED',
                 ...(typeof query.featured === 'boolean' ? { featured: query.featured } : {}),
+                ...(query.travelAgencyId ? { travelAgencyId: query.travelAgencyId } : {}),
                 ...(query.category
                     ? {
                         OR: [
@@ -161,6 +165,36 @@ exports.activitiesRouter.get('/', async (req, res, next) => {
                                 locationAr: {
                                     contains: search,
                                     mode: 'insensitive'
+                                }
+                            },
+                            {
+                                providerEn: {
+                                    contains: search,
+                                    mode: 'insensitive'
+                                }
+                            },
+                            {
+                                providerAr: {
+                                    contains: search,
+                                    mode: 'insensitive'
+                                }
+                            },
+                            {
+                                travelAgency: {
+                                    OR: [
+                                        {
+                                            nameEn: {
+                                                contains: search,
+                                                mode: 'insensitive'
+                                            }
+                                        },
+                                        {
+                                            nameAr: {
+                                                contains: search,
+                                                mode: 'insensitive'
+                                            }
+                                        }
+                                    ]
                                 }
                             }
                         ]
@@ -257,6 +291,16 @@ exports.activitiesRouter.post('/', (0, auth_1.requireAuth)(), (0, auth_1.require
     try {
         const data = activityCreateSchema.parse(req.body);
         const slug = `${(0, slugify_1.slugify)(data.titleEn)}-${Date.now().toString(36)}`;
+        const travelAgency = data.travelAgencyId
+            ? await prisma_1.prisma.travelAgency.findUnique({
+                where: {
+                    id: data.travelAgencyId
+                }
+            })
+            : null;
+        if (data.travelAgencyId && !travelAgency) {
+            throw new http_1.AppError(400, 'Selected travel agency was not found');
+        }
         const activity = await prisma_1.prisma.activity.create({
             data: {
                 slug,
@@ -268,8 +312,9 @@ exports.activitiesRouter.post('/', (0, auth_1.requireAuth)(), (0, auth_1.require
                 locationAr: data.locationAr,
                 categoryEn: data.categoryEn,
                 categoryAr: data.categoryAr,
-                providerEn: data.providerEn,
-                providerAr: data.providerAr,
+                travelAgencyId: travelAgency?.id,
+                providerEn: data.providerEn ?? travelAgency?.nameEn,
+                providerAr: data.providerAr ?? travelAgency?.nameAr,
                 price: data.price,
                 durationMinutes: data.durationMinutes,
                 durationLabelEn: data.durationLabelEn,

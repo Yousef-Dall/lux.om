@@ -6,6 +6,7 @@ import type {
   ApiDeveloperCompany,
   ApiLandmark,
   ApiListing,
+  ApiTravelAgency,
   DevelopmentCompany,
   Landmark,
   Language,
@@ -13,7 +14,8 @@ import type {
   ListingFurnishing,
   ListingTransaction,
   ListingView,
-  PaymentFrequency
+  PaymentFrequency,
+  TravelAgency
 } from '../types';
 
 function pickLocalized(
@@ -141,6 +143,41 @@ export function mapDeveloperCompany(
   };
 }
 
+export function mapTravelAgency(
+  apiTravelAgency: ApiTravelAgency,
+  language: Language
+): TravelAgency {
+  const name = pickLocalized(language, apiTravelAgency.nameEn, apiTravelAgency.nameAr);
+  const description = pickLocalized(
+    language,
+    apiTravelAgency.descriptionEn,
+    apiTravelAgency.descriptionAr
+  );
+  const headquarters = pickLocalized(
+    language,
+    apiTravelAgency.headquartersEn,
+    apiTravelAgency.headquartersAr
+  );
+
+  return {
+    id: apiTravelAgency.id,
+    slug: apiTravelAgency.slug,
+    name,
+    logo: apiTravelAgency.logo || '',
+    description,
+    headquarters,
+    location: headquarters,
+    phone: apiTravelAgency.phone || undefined,
+    email: apiTravelAgency.email || undefined,
+    website: apiTravelAgency.website || undefined,
+    verified: apiTravelAgency.verified,
+    featured: apiTravelAgency.featured,
+    activityIds: [],
+    specialties: [],
+    establishedYear: apiTravelAgency.establishedYear ?? undefined
+  };
+}
+
 export function mapListing(apiListing: ApiListing, language: Language): Listing {
   const developer = apiListing.developer
     ? {
@@ -216,11 +253,33 @@ export function mapActivity(apiActivity: ApiActivity, language: Language): Activ
     ? mapLandmark(apiActivity.nearestLandmark, language)
     : undefined;
 
+  const travelAgency = apiActivity.travelAgency
+    ? {
+        id: apiActivity.travelAgency.id,
+        slug: apiActivity.travelAgency.slug,
+        name: pickLocalized(
+          language,
+          apiActivity.travelAgency.nameEn,
+          apiActivity.travelAgency.nameAr
+        ),
+        logo: apiActivity.travelAgency.logo || '',
+        verified: apiActivity.travelAgency.verified,
+        shortDescription: pickLocalized(
+          language,
+          apiActivity.travelAgency.descriptionEn,
+          apiActivity.travelAgency.descriptionAr
+        )
+      }
+    : undefined;
+
   const firstImage = apiActivity.images?.[0]?.url ?? '';
 
   const duration =
     pickLocalized(language, apiActivity.durationLabelEn, apiActivity.durationLabelAr) ||
     (apiActivity.durationMinutes ? `${apiActivity.durationMinutes} min` : '');
+
+  const provider =
+    travelAgency?.name || pickLocalized(language, apiActivity.providerEn, apiActivity.providerAr);
 
   return {
     id: apiActivity.id,
@@ -251,7 +310,9 @@ export function mapActivity(apiActivity: ApiActivity, language: Language): Activ
       outdoor: apiActivity.outdoor
     },
     featured: apiActivity.featured,
-    provider: pickLocalized(language, apiActivity.providerEn, apiActivity.providerAr),
+    provider,
+    travelAgencyId: apiActivity.travelAgencyId ?? undefined,
+    travelAgency,
     groupSize: apiActivity.groupSize ?? undefined,
     difficulty: asActivityDifficulty(apiActivity.difficulty),
     language: apiActivity.language ?? undefined,

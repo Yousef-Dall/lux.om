@@ -54,6 +54,7 @@ export default function Activities() {
   useDocumentTitle('Activities');
 
   const nearParam = searchParams.get('near') ?? '';
+  const travelAgencyIdParam = searchParams.get('travelAgencyId') ?? '';
 
   const [activities, setActivities] = useState<Activity[]>([]);
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
@@ -86,10 +87,12 @@ export default function Activities() {
     language === 'ar'
       ? {
           showingNear: 'يتم عرض الأنشطة بالقرب من',
+          showingAgency: 'يتم عرض أنشطة الوكالة',
           clear: 'مسح',
           landmark: 'المعلم / المنطقة',
           allAreas: 'كل المناطق',
           resultsNear: 'بالقرب من',
+          resultsAgency: 'حسب وكالة السفر',
           activityType: 'نوع النشاط',
           activeFilters: 'الفلاتر النشطة',
           loading: 'جاري تحميل الأنشطة...',
@@ -97,10 +100,12 @@ export default function Activities() {
         }
       : {
           showingNear: 'Showing activities near',
+          showingAgency: 'Showing activities by',
           clear: 'Clear',
           landmark: 'Landmark / area',
           allAreas: 'All areas',
           resultsNear: 'Near',
+          resultsAgency: 'By travel agency',
           activityType: 'Activity type',
           activeFilters: 'Active filters',
           loading: 'Loading activities...',
@@ -120,7 +125,10 @@ export default function Activities() {
         setLoadError('');
 
         const [apiActivities, apiLandmarks] = await Promise.all([
-          getActivities(language, { take: 100 }),
+          getActivities(language, {
+            take: 100,
+            travelAgencyId: travelAgencyIdParam || undefined
+          }),
           getLandmarks(language, { take: 100 })
         ]);
 
@@ -145,11 +153,22 @@ export default function Activities() {
     return () => {
       isMounted = false;
     };
-  }, [language, copy.error]);
+  }, [language, travelAgencyIdParam, copy.error]);
 
   const selectedLandmark = useMemo(() => {
     return landmarks.find((landmark) => landmark.slug === nearLandmark);
   }, [landmarks, nearLandmark]);
+
+  const selectedAgencyName = useMemo(() => {
+    if (!travelAgencyIdParam) return '';
+
+    return (
+      activities.find((activity) => activity.travelAgencyId === travelAgencyIdParam)?.travelAgency
+        ?.name ||
+      activities.find((activity) => activity.travelAgencyId === travelAgencyIdParam)?.provider ||
+      ''
+    );
+  }, [activities, travelAgencyIdParam]);
 
   const hasTimeError =
     Boolean(freeFrom) &&
@@ -164,6 +183,7 @@ export default function Activities() {
       freeFrom,
       freeUntil,
       nearLandmark,
+      travelAgencyIdParam,
       category !== 'All' ? category : '',
       durationType !== 'All' ? durationType : '',
       activityType !== 'All' ? activityType : '',
@@ -180,6 +200,7 @@ export default function Activities() {
     freeFrom,
     freeUntil,
     nearLandmark,
+    travelAgencyIdParam,
     category,
     durationType,
     activityType,
@@ -208,6 +229,7 @@ export default function Activities() {
         activity.category,
         activity.description,
         activity.provider,
+        activity.travelAgency?.name,
         activity.groupSize,
         activity.difficulty,
         activity.language,
@@ -330,6 +352,12 @@ export default function Activities() {
     setSearchParams(nextParams, { replace: true });
   }
 
+  function clearTravelAgencyFilter() {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('travelAgencyId');
+    setSearchParams(nextParams, { replace: true });
+  }
+
   return (
     <section className="page-section container">
       <SectionHeader
@@ -364,6 +392,21 @@ export default function Activities() {
             </button>
           </div>
         </div>
+
+        {travelAgencyIdParam ? (
+          <div className="active-nearby-banner">
+            <Sparkles size={17} aria-hidden="true" />
+            <span>
+              {copy.showingAgency}{' '}
+              <strong>{selectedAgencyName || travelAgencyIdParam}</strong>
+            </span>
+
+            <button type="button" onClick={clearTravelAgencyFilter}>
+              {copy.clear}
+              <X size={14} aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
 
         {selectedLandmark ? (
           <div className="active-nearby-banner">
@@ -581,9 +624,11 @@ export default function Activities() {
 
         <span>
           <Sparkles size={16} aria-hidden="true" />
-          {selectedLandmark
-            ? `${copy.resultsNear} ${selectedLandmark.name}`
-            : activityCopy.normalAdvanced}
+          {travelAgencyIdParam
+            ? `${copy.resultsAgency}${selectedAgencyName ? ` · ${selectedAgencyName}` : ''}`
+            : selectedLandmark
+              ? `${copy.resultsNear} ${selectedLandmark.name}`
+              : activityCopy.normalAdvanced}
         </span>
       </div>
 

@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
-import { Link, Route, Routes, useLocation } from 'react-router-dom';
+import { type ReactNode, useEffect } from 'react';
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
+import { useAuth } from './auth/AuthContext';
 import Footer from './components/Footer';
 import Navbar from './components/Navbar';
 
@@ -17,6 +18,10 @@ import Developers from './pages/Developers';
 import Home from './pages/Home';
 import ListingDetails from './pages/ListingDetails';
 import Listings from './pages/Listings';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import TravelAgencies from './pages/TravelAgencies';
+import TravelAgencyDetails from './pages/TravelAgencyDetails';
 
 import { useLanguage } from './i18n/LanguageContext';
 
@@ -28,6 +33,50 @@ function ScrollToTop() {
   }, [pathname]);
 
   return null;
+}
+
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { isAuthenticated, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <section className="page-section container not-found">
+        <p className="eyebrow">lux.om</p>
+        <h1>Loading...</h1>
+      </section>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  return children;
+}
+
+function RequireAdmin({ children }: { children: ReactNode }) {
+  const { isAdmin, isAuthenticated, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <section className="page-section container not-found">
+        <p className="eyebrow">lux.om</p>
+        <h1>Loading...</h1>
+      </section>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
 }
 
 function NotFoundPage() {
@@ -73,20 +122,55 @@ export default function App() {
 
           <Route path="/listings" element={<Listings />} />
           <Route path="/listings/:slug" element={<ListingDetails />} />
-          <Route path="/add-listing" element={<AddListing />} />
+          <Route
+            path="/add-listing"
+            element={
+              <RequireAuth>
+                <AddListing />
+              </RequireAuth>
+            }
+          />
 
           <Route path="/activities" element={<Activities />} />
           <Route path="/activities/:slug" element={<ActivityDetails />} />
-          <Route path="/add-activity" element={<AddActivity />} />
+          <Route
+            path="/add-activity"
+            element={
+              <RequireAuth>
+                <AddActivity />
+              </RequireAuth>
+            }
+          />
 
           <Route path="/developers" element={<Developers />} />
           <Route path="/developers/:slug" element={<DeveloperDetails />} />
 
+          <Route path="/travel-agencies" element={<TravelAgencies />} />
+          <Route path="/travel-agencies/:slug" element={<TravelAgencyDetails />} />
+
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
 
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/admin" element={<Admin />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+
+          <Route
+            path="/dashboard"
+            element={
+              <RequireAuth>
+                <Dashboard />
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="/admin"
+            element={
+              <RequireAdmin>
+                <Admin />
+              </RequireAdmin>
+            }
+          />
 
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

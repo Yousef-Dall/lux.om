@@ -1,7 +1,8 @@
-import { Globe2, Menu, X } from 'lucide-react';
+import { Globe2, LogOut, Menu, ShieldCheck, UserCircle, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 
+import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { cn } from '../utils/format';
 import ButtonLink from './ButtonLink';
@@ -11,17 +12,36 @@ export default function Navbar() {
   const [hasScrolled, setHasScrolled] = useState(false);
 
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { t, toggleLanguage, language } = useLanguage();
+  const { user, isAuthenticated, isAdmin, logout } = useAuth();
+
+  const navCopy =
+    language === 'ar'
+      ? {
+          travelAgencies: 'وكالات السفر'
+        }
+      : {
+          travelAgencies: 'Travel agencies'
+        };
 
   const links = useMemo(
     () => [
       { to: '/listings', label: t.nav.listings },
       { to: '/activities', label: t.nav.activities },
       { to: '/developers', label: t.nav.developers },
+      { to: '/travel-agencies', label: navCopy.travelAgencies },
       { to: '/about', label: t.nav.about },
       { to: '/contact', label: t.nav.contact }
     ],
-    [t.nav.about, t.nav.activities, t.nav.contact, t.nav.developers, t.nav.listings]
+    [
+      navCopy.travelAgencies,
+      t.nav.about,
+      t.nav.activities,
+      t.nav.contact,
+      t.nav.developers,
+      t.nav.listings
+    ]
   );
 
   const accessibilityCopy =
@@ -31,14 +51,26 @@ export default function Navbar() {
           nav: 'التنقل الرئيسي',
           open: 'فتح قائمة التنقل',
           close: 'إغلاق قائمة التنقل',
-          language: 'تغيير اللغة'
+          language: 'تغيير اللغة',
+          login: 'تسجيل الدخول',
+          register: 'إنشاء حساب',
+          dashboard: 'لوحة التحكم',
+          admin: 'الأدمن',
+          logout: 'خروج',
+          signedInAs: 'مسجل باسم'
         }
       : {
           skip: 'Skip to content',
           nav: 'Main navigation',
           open: 'Open navigation menu',
           close: 'Close navigation menu',
-          language: 'Change language'
+          language: 'Change language',
+          login: 'Login',
+          register: 'Register',
+          dashboard: 'Dashboard',
+          admin: 'Admin',
+          logout: 'Logout',
+          signedInAs: 'Signed in as'
         };
 
   useEffect(() => {
@@ -55,6 +87,12 @@ export default function Navbar() {
 
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  function handleLogout() {
+    logout();
+    setIsOpen(false);
+    navigate('/');
+  }
 
   return (
     <header className={cn('site-header', hasScrolled && 'site-header--scrolled')}>
@@ -103,7 +141,7 @@ export default function Navbar() {
             ))}
           </div>
 
-          <div className="nav-menu__actions">
+          <div className="nav-menu__actions nav-menu__actions--auth">
             <button
               className="language-toggle"
               type="button"
@@ -115,13 +153,43 @@ export default function Navbar() {
               <small>{language.toUpperCase()}</small>
             </button>
 
-            <ButtonLink to="/add-activity" variant="secondary" onClick={() => setIsOpen(false)}>
-              {t.common.listActivity}
-            </ButtonLink>
+            {isAuthenticated ? (
+              <>
+                <div
+                  className="nav-user-pill"
+                  title={`${accessibilityCopy.signedInAs} ${user?.email}`}
+                >
+                  <UserCircle size={16} aria-hidden="true" />
+                  <span>{user?.name}</span>
+                </div>
 
-            <ButtonLink to="/add-listing" onClick={() => setIsOpen(false)}>
-              {t.common.listProperty}
-            </ButtonLink>
+                <ButtonLink to="/dashboard" variant="secondary" onClick={() => setIsOpen(false)}>
+                  {accessibilityCopy.dashboard}
+                </ButtonLink>
+
+                {isAdmin ? (
+                  <ButtonLink to="/admin" onClick={() => setIsOpen(false)}>
+                    <ShieldCheck size={15} aria-hidden="true" />
+                    {accessibilityCopy.admin}
+                  </ButtonLink>
+                ) : null}
+
+                <button className="nav-logout-button" type="button" onClick={handleLogout}>
+                  <LogOut size={15} aria-hidden="true" />
+                  {accessibilityCopy.logout}
+                </button>
+              </>
+            ) : (
+              <>
+                <ButtonLink to="/login" variant="secondary" onClick={() => setIsOpen(false)}>
+                  {accessibilityCopy.login}
+                </ButtonLink>
+
+                <ButtonLink to="/register" onClick={() => setIsOpen(false)}>
+                  {accessibilityCopy.register}
+                </ButtonLink>
+              </>
+            )}
           </div>
         </div>
       </nav>

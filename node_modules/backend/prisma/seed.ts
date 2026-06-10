@@ -18,6 +18,7 @@ async function main() {
   await prisma.amenity.deleteMany();
   await prisma.listing.deleteMany();
 
+  await prisma.travelAgency.deleteMany();
   await prisma.developerCompany.deleteMany();
   await prisma.landmark.deleteMany();
   await prisma.user.deleteMany();
@@ -105,6 +106,48 @@ async function main() {
     }
   });
 
+  const muscatCoastTours = await prisma.travelAgency.create({
+    data: {
+      slug: 'muscat-coast-tours',
+      nameEn: 'Muscat Coast Tours',
+      nameAr: 'جولات ساحل مسقط',
+      descriptionEn:
+        'A verified travel agency specializing in private coastal cruises, sea activities, and curated Muscat experiences.',
+      descriptionAr:
+        'وكالة سفر موثوقة متخصصة في الرحلات البحرية الخاصة والأنشطة الساحلية والتجارب المختارة في مسقط.',
+      headquartersEn: 'Muscat, Oman',
+      headquartersAr: 'مسقط، عُمان',
+      logo: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+      phone: '+968 9444 4444',
+      email: 'hello@muscatcoast.example',
+      website: 'https://example.com',
+      establishedYear: 2018,
+      verified: true,
+      featured: true
+    }
+  });
+
+  await prisma.travelAgency.create({
+    data: {
+      slug: 'oman-desert-journeys',
+      nameEn: 'Oman Desert Journeys',
+      nameAr: 'رحلات صحراء عُمان',
+      descriptionEn:
+        'A boutique travel agency creating desert, mountain, and cultural journeys across Oman.',
+      descriptionAr:
+        'وكالة سفر متخصصة في تنظيم رحلات الصحراء والجبال والتجارب الثقافية داخل عُمان.',
+      headquartersEn: 'Muscat, Oman',
+      headquartersAr: 'مسقط، عُمان',
+      logo: 'https://images.unsplash.com/photo-1509316785289-025f5b846b35?auto=format&fit=crop&w=1200&q=80',
+      phone: '+968 9555 5555',
+      email: 'trips@omandesert.example',
+      website: 'https://example.com',
+      establishedYear: 2020,
+      verified: true,
+      featured: false
+    }
+  });
+
   const beachfrontVilla = await prisma.listing.create({
     data: {
       slug: 'al-mouj-beachfront-villa',
@@ -176,8 +219,7 @@ async function main() {
       description: 'A calm architectural villa in Qurum with generous reception spaces and premium finishes.',
       descriptionEn:
         'A calm architectural villa in Qurum with generous reception spaces and premium finishes.',
-      descriptionAr:
-        'فيلا عصرية هادئة في القرم بمساحات استقبال واسعة وتشطيبات راقية.',
+      descriptionAr: 'فيلا عصرية هادئة في القرم بمساحات استقبال واسعة وتشطيبات راقية.',
       type: 'Villa',
       typeEn: 'Villa',
       typeAr: 'فيلا',
@@ -220,7 +262,7 @@ async function main() {
     }
   });
 
-  await prisma.activity.create({
+  const cruiseActivity = await prisma.activity.create({
     data: {
       slug: 'private-muscat-coast-cruise',
       titleEn: 'Private Muscat Coast Cruise',
@@ -233,8 +275,8 @@ async function main() {
       locationAr: 'مارينا مسقط',
       categoryEn: 'Sea activity',
       categoryAr: 'نشاط بحري',
-      providerEn: 'Muscat Premium Activities',
-      providerAr: 'أنشطة مسقط الفاخرة',
+      providerEn: 'Muscat Coast Tours',
+      providerAr: 'جولات ساحل مسقط',
       price: 'From OMR 95',
       durationMinutes: 180,
       durationLabelEn: '3 hours',
@@ -250,6 +292,7 @@ async function main() {
       status: 'APPROVED',
       featured: true,
       ownerId: activityProvider.id,
+      travelAgencyId: muscatCoastTours.id,
       nearestLandmarkId: mallOfOman.id,
       distanceFromLandmarkEn: '20 minutes from Mall of Oman',
       distanceFromLandmarkAr: 'يبعد 20 دقيقة عن مول عُمان',
@@ -291,6 +334,18 @@ async function main() {
       message: 'I would like more details about this beachfront villa.',
       userId: user.id,
       listingId: beachfrontVilla.id
+    }
+  });
+
+  await prisma.inquiry.create({
+    data: {
+      type: 'ACTIVITY',
+      name: 'Sample Activity Lead',
+      email: 'activity-lead@example.com',
+      phone: '+968 9666 6666',
+      message: 'I would like to know if the cruise is available this weekend.',
+      userId: user.id,
+      activityId: cruiseActivity.id
     }
   });
 

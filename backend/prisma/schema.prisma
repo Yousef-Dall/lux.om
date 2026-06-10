@@ -61,10 +61,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  listings  Listing[]
+  listings   Listing[]
   activities Activity[]
-  bookings  Booking[]
-  inquiries Inquiry[]
+  bookings   Booking[]
+  inquiries  Inquiry[]
 
   @@index([role])
   @@index([createdAt])
@@ -113,9 +113,34 @@ model DeveloperCompany {
   @@index([featured])
 }
 
+model TravelAgency {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  nameEn          String
+  nameAr          String?
+  descriptionEn   String?
+  descriptionAr   String?
+  headquartersEn  String?
+  headquartersAr  String?
+  logo            String?
+  phone           String?
+  email           String?
+  website         String?
+  establishedYear Int?
+  verified        Boolean  @default(false)
+  featured        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  activities Activity[]
+
+  @@index([verified])
+  @@index([featured])
+}
+
 model Listing {
-  id          String        @id @default(cuid())
-  slug        String        @unique
+  id   String @id @default(cuid())
+  slug String @unique
 
   /*
    * Current single-language fields.
@@ -142,41 +167,41 @@ model Listing {
   typeEn        String?
   typeAr        String?
 
-  price       String
-  beds        Int
-  baths       Int
-  sqm         Int
-  image       String
-  status      ListingStatus @default(PENDING)
+  price          String
+  beds           Int
+  baths          Int
+  sqm            Int
+  image          String
+  status         ListingStatus @default(PENDING)
   rejectedReason String?
 
-  featured    Boolean @default(false)
-  maxGuests   Int?
-  minStayNights Int?
-  parking     Boolean?
-  floor       Int?
-  furnishing  String?
-  view        String?
+  featured         Boolean @default(false)
+  maxGuests        Int?
+  minStayNights    Int?
+  parking          Boolean?
+  floor            Int?
+  furnishing       String?
+  view             String?
   paymentFrequency String?
 
-  ownerId     String
-  owner       User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   developerId String?
   developer   DeveloperCompany? @relation(fields: [developerId], references: [id], onDelete: SetNull)
 
-  nearestLandmarkId String?
-  nearestLandmark   Landmark? @relation(fields: [nearestLandmarkId], references: [id], onDelete: SetNull)
-  distanceFromLandmarkEn String?
-  distanceFromLandmarkAr String?
+  nearestLandmarkId       String?
+  nearestLandmark         Landmark? @relation(fields: [nearestLandmarkId], references: [id], onDelete: SetNull)
+  distanceFromLandmarkEn  String?
+  distanceFromLandmarkAr  String?
 
-  amenities   Amenity[]
-  images      ListingImage[]
-  bookings    Booking[]
-  inquiries   Inquiry[]
+  amenities Amenity[]
+  images    ListingImage[]
+  bookings  Booking[]
+  inquiries Inquiry[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status, createdAt])
   @@index([ownerId])
@@ -188,11 +213,11 @@ model Listing {
 }
 
 model Amenity {
-  id        String  @id @default(cuid())
-  name      String
+  id   String @id @default(cuid())
+  name String
 
-  nameEn    String?
-  nameAr    String?
+  nameEn String?
+  nameAr String?
 
   listingId String
   listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
@@ -201,11 +226,11 @@ model Amenity {
 }
 
 model ListingImage {
-  id        String   @id @default(cuid())
+  id        String @id @default(cuid())
   url       String
   altEn     String?
   altAr     String?
-  sortOrder Int      @default(0)
+  sortOrder Int    @default(0)
 
   listingId String
   listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
@@ -216,8 +241,8 @@ model ListingImage {
 }
 
 model Activity {
-  id          String         @id @default(cuid())
-  slug        String         @unique
+  id   String @id @default(cuid())
+  slug String @unique
 
   titleEn       String
   titleAr       String?
@@ -245,15 +270,18 @@ model Activity {
   mealIncluded    Boolean @default(false)
   outdoor         Boolean @default(false)
 
-  status          ActivityStatus @default(PENDING)
-  rejectedReason  String?
-  featured        Boolean        @default(false)
+  status         ActivityStatus @default(PENDING)
+  rejectedReason String?
+  featured       Boolean        @default(false)
 
   ownerId String
-  owner   User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  nearestLandmarkId String?
-  nearestLandmark   Landmark? @relation(fields: [nearestLandmarkId], references: [id], onDelete: SetNull)
+  travelAgencyId String?
+  travelAgency   TravelAgency? @relation(fields: [travelAgencyId], references: [id], onDelete: SetNull)
+
+  nearestLandmarkId      String?
+  nearestLandmark        Landmark? @relation(fields: [nearestLandmarkId], references: [id], onDelete: SetNull)
   distanceFromLandmarkEn String?
   distanceFromLandmarkAr String?
 
@@ -266,17 +294,18 @@ model Activity {
 
   @@index([status, createdAt])
   @@index([ownerId])
+  @@index([travelAgencyId])
   @@index([nearestLandmarkId])
   @@index([featured])
   @@index([categoryEn])
 }
 
 model ActivityImage {
-  id        String   @id @default(cuid())
+  id        String @id @default(cuid())
   url       String
   altEn     String?
   altAr     String?
-  sortOrder Int      @default(0)
+  sortOrder Int    @default(0)
 
   activityId String
   activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
@@ -287,9 +316,9 @@ model ActivityImage {
 }
 
 model ActivityHighlight {
-  id      String @id @default(cuid())
-  textEn  String
-  textAr  String?
+  id     String @id @default(cuid())
+  textEn String
+  textAr String?
 
   activityId String
   activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
@@ -298,15 +327,15 @@ model ActivityHighlight {
 }
 
 model Booking {
-  id        String        @id @default(cuid())
-  message   String?
-  status    BookingStatus @default(PENDING)
+  id      String        @id @default(cuid())
+  message String?
+  status  BookingStatus @default(PENDING)
 
   listingId String
   listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   userId String
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   payment   Payment?
   createdAt DateTime @default(now())
@@ -339,7 +368,7 @@ model Inquiry {
   message String
 
   userId String?
-  user   User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   listingId String?
   listing   Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)

@@ -13,12 +13,69 @@ import {
 } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
+import { ApiError, apiClient } from '../api/client';
+import { getLandmarks, getTravelAgencies } from '../api/marketplace';
+import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
-import { landmarks } from '../data/mockData';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import type { Landmark, TravelAgency } from '../types';
 
 type ImageMode = 'upload' | 'url';
+
+async function uploadImage(file: File, token: string) {
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await fetch('/api/uploads', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: formData
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      payload && typeof payload === 'object' && 'message' in payload
+        ? String(payload.message)
+        : 'Image upload failed'
+    );
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Image upload failed');
+  }
+
+  const uploadedUrl =
+    'url' in payload && typeof payload.url === 'string'
+      ? payload.url
+      : 'fileUrl' in payload && typeof payload.fileUrl === 'string'
+        ? payload.fileUrl
+        : 'imageUrl' in payload && typeof payload.imageUrl === 'string'
+          ? payload.imageUrl
+          : 'path' in payload && typeof payload.path === 'string'
+            ? payload.path
+            : 'file' in payload &&
+                payload.file &&
+                typeof payload.file === 'object' &&
+                'url' in payload.file &&
+                typeof payload.file.url === 'string'
+              ? payload.file.url
+              : null;
+
+  if (!uploadedUrl) {
+    throw new Error('Upload succeeded, but no image URL was returned');
+  }
+
+  if (uploadedUrl.startsWith('http://') || uploadedUrl.startsWith('https://')) {
+    return uploadedUrl;
+  }
+
+  return `${window.location.origin}${uploadedUrl.startsWith('/') ? uploadedUrl : `/${uploadedUrl}`}`;
+}
 
 const dayOptions = [
   'Sunday',
@@ -68,6 +125,8 @@ const initialForm = {
   category: 'Desert',
   location: '',
   nearestLandmarkId: '',
+  distanceFromLandmark: '',
+  travelAgencyId: '',
   provider: '',
   groupSize: '',
   difficulty: 'Easy',
@@ -88,8 +147,14 @@ const initialForm = {
   outdoor: true
 };
 
+function optionalText(value: string) {
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
 export default function AddActivity() {
   const { t, language } = useLanguage();
+  const { token } = useAuth();
 
   useDocumentTitle('Add activity');
 
@@ -100,6 +165,11 @@ export default function AddActivity() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [uploadedImagePreview, setUploadedImagePreview] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [loadingOptions, setLoadingOptions] = useState(true);
+  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
+  const [travelAgencies, setTravelAgencies] = useState<TravelAgency[]>([]);
 
   const addActivityCopy = t.addActivity ?? t.addExperience;
 
@@ -107,28 +177,34 @@ export default function AddActivity() {
     language === 'ar'
       ? {
           addActivityTitle: 'أضف نشاطاً',
-          addActivityDescription:
-            'أضف نشاطاً منظماً إلى lux.om ليتم مراجعته قبل النشر.',
+          addActivityDescription: 'أضف نشاطاً منظماً إلى lux.om ليتم مراجعته قبل النشر.',
           activityDetails: 'تفاصيل النشاط',
           activityTitle: 'عنوان النشاط',
           activityType: 'نوع النشاط',
           activityImage: 'صورة النشاط',
           activityPreview: 'معاينة صورة النشاط',
           providerInfo: 'معلومات المنظم',
-          providerDetails: 'أضف بيانات الجهة المنظمة وتجربة الضيوف',
-          providerName: 'اسم المنظم',
+          providerDetails: 'اربط النشاط بوكالة سفر وأضف تفاصيل تجربة الضيوف',
+          travelAgency: 'وكالة السفر',
+          noTravelAgency: 'بدون وكالة محددة',
+          providerName: 'اسم المنظم اليدوي',
           providerPlaceholder: 'مثال: Muscat Coast Activities',
           groupSize: 'حجم المجموعة',
           groupSizePlaceholder: 'مثال: 2-8 ضيوف',
           difficulty: 'الصعوبة',
           language: 'اللغة',
-          locationContext: 'سياق الموقع',
           nearestLandmark: 'أقرب معلم أو منطقة',
           noLandmark: 'بدون معلم محدد',
+          distance: 'المسافة من المعلم',
+          distancePlaceholder: 'مثال: 20 دقيقة من مول عُمان',
           imageSource: 'مصدر الصورة',
           removeImage: 'إزالة الصورة',
           submitted: 'تم إرسال النشاط للمراجعة.',
-          reviewHint: 'تتم مراجعة الأنشطة قبل نشرها على lux.om.'
+          reviewHint: 'تتم مراجعة الأنشطة قبل نشرها على lux.om.',
+          submitting: 'جاري الإرسال...',
+          authError: 'يجب تسجيل الدخول قبل إضافة نشاط.',
+          optionsError: 'تعذر تحميل وكالات السفر والمعالم من الخادم.',
+          submitError: 'تعذر إرسال النشاط للمراجعة. حاولي مرة أخرى.'
         }
       : {
           addActivityTitle: 'Add activity',
@@ -139,22 +215,66 @@ export default function AddActivity() {
           activityType: 'Activity type',
           activityImage: 'Activity image',
           activityPreview: 'Activity preview',
-          providerInfo: 'Provider information',
-          providerDetails: 'Add the host, group format, and guest experience details',
-          providerName: 'Provider name',
+          providerInfo: 'Organizer information',
+          providerDetails: 'Connect this activity to a travel agency and add guest details',
+          travelAgency: 'Travel agency',
+          noTravelAgency: 'No travel agency selected',
+          providerName: 'Manual organizer name',
           providerPlaceholder: 'Example: Muscat Coast Activities',
           groupSize: 'Group size',
           groupSizePlaceholder: 'Example: 2-8 guests',
           difficulty: 'Difficulty',
           language: 'Language',
-          locationContext: 'Location context',
           nearestLandmark: 'Nearest landmark or area',
           noLandmark: 'No landmark selected',
+          distance: 'Distance from landmark',
+          distancePlaceholder: 'Example: 20 minutes from Mall of Oman',
           imageSource: 'Image source',
           removeImage: 'Remove image',
           submitted: 'Activity submitted for review.',
-          reviewHint: 'Activities are reviewed before going public on lux.om.'
+          reviewHint: 'Activities are reviewed before going public on lux.om.',
+          submitting: 'Submitting...',
+          authError: 'You must be logged in before adding an activity.',
+          optionsError: 'Could not load travel agencies and landmarks from the server.',
+          submitError: 'Could not submit this activity for review. Please try again.'
         };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadOptions() {
+      try {
+        setLoadingOptions(true);
+        setSubmitError('');
+
+        const [apiLandmarks, apiTravelAgencies] = await Promise.all([
+          getLandmarks(language, { take: 100 }),
+          getTravelAgencies(language, { take: 100 })
+        ]);
+
+        if (!isMounted) return;
+
+        setLandmarks(apiLandmarks);
+        setTravelAgencies(apiTravelAgencies);
+      } catch (error) {
+        console.error(error);
+
+        if (isMounted) {
+          setSubmitError(copy.optionsError);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingOptions(false);
+        }
+      }
+    }
+
+    void loadOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [language, copy.optionsError]);
 
   useEffect(() => {
     if (!imageFile) {
@@ -192,11 +312,13 @@ export default function AddActivity() {
 
   function updateForm<K extends keyof typeof initialForm>(field: K, value: (typeof initialForm)[K]) {
     setSubmitted(false);
+    setSubmitError('');
     setForm((current) => ({ ...current, [field]: value }));
   }
 
   function toggleDay(day: string) {
     setSubmitted(false);
+    setSubmitError('');
     setSelectedDays((current) =>
       current.includes(day) ? current.filter((item) => item !== day) : [...current, day]
     );
@@ -204,6 +326,7 @@ export default function AddActivity() {
 
   function toggleHighlight(highlight: string) {
     setSubmitted(false);
+    setSubmitError('');
     setSelectedHighlights((current) =>
       current.includes(highlight)
         ? current.filter((item) => item !== highlight)
@@ -213,10 +336,16 @@ export default function AddActivity() {
 
   function clearUploadedImage() {
     setImageFile(null);
+    setSubmitError('');
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!token) {
+      setSubmitError(copy.authError);
+      return;
+    }
 
     if (selectedDays.length === 0) {
       alert(addActivityCopy.selectAtLeastOneDay);
@@ -233,57 +362,79 @@ export default function AddActivity() {
       return;
     }
 
-    const selectedLandmark = landmarks.find((landmark) => landmark.id === form.nearestLandmarkId);
+    try {
+      setSubmitting(true);
+      setSubmitted(false);
+      setSubmitError('');
 
-    const activityPayload = {
-      title: form.title,
-      slug: form.title.toLowerCase().trim().replace(/\s+/g, '-'),
-      category: form.category,
-      location: form.location,
-      nearestLandmarkId: selectedLandmark?.id || undefined,
-      nearestLandmarkName: selectedLandmark?.name || undefined,
-      provider: form.provider || undefined,
-      groupSize: form.groupSize || undefined,
-      difficulty: form.difficulty,
-      language: form.language || undefined,
-      price: form.price,
-      duration: form.duration,
-      durationMinutes: Number(form.durationMinutes),
-      imageSource: imageMode,
-      imageUrl: imageMode === 'url' ? form.image : '',
-      imageFileName: imageFile?.name ?? null,
-      description: form.description,
-      highlights: [
+      const imageUrl =
+        imageMode === 'upload' && imageFile ? await uploadImage(imageFile, token) : form.image.trim();
+
+      const selectedAgency = travelAgencies.find((agency) => agency.id === form.travelAgencyId);
+
+      const highlightTexts = [
         ...selectedHighlights,
         ...form.highlights
           .split(',')
           .map((item) => item.trim())
           .filter(Boolean)
-      ],
-      availability: {
-        days: selectedDays,
-        startTime: form.startTime,
-        endTime: form.endTime
-      },
-      specs: {
-        durationType: form.durationType,
-        experienceType: form.activityType,
-        familyFriendly: form.familyFriendly,
-        includesTransfer: form.includesTransfer,
-        mealIncluded: form.mealIncluded,
-        outdoor: form.outdoor
-      },
-      status: 'PENDING'
-    };
+      ];
 
-    console.log('Activity submitted:', activityPayload);
+      await apiClient.post(
+        '/api/activities',
+        {
+          titleEn: form.title,
+          descriptionEn: form.description,
+          locationEn: form.location,
+          categoryEn: form.category,
+          travelAgencyId: optionalText(form.travelAgencyId),
+          providerEn: optionalText(form.provider) ?? selectedAgency?.name,
+          price: form.price,
+          durationMinutes: Number(form.durationMinutes),
+          durationLabelEn: form.duration,
+          groupSize: optionalText(form.groupSize),
+          language: optionalText(form.language),
+          difficulty: optionalText(form.difficulty),
+          activityType: optionalText(form.activityType),
+          familyFriendly: form.familyFriendly,
+          includesTransfer: form.includesTransfer,
+          mealIncluded: form.mealIncluded,
+          outdoor: form.outdoor,
+          nearestLandmarkId: optionalText(form.nearestLandmarkId),
+          distanceFromLandmarkEn: optionalText(form.distanceFromLandmark),
+          images: [
+            {
+              url: imageUrl,
+              altEn: form.title,
+              sortOrder: 0
+            }
+          ],
+          highlights: highlightTexts.map((highlight) => ({
+            textEn: highlight
+          }))
+        },
+        { token }
+      );
 
-    setSubmitted(true);
-    setForm(initialForm);
-    setSelectedDays(['Thursday', 'Friday', 'Saturday']);
-    setSelectedHighlights([]);
-    setImageMode('upload');
-    setImageFile(null);
+      setSubmitted(true);
+      setForm(initialForm);
+      setSelectedDays(['Thursday', 'Friday', 'Saturday']);
+      setSelectedHighlights([]);
+      setImageMode('upload');
+      setImageFile(null);
+    } catch (error) {
+      console.error(error);
+
+      if (error instanceof ApiError) {
+        setSubmitError(error.message);
+      } else if (error instanceof Error) {
+        setSubmitError(error.message);
+      } else {
+        setSubmitError(copy.submitError);
+      }
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -308,6 +459,12 @@ export default function AddActivity() {
             <span style={{ width: `${formCompletion}%` }} />
           </div>
         </div>
+
+        {submitError ? (
+          <p className="form-error" role="alert">
+            {submitError}
+          </p>
+        ) : null}
 
         <section className="form-section-card">
           <div className="form-group-heading">
@@ -357,6 +514,7 @@ export default function AddActivity() {
               {copy.nearestLandmark}
               <select
                 value={form.nearestLandmarkId}
+                disabled={loadingOptions}
                 onChange={(event) => updateForm('nearestLandmarkId', event.target.value)}
               >
                 <option value="">{copy.noLandmark}</option>
@@ -366,6 +524,15 @@ export default function AddActivity() {
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label>
+              {copy.distance}
+              <input
+                value={form.distanceFromLandmark}
+                onChange={(event) => updateForm('distanceFromLandmark', event.target.value)}
+                placeholder={copy.distancePlaceholder}
+              />
             </label>
 
             <label>
@@ -414,6 +581,35 @@ export default function AddActivity() {
           </div>
 
           <div className="form-grid">
+            <label>
+              {copy.travelAgency}
+              <select
+                value={form.travelAgencyId}
+                disabled={loadingOptions}
+                onChange={(event) => {
+                  const selectedAgency = travelAgencies.find(
+                    (agency) => agency.id === event.target.value
+                  );
+
+                  setSubmitted(false);
+                  setSubmitError('');
+                  setForm((current) => ({
+                    ...current,
+                    travelAgencyId: event.target.value,
+                    provider: selectedAgency?.name ?? current.provider
+                  }));
+                }}
+              >
+                <option value="">{copy.noTravelAgency}</option>
+                {travelAgencies.map((agency) => (
+                  <option key={agency.id} value={agency.id}>
+                    {agency.name}
+                    {agency.verified ? ' ✓' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             <label>
               {copy.providerName}
               <input
@@ -635,6 +831,7 @@ export default function AddActivity() {
                 onClick={() => {
                   setImageMode('upload');
                   setSubmitted(false);
+                  setSubmitError('');
                 }}
               >
                 <UploadCloud size={16} aria-hidden="true" />
@@ -647,6 +844,7 @@ export default function AddActivity() {
                 onClick={() => {
                   setImageMode('url');
                   setSubmitted(false);
+                  setSubmitError('');
                 }}
               >
                 <LinkIcon size={16} aria-hidden="true" />
@@ -663,6 +861,7 @@ export default function AddActivity() {
                     const file = event.target.files?.[0] ?? null;
                     setImageFile(file);
                     setSubmitted(false);
+                    setSubmitError('');
                   }}
                 />
                 <UploadCloud size={28} aria-hidden="true" />
@@ -728,8 +927,8 @@ export default function AddActivity() {
             <span>{addActivityCopy.reviewHint ?? copy.reviewHint}</span>
           </div>
 
-          <button className="button-link button-link--primary" type="submit">
-            {t.common.submitForReview}
+          <button className="button-link button-link--primary" type="submit" disabled={submitting}>
+            {submitting ? copy.submitting : t.common.submitForReview}
           </button>
         </div>
 

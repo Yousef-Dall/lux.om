@@ -19,6 +19,7 @@ const developers_1 = require("./routes/developers");
 const inquiries_1 = require("./routes/inquiries");
 const landmarks_1 = require("./routes/landmarks");
 const listings_1 = require("./routes/listings");
+const travelAgencies_1 = require("./routes/travelAgencies");
 const uploads_1 = require("./routes/uploads");
 function createApp() {
     const app = (0, express_1.default)();
@@ -64,6 +65,7 @@ function createApp() {
     app.use('/api/listings', listings_1.listingsRouter);
     app.use('/api/activities', activities_1.activitiesRouter);
     app.use('/api/developers', developers_1.developersRouter);
+    app.use('/api/travel-agencies', travelAgencies_1.travelAgenciesRouter);
     app.use('/api/landmarks', landmarks_1.landmarksRouter);
     app.use('/api/inquiries', inquiries_1.inquiriesRouter);
     app.use('/api/bookings', bookings_1.bookingsRouter);
@@ -76,6 +78,7 @@ function createApp() {
     app.use('/listings', listings_1.listingsRouter);
     app.use('/activities', activities_1.activitiesRouter);
     app.use('/developers', developers_1.developersRouter);
+    app.use('/travel-agencies', travelAgencies_1.travelAgenciesRouter);
     app.use('/landmarks', landmarks_1.landmarksRouter);
     app.use('/inquiries', inquiries_1.inquiriesRouter);
     app.use('/bookings', bookings_1.bookingsRouter);

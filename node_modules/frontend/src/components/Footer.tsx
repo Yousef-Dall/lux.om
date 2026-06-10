@@ -8,6 +8,19 @@ export default function Footer() {
 
   const currentYear = new Date().getFullYear();
 
+  const copy =
+    language === 'ar'
+      ? {
+          travelAgencies: 'وكالات السفر',
+          partnerAgencies: 'شركاء الأنشطة',
+          listAgency: 'انضم كوكالة سفر'
+        }
+      : {
+          travelAgencies: 'Travel agencies',
+          partnerAgencies: 'Activity partners',
+          listAgency: 'Join as travel agency'
+        };
+
   const aria =
     language === 'ar'
       ? {
@@ -43,6 +56,11 @@ export default function Footer() {
             {t.common.listActivity}
           </Link>
 
+          <Link to="/travel-agencies" className="footer-cta__link footer-cta__link--secondary">
+            <Building2 size={18} aria-hidden="true" />
+            {copy.partnerAgencies}
+          </Link>
+
           <Link to="/developers" className="footer-cta__link footer-cta__link--secondary">
             <Building2 size={18} aria-hidden="true" />
             {t.footer.partnerWithLux}
@@ -71,6 +89,7 @@ export default function Footer() {
           <Link to="/listings">{t.nav.listings}</Link>
           <Link to="/activities">{t.nav.activities}</Link>
           <Link to="/developers">{t.nav.developers}</Link>
+          <Link to="/travel-agencies">{copy.travelAgencies}</Link>
           <Link to="/about">{t.nav.about}</Link>
           <Link to="/contact">{t.nav.contact}</Link>
         </nav>
@@ -79,6 +98,7 @@ export default function Footer() {
           <h2>{t.footer.owners}</h2>
           <Link to="/add-listing">{t.common.listProperty}</Link>
           <Link to="/add-activity">{t.common.listActivity}</Link>
+          <Link to="/travel-agencies">{copy.listAgency}</Link>
           <Link to="/developers">{t.footer.partnerWithLux}</Link>
           <Link to="/dashboard">{t.footer.dashboard}</Link>
           <Link to="/admin">{t.footer.admin}</Link>

@@ -14,6 +14,7 @@ import { developersRouter } from './routes/developers';
 import { inquiriesRouter } from './routes/inquiries';
 import { landmarksRouter } from './routes/landmarks';
 import { listingsRouter } from './routes/listings';
+import { travelAgenciesRouter } from './routes/travelAgencies';
 import { uploadsRouter } from './routes/uploads';
 
 export function createApp() {
@@ -79,6 +80,7 @@ export function createApp() {
   app.use('/api/listings', listingsRouter);
   app.use('/api/activities', activitiesRouter);
   app.use('/api/developers', developersRouter);
+  app.use('/api/travel-agencies', travelAgenciesRouter);
   app.use('/api/landmarks', landmarksRouter);
   app.use('/api/inquiries', inquiriesRouter);
   app.use('/api/bookings', bookingsRouter);
@@ -92,6 +94,7 @@ export function createApp() {
   app.use('/listings', listingsRouter);
   app.use('/activities', activitiesRouter);
   app.use('/developers', developersRouter);
+  app.use('/travel-agencies', travelAgenciesRouter);
   app.use('/landmarks', landmarksRouter);
   app.use('/inquiries', inquiriesRouter);
   app.use('/bookings', bookingsRouter);

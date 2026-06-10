@@ -18,8 +18,12 @@ const activityCreateSchema = z
     locationAr: z.string().trim().min(2).max(160).optional(),
     categoryEn: z.string().trim().min(2).max(80),
     categoryAr: z.string().trim().min(2).max(80).optional(),
+
+    travelAgencyId: z.string().min(1).optional(),
+
     providerEn: z.string().trim().max(120).optional(),
     providerAr: z.string().trim().max(120).optional(),
+
     price: z.string().trim().min(1).max(80),
     durationMinutes: z.coerce.number().int().positive().max(10080).optional(),
     durationLabelEn: z.string().trim().max(80).optional(),
@@ -28,13 +32,16 @@ const activityCreateSchema = z
     language: z.string().trim().max(80).optional(),
     difficulty: z.string().trim().max(80).optional(),
     activityType: z.string().trim().max(80).optional(),
+
     familyFriendly: z.coerce.boolean().default(false),
     includesTransfer: z.coerce.boolean().default(false),
     mealIncluded: z.coerce.boolean().default(false),
     outdoor: z.coerce.boolean().default(false),
+
     nearestLandmarkId: z.string().min(1).optional(),
     distanceFromLandmarkEn: z.string().trim().max(120).optional(),
     distanceFromLandmarkAr: z.string().trim().max(120).optional(),
+
     images: z
       .array(
         z.object({
@@ -46,6 +53,7 @@ const activityCreateSchema = z
       )
       .max(20)
       .default([]),
+
     highlights: z
       .array(
         z.object({
@@ -62,6 +70,7 @@ const activitiesQuerySchema = z.object({
   search: z.string().trim().optional(),
   category: z.string().trim().optional(),
   difficulty: z.string().trim().optional(),
+  travelAgencyId: z.string().trim().optional(),
   featured: z.coerce.boolean().optional(),
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0)
@@ -91,6 +100,7 @@ const activityInclude = {
       phone: true
     }
   },
+  travelAgency: true,
   nearestLandmark: true,
   images: {
     orderBy: {
@@ -109,6 +119,7 @@ activitiesRouter.get('/', async (req, res, next) => {
       where: {
         status: 'APPROVED',
         ...(typeof query.featured === 'boolean' ? { featured: query.featured } : {}),
+        ...(query.travelAgencyId ? { travelAgencyId: query.travelAgencyId } : {}),
         ...(query.category
           ? {
               OR: [
@@ -172,6 +183,36 @@ activitiesRouter.get('/', async (req, res, next) => {
                   locationAr: {
                     contains: search,
                     mode: 'insensitive'
+                  }
+                },
+                {
+                  providerEn: {
+                    contains: search,
+                    mode: 'insensitive'
+                  }
+                },
+                {
+                  providerAr: {
+                    contains: search,
+                    mode: 'insensitive'
+                  }
+                },
+                {
+                  travelAgency: {
+                    OR: [
+                      {
+                        nameEn: {
+                          contains: search,
+                          mode: 'insensitive'
+                        }
+                      },
+                      {
+                        nameAr: {
+                          contains: search,
+                          mode: 'insensitive'
+                        }
+                      }
+                    ]
                   }
                 }
               ]
@@ -281,6 +322,18 @@ activitiesRouter.post(
       const data = activityCreateSchema.parse(req.body);
       const slug = `${slugify(data.titleEn)}-${Date.now().toString(36)}`;
 
+      const travelAgency = data.travelAgencyId
+        ? await prisma.travelAgency.findUnique({
+            where: {
+              id: data.travelAgencyId
+            }
+          })
+        : null;
+
+      if (data.travelAgencyId && !travelAgency) {
+        throw new AppError(400, 'Selected travel agency was not found');
+      }
+
       const activity = await prisma.activity.create({
         data: {
           slug,
@@ -292,8 +345,11 @@ activitiesRouter.post(
           locationAr: data.locationAr,
           categoryEn: data.categoryEn,
           categoryAr: data.categoryAr,
-          providerEn: data.providerEn,
-          providerAr: data.providerAr,
+
+          travelAgencyId: travelAgency?.id,
+          providerEn: data.providerEn ?? travelAgency?.nameEn,
+          providerAr: data.providerAr ?? travelAgency?.nameAr,
+
           price: data.price,
           durationMinutes: data.durationMinutes,
           durationLabelEn: data.durationLabelEn,

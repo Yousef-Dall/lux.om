@@ -4208,3 +4208,77 @@ html[dir='rtl'] .lux-search-console > a svg {
 .developer-profile-grid .lux-chip-list span:nth-child(n + 4) {
   display: none;
 }
+.nav-menu__actions--auth {
+  gap: 0.65rem;
+}
+
+.nav-user-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 150px;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid rgba(7, 48, 54, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--color-ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 10px 24px rgba(7, 48, 54, 0.06);
+}
+
+.nav-user-pill span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-logout-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 42px;
+  padding: 0.7rem 1rem;
+  border: 1px solid rgba(7, 48, 54, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(7, 48, 54, 0.06);
+  transition:
+    transform 180ms ease,
+    background 180ms ease,
+    border-color 180ms ease;
+}
+
+.nav-logout-button:hover {
+  transform: translateY(-1px);
+  background: #ffffff;
+  border-color: rgba(7, 48, 54, 0.18);
+}
+
+@media (max-width: 1180px) {
+  .nav-user-pill {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .nav-user-pill {
+    display: inline-flex;
+    max-width: 100%;
+  }
+
+  .nav-menu__actions--auth {
+    align-items: stretch;
+  }
+
+  .nav-logout-button {
+    width: 100%;
+  }
+}

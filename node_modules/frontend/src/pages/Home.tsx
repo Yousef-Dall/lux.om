@@ -13,7 +13,13 @@ import {
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { getActivities, getDevelopers, getLandmarks, getListings } from '../api/marketplace';
+import {
+  getActivities,
+  getDevelopers,
+  getLandmarks,
+  getListings,
+  getTravelAgencies
+} from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
 import { ActivityCard, ListingCard } from '../components/Cards';
 import SectionHeader from '../components/SectionHeader';
@@ -26,7 +32,7 @@ import {
 } from '../config/marketplace';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
-import type { Activity, DevelopmentCompany, Landmark, Listing } from '../types';
+import type { Activity, DevelopmentCompany, Landmark, Listing, TravelAgency } from '../types';
 
 export default function Home() {
   const { t, language } = useLanguage();
@@ -37,6 +43,7 @@ export default function Home() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [developmentCompanies, setDevelopmentCompanies] = useState<DevelopmentCompany[]>([]);
+  const [travelAgencies, setTravelAgencies] = useState<TravelAgency[]>([]);
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -49,6 +56,9 @@ export default function Home() {
   const featuredDevelopers = developmentCompanies
     .filter((developer) => developer.featured)
     .slice(0, 3);
+  const featuredTravelAgencies = travelAgencies
+    .filter((agency) => agency.featured || agency.verified)
+    .slice(0, 3);
 
   const localizedQuickSearches =
     language === 'ar'
@@ -56,9 +66,12 @@ export default function Home() {
           { label: 'فلل على البحر', to: '/listings?near=mall-of-oman&type=Sale' },
           { label: 'إيجارات فاخرة', to: '/listings?type=Rent' },
           { label: 'أنشطة بحرية', to: '/activities?near=mall-of-oman' },
-          { label: 'مشاريع جديدة', to: '/developers' }
+          { label: 'وكالات سفر موثقة', to: '/travel-agencies' }
         ]
-      : homepageQuickSearches;
+      : [
+          ...homepageQuickSearches.slice(0, 3),
+          { label: 'Verified travel agencies', to: '/travel-agencies' }
+        ];
 
   const localizedStats =
     language === 'ar'
@@ -66,15 +79,18 @@ export default function Home() {
           { value: `${activities.length}+`, label: 'أنشطة مختارة' },
           { value: `${landmarks.length}`, label: 'معالم ومناطق مفهرسة' },
           { value: `${listings.length}+`, label: 'عقارات وإقامات مميزة' },
-          { value: `${developmentCompanies.filter((developer) => developer.verified).length}`, label: 'شركاء موثقون' }
+          {
+            value: `${travelAgencies.filter((agency) => agency.verified).length}`,
+            label: 'وكالات سفر موثقة'
+          }
         ]
       : [
           { value: `${activities.length}+`, label: 'Curated activities' },
           { value: `${landmarks.length}`, label: 'Indexed landmarks' },
           { value: `${listings.length}+`, label: 'Premium properties' },
           {
-            value: `${developmentCompanies.filter((developer) => developer.verified).length}`,
-            label: 'Verified partners'
+            value: `${travelAgencies.filter((agency) => agency.verified).length}`,
+            label: 'Verified travel agencies'
           }
         ];
 
@@ -116,6 +132,15 @@ export default function Home() {
           developer: 'مطور',
           listedProperties: 'عقارات منشورة',
           viewProfile: 'عرض ملف الشركة',
+          agenciesEyebrow: 'شركاء الأنشطة',
+          agenciesTitle: 'وكالات سفر موثقة تنظم تجارب عُمان المختارة.',
+          agenciesDescription:
+            'اكتشف منظمي الأنشطة والرحلات الذين يقدمون تجارب بحرية، صحراوية، ثقافية وفاخرة على lux.om.',
+          viewAgencies: 'تصفح وكالات السفر',
+          verifiedAgency: 'وكالة موثقة',
+          agency: 'وكالة سفر',
+          agencyActivities: 'أنشطة منشورة',
+          viewAgency: 'عرض الوكالة',
           loading: 'جاري تحميل بيانات السوق...',
           error: 'تعذر تحميل بيانات الصفحة الرئيسية. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
@@ -144,6 +169,15 @@ export default function Home() {
           developer: 'Developer',
           listedProperties: 'listed properties',
           viewProfile: 'View company profile',
+          agenciesEyebrow: 'Activity operators',
+          agenciesTitle: 'Trusted travel agencies organizing curated Oman experiences.',
+          agenciesDescription:
+            'Discover verified operators behind sea, desert, cultural, wellness, and luxury activities on lux.om.',
+          viewAgencies: 'View travel agencies',
+          verifiedAgency: 'Verified agency',
+          agency: 'Travel agency',
+          agencyActivities: 'published activities',
+          viewAgency: 'View agency',
           loading: 'Loading marketplace data...',
           error: 'Could not load homepage data. Make sure the backend is running and try again.'
         };
@@ -156,18 +190,21 @@ export default function Home() {
         setLoading(true);
         setLoadError('');
 
-        const [apiListings, apiActivities, apiDevelopers, apiLandmarks] = await Promise.all([
-          getListings(language, { take: 100 }),
-          getActivities(language, { take: 100 }),
-          getDevelopers(language, { take: 100 }),
-          getLandmarks(language, { take: 100 })
-        ]);
+        const [apiListings, apiActivities, apiDevelopers, apiTravelAgencies, apiLandmarks] =
+          await Promise.all([
+            getListings(language, { take: 100 }),
+            getActivities(language, { take: 100 }),
+            getDevelopers(language, { take: 100 }),
+            getTravelAgencies(language, { take: 100 }),
+            getLandmarks(language, { take: 100 })
+          ]);
 
         if (!isMounted) return;
 
         setListings(apiListings);
         setActivities(apiActivities);
         setDevelopmentCompanies(apiDevelopers);
+        setTravelAgencies(apiTravelAgencies);
         setLandmarks(apiLandmarks);
 
         if (!selectedLandmark && apiLandmarks[0]) {
@@ -469,6 +506,62 @@ export default function Home() {
 
                       <Link to={`/developers/${developer.slug}`} className="text-link">
                         {discoveryCopy.viewProfile}
+                        <ArrowRight size={16} aria-hidden="true" />
+                      </Link>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="page-section container">
+            <SectionHeader
+              eyebrow={discoveryCopy.agenciesEyebrow}
+              title={discoveryCopy.agenciesTitle}
+              description={discoveryCopy.agenciesDescription}
+              actions={
+                <ButtonLink to="/travel-agencies" variant="soft">
+                  {discoveryCopy.viewAgencies}
+                  <ArrowRight size={16} aria-hidden="true" />
+                </ButtonLink>
+              }
+            />
+
+            <div className="developer-preview-grid">
+              {featuredTravelAgencies.map((agency) => {
+                const agencyActivities = activities.filter(
+                  (activity) => activity.travelAgencyId === agency.id
+                );
+
+                return (
+                  <article className="developer-preview-card" key={agency.id}>
+                    {agency.logo ? (
+                      <img src={agency.logo} alt={`${agency.name} logo`} loading="lazy" />
+                    ) : null}
+
+                    <div>
+                      <span className="developer-preview-card__badge">
+                        <ShieldCheck size={14} aria-hidden="true" />
+                        {agency.verified ? discoveryCopy.verifiedAgency : discoveryCopy.agency}
+                      </span>
+
+                      <h3>{agency.name}</h3>
+                      <p>{agency.description}</p>
+
+                      <div className="developer-preview-card__meta">
+                        <span>
+                          <Sparkles size={15} aria-hidden="true" />
+                          {agencyActivities.length} {discoveryCopy.agencyActivities}
+                        </span>
+                        <span>
+                          <MapPin size={15} aria-hidden="true" />
+                          {agency.headquarters}
+                        </span>
+                      </div>
+
+                      <Link to={`/travel-agencies/${agency.slug}`} className="text-link">
+                        {discoveryCopy.viewAgency}
                         <ArrowRight size={16} aria-hidden="true" />
                       </Link>
                     </div>

@@ -3,7 +3,8 @@ import {
   mapActivity,
   mapDeveloperCompany,
   mapLandmark,
-  mapListing
+  mapListing,
+  mapTravelAgency
 } from './mappers';
 
 import type {
@@ -13,10 +14,12 @@ import type {
   ApiLandmark,
   ApiListResponse,
   ApiListing,
+  ApiTravelAgency,
   DevelopmentCompany,
   Landmark,
   Language,
-  Listing
+  Listing,
+  TravelAgency
 } from '../types';
 
 type ListParams = {
@@ -34,10 +37,16 @@ type ListingParams = ListParams & {
 type ActivityParams = ListParams & {
   category?: string;
   difficulty?: string;
+  travelAgencyId?: string;
   featured?: boolean;
 };
 
 type DeveloperParams = ListParams & {
+  featured?: boolean;
+  verified?: boolean;
+};
+
+type TravelAgencyParams = ListParams & {
   featured?: boolean;
   verified?: boolean;
 };
@@ -113,6 +122,31 @@ export async function getDeveloperBySlug(
   );
 
   return mapDeveloperCompany(response.developer, language);
+}
+
+export async function getTravelAgencies(
+  language: Language,
+  params?: TravelAgencyParams
+): Promise<TravelAgency[]> {
+  const response = await apiClient.get<ApiListResponse<ApiTravelAgency, 'travelAgencies'>>(
+    '/api/travel-agencies',
+    {
+      params
+    }
+  );
+
+  return response.travelAgencies.map((agency) => mapTravelAgency(agency, language));
+}
+
+export async function getTravelAgencyBySlug(
+  slug: string,
+  language: Language
+): Promise<TravelAgency> {
+  const response = await apiClient.get<{ travelAgency: ApiTravelAgency }>(
+    `/api/travel-agencies/${slug}`
+  );
+
+  return mapTravelAgency(response.travelAgency, language);
 }
 
 export async function getLandmarks(

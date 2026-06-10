@@ -45,28 +45,43 @@ const upload = (0, multer_1.default)({
         callback(null, true);
     }
 });
+function getUploadedFile(req) {
+    const files = req.files;
+    return files?.image?.[0] ?? files?.file?.[0] ?? null;
+}
 exports.uploadsRouter.post('/', (0, auth_1.requireAuth)(), (req, res, next) => {
-    upload.single('file')(req, res, (error) => {
+    upload.fields([
+        { name: 'image', maxCount: 1 },
+        { name: 'file', maxCount: 1 }
+    ])(req, res, (error) => {
         try {
             if (error instanceof multer_1.default.MulterError) {
                 if (error.code === 'LIMIT_FILE_SIZE') {
                     throw new http_1.AppError(400, `File is too large. Maximum size is ${env_1.env.MAX_UPLOAD_MB}MB`);
+                }
+                if (error.code === 'LIMIT_UNEXPECTED_FILE') {
+                    throw new http_1.AppError(400, 'Unexpected upload field. Use image or file.');
                 }
                 throw new http_1.AppError(400, error.message);
             }
             if (error) {
                 throw error;
             }
-            if (!req.file) {
+            const uploadedFile = getUploadedFile(req);
+            if (!uploadedFile) {
                 throw new http_1.AppError(400, 'No file uploaded');
             }
+            const url = `/uploads/${uploadedFile.filename}`;
             res.status(201).json({
+                url,
+                fileUrl: url,
+                imageUrl: url,
                 file: {
-                    originalName: req.file.originalname,
-                    filename: req.file.filename,
-                    size: req.file.size,
-                    mimetype: req.file.mimetype,
-                    url: `/uploads/${req.file.filename}`
+                    originalName: uploadedFile.originalname,
+                    filename: uploadedFile.filename,
+                    size: uploadedFile.size,
+                    mimetype: uploadedFile.mimetype,
+                    url
                 }
             });
         }

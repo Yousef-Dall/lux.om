@@ -1,4 +1,5 @@
 import {
+  BadgeCheck,
   CalendarDays,
   Car,
   Clock,
@@ -41,6 +42,9 @@ export default function ActivityDetails() {
           summary: 'ملخص النشاط',
           near: 'بالقرب من',
           hostedBy: 'بواسطة',
+          organizedBy: 'من تنظيم',
+          travelAgency: 'وكالة السفر',
+          verifiedAgency: 'وكالة موثقة',
           activityType: 'نوع النشاط',
           loading: 'جاري تحميل النشاط...',
           error: 'تعذر تحميل تفاصيل النشاط. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
@@ -52,6 +56,9 @@ export default function ActivityDetails() {
           summary: 'Activity summary',
           near: 'Near',
           hostedBy: 'Hosted by',
+          organizedBy: 'Organized by',
+          travelAgency: 'Travel agency',
+          verifiedAgency: 'Verified agency',
           activityType: 'Activity type',
           loading: 'Loading activity...',
           error: 'Could not load activity details. Make sure the backend is running and try again.'
@@ -116,6 +123,8 @@ export default function ActivityDetails() {
   }
 
   const specs = activity.specs;
+  const agency = activity.travelAgency;
+  const organizerName = agency?.name || activity.provider;
 
   const specItems = [
     {
@@ -223,10 +232,35 @@ export default function ActivityDetails() {
               ) : null}
             </div>
 
-            {activity.provider ? (
+            {agency ? (
+              <div className="developer-callout">
+                {agency.logo ? (
+                  <img src={agency.logo} alt={agency.name} />
+                ) : (
+                  <span className="developer-callout__placeholder">
+                    <Users size={22} aria-hidden="true" />
+                  </span>
+                )}
+
+                <div>
+                  <p className="eyebrow">{copy.travelAgency}</p>
+                  <h3>
+                    {agency.name}
+                    {agency.verified ? (
+                      <span className="verified-inline">
+                        <BadgeCheck size={16} aria-hidden="true" />
+                        {copy.verifiedAgency}
+                      </span>
+                    ) : null}
+                  </h3>
+
+                  {agency.shortDescription ? <p>{agency.shortDescription}</p> : null}
+                </div>
+              </div>
+            ) : organizerName ? (
               <p className="inline-info">
                 <Sparkles size={18} aria-hidden="true" />
-                {copy.hostedBy} {activity.provider}
+                {copy.hostedBy} {organizerName}
               </p>
             ) : null}
 
@@ -280,6 +314,17 @@ export default function ActivityDetails() {
             <span className="booking-panel__label">{activity.category}</span>
             <strong className="price">{activity.price}</strong>
           </div>
+
+          {organizerName ? (
+            <p className="inline-info">
+              {agency?.verified ? (
+                <BadgeCheck size={18} aria-hidden="true" />
+              ) : (
+                <Sparkles size={18} aria-hidden="true" />
+              )}
+              {copy.organizedBy} {organizerName}
+            </p>
+          ) : null}
 
           <p className="inline-info">
             <Clock size={18} aria-hidden="true" />

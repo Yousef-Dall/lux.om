@@ -89,7 +89,34 @@ export type DevelopmentCompany = {
   establishedYear?: number;
 };
 
+export type TravelAgency = {
+  id: string;
+  slug: string;
+  name: string;
+  logo: string;
+  description: string;
+  headquarters: string;
+  location: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  verified: boolean;
+  featured?: boolean;
+  activityIds: string[];
+  specialties: string[];
+  establishedYear?: number;
+};
+
 export type ListingDeveloperSummary = {
+  id: string;
+  slug: string;
+  name: string;
+  logo: string;
+  verified: boolean;
+  shortDescription: string;
+};
+
+export type ActivityTravelAgencySummary = {
   id: string;
   slug: string;
   name: string;
@@ -169,6 +196,10 @@ export type Activity = {
   featured?: boolean;
 
   provider?: string;
+
+  travelAgencyId?: string;
+  travelAgency?: ActivityTravelAgencySummary;
+
   groupSize?: string;
   difficulty?: ActivityDifficulty;
   language?: string;
@@ -225,6 +256,29 @@ export type ApiDeveloperCompany = {
   featured: boolean;
   _count?: {
     listings: number;
+  };
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ApiTravelAgency = {
+  id: string;
+  slug: string;
+  nameEn: string;
+  nameAr?: string | null;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
+  headquartersEn?: string | null;
+  headquartersAr?: string | null;
+  logo?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  establishedYear?: number | null;
+  verified: boolean;
+  featured: boolean;
+  _count?: {
+    activities: number;
   };
   createdAt?: string;
   updatedAt?: string;
@@ -353,6 +407,9 @@ export type ApiActivity = {
 
   ownerId?: string;
   owner?: PublicUser;
+
+  travelAgencyId?: string | null;
+  travelAgency?: ApiTravelAgency | null;
 
   nearestLandmarkId?: string | null;
   nearestLandmark?: ApiLandmark | null;

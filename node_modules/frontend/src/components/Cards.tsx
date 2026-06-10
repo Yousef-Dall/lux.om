@@ -1,4 +1,5 @@
 import {
+  BadgeCheck,
   Bath,
   BedDouble,
   Building2,
@@ -76,7 +77,7 @@ function getDurationLabel(duration: string, language: 'en' | 'ar') {
       'Full day': 'يوم كامل',
       Overnight: 'ليلة كاملة',
       '6 hours': '٦ ساعات',
-      '1 night': 'ليلة واحدة',
+      '1 night': 'ليلة واحدة'
     };
 
     return labels[duration] ?? duration;
@@ -183,6 +184,8 @@ function getCardCopy(language: 'en' | 'ar') {
         near: 'بالقرب من',
         developedBy: 'طُوّر بواسطة',
         hostedBy: 'بواسطة',
+        organizedBy: 'من تنظيم',
+        travelAgency: 'وكالة السفر',
         curatedProperty: 'عقار مختار',
         curatedActivity: 'نشاط مختار',
         listingDetails: 'تفاصيل العقار',
@@ -190,13 +193,16 @@ function getCardCopy(language: 'en' | 'ar') {
         activityDetails: 'تفاصيل النشاط',
         activityHighlights: 'مميزات النشاط',
         sqm: 'م²',
-        viewDeveloperProfile: 'عرض ملف المطور'
+        viewDeveloperProfile: 'عرض ملف المطور',
+        viewAgencyProfile: 'عرض وكالة السفر'
       }
     : {
         featured: 'Featured',
         near: 'Near',
         developedBy: 'Developed by',
         hostedBy: 'Hosted by',
+        organizedBy: 'Organized by',
+        travelAgency: 'Travel agency',
         curatedProperty: 'Curated property',
         curatedActivity: 'Curated activity',
         listingDetails: 'Listing details',
@@ -204,7 +210,8 @@ function getCardCopy(language: 'en' | 'ar') {
         activityDetails: 'Activity details',
         activityHighlights: 'Activity highlights',
         sqm: 'sqm',
-        viewDeveloperProfile: 'View developer profile'
+        viewDeveloperProfile: 'View developer profile',
+        viewAgencyProfile: 'View travel agency'
       };
 }
 
@@ -343,6 +350,9 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
   const categoryLabel = getActivityCategoryLabel(activity.category, language);
   const durationLabel = getDurationLabel(activity.duration, language);
 
+  const agency = activity.travelAgency;
+  const organizerName = agency?.name || activity.provider;
+
   return (
     <article className={`activity-card lux-market-card lux-activity-card lux-market-card--${variant}`}>
       <Link
@@ -387,10 +397,32 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
           {activity.location}
         </p>
 
-        {activity.provider ? (
+        {agency ? (
+          <Link
+            to={`/travel-agencies/${agency.slug}`}
+            className="lux-card-developer"
+            aria-label={`${copy.viewAgencyProfile}: ${agency.name}`}
+          >
+            {agency.logo ? (
+              <img src={agency.logo} alt={`${agency.name} logo`} loading="lazy" />
+            ) : (
+              <span className="lux-card-developer__placeholder">
+                <Building2 size={16} aria-hidden="true" />
+              </span>
+            )}
+
+            <span>
+              <small>{copy.travelAgency}</small>
+              <strong>
+                {agency.name}
+                {agency.verified ? <BadgeCheck size={14} aria-hidden="true" /> : null}
+              </strong>
+            </span>
+          </Link>
+        ) : organizerName ? (
           <p className="lux-card-provider">
             <Building2 size={15} aria-hidden="true" />
-            {copy.hostedBy} {activity.provider}
+            {copy.organizedBy} {organizerName}
           </p>
         ) : null}
 
