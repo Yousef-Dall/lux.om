@@ -12,6 +12,7 @@ import {
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 import { ApiError, apiClient } from '../api/client';
+import { uploadImage } from '../api/uploads';
 import { getDevelopers, getLandmarks } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
@@ -87,59 +88,6 @@ const initialForm = {
 
 type ImageMode = 'upload' | 'url';
 
-async function uploadImage(file: File, token: string) {
-  const formData = new FormData();
-  formData.append('image', file);
-
-  const response = await fetch('/api/uploads', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
-    body: formData
-  });
-
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(
-      payload && typeof payload === 'object' && 'message' in payload
-        ? String(payload.message)
-        : 'Image upload failed'
-    );
-  }
-
-  if (!payload || typeof payload !== 'object') {
-    throw new Error('Image upload failed');
-  }
-
-  const uploadedUrl =
-    'url' in payload && typeof payload.url === 'string'
-      ? payload.url
-      : 'fileUrl' in payload && typeof payload.fileUrl === 'string'
-        ? payload.fileUrl
-        : 'imageUrl' in payload && typeof payload.imageUrl === 'string'
-          ? payload.imageUrl
-          : 'path' in payload && typeof payload.path === 'string'
-            ? payload.path
-            : 'file' in payload &&
-                payload.file &&
-                typeof payload.file === 'object' &&
-                'url' in payload.file &&
-                typeof payload.file.url === 'string'
-              ? payload.file.url
-              : null;
-
-  if (!uploadedUrl) {
-    throw new Error('Upload succeeded, but no image URL was returned');
-  }
-
-  if (uploadedUrl.startsWith('http://') || uploadedUrl.startsWith('https://')) {
-    return uploadedUrl;
-  }
-
-  return `${window.location.origin}${uploadedUrl.startsWith('/') ? uploadedUrl : `/${uploadedUrl}`}`;
-}
 
 function optionalNumber(value: string) {
   const trimmed = value.trim();

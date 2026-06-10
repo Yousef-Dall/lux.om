@@ -25,6 +25,15 @@ import TravelAgencyDetails from './pages/TravelAgencyDetails';
 
 import { useLanguage } from './i18n/LanguageContext';
 
+function LoadingPage() {
+  return (
+    <section className="page-section container not-found">
+      <p className="eyebrow">lux.om</p>
+      <h1>Loading...</h1>
+    </section>
+  );
+}
+
 function ScrollToTop() {
   const { pathname } = useLocation();
 
@@ -40,16 +49,63 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   if (loading) {
-    return (
-      <section className="page-section container not-found">
-        <p className="eyebrow">lux.om</p>
-        <h1>Loading...</h1>
-      </section>
-    );
+    return <LoadingPage />;
   }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  return children;
+}
+
+function RequireGuest({ children }: { children: ReactNode }) {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <LoadingPage />;
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
+function RequireOwner({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isOwner, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return <LoadingPage />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!isOwner) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
+function RequireActivityProvider({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isActivityProvider, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return <LoadingPage />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!isActivityProvider) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;
@@ -60,12 +116,7 @@ function RequireAdmin({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   if (loading) {
-    return (
-      <section className="page-section container not-found">
-        <p className="eyebrow">lux.om</p>
-        <h1>Loading...</h1>
-      </section>
-    );
+    return <LoadingPage />;
   }
 
   if (!isAuthenticated) {
@@ -125,9 +176,9 @@ export default function App() {
           <Route
             path="/add-listing"
             element={
-              <RequireAuth>
+              <RequireOwner>
                 <AddListing />
-              </RequireAuth>
+              </RequireOwner>
             }
           />
 
@@ -136,9 +187,9 @@ export default function App() {
           <Route
             path="/add-activity"
             element={
-              <RequireAuth>
+              <RequireActivityProvider>
                 <AddActivity />
-              </RequireAuth>
+              </RequireActivityProvider>
             }
           />
 
@@ -151,8 +202,22 @@ export default function App() {
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
 
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          <Route
+            path="/login"
+            element={
+              <RequireGuest>
+                <Login />
+              </RequireGuest>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <RequireGuest>
+                <Register />
+              </RequireGuest>
+            }
+          />
 
           <Route
             path="/dashboard"
