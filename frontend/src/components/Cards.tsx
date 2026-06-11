@@ -488,4 +488,3 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
  * Temporary alias while old page imports are migrated.
  * New code should use ActivityCard.
  */
-export const ExperienceCard = ActivityCard;

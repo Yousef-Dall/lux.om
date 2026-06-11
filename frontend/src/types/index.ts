@@ -194,6 +194,7 @@ export type Activity = {
   availability: ActivityAvailability;
   specs: ActivitySpecs;
   featured?: boolean;
+  status?: ActivityStatus;
 
   provider?: string;
 
@@ -389,12 +390,16 @@ export type ApiActivity = {
 
   price: string;
   durationMinutes?: number | null;
-  durationLabelEn?: string | null;
-  durationLabelAr?: string | null;
-  groupSize?: string | null;
+durationLabelEn?: string | null;
+durationLabelAr?: string | null;
+durationType?: ActivityDurationType | string | null;
+groupSize?: string | null;
   language?: string | null;
   difficulty?: ActivityDifficulty | string | null;
   activityType?: ActivityType | string | null;
+  availabilityDays?: DayName[] | null;
+availabilityStartTime?: string | null;
+availabilityEndTime?: string | null;
 
   familyFriendly: boolean;
   includesTransfer: boolean;
@@ -404,6 +409,7 @@ export type ApiActivity = {
   status?: ActivityStatus;
   rejectedReason?: string | null;
   featured?: boolean;
+  
 
   ownerId?: string;
   owner?: PublicUser;

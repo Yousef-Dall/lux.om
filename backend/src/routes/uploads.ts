@@ -62,6 +62,62 @@ function getUploadedFile(req: Express.Request) {
   return files?.image?.[0] ?? files?.file?.[0] ?? null;
 }
 
+function deleteUploadedFile(filePath: string) {
+  fs.unlink(filePath, (error) => {
+    if (error) {
+      console.error(`Failed to delete invalid upload: ${filePath}`, error);
+    }
+  });
+}
+
+function hasValidImageSignature(filePath: string, mimetype: string) {
+  const buffer = fs.readFileSync(filePath);
+  const header = buffer.subarray(0, 16);
+
+  if (mimetype === 'image/jpeg') {
+    return header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+  }
+
+  if (mimetype === 'image/png') {
+    return (
+      header[0] === 0x89 &&
+      header[1] === 0x50 &&
+      header[2] === 0x4e &&
+      header[3] === 0x47 &&
+      header[4] === 0x0d &&
+      header[5] === 0x0a &&
+      header[6] === 0x1a &&
+      header[7] === 0x0a
+    );
+  }
+
+  if (mimetype === 'image/webp') {
+    return (
+      header[0] === 0x52 &&
+      header[1] === 0x49 &&
+      header[2] === 0x46 &&
+      header[3] === 0x46 &&
+      header[8] === 0x57 &&
+      header[9] === 0x45 &&
+      header[10] === 0x42 &&
+      header[11] === 0x50
+    );
+  }
+
+  if (mimetype === 'image/gif') {
+    return (
+      header[0] === 0x47 &&
+      header[1] === 0x49 &&
+      header[2] === 0x46 &&
+      header[3] === 0x38 &&
+      (header[4] === 0x37 || header[4] === 0x39) &&
+      header[5] === 0x61
+    );
+  }
+
+  return false;
+}
+
 uploadsRouter.post('/', requireAuth(), (req, res, next) => {
   upload.fields([
     { name: 'image', maxCount: 1 },
@@ -88,6 +144,13 @@ uploadsRouter.post('/', requireAuth(), (req, res, next) => {
 
       if (!uploadedFile) {
         throw new AppError(400, 'No file uploaded');
+      }
+
+      const isValidImage = hasValidImageSignature(uploadedFile.path, uploadedFile.mimetype);
+
+      if (!isValidImage) {
+        deleteUploadedFile(uploadedFile.path);
+        throw new AppError(400, 'Uploaded file content does not match a supported image format');
       }
 
       const url = `/uploads/${uploadedFile.filename}`;

@@ -10,7 +10,8 @@ import {
 } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
 
-import { apiClient, ApiError } from '../api/client';
+import { ApiError } from '../api/client';
+import { createInquiry } from '../api/inquiries';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -156,13 +157,13 @@ export default function Contact() {
       setSubmitted(false);
       setSubmitError('');
 
-      await apiClient.post('/api/inquiries', {
-        type: selectedInquiry,
-        name: form.name,
-        email: form.email,
-        phone: form.phone.trim() || undefined,
-        message: form.message
-      });
+      await createInquiry({
+  type: selectedInquiry,
+  name: form.name,
+  email: form.email,
+  phone: form.phone.trim() || undefined,
+  message: form.message
+});
 
       setSubmitted(true);
       setSelectedInquiry('GENERAL');

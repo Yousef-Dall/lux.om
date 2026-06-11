@@ -40,7 +40,12 @@ export default function ListingDetails() {
           baths: 'حمامات',
           sqm: 'متر مربع',
           near: 'بالقرب من',
-          parking: 'موقف',
+          parking: 'موقف متاح',
+floor: 'الطابق',
+minStay: 'الحد الأدنى للإقامة',
+nights: 'ليالٍ',
+available: 'متاح',
+notSpecified: 'غير محدد',
           developmentCompany: 'شركة التطوير',
           developedBy: 'تم تطويره بواسطة',
           verifiedDeveloper: 'مطور موثق',
@@ -57,7 +62,12 @@ export default function ListingDetails() {
           baths: 'baths',
           sqm: 'sqm',
           near: 'Near',
-          parking: 'parking',
+          parking: 'Parking available',
+floor: 'Floor',
+minStay: 'Minimum stay',
+nights: 'nights',
+available: 'Available',
+notSpecified: 'Not specified',
           developmentCompany: 'Development company',
           developedBy: 'Developed by',
           verifiedDeveloper: 'Verified developer',
@@ -125,48 +135,60 @@ export default function ListingDetails() {
     );
   }
 
-  const specItems = [
-    {
-      label: t.addListing.bedrooms,
-      value: `${listing.beds}`,
-      icon: BedDouble
-    },
-    {
-      label: t.addListing.bathrooms,
-      value: `${listing.baths}`,
-      icon: Bath
-    },
-    {
-      label: t.addListing.area,
-      value: `${listing.sqm} ${copy.sqm}`,
-      icon: Ruler
-    },
-    {
-      label: t.addListing.maxGuests,
-      value: listing.maxGuests ? `${listing.maxGuests}` : t.common.any,
-      icon: Users
-    },
-    {
-      label: t.addListing.parkingSpaces,
-      value: listing.parkingSpaces ? `${listing.parkingSpaces}` : t.common.any,
-      icon: Car
-    },
-    {
-      label: t.addListing.furnishing,
-      value: listing.furnishing ?? 'Not specified',
-      icon: Home
-    },
-    {
-      label: t.addListing.view,
-      value: listing.view ?? 'Not specified',
-      icon: Sparkles
-    },
-    {
-      label: t.addListing.paymentFrequency,
-      value: listing.paymentFrequency ?? 'Not specified',
-      icon: Building2
-    }
-  ];
+const specItems = [
+  {
+    label: t.addListing.bedrooms,
+    value: `${listing.beds}`,
+    icon: BedDouble
+  },
+  {
+    label: t.addListing.bathrooms,
+    value: `${listing.baths}`,
+    icon: Bath
+  },
+  {
+    label: t.addListing.area,
+    value: `${listing.sqm} ${copy.sqm}`,
+    icon: Ruler
+  },
+  {
+    label: t.addListing.maxGuests,
+    value: listing.maxGuests ? `${listing.maxGuests}` : copy.notSpecified,
+    icon: Users
+  },
+  {
+    label: copy.minStay,
+    value: listing.minStayNights
+      ? `${listing.minStayNights} ${copy.nights}`
+      : copy.notSpecified,
+    icon: Home
+  },
+  {
+    label: copy.parking,
+    value: listing.parkingSpaces ? copy.available : copy.notSpecified,
+    icon: Car
+  },
+  {
+    label: copy.floor,
+    value: listing.floorNumber ? `${listing.floorNumber}` : copy.notSpecified,
+    icon: Building2
+  },
+  {
+    label: t.addListing.furnishing,
+    value: listing.furnishing ?? copy.notSpecified,
+    icon: Home
+  },
+  {
+    label: t.addListing.view,
+    value: listing.view ?? copy.notSpecified,
+    icon: Sparkles
+  },
+  {
+    label: t.addListing.paymentFrequency,
+    value: listing.paymentFrequency ?? copy.notSpecified,
+    icon: Building2
+  }
+];
 
   return (
     <article className="details-page">
@@ -340,16 +362,19 @@ export default function ListingDetails() {
             <span>{listing.type}</span>
             {listing.view ? <span>{listing.view}</span> : null}
             {listing.furnishing ? <span>{listing.furnishing}</span> : null}
-            {listing.parkingSpaces ? (
-              <span>
-                {listing.parkingSpaces} {copy.parking}
-              </span>
-            ) : null}
+            {listing.parkingSpaces ? <span>{copy.parking}</span> : null}
             {listing.nearestLandmarkName ? (
               <span>
                 {copy.near} {listing.nearestLandmarkName}
               </span>
             ) : null}
+            {listing.distanceFromLandmark ? <span>{listing.distanceFromLandmark}</span> : null}
+
+{listing.minStayNights ? (
+  <span>
+    {copy.minStay}: {listing.minStayNights} {copy.nights}
+  </span>
+) : null}
           </div>
 
           {listing.developer ? (

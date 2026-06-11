@@ -8,6 +8,36 @@ import { slugify } from '../utils/slugify';
 
 export const listingsRouter = Router();
 
+const imageUrlSchema = z
+  .string()
+  .trim()
+  .refine(
+    (value) =>
+      value.startsWith('/uploads/') ||
+      value.startsWith('http://') ||
+      value.startsWith('https://'),
+    {
+      message: 'Image must be a valid URL or uploaded image path'
+    }
+  );
+
+const optionalIdSchema = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => value || undefined);
+
+const optionalTextSchema = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => value || undefined);
+
+const optionalNumberSchema = z
+  .union([z.coerce.number().int(), z.undefined(), z.null()])
+  .optional()
+  .transform((value) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined));
+
 const listingSchema = z
   .object({
     title: z.string().trim().min(3).max(120),
@@ -19,8 +49,24 @@ const listingSchema = z
     beds: z.coerce.number().int().min(0).max(50),
     baths: z.coerce.number().int().min(0).max(50),
     sqm: z.coerce.number().int().min(1).max(100000),
-    image: z.string().trim().url(),
-    amenities: z.array(z.string().trim().min(1).max(50)).max(30).default([])
+    image: imageUrlSchema,
+
+    amenities: z.array(z.string().trim().min(1).max(50)).max(30).default([]),
+
+    developerId: optionalIdSchema,
+    nearestLandmarkId: optionalIdSchema,
+    distanceFromLandmark: optionalTextSchema,
+    distanceFromLandmarkEn: optionalTextSchema,
+    distanceFromLandmarkAr: optionalTextSchema,
+
+    minStayNights: optionalNumberSchema,
+    maxGuests: optionalNumberSchema,
+    parkingSpaces: optionalNumberSchema,
+    floorNumber: optionalNumberSchema,
+
+    furnishing: optionalTextSchema,
+    view: optionalTextSchema,
+    paymentFrequency: optionalTextSchema
   })
   .strict();
 
@@ -35,7 +81,8 @@ const listQuerySchema = z.object({
 
 const statusSchema = z
   .object({
-    status: z.enum(['PENDING', 'APPROVED', 'REJECTED'])
+    status: z.enum(['PENDING', 'APPROVED', 'REJECTED']),
+    rejectedReason: z.string().trim().max(1000).optional()
   })
   .strict();
 
@@ -49,6 +96,13 @@ const slugParamsSchema = z.object({
 
 const listingInclude = {
   amenities: true,
+  images: {
+    orderBy: {
+      sortOrder: 'asc' as const
+    }
+  },
+  developer: true,
+  nearestLandmark: true,
   owner: {
     select: {
       id: true,
@@ -70,18 +124,50 @@ listingsRouter.get('/', async (req, res, next) => {
         ...(query.transaction ? { transaction: query.transaction } : {}),
         ...(query.type
           ? {
-              type: {
-                contains: query.type,
-                mode: 'insensitive'
-              }
+              OR: [
+                {
+                  type: {
+                    contains: query.type,
+                    mode: 'insensitive'
+                  }
+                },
+                {
+                  typeEn: {
+                    contains: query.type,
+                    mode: 'insensitive'
+                  }
+                },
+                {
+                  typeAr: {
+                    contains: query.type,
+                    mode: 'insensitive'
+                  }
+                }
+              ]
             }
           : {}),
         ...(query.location
           ? {
-              location: {
-                contains: query.location,
-                mode: 'insensitive'
-              }
+              OR: [
+                {
+                  location: {
+                    contains: query.location,
+                    mode: 'insensitive'
+                  }
+                },
+                {
+                  locationEn: {
+                    contains: query.location,
+                    mode: 'insensitive'
+                  }
+                },
+                {
+                  locationAr: {
+                    contains: query.location,
+                    mode: 'insensitive'
+                  }
+                }
+              ]
             }
           : {}),
         ...(search
@@ -94,7 +180,31 @@ listingsRouter.get('/', async (req, res, next) => {
                   }
                 },
                 {
+                  titleEn: {
+                    contains: search,
+                    mode: 'insensitive'
+                  }
+                },
+                {
+                  titleAr: {
+                    contains: search,
+                    mode: 'insensitive'
+                  }
+                },
+                {
                   description: {
+                    contains: search,
+                    mode: 'insensitive'
+                  }
+                },
+                {
+                  descriptionEn: {
+                    contains: search,
+                    mode: 'insensitive'
+                  }
+                },
+                {
+                  descriptionAr: {
                     contains: search,
                     mode: 'insensitive'
                   }
@@ -106,7 +216,31 @@ listingsRouter.get('/', async (req, res, next) => {
                   }
                 },
                 {
+                  locationEn: {
+                    contains: search,
+                    mode: 'insensitive'
+                  }
+                },
+                {
+                  locationAr: {
+                    contains: search,
+                    mode: 'insensitive'
+                  }
+                },
+                {
                   type: {
+                    contains: search,
+                    mode: 'insensitive'
+                  }
+                },
+                {
+                  typeEn: {
+                    contains: search,
+                    mode: 'insensitive'
+                  }
+                },
+                {
+                  typeAr: {
                     contains: search,
                     mode: 'insensitive'
                   }
@@ -162,28 +296,34 @@ listingsRouter.get('/admin/all', requireAuth(), requireRole('ADMIN'), async (req
   }
 });
 
-listingsRouter.patch('/admin/:id/status', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
-  try {
-    const { id } = idParamsSchema.parse(req.params);
-    const { status } = statusSchema.parse(req.body);
+listingsRouter.patch(
+  '/admin/:id/status',
+  requireAuth(),
+  requireRole('ADMIN'),
+  async (req, res, next) => {
+    try {
+      const { id } = idParamsSchema.parse(req.params);
+      const data = statusSchema.parse(req.body);
 
-    const listing = await prisma.listing.update({
-      where: {
-        id
-      },
-      data: {
-        status
-      },
-      include: listingInclude
-    });
+      const listing = await prisma.listing.update({
+        where: {
+          id
+        },
+        data: {
+          status: data.status,
+          rejectedReason: data.status === 'REJECTED' ? data.rejectedReason ?? null : null
+        },
+        include: listingInclude
+      });
 
-    res.json({
-      listing
-    });
-  } catch (error) {
-    next(error);
+      res.json({
+        listing
+      });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
 listingsRouter.get('/:slug', async (req, res, next) => {
   try {
@@ -214,6 +354,33 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
     const baseSlug = slugify(data.title);
     const slug = `${baseSlug}-${Date.now().toString(36)}`;
 
+    const developer = data.developerId
+      ? await prisma.developerCompany.findUnique({
+          where: {
+            id: data.developerId
+          }
+        })
+      : null;
+
+    if (data.developerId && !developer) {
+      throw new AppError(400, 'Selected development company was not found');
+    }
+
+    const nearestLandmark = data.nearestLandmarkId
+      ? await prisma.landmark.findUnique({
+          where: {
+            id: data.nearestLandmarkId
+          }
+        })
+      : null;
+
+    if (data.nearestLandmarkId && !nearestLandmark) {
+      throw new AppError(400, 'Selected landmark was not found');
+    }
+
+    const distanceFromLandmarkEn =
+      data.distanceFromLandmarkEn ?? data.distanceFromLandmark ?? undefined;
+
     const listing = await prisma.listing.create({
       data: {
         title: data.title,
@@ -227,12 +394,43 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
         sqm: data.sqm,
         image: data.image,
         slug,
+
+        titleEn: data.title,
+        descriptionEn: data.description,
+        locationEn: data.location,
+        typeEn: data.type,
+
         status: req.user?.role === 'ADMIN' ? 'APPROVED' : 'PENDING',
         ownerId: req.user!.id,
+
+        developerId: developer?.id,
+        nearestLandmarkId: nearestLandmark?.id,
+        distanceFromLandmarkEn,
+        distanceFromLandmarkAr: data.distanceFromLandmarkAr,
+
+        minStayNights: data.minStayNights,
+        maxGuests: data.maxGuests,
+        parking: typeof data.parkingSpaces === 'number' ? data.parkingSpaces > 0 : undefined,
+        floor: data.floorNumber,
+        furnishing: data.furnishing,
+        view: data.view,
+        paymentFrequency: data.paymentFrequency,
+
         amenities: {
           create: data.amenities.map((name) => ({
-            name
+            name,
+            nameEn: name
           }))
+        },
+
+        images: {
+          create: [
+            {
+              url: data.image,
+              altEn: data.title,
+              sortOrder: 0
+            }
+          ]
         }
       },
       include: listingInclude

@@ -13,14 +13,15 @@ import {
 } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
-import { ApiError, apiClient } from '../api/client';
+import { ApiError } from '../api/client';
+import { createActivity } from '../api/activities';
 import { uploadImage } from '../api/uploads';
 import { getLandmarks, getTravelAgencies } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
-import type { Landmark, TravelAgency } from '../types';
+import type { DayName, Landmark, TravelAgency } from '../types';
 
 type ImageMode = 'upload' | 'url';
 
@@ -107,7 +108,11 @@ export default function AddActivity() {
   useDocumentTitle('Add activity');
 
   const [form, setForm] = useState(initialForm);
-  const [selectedDays, setSelectedDays] = useState<string[]>(['Thursday', 'Friday', 'Saturday']);
+  const [selectedDays, setSelectedDays] = useState<DayName[]>([
+  'Thursday',
+  'Friday',
+  'Saturday'
+]);
   const [selectedHighlights, setSelectedHighlights] = useState<string[]>([]);
   const [imageMode, setImageMode] = useState<ImageMode>('upload');
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -264,7 +269,7 @@ export default function AddActivity() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function toggleDay(day: string) {
+  function toggleDay(day: DayName) {
     setSubmitted(false);
     setSubmitError('');
     setSelectedDays((current) =>
@@ -328,41 +333,44 @@ export default function AddActivity() {
           .filter(Boolean)
       ];
 
-      await apiClient.post(
-        '/api/activities',
-        {
-          titleEn: form.title,
-          descriptionEn: form.description,
-          locationEn: form.location,
-          categoryEn: form.category,
-          travelAgencyId: optionalText(form.travelAgencyId),
-          providerEn: optionalText(form.provider) ?? selectedAgency?.name,
-          price: form.price,
-          durationMinutes: Number(form.durationMinutes),
-          durationLabelEn: form.duration,
-          groupSize: optionalText(form.groupSize),
-          language: optionalText(form.language),
-          difficulty: optionalText(form.difficulty),
-          activityType: optionalText(form.activityType),
-          familyFriendly: form.familyFriendly,
-          includesTransfer: form.includesTransfer,
-          mealIncluded: form.mealIncluded,
-          outdoor: form.outdoor,
-          nearestLandmarkId: optionalText(form.nearestLandmarkId),
-          distanceFromLandmarkEn: optionalText(form.distanceFromLandmark),
-          images: [
-            {
-              url: imageUrl,
-              altEn: form.title,
-              sortOrder: 0
-            }
-          ],
-          highlights: highlightTexts.map((highlight) => ({
-            textEn: highlight
-          }))
-        },
-        { token }
-      );
+      await createActivity(
+  {
+    titleEn: form.title,
+    descriptionEn: form.description,
+    locationEn: form.location,
+    categoryEn: form.category,
+    travelAgencyId: optionalText(form.travelAgencyId),
+    providerEn: optionalText(form.provider) ?? selectedAgency?.name,
+    price: form.price,
+    durationMinutes: Number(form.durationMinutes),
+    durationLabelEn: form.duration,
+    durationType: optionalText(form.durationType),
+    groupSize: optionalText(form.groupSize),
+    language: optionalText(form.language),
+    difficulty: optionalText(form.difficulty),
+    activityType: optionalText(form.activityType),
+    availabilityDays: selectedDays,
+    availabilityStartTime: form.startTime,
+    availabilityEndTime: form.endTime,
+    familyFriendly: form.familyFriendly,
+    includesTransfer: form.includesTransfer,
+    mealIncluded: form.mealIncluded,
+    outdoor: form.outdoor,
+    nearestLandmarkId: optionalText(form.nearestLandmarkId),
+    distanceFromLandmarkEn: optionalText(form.distanceFromLandmark),
+    images: [
+      {
+        url: imageUrl,
+        altEn: form.title,
+        sortOrder: 0
+      }
+    ],
+    highlights: highlightTexts.map((highlight) => ({
+      textEn: highlight
+    }))
+  },
+  token
+);
 
       setSubmitted(true);
       setForm(initialForm);

@@ -14,7 +14,19 @@ import {
 } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
-import { ApiError, apiClient } from '../api/client';
+import {
+  createAdminTravelAgency,
+  deleteAdminTravelAgency,
+  getAdminActivities,
+  getAdminInquiries,
+  getAdminListings,
+  getAdminTravelAgencies,
+  updateAdminActivityStatus,
+  updateAdminListingStatus,
+  updateAdminTravelAgency,
+  type UpdateTravelAgencyPayload
+} from '../api/admin';
+import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
 import SectionHeader from '../components/SectionHeader';
@@ -141,21 +153,6 @@ function isPendingStatus(status?: string) {
   return status === 'PENDING' || !status;
 }
 
-type AdminListingsResponse = {
-  listings: ApiListing[];
-};
-
-type AdminActivitiesResponse = {
-  activities: ApiActivity[];
-};
-
-type AdminInquiriesResponse = {
-  inquiries: Inquiry[];
-};
-
-type TravelAgenciesResponse = {
-  travelAgencies: ApiTravelAgency[];
-};
 
 const initialAgencyForm = {
   nameEn: '',
@@ -323,12 +320,12 @@ export default function Admin() {
       setLoadError('');
 
       const [listingsResponse, activitiesResponse, inquiriesResponse, agenciesResponse] =
-        await Promise.all([
-          apiClient.get<AdminListingsResponse>('/api/listings/admin/all', { token }),
-          apiClient.get<AdminActivitiesResponse>('/api/activities/admin/all', { token }),
-          apiClient.get<AdminInquiriesResponse>('/api/inquiries/admin/all', { token }),
-          apiClient.get<TravelAgenciesResponse>('/api/travel-agencies', { token })
-        ]);
+  await Promise.all([
+    getAdminListings(token),
+    getAdminActivities(token),
+    getAdminInquiries(token),
+    getAdminTravelAgencies(token)
+  ]);
 
       setListings(listingsResponse.listings);
       setActivities(activitiesResponse.activities);
@@ -380,14 +377,14 @@ export default function Admin() {
     try {
       setUpdatingId(listingId);
 
-      const response = await apiClient.patch<{ listing: ApiListing }>(
-        `/api/listings/admin/${listingId}/status`,
-        {
-          status,
-          rejectedReason
-        },
-        { token }
-      );
+      const response = await updateAdminListingStatus(
+  listingId,
+  {
+    status,
+    rejectedReason
+  },
+  token
+);
 
       setListings((current) =>
         current.map((listing) => (listing.id === listingId ? response.listing : listing))
@@ -410,14 +407,14 @@ export default function Admin() {
     try {
       setUpdatingId(activityId);
 
-      const response = await apiClient.patch<{ activity: ApiActivity }>(
-        `/api/activities/admin/${activityId}/status`,
-        {
-          status,
-          rejectedReason
-        },
-        { token }
-      );
+      const response = await updateAdminActivityStatus(
+  activityId,
+  {
+    status,
+    rejectedReason
+  },
+  token
+);
 
       setActivities((current) =>
         current.map((activity) => (activity.id === activityId ? response.activity : activity))
@@ -457,11 +454,7 @@ export default function Admin() {
         featured: agencyForm.featured
       };
 
-      const response = await apiClient.post<{ travelAgency: ApiTravelAgency }>(
-        '/api/travel-agencies',
-        payload,
-        { token }
-      );
+      const response = await createAdminTravelAgency(payload, token);
 
       setTravelAgencies((current) => [response.travelAgency, ...current]);
       setAgencyForm(initialAgencyForm);
@@ -475,18 +468,14 @@ export default function Admin() {
 
   async function updateTravelAgency(
     agencyId: string,
-    data: Partial<Pick<ApiTravelAgency, 'verified' | 'featured'>>
+    data: UpdateTravelAgencyPayload
   ) {
     if (!token) return;
 
     try {
       setUpdatingId(agencyId);
 
-      const response = await apiClient.patch<{ travelAgency: ApiTravelAgency }>(
-        `/api/travel-agencies/${agencyId}`,
-        data,
-        { token }
-      );
+      const response = await updateAdminTravelAgency(agencyId, data, token);
 
       setTravelAgencies((current) =>
         current.map((agency) => (agency.id === agencyId ? response.travelAgency : agency))
@@ -509,10 +498,7 @@ export default function Admin() {
     try {
       setUpdatingId(agencyId);
 
-      await apiClient.delete<{ ok: boolean; deletedId: string }>(
-        `/api/travel-agencies/${agencyId}`,
-        { token }
-      );
+      await deleteAdminTravelAgency(agencyId, token);
 
       setTravelAgencies((current) => current.filter((agency) => agency.id !== agencyId));
     } catch (error) {

@@ -21,14 +21,6 @@ function getUploadedUrl(payload: UploadResponse) {
   );
 }
 
-function normalizeUploadUrl(url: string) {
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
-  }
-
-  return `${window.location.origin}${url.startsWith('/') ? url : `/${url}`}`;
-}
-
 export async function uploadImage(file: File, token: string) {
   const formData = new FormData();
   formData.append('image', file);
@@ -43,5 +35,5 @@ export async function uploadImage(file: File, token: string) {
     throw new Error('Upload succeeded, but no image URL was returned');
   }
 
-  return normalizeUploadUrl(uploadedUrl);
+  return uploadedUrl.startsWith('/') ? uploadedUrl : `/${uploadedUrl}`;
 }

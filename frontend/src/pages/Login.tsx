@@ -46,7 +46,7 @@ export default function Login() {
           submitting: 'Signing in...',
           noAccount: 'No account yet?',
           createAccount: 'Create account',
-          adminHint: 'Admin demo: admin@lux.om / Password123!',
+          adminHint: '',
           error: 'Could not sign in. Check your details and try again.'
         };
 
@@ -129,7 +129,7 @@ export default function Login() {
             {submitting ? copy.submitting : copy.submit}
           </button>
 
-          <p className="auth-helper">{copy.adminHint}</p>
+          {copy.adminHint ? <p className="auth-helper">{copy.adminHint}</p> : null}
 
           <p className="auth-helper">
             {copy.noAccount}{' '}

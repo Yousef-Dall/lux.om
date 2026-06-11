@@ -1,17 +1,37 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+const isProductionEnv = process.env.NODE_ENV === 'production';
+
 const corsOriginsSchema = z
   .string()
-  .default('http://localhost:5173')
-  .transform((value) =>
-    value
+  .optional()
+  .transform((value) => {
+    if (!value && !isProductionEnv) {
+      return ['http://localhost:5173'];
+    }
+
+    return (value ?? '')
       .split(',')
       .map((origin) => origin.trim())
-      .filter(Boolean)
-  )
+      .filter(Boolean);
+  })
   .refine((origins) => origins.length > 0, {
     message: 'CORS_ORIGIN must contain at least one origin'
+  })
+  .superRefine((origins, ctx) => {
+    if (!isProductionEnv) return;
+
+    const hasLocalhostOrigin = origins.some(
+      (origin) => origin.includes('localhost') || origin.includes('127.0.0.1')
+    );
+
+    if (hasLocalhostOrigin) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'CORS_ORIGIN must not use localhost in production'
+      });
+    }
   });
 
 const envSchema = z

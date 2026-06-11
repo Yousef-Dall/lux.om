@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Premium Oman real estate, activities, and development marketplace.",
   "scripts": {
-    "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "dev": "npm run dev:backend",
     "dev:frontend": "npm run dev -w frontend",
     "dev:backend": "npm run dev -w backend",
     "build": "npm run build -w backend && npm run build -w frontend",
@@ -20,17 +20,14 @@
     "backend",
     "frontend"
   ],
-  "devDependencies": {
-    "concurrently": "latest"
-  },
   "engines": {
     "node": ">=20.0.0"
   },
   "overrides": {
-    "esbuild": "latest",
-    "or-headers": "latest",
-    "path-to-regexp": "latest",
-    "qs": "latest",
-    "@remix-run/router": "latest"
+    "esbuild": "0.27.1",
+    "or-headers": "1.0.2",
+    "path-to-regexp": "8.4.2",
+    "qs": "6.15.2",
+    "@remix-run/router": "1.23.0"
   }
 }

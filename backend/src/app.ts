@@ -10,6 +10,7 @@ import { errorHandler, notFoundHandler } from './middleware/error';
 import { activitiesRouter } from './routes/activities';
 import { authRouter } from './routes/auth';
 import { bookingsRouter } from './routes/bookings';
+import { dashboardRouter } from './routes/dashboard';
 import { developersRouter } from './routes/developers';
 import { inquiriesRouter } from './routes/inquiries';
 import { landmarksRouter } from './routes/landmarks';
@@ -77,6 +78,7 @@ export function createApp() {
   });
 
   app.use('/api/auth', authRouter);
+  app.use('/api/dashboard', dashboardRouter);
   app.use('/api/listings', listingsRouter);
   app.use('/api/activities', activitiesRouter);
   app.use('/api/developers', developersRouter);
@@ -85,20 +87,6 @@ export function createApp() {
   app.use('/api/inquiries', inquiriesRouter);
   app.use('/api/bookings', bookingsRouter);
   app.use('/api/uploads', uploadsRouter);
-
-  /**
-   * Temporary legacy aliases while the frontend API client is being introduced.
-   * Remove these after all frontend service calls use /api routes.
-   */
-  app.use('/auth', authRouter);
-  app.use('/listings', listingsRouter);
-  app.use('/activities', activitiesRouter);
-  app.use('/developers', developersRouter);
-  app.use('/travel-agencies', travelAgenciesRouter);
-  app.use('/landmarks', landmarksRouter);
-  app.use('/inquiries', inquiriesRouter);
-  app.use('/bookings', bookingsRouter);
-  app.use('/uploads', uploadsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

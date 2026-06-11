@@ -11,7 +11,8 @@ import {
 } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
-import { ApiError, apiClient } from '../api/client';
+import { ApiError } from '../api/client';
+import { createListing, type CreateListingPayload } from '../api/listings';
 import { uploadImage } from '../api/uploads';
 import { getDevelopers, getLandmarks } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
@@ -295,37 +296,41 @@ export default function AddListing() {
           .filter(Boolean)
       ];
 
-      await apiClient.post(
-        '/api/listings',
-        {
-          title: form.title,
-          type: form.type,
-          transaction: form.transaction,
-          location: form.location,
-          price: form.price,
-          beds: Number(form.beds),
-          baths: Number(form.baths),
-          sqm: Number(form.sqm),
-          image: imageUrl,
-          description: form.description,
-          amenities,
-          developerId: optionalText(form.developerId),
-          nearestLandmarkId: optionalText(form.nearestLandmarkId),
-          distanceFromLandmark: optionalText(form.distanceFromLandmark),
-          minStayNights: optionalNumber(form.minStayNights),
-          maxGuests: optionalNumber(form.maxGuests),
-          parkingSpaces: optionalNumber(form.parkingSpaces),
-          floorNumber: optionalNumber(form.floorNumber),
-          furnishing:
-            form.furnishing === 'Not specified' ? undefined : optionalText(form.furnishing),
-          view: form.view === 'Not specified' ? undefined : optionalText(form.view),
-          paymentFrequency:
-            form.paymentFrequency === 'Not specified'
-              ? undefined
-              : optionalText(form.paymentFrequency)
-        },
-        { token }
-      );
+      await createListing(
+  {
+    title: form.title,
+    type: form.type,
+    transaction: form.transaction as CreateListingPayload['transaction'],
+    location: form.location,
+    price: form.price,
+    beds: Number(form.beds),
+    baths: Number(form.baths),
+    sqm: Number(form.sqm),
+    image: imageUrl,
+    description: form.description,
+    amenities,
+    developerId: optionalText(form.developerId),
+    nearestLandmarkId: optionalText(form.nearestLandmarkId),
+    distanceFromLandmark: optionalText(form.distanceFromLandmark),
+    minStayNights: optionalNumber(form.minStayNights),
+    maxGuests: optionalNumber(form.maxGuests),
+    parkingSpaces: optionalNumber(form.parkingSpaces),
+    floorNumber: optionalNumber(form.floorNumber),
+    furnishing:
+      form.furnishing === 'Not specified'
+        ? undefined
+        : (optionalText(form.furnishing) as CreateListingPayload['furnishing']),
+    view:
+      form.view === 'Not specified'
+        ? undefined
+        : (optionalText(form.view) as CreateListingPayload['view']),
+    paymentFrequency:
+      form.paymentFrequency === 'Not specified'
+        ? undefined
+        : (optionalText(form.paymentFrequency) as CreateListingPayload['paymentFrequency'])
+  },
+  token
+);
 
       setSubmitted(true);
       setForm(initialForm);

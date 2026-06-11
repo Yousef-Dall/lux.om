@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-const password = 'Password123!';
+const seedPassword = process.env.SEED_PASSWORD ?? 'Password123!';
 
 async function main() {
   await prisma.inquiry.deleteMany();
@@ -23,7 +23,7 @@ async function main() {
   await prisma.landmark.deleteMany();
   await prisma.user.deleteMany();
 
-  const hashedPassword = await bcrypt.hash(password, 12);
+  const hashedPassword = await bcrypt.hash(seedPassword, 12);
 
   const admin = await prisma.user.create({
     data: {
@@ -98,8 +98,8 @@ async function main() {
       headquartersAr: 'مسقط، عُمان',
       logo: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80',
       phone: '+968 9222 2222',
-      email: 'partners@omran.example',
-      website: 'https://example.com',
+      email: 'partners@lux.om',
+website: 'https://lux.om',
       establishedYear: 2012,
       verified: true,
       featured: true
@@ -119,8 +119,8 @@ async function main() {
       headquartersAr: 'مسقط، عُمان',
       logo: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
       phone: '+968 9444 4444',
-      email: 'hello@muscatcoast.example',
-      website: 'https://example.com',
+      email: 'hello@muscatcoast.lux.om',
+website: 'https://lux.om/travel-agencies/muscat-coast-tours',
       establishedYear: 2018,
       verified: true,
       featured: true
@@ -140,8 +140,8 @@ async function main() {
       headquartersAr: 'مسقط، عُمان',
       logo: 'https://images.unsplash.com/photo-1509316785289-025f5b846b35?auto=format&fit=crop&w=1200&q=80',
       phone: '+968 9555 5555',
-      email: 'trips@omandesert.example',
-      website: 'https://example.com',
+      email: 'trips@omandesert.lux.om',
+website: 'https://lux.om/travel-agencies/oman-desert-journeys',
       establishedYear: 2020,
       verified: true,
       featured: false
@@ -279,9 +279,13 @@ async function main() {
       providerAr: 'جولات ساحل مسقط',
       price: 'From OMR 95',
       durationMinutes: 180,
-      durationLabelEn: '3 hours',
-      durationLabelAr: '3 ساعات',
-      groupSize: 'Up to 8 guests',
+durationLabelEn: '3 hours',
+durationLabelAr: '3 ساعات',
+durationType: 'Half day',
+groupSize: 'Up to 8 guests',
+availabilityDays: ['Thursday', 'Friday', 'Saturday'],
+availabilityStartTime: '16:00',
+availabilityEndTime: '19:00',
       language: 'Arabic / English',
       difficulty: 'Easy',
       activityType: 'Private',
@@ -349,14 +353,19 @@ async function main() {
     }
   });
 
-  console.log('Seed complete');
+    console.log('Seed complete');
   console.log({
     admin: admin.email,
     owner: owner.email,
     activityProvider: activityProvider.email,
-    user: user.email,
-    password
+    user: user.email
   });
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.log({
+      seedPassword
+    });
+  }
 }
 
 main()

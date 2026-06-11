@@ -1,7 +1,7 @@
 import { Building2, CheckCircle2, Compass, Crown, ShieldCheck, Sparkles } from 'lucide-react';
 
 import SectionHeader from '../components/SectionHeader';
-import { stats } from '../data/mockData';
+import { siteStats } from '../data/siteStats';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -98,13 +98,13 @@ export default function About() {
       </div>
 
       <div className="about-stats-strip">
-        {stats.map((item) => (
-          <div key={item.label}>
-            <strong>{item.value}</strong>
-            <span>{item.label}</span>
-          </div>
-        ))}
-      </div>
+  {siteStats.map((item) => (
+    <div key={item.labelEn}>
+      <strong>{item.value}</strong>
+      <span>{language === 'ar' ? item.labelAr : item.labelEn}</span>
+    </div>
+  ))}
+</div>
     </section>
   );
 }

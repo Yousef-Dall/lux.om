@@ -257,13 +257,18 @@ model Activity {
   providerAr String?
 
   price           String
-  durationMinutes Int?
-  durationLabelEn String?
-  durationLabelAr String?
-  groupSize       String?
-  language        String?
-  difficulty      String?
-  activityType    String?
+durationMinutes Int?
+durationLabelEn String?
+durationLabelAr String?
+durationType    String?
+groupSize       String?
+language        String?
+difficulty      String?
+activityType    String?
+
+availabilityDays      String[] @default([])
+availabilityStartTime String?
+availabilityEndTime   String?
 
   familyFriendly  Boolean @default(false)
   includesTransfer Boolean @default(false)

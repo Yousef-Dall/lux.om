@@ -89,6 +89,19 @@ function asActivityType(value?: string | null): ActivityType {
   return 'Private';
 }
 
+function asActivityDurationType(value?: string | null) {
+  if (
+    value === 'Short' ||
+    value === 'Half day' ||
+    value === 'Full day' ||
+    value === 'Overnight'
+  ) {
+    return value;
+  }
+
+  return 'Short';
+}
+
 function asActivityDifficulty(value?: string | null): ActivityDifficulty | undefined {
   if (value === 'Easy' || value === 'Moderate' || value === 'Challenging') {
     return value;
@@ -297,12 +310,16 @@ export function mapActivity(apiActivity: ApiActivity, language: Language): Activ
         pickLocalized(language, highlight.textEn, highlight.textAr)
       ) ?? [],
     availability: {
-      days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-      startTime: '09:00',
-      endTime: '18:00'
-    },
+  days:
+    apiActivity.availabilityDays && apiActivity.availabilityDays.length > 0
+      ? apiActivity.availabilityDays
+      : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+  startTime: apiActivity.availabilityStartTime ?? '09:00',
+  endTime: apiActivity.availabilityEndTime ?? '18:00'
+},
+status: apiActivity.status,
     specs: {
-      durationType: 'Short',
+      durationType: asActivityDurationType(apiActivity.durationType),
       experienceType: asActivityType(apiActivity.activityType),
       familyFriendly: apiActivity.familyFriendly,
       includesTransfer: apiActivity.includesTransfer,

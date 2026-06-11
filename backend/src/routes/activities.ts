@@ -8,6 +8,36 @@ import { slugify } from '../utils/slugify';
 
 export const activitiesRouter = Router();
 
+const imageUrlSchema = z
+  .string()
+  .trim()
+  .refine(
+    (value) =>
+      value.startsWith('/uploads/') ||
+      value.startsWith('http://') ||
+      value.startsWith('https://'),
+    {
+      message: 'Image must be a valid URL or uploaded image path'
+    }
+  );
+
+  const dayNameSchema = z.enum([
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday'
+]);
+
+const timeSchema = z
+  .string()
+  .trim()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'Time must use HH:mm format'
+  });
+
 const activityCreateSchema = z
   .object({
     titleEn: z.string().trim().min(3).max(140),
@@ -27,13 +57,18 @@ const activityCreateSchema = z
     price: z.string().trim().min(1).max(80),
     durationMinutes: z.coerce.number().int().positive().max(10080).optional(),
     durationLabelEn: z.string().trim().max(80).optional(),
-    durationLabelAr: z.string().trim().max(80).optional(),
-    groupSize: z.string().trim().max(80).optional(),
+durationLabelAr: z.string().trim().max(80).optional(),
+durationType: z.enum(['Short', 'Half day', 'Full day', 'Overnight']).optional(),
+groupSize: z.string().trim().max(80).optional(),
     language: z.string().trim().max(80).optional(),
     difficulty: z.string().trim().max(80).optional(),
-    activityType: z.string().trim().max(80).optional(),
+  activityType: z.string().trim().max(80).optional(),
 
-    familyFriendly: z.coerce.boolean().default(false),
+availabilityDays: z.array(dayNameSchema).max(7).default([]),
+availabilityStartTime: timeSchema.optional(),
+availabilityEndTime: timeSchema.optional(),
+
+familyFriendly: z.coerce.boolean().default(false),
     includesTransfer: z.coerce.boolean().default(false),
     mealIncluded: z.coerce.boolean().default(false),
     outdoor: z.coerce.boolean().default(false),
@@ -45,7 +80,7 @@ const activityCreateSchema = z
     images: z
       .array(
         z.object({
-          url: z.string().trim().url(),
+          url: imageUrlSchema,
           altEn: z.string().trim().max(160).optional(),
           altAr: z.string().trim().max(160).optional(),
           sortOrder: z.coerce.number().int().min(0).default(0)
@@ -352,14 +387,18 @@ activitiesRouter.post(
 
           price: data.price,
           durationMinutes: data.durationMinutes,
-          durationLabelEn: data.durationLabelEn,
-          durationLabelAr: data.durationLabelAr,
-          groupSize: data.groupSize,
+durationLabelEn: data.durationLabelEn,
+durationLabelAr: data.durationLabelAr,
+durationType: data.durationType,
+groupSize: data.groupSize,
           language: data.language,
           difficulty: data.difficulty,
           activityType: data.activityType,
-          familyFriendly: data.familyFriendly,
-          includesTransfer: data.includesTransfer,
+availabilityDays: data.availabilityDays,
+availabilityStartTime: data.availabilityStartTime,
+availabilityEndTime: data.availabilityEndTime,
+familyFriendly: data.familyFriendly,
+includesTransfer: data.includesTransfer,
           mealIncluded: data.mealIncluded,
           outdoor: data.outdoor,
           nearestLandmarkId: data.nearestLandmarkId,

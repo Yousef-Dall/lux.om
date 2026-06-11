@@ -17,26 +17,26 @@
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
-    "bcryptjs": "latest",
-    "compression": "latest",
-    "cors": "latest",
-    "dotenv": "latest",
-    "express": "latest",
-    "express-rate-limit": "latest",
-    "helmet": "latest",
-    "jsonwebtoken": "latest",
-    "multer": "latest",
-    "zod": "latest"
+    "bcryptjs": "3.0.3",
+    "compression": "1.8.1",
+    "cors": "2.8.6",
+    "dotenv": "17.4.2",
+    "express": "5.2.1",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "8.1.0",
+    "jsonwebtoken": "9.0.3",
+    "multer": "2.1.1",
+    "zod": "4.4.1"
   },
   "devDependencies": {
-    "@types/compression": "latest",
-    "@types/cors": "latest",
-    "@types/express": "latest",
-    "@types/jsonwebtoken": "latest",
-    "@types/multer": "latest",
-    "@types/node": "latest",
+    "@types/compression": "1.8.1",
+    "@types/cors": "2.8.19",
+    "@types/express": "5.0.6",
+    "@types/jsonwebtoken": "9.0.10",
+    "@types/multer": "2.1.0",
+    "@types/node": "25.6.0",
     "prisma": "6.19.3",
-    "tsx": "latest",
-    "typescript": "latest"
+    "tsx": "4.21.0",
+    "typescript": "6.0.3"
   }
 }
