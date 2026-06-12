@@ -1,6 +1,5 @@
 import {
   ArrowRight,
-  Building2,
   CalendarDays,
   CheckCircle2,
   Crown,
@@ -22,6 +21,7 @@ import {
 } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
 import { ActivityCard, ListingCard } from '../components/Cards';
+import PartnerCard from '../components/PartnerCard';
 import SectionHeader from '../components/SectionHeader';
 import {
   buildDiscoveryPath,
@@ -129,9 +129,14 @@ export default function Home() {
             'تساعد lux.om المشترين والمستأجرين على اكتشاف العقارات المرتبطة بمطورين موثوقين ومجتمعات سكنية ومشاريع مميزة.',
           viewDevelopers: 'تصفح المطورين',
           verifiedDeveloper: 'مطور موثق',
-          developer: 'مطور',
-          listedProperties: 'عقارات منشورة',
-          viewProfile: 'عرض ملف الشركة',
+developer: 'مطور',
+featured: 'مميز',
+headquarters: 'المقر',
+phone: 'الهاتف',
+email: 'البريد الإلكتروني',
+website: 'الموقع الإلكتروني',
+listedProperties: 'عقارات منشورة',
+viewProfile: 'عرض ملف الشركة',
           agenciesEyebrow: 'شركاء الأنشطة',
           agenciesTitle: 'وكالات سفر موثقة تنظم تجارب عُمان المختارة.',
           agenciesDescription:
@@ -166,9 +171,14 @@ export default function Home() {
             'lux.om helps buyers and renters discover properties connected to trusted development companies, master communities, and premium project pipelines.',
           viewDevelopers: 'View developers',
           verifiedDeveloper: 'Verified developer',
-          developer: 'Developer',
-          listedProperties: 'listed properties',
-          viewProfile: 'View company profile',
+developer: 'Developer',
+featured: 'Featured',
+headquarters: 'Headquarters',
+phone: 'Phone',
+email: 'Email',
+website: 'Website',
+listedProperties: 'listed properties',
+viewProfile: 'View company profile',
           agenciesEyebrow: 'Activity operators',
           agenciesTitle: 'Trusted travel agencies organizing curated Oman experiences.',
           agenciesDescription:
@@ -470,49 +480,32 @@ export default function Home() {
               }
             />
 
-            <div className="developer-preview-grid">
-              {featuredDevelopers.map((developer) => {
-                const developerListings = listings.filter(
-                  (listing) => listing.developerId === developer.id
-                );
-
-                return (
-                  <article className="developer-preview-card" key={developer.id}>
-                    {developer.logo ? (
-                      <img src={developer.logo} alt={`${developer.name} logo`} loading="lazy" />
-                    ) : null}
-
-                    <div>
-                      <span className="developer-preview-card__badge">
-                        <ShieldCheck size={14} aria-hidden="true" />
-                        {developer.verified
-                          ? discoveryCopy.verifiedDeveloper
-                          : discoveryCopy.developer}
-                      </span>
-
-                      <h3>{developer.name}</h3>
-                      <p>{developer.description}</p>
-
-                      <div className="developer-preview-card__meta">
-                        <span>
-                          <Building2 size={15} aria-hidden="true" />
-                          {developerListings.length} {discoveryCopy.listedProperties}
-                        </span>
-                        <span>
-                          <MapPin size={15} aria-hidden="true" />
-                          {developer.headquarters}
-                        </span>
-                      </div>
-
-                      <Link to={`/developers/${developer.slug}`} className="text-link">
-                        {discoveryCopy.viewProfile}
-                        <ArrowRight size={16} aria-hidden="true" />
-                      </Link>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
+            <div className="travel-agency-grid">
+  {featuredDevelopers.map((developer) => (
+    <PartnerCard
+      key={developer.id}
+      href={`/developers/${developer.slug}`}
+      name={developer.name}
+      image={developer.logo}
+      description={developer.description}
+      headquarters={developer.headquarters || developer.location}
+      phone={developer.phone}
+      email={developer.email}
+      website={developer.website}
+      verified={developer.verified}
+      featured={developer.featured}
+      labels={{
+        verified: discoveryCopy.verifiedDeveloper,
+        featured: discoveryCopy.featured,
+        headquarters: discoveryCopy.headquarters,
+        phone: discoveryCopy.phone,
+        email: discoveryCopy.email,
+        website: discoveryCopy.website,
+        view: discoveryCopy.viewProfile
+      }}
+    />
+  ))}
+</div>
           </section>
 
           <section className="page-section container">
@@ -528,47 +521,32 @@ export default function Home() {
               }
             />
 
-            <div className="developer-preview-grid">
-              {featuredTravelAgencies.map((agency) => {
-                const agencyActivities = activities.filter(
-                  (activity) => activity.travelAgencyId === agency.id
-                );
-
-                return (
-                  <article className="developer-preview-card" key={agency.id}>
-                    {agency.logo ? (
-                      <img src={agency.logo} alt={`${agency.name} logo`} loading="lazy" />
-                    ) : null}
-
-                    <div>
-                      <span className="developer-preview-card__badge">
-                        <ShieldCheck size={14} aria-hidden="true" />
-                        {agency.verified ? discoveryCopy.verifiedAgency : discoveryCopy.agency}
-                      </span>
-
-                      <h3>{agency.name}</h3>
-                      <p>{agency.description}</p>
-
-                      <div className="developer-preview-card__meta">
-                        <span>
-                          <Sparkles size={15} aria-hidden="true" />
-                          {agencyActivities.length} {discoveryCopy.agencyActivities}
-                        </span>
-                        <span>
-                          <MapPin size={15} aria-hidden="true" />
-                          {agency.headquarters}
-                        </span>
-                      </div>
-
-                      <Link to={`/travel-agencies/${agency.slug}`} className="text-link">
-                        {discoveryCopy.viewAgency}
-                        <ArrowRight size={16} aria-hidden="true" />
-                      </Link>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
+            <div className="travel-agency-grid">
+  {featuredTravelAgencies.map((agency) => (
+    <PartnerCard
+      key={agency.id}
+      href={`/travel-agencies/${agency.slug}`}
+      name={agency.name}
+      image={agency.logo}
+      description={agency.description}
+      headquarters={agency.headquarters || agency.location}
+      phone={agency.phone}
+      email={agency.email}
+      website={agency.website}
+      verified={agency.verified}
+      featured={agency.featured}
+      labels={{
+        verified: discoveryCopy.verifiedAgency,
+        featured: discoveryCopy.featured,
+        headquarters: discoveryCopy.headquarters,
+        phone: discoveryCopy.phone,
+        email: discoveryCopy.email,
+        website: discoveryCopy.website,
+        view: discoveryCopy.viewAgency
+      }}
+    />
+  ))}
+</div>
           </section>
 
           <section className="lux-trust-section">

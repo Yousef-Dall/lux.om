@@ -328,7 +328,6 @@ export type ApiListing = {
   image: string;
   status?: ListingStatus;
   rejectedReason?: string | null;
-  featured?: boolean;
 
   ownerId?: string;
   owner?: PublicUser;
@@ -408,7 +407,6 @@ availabilityEndTime?: string | null;
 
   status?: ActivityStatus;
   rejectedReason?: string | null;
-  featured?: boolean;
   
 
   ownerId?: string;

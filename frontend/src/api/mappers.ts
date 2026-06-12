@@ -241,7 +241,7 @@ export function mapListing(apiListing: ApiListing, language: Language): Listing 
       apiListing.amenities?.map((amenity) =>
         pickLocalized(language, amenity.nameEn, amenity.nameAr, amenity.name)
       ) ?? [],
-    featured: apiListing.featured,
+    featured: apiListing.developer?.featured === true,
     developerId: apiListing.developerId ?? undefined,
     developer,
     nearestLandmarkId: apiListing.nearestLandmarkId ?? undefined,
@@ -326,7 +326,7 @@ status: apiActivity.status,
       mealIncluded: apiActivity.mealIncluded,
       outdoor: apiActivity.outdoor
     },
-    featured: apiActivity.featured,
+    featured: apiActivity.travelAgency?.featured === true,
     provider,
     travelAgencyId: apiActivity.travelAgencyId ?? undefined,
     travelAgency,

@@ -153,7 +153,30 @@ activitiesRouter.get('/', async (req, res, next) => {
     const activities = await prisma.activity.findMany({
       where: {
         status: 'APPROVED',
-        ...(typeof query.featured === 'boolean' ? { featured: query.featured } : {}),
+       ...(typeof query.featured === 'boolean'
+  ? query.featured
+    ? {
+        travelAgency: {
+          is: {
+            featured: true
+          }
+        }
+      }
+    : {
+        OR: [
+          {
+            travelAgencyId: null
+          },
+          {
+            travelAgency: {
+              is: {
+                featured: false
+              }
+            }
+          }
+        ]
+      }
+  : {}),
         ...(query.travelAgencyId ? { travelAgencyId: query.travelAgencyId } : {}),
         ...(query.category
           ? {

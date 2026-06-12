@@ -15,15 +15,20 @@ import {
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 import {
+  createAdminDeveloper,
   createAdminTravelAgency,
+  deleteAdminDeveloper,
   deleteAdminTravelAgency,
   getAdminActivities,
+  getAdminDevelopers,
   getAdminInquiries,
   getAdminListings,
   getAdminTravelAgencies,
   updateAdminActivityStatus,
+  updateAdminDeveloper,
   updateAdminListingStatus,
   updateAdminTravelAgency,
+  type UpdateDeveloperPayload,
   type UpdateTravelAgencyPayload
 } from '../api/admin';
 import { ApiError } from '../api/client';
@@ -35,6 +40,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import type {
   ActivityStatus,
   ApiActivity,
+  ApiDeveloperCompany,
   ApiListing,
   ApiTravelAgency,
   Inquiry,
@@ -119,6 +125,28 @@ function getAgencyHeadquarters(agency: ApiTravelAgency, language: 'en' | 'ar') {
   return agency.headquartersEn || agency.headquartersAr || '';
 }
 
+function getDeveloperName(
+  developer: ApiDeveloperCompany,
+  language: 'en' | 'ar'
+) {
+  if (language === 'ar') {
+    return developer.nameAr || developer.nameEn;
+  }
+
+  return developer.nameEn || developer.nameAr || '';
+}
+
+function getDeveloperHeadquarters(
+  developer: ApiDeveloperCompany,
+  language: 'en' | 'ar'
+) {
+  if (language === 'ar') {
+    return developer.headquartersAr || developer.headquartersEn || '';
+  }
+
+  return developer.headquartersEn || developer.headquartersAr || '';
+}
+
 function getListingQualityScore(listing: ApiListing, index: number) {
   let score = 70;
 
@@ -127,7 +155,7 @@ function getListingQualityScore(listing: ApiListing, index: number) {
   if (listing.descriptionEn || listing.description) score += 6;
   if (listing.developer) score += 5;
   if (listing.nearestLandmark) score += 3;
-  if (listing.featured) score += 5;
+  if (listing.developer?.featured) score += 5;
 
   return Math.min(98, Math.max(72, score - index));
 }
@@ -140,7 +168,7 @@ function getActivityQualityScore(activity: ApiActivity, index: number) {
   if (activity.descriptionEn) score += 6;
   if (activity.travelAgency) score += 5;
   if (activity.nearestLandmark) score += 3;
-  if (activity.featured) score += 5;
+  if (activity.travelAgency?.featured) score += 5;
 
   return Math.min(98, Math.max(72, score - index));
 }
@@ -170,6 +198,22 @@ const initialAgencyForm = {
   featured: false
 };
 
+const initialDeveloperForm = {
+  nameEn: '',
+  nameAr: '',
+  descriptionEn: '',
+  descriptionAr: '',
+  headquartersEn: '',
+  headquartersAr: '',
+  logo: '',
+  phone: '',
+  email: '',
+  website: '',
+  establishedYear: '',
+  verified: true,
+  featured: false
+};
+
 function optionalText(value: string) {
   const trimmed = value.trim();
   return trimmed || undefined;
@@ -184,16 +228,53 @@ export default function Admin() {
   const [listings, setListings] = useState<ApiListing[]>([]);
   const [activities, setActivities] = useState<ApiActivity[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
-  const [travelAgencies, setTravelAgencies] = useState<ApiTravelAgency[]>([]);
-  const [agencyForm, setAgencyForm] = useState(initialAgencyForm);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const [updatingId, setUpdatingId] = useState('');
-  const [creatingAgency, setCreatingAgency] = useState(false);
+const [travelAgencies, setTravelAgencies] = useState<ApiTravelAgency[]>([]);
+const [developers, setDevelopers] = useState<ApiDeveloperCompany[]>([]);
+
+const [agencyForm, setAgencyForm] = useState(initialAgencyForm);
+const [developerForm, setDeveloperForm] = useState(initialDeveloperForm);
+
+const [loading, setLoading] = useState(true);
+const [loadError, setLoadError] = useState('');
+const [updatingId, setUpdatingId] = useState('');
+
+const [creatingAgency, setCreatingAgency] = useState(false);
+const [agencyFormError, setAgencyFormError] = useState('');
+const [agencyFormSuccess, setAgencyFormSuccess] = useState('');
+
+const [creatingDeveloper, setCreatingDeveloper] = useState(false);
+const [developerFormError, setDeveloperFormError] = useState('');
+const [developerFormSuccess, setDeveloperFormSuccess] = useState('');
+  
 
   const copy =
     language === 'ar'
       ? {
+        noDevelopers: 'لا توجد شركات تطوير حالياً.',
+deleteDeveloper: 'حذف شركة التطوير؟',
+        developerManagement: 'إدارة شركات التطوير',
+developerManagementText: 'أضف شركات تطوير موثقة واربطها بالعقارات.',
+createDeveloper: 'إضافة شركة تطوير',
+creatingDeveloper: 'جاري إنشاء الشركة...',
+developerCreated: 'تم إنشاء شركة التطوير بنجاح.',
+developerDetails: 'بيانات شركة التطوير',
+developerDetailsText: 'أدخل هوية الشركة ومعلوماتها الأساسية.',
+developerName: 'اسم الشركة بالإنجليزي',
+developerNameAr: 'اسم الشركة بالعربي',
+verifiedDeveloper: 'شركة موثقة',
+featuredDeveloper: 'شركة مميزة',
+verifiedDeveloperHelp: 'إظهار الشركة كشريك تطوير موثق على المنصة.',
+featuredDeveloperHelp: 'إبراز الشركة في أقسام المطورين والمحتوى المختار.',
+        agencyDetails: 'بيانات الوكالة',
+agencyDetailsText: 'أدخل الاسم والمعلومات الأساسية للوكالة.',
+englishContent: 'المحتوى الإنجليزي',
+arabicContent: 'المحتوى العربي',
+contactDetails: 'بيانات التواصل',
+publishingSettings: 'إعدادات النشر',
+verifiedHelp: 'إظهار الوكالة كشريك موثق على المنصة.',
+featuredHelp: 'إبراز الوكالة في الأقسام والمحتوى المختار.',
+agencyCreated: 'تم إنشاء وكالة السفر بنجاح.',
+requiredField: 'مطلوب',
           marketplaceControl: 'إدارة السوق',
           heroTitle: 'حافظ على جودة كل عقار ونشاط قبل النشر.',
           heroText:
@@ -219,7 +300,8 @@ export default function Admin() {
           activitiesQueue: 'مراجعة الأنشطة',
           inquiriesQueue: 'الاستفسارات',
           featuredActivities: 'أنشطة مميزة',
-          travelAgencies: 'وكالات السفر',
+travelAgencies: 'وكالات السفر',
+verifiedDevelopers: 'شركات تطوير موثقة',
           agencyManagement: 'إدارة وكالات السفر',
           agencyManagementText: 'أضف وكالات سفر موثقة واربطها بالأنشطة.',
           createAgency: 'إضافة وكالة سفر',
@@ -250,9 +332,35 @@ export default function Admin() {
           inquiryType: 'النوع',
           message: 'الرسالة',
           contact: 'التواصل',
-          createdAt: 'تاريخ الإرسال'
+          createdAt: 'تاريخ الإرسال',
+          developers: 'شركات التطوير'
         }
       : {
+        noDevelopers: 'No developer companies yet.',
+deleteDeveloper: 'Delete this developer company?',
+        developerManagement: 'Developer company management',
+developerManagementText: 'Create verified developer companies and connect them to properties.',
+createDeveloper: 'Create developer company',
+creatingDeveloper: 'Creating company...',
+developerCreated: 'Developer company created successfully.',
+developerDetails: 'Developer company details',
+developerDetailsText: 'Enter the company identity and essential business information.',
+developerName: 'Company name',
+developerNameAr: 'Company Arabic name',
+verifiedDeveloper: 'Verified developer',
+featuredDeveloper: 'Featured developer',
+verifiedDeveloperHelp: 'Display this company as a verified development partner.',
+featuredDeveloperHelp: 'Allow the company to appear in featured developer sections.',
+        agencyDetails: 'Agency details',
+agencyDetailsText: 'Enter the agency identity and essential business information.',
+englishContent: 'English content',
+arabicContent: 'Arabic content',
+contactDetails: 'Contact details',
+publishingSettings: 'Publishing settings',
+verifiedHelp: 'Display this agency as a verified platform partner.',
+featuredHelp: 'Allow the agency to appear in featured marketplace sections.',
+agencyCreated: 'Travel agency created successfully.',
+requiredField: 'Required',
           marketplaceControl: 'Marketplace control',
           heroTitle: 'Keep every public listing and activity polished, complete, and trustworthy.',
           heroText:
@@ -278,7 +386,9 @@ export default function Admin() {
           activitiesQueue: 'Activity queue',
           inquiriesQueue: 'Inquiries',
           featuredActivities: 'Featured activities',
-          travelAgencies: 'Travel agencies',
+travelAgencies: 'Travel agencies',
+developers: 'Developer companies',
+verifiedDevelopers: 'Verified developers',
           agencyManagement: 'Travel agency management',
           agencyManagementText: 'Create verified travel agencies and connect them to activities.',
           createAgency: 'Create travel agency',
@@ -319,18 +429,25 @@ export default function Admin() {
       setLoading(true);
       setLoadError('');
 
-      const [listingsResponse, activitiesResponse, inquiriesResponse, agenciesResponse] =
-  await Promise.all([
-    getAdminListings(token),
-    getAdminActivities(token),
-    getAdminInquiries(token),
-    getAdminTravelAgencies(token)
-  ]);
+      const [
+  listingsResponse,
+  activitiesResponse,
+  inquiriesResponse,
+  agenciesResponse,
+  developersResponse
+] = await Promise.all([
+  getAdminListings(token),
+  getAdminActivities(token),
+  getAdminInquiries(token),
+  getAdminTravelAgencies(token),
+  getAdminDevelopers(token)
+]);
 
-      setListings(listingsResponse.listings);
-      setActivities(activitiesResponse.activities);
-      setInquiries(inquiriesResponse.inquiries);
-      setTravelAgencies(agenciesResponse.travelAgencies);
+setListings(listingsResponse.listings);
+setActivities(activitiesResponse.activities);
+setInquiries(inquiriesResponse.inquiries);
+setTravelAgencies(agenciesResponse.travelAgencies);
+setDevelopers(developersResponse.developers);
     } catch (error) {
       console.error(error);
 
@@ -349,24 +466,42 @@ export default function Admin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, language]);
 
-  const metrics = useMemo(() => {
-    const approvedListings = listings.filter((listing) => isApprovedStatus(listing.status)).length;
-    const pendingListings = listings.filter((listing) => isPendingStatus(listing.status)).length;
-    const pendingActivities = activities.filter((activity) => isPendingStatus(activity.status)).length;
-    const featuredCount = listings.filter((listing) => listing.featured).length;
-    const featuredActivityCount = activities.filter((activity) => activity.featured).length;
+const metrics = useMemo(() => {
+  const approvedListings = listings.filter((listing) =>
+    isApprovedStatus(listing.status)
+  ).length;
 
-    return {
-      approvedListings,
-      pendingListings,
-      pendingActivities,
-      featuredCount,
-      featuredActivityCount,
-      needsAttention: pendingListings + pendingActivities,
-      verifiedAgencies: travelAgencies.filter((agency) => agency.verified).length
-    };
-  }, [activities, listings, travelAgencies]);
+  const pendingListings = listings.filter((listing) =>
+    isPendingStatus(listing.status)
+  ).length;
 
+  const pendingActivities = activities.filter((activity) =>
+    isPendingStatus(activity.status)
+  ).length;
+
+  const featuredCount = listings.filter(
+    (listing) =>
+      isApprovedStatus(listing.status) &&
+      listing.developer?.featured === true
+  ).length;
+
+  const featuredActivityCount = activities.filter(
+    (activity) =>
+      isApprovedStatus(activity.status) &&
+      activity.travelAgency?.featured === true
+  ).length;
+
+  return {
+    approvedListings,
+    pendingListings,
+    pendingActivities,
+    featuredCount,
+    featuredActivityCount,
+    needsAttention: pendingListings + pendingActivities,
+    verifiedAgencies: travelAgencies.filter((agency) => agency.verified).length,
+    verifiedDevelopers: developers.filter((developer) => developer.verified).length
+  };
+}, [activities, developers, listings, travelAgencies]);
   async function updateListingStatus(
     listingId: string,
     status: ListingStatus,
@@ -427,44 +562,158 @@ export default function Admin() {
     }
   }
 
-  async function createTravelAgency(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+async function createTravelAgency(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
 
-    if (!token) return;
+  if (!token) return;
 
-    try {
-      setCreatingAgency(true);
-      setLoadError('');
+  try {
+    setCreatingAgency(true);
+    setAgencyFormError('');
+    setAgencyFormSuccess('');
 
-      const payload = {
-        nameEn: agencyForm.nameEn.trim(),
-        nameAr: optionalText(agencyForm.nameAr),
-        descriptionEn: optionalText(agencyForm.descriptionEn),
-        descriptionAr: optionalText(agencyForm.descriptionAr),
-        headquartersEn: optionalText(agencyForm.headquartersEn),
-        headquartersAr: optionalText(agencyForm.headquartersAr),
-        logo: optionalText(agencyForm.logo),
-        phone: optionalText(agencyForm.phone),
-        email: optionalText(agencyForm.email),
-        website: optionalText(agencyForm.website),
-        establishedYear: agencyForm.establishedYear
-          ? Number(agencyForm.establishedYear)
-          : undefined,
-        verified: agencyForm.verified,
-        featured: agencyForm.featured
-      };
+    const payload = {
+      nameEn: agencyForm.nameEn.trim(),
+      nameAr: optionalText(agencyForm.nameAr),
+      descriptionEn: optionalText(agencyForm.descriptionEn),
+      descriptionAr: optionalText(agencyForm.descriptionAr),
+      headquartersEn: optionalText(agencyForm.headquartersEn),
+      headquartersAr: optionalText(agencyForm.headquartersAr),
+      logo: optionalText(agencyForm.logo),
+      phone: optionalText(agencyForm.phone),
+      email: optionalText(agencyForm.email),
+      website: optionalText(agencyForm.website),
+      establishedYear: agencyForm.establishedYear
+        ? Number(agencyForm.establishedYear)
+        : undefined,
+      verified: agencyForm.verified,
+      featured: agencyForm.featured
+    };
 
-      const response = await createAdminTravelAgency(payload, token);
+    const response = await createAdminTravelAgency(payload, token);
 
-      setTravelAgencies((current) => [response.travelAgency, ...current]);
-      setAgencyForm(initialAgencyForm);
-    } catch (error) {
-      console.error(error);
-      alert(error instanceof ApiError || error instanceof Error ? error.message : copy.error);
-    } finally {
-      setCreatingAgency(false);
-    }
+    setTravelAgencies((current) => [response.travelAgency, ...current]);
+    setAgencyForm(initialAgencyForm);
+    setAgencyFormSuccess(copy.agencyCreated);
+  } catch (error) {
+    console.error(error);
+
+    setAgencyFormError(
+      error instanceof ApiError || error instanceof Error
+        ? error.message
+        : copy.error
+    );
+  } finally {
+    setCreatingAgency(false);
   }
+}
+
+async function createDeveloper(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+
+  if (!token) return;
+
+  try {
+    setCreatingDeveloper(true);
+    setDeveloperFormError('');
+    setDeveloperFormSuccess('');
+
+    const payload = {
+      nameEn: developerForm.nameEn.trim(),
+      nameAr: optionalText(developerForm.nameAr),
+      descriptionEn: optionalText(developerForm.descriptionEn),
+      descriptionAr: optionalText(developerForm.descriptionAr),
+      headquartersEn: optionalText(developerForm.headquartersEn),
+      headquartersAr: optionalText(developerForm.headquartersAr),
+      logo: optionalText(developerForm.logo),
+      phone: optionalText(developerForm.phone),
+      email: optionalText(developerForm.email),
+      website: optionalText(developerForm.website),
+      establishedYear: developerForm.establishedYear
+        ? Number(developerForm.establishedYear)
+        : undefined,
+      verified: developerForm.verified,
+      featured: developerForm.featured
+    };
+
+    const response = await createAdminDeveloper(payload, token);
+
+    setDevelopers((current) => [response.developer, ...current]);
+    setDeveloperForm(initialDeveloperForm);
+    setDeveloperFormSuccess(copy.developerCreated);
+  } catch (error) {
+    console.error(error);
+
+    setDeveloperFormError(
+      error instanceof ApiError || error instanceof Error
+        ? error.message
+        : copy.error
+    );
+  } finally {
+    setCreatingDeveloper(false);
+  }
+}
+
+async function updateDeveloperCompany(
+  developerId: string,
+  data: UpdateDeveloperPayload
+) {
+  if (!token) return;
+
+  try {
+    setUpdatingId(developerId);
+
+    const response = await updateAdminDeveloper(
+      developerId,
+      data,
+      token
+    );
+
+    setDevelopers((current) =>
+      current.map((developer) =>
+        developer.id === developerId ? response.developer : developer
+      )
+    );
+  } catch (error) {
+    console.error(error);
+
+    alert(
+      error instanceof ApiError || error instanceof Error
+        ? error.message
+        : copy.error
+    );
+  } finally {
+    setUpdatingId('');
+  }
+}
+
+async function deleteDeveloperCompany(developerId: string) {
+  if (!token) return;
+
+  const confirmed = window.confirm(copy.deleteDeveloper);
+
+  if (!confirmed) return;
+
+  try {
+    setUpdatingId(developerId);
+
+    await deleteAdminDeveloper(developerId, token);
+
+    setDevelopers((current) =>
+      current.filter((developer) => developer.id !== developerId)
+    );
+  } catch (error) {
+    console.error(error);
+
+    alert(
+      error instanceof ApiError || error instanceof Error
+        ? error.message
+        : copy.error
+    );
+  } finally {
+    setUpdatingId('');
+  }
+}
 
   async function updateTravelAgency(
     agencyId: string,
@@ -648,7 +897,513 @@ export default function Admin() {
               <strong>{metrics.needsAttention}</strong>
               <small>{copy.missingVerification}</small>
             </article>
+            <article className="metric-card">
+  <span>
+    <Building2 size={18} aria-hidden="true" />
+    {copy.developers}
+  </span>
+
+  <strong>{metrics.verifiedDevelopers}</strong>
+  <small>{copy.verifiedDevelopers}</small>
+</article>
           </div>
+
+          <div className="table-card table-card--premium">
+  <div className="table-card__header">
+    <div>
+      <p className="eyebrow">{copy.developerManagement}</p>
+      <h2>{copy.developers}</h2>
+      <p>{copy.developerManagementText}</p>
+    </div>
+
+    <ButtonLink to="/developers" variant="ghost">
+      <Eye size={16} aria-hidden="true" />
+      {copy.viewMarketplace}
+    </ButtonLink>
+  </div>
+
+  <form className="admin-partner-form" onSubmit={createDeveloper}>
+    <div className="admin-partner-form__header">
+      <div>
+        <span className="admin-partner-form__icon">
+          <Building2 size={22} aria-hidden="true" />
+        </span>
+
+        <div>
+          <h3>{copy.createDeveloper}</h3>
+          <p>{copy.developerDetailsText}</p>
+        </div>
+      </div>
+
+      <span className="admin-partner-form__required">
+        * {copy.requiredField}
+      </span>
+    </div>
+
+    {developerFormError ? (
+      <div className="admin-form-feedback admin-form-feedback--error" role="alert">
+        <AlertCircle size={18} aria-hidden="true" />
+        <span>{developerFormError}</span>
+      </div>
+    ) : null}
+
+    {developerFormSuccess ? (
+      <div
+        className="admin-form-feedback admin-form-feedback--success"
+        role="status"
+        aria-live="polite"
+      >
+        <CheckCircle2 size={18} aria-hidden="true" />
+        <span>{developerFormSuccess}</span>
+      </div>
+    ) : null}
+
+    <fieldset className="admin-partner-form__fieldset" disabled={creatingDeveloper}>
+      <section className="admin-form-section">
+        <div className="admin-form-section__heading">
+          <div>
+            <span>EN</span>
+
+            <div>
+              <h4>{copy.englishContent}</h4>
+              <p>{copy.developerDetails}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="admin-form-grid admin-form-grid--two">
+          <label className="admin-form-field">
+            <span>
+              {copy.developerName}
+              <strong aria-hidden="true">*</strong>
+            </span>
+
+            <input
+              required
+              value={developerForm.nameEn}
+              onChange={(event) =>
+                setDeveloperForm((current) => ({
+                  ...current,
+                  nameEn: event.target.value
+                }))
+              }
+              placeholder="Oman Horizon Developments"
+            />
+          </label>
+
+          <label className="admin-form-field">
+            <span>{copy.headquarters}</span>
+
+            <input
+              value={developerForm.headquartersEn}
+              onChange={(event) =>
+                setDeveloperForm((current) => ({
+                  ...current,
+                  headquartersEn: event.target.value
+                }))
+              }
+              placeholder="Muscat, Oman"
+            />
+          </label>
+
+          <label className="admin-form-field admin-form-field--full">
+            <span>{copy.description}</span>
+
+            <textarea
+              rows={5}
+              value={developerForm.descriptionEn}
+              onChange={(event) =>
+                setDeveloperForm((current) => ({
+                  ...current,
+                  descriptionEn: event.target.value
+                }))
+              }
+              placeholder="A premium development company delivering residential and mixed-use projects in Oman."
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className="admin-form-section admin-form-section--rtl">
+        <div className="admin-form-section__heading">
+          <div>
+            <span>ع</span>
+
+            <div>
+              <h4>{copy.arabicContent}</h4>
+              <p>{copy.developerDetails}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="admin-form-grid admin-form-grid--two">
+          <label className="admin-form-field">
+            <span>{copy.developerNameAr}</span>
+
+            <input
+              dir="rtl"
+              value={developerForm.nameAr}
+              onChange={(event) =>
+                setDeveloperForm((current) => ({
+                  ...current,
+                  nameAr: event.target.value
+                }))
+              }
+              placeholder="آفاق عُمان للتطوير"
+            />
+          </label>
+
+          <label className="admin-form-field">
+            <span>{copy.headquartersAr}</span>
+
+            <input
+              dir="rtl"
+              value={developerForm.headquartersAr}
+              onChange={(event) =>
+                setDeveloperForm((current) => ({
+                  ...current,
+                  headquartersAr: event.target.value
+                }))
+              }
+              placeholder="مسقط، عُمان"
+            />
+          </label>
+
+          <label className="admin-form-field admin-form-field--full">
+            <span>{copy.descriptionAr}</span>
+
+            <textarea
+              dir="rtl"
+              rows={5}
+              value={developerForm.descriptionAr}
+              onChange={(event) =>
+                setDeveloperForm((current) => ({
+                  ...current,
+                  descriptionAr: event.target.value
+                }))
+              }
+              placeholder="شركة تطوير متخصصة في المشاريع السكنية ومتعددة الاستخدامات في عُمان."
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className="admin-form-section">
+        <div className="admin-form-section__heading">
+          <div>
+            <span>
+              <Phone size={17} aria-hidden="true" />
+            </span>
+
+            <div>
+              <h4>{copy.contactDetails}</h4>
+              <p>{copy.developerManagementText}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="admin-form-grid admin-form-grid--two">
+          <label className="admin-form-field">
+            <span>{copy.phone}</span>
+
+            <input
+              type="tel"
+              dir="ltr"
+              value={developerForm.phone}
+              onChange={(event) =>
+                setDeveloperForm((current) => ({
+                  ...current,
+                  phone: event.target.value
+                }))
+              }
+              placeholder="+968 9000 0000"
+            />
+          </label>
+
+          <label className="admin-form-field">
+            <span>{copy.email}</span>
+
+            <input
+              type="email"
+              dir="ltr"
+              value={developerForm.email}
+              onChange={(event) =>
+                setDeveloperForm((current) => ({
+                  ...current,
+                  email: event.target.value
+                }))
+              }
+              placeholder="developer@lux.om"
+            />
+          </label>
+
+          <label className="admin-form-field">
+            <span>{copy.website}</span>
+
+            <input
+              type="url"
+              dir="ltr"
+              value={developerForm.website}
+              onChange={(event) =>
+                setDeveloperForm((current) => ({
+                  ...current,
+                  website: event.target.value
+                }))
+              }
+              placeholder="https://developer.om"
+            />
+          </label>
+
+          <label className="admin-form-field">
+            <span>{copy.establishedYear}</span>
+
+            <input
+              type="number"
+              min="1800"
+              max={new Date().getFullYear()}
+              value={developerForm.establishedYear}
+              onChange={(event) =>
+                setDeveloperForm((current) => ({
+                  ...current,
+                  establishedYear: event.target.value
+                }))
+              }
+              placeholder="2010"
+            />
+          </label>
+
+          <label className="admin-form-field admin-form-field--full">
+            <span>{copy.logo}</span>
+
+            <input
+              type="url"
+              dir="ltr"
+              value={developerForm.logo}
+              onChange={(event) =>
+                setDeveloperForm((current) => ({
+                  ...current,
+                  logo: event.target.value
+                }))
+              }
+              placeholder="https://images.unsplash.com/..."
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className="admin-form-section">
+        <div className="admin-form-section__heading">
+          <div>
+            <span>
+              <ShieldCheck size={17} aria-hidden="true" />
+            </span>
+
+            <div>
+              <h4>{copy.publishingSettings}</h4>
+              <p>{copy.qualityGate}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="admin-form-toggle-grid">
+          <button
+            type="button"
+            className={`admin-form-toggle ${
+              developerForm.verified ? 'admin-form-toggle--active' : ''
+            }`}
+            aria-pressed={developerForm.verified}
+            onClick={() =>
+              setDeveloperForm((current) => ({
+                ...current,
+                verified: !current.verified
+              }))
+            }
+          >
+            <span className="admin-form-toggle__control" aria-hidden="true">
+              <span />
+            </span>
+
+            <span>
+              <strong>{copy.verifiedDeveloper}</strong>
+              <small>{copy.verifiedDeveloperHelp}</small>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className={`admin-form-toggle ${
+              developerForm.featured ? 'admin-form-toggle--active' : ''
+            }`}
+            aria-pressed={developerForm.featured}
+            onClick={() =>
+              setDeveloperForm((current) => ({
+                ...current,
+                featured: !current.featured
+              }))
+            }
+          >
+            <span className="admin-form-toggle__control" aria-hidden="true">
+              <span />
+            </span>
+
+            <span>
+              <strong>{copy.featuredDeveloper}</strong>
+              <small>{copy.featuredDeveloperHelp}</small>
+            </span>
+          </button>
+        </div>
+      </section>
+
+      <div className="admin-partner-form__submit">
+        <div>
+          <strong>{copy.createDeveloper}</strong>
+          <span>{copy.developerManagementText}</span>
+        </div>
+
+        <button
+          className="button-link button-link--primary"
+          type="submit"
+          disabled={creatingDeveloper}
+        >
+          {creatingDeveloper ? copy.creatingDeveloper : copy.createDeveloper}
+        </button>
+      </div>
+    </fieldset>
+    </form>
+
+  <div className="responsive-table">
+    <table>
+      <thead>
+        <tr>
+          <th>{copy.developers}</th>
+          <th>{copy.headquarters}</th>
+          <th>{copy.contact}</th>
+          <th>{copy.verifiedDeveloper}</th>
+          <th>{copy.featuredDeveloper}</th>
+          <th>{copy.action}</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {developers.map((developer) => (
+          <tr key={developer.id}>
+            <td>
+              <strong>{getDeveloperName(developer, language)}</strong>
+              <span>{developer.slug}</span>
+            </td>
+
+            <td>
+              {getDeveloperHeadquarters(developer, language) || '-'}
+            </td>
+
+            <td>
+              {developer.email ? (
+                <span className="inline-info">
+                  <Mail size={14} aria-hidden="true" />
+                  {developer.email}
+                </span>
+              ) : null}
+
+              {developer.phone ? (
+                <span className="inline-info">
+                  <Phone size={14} aria-hidden="true" />
+                  {developer.phone}
+                </span>
+              ) : null}
+
+              {!developer.email && !developer.phone ? '-' : null}
+            </td>
+
+            <td>
+              <button
+                type="button"
+                className={`status-pill ${
+                  developer.verified ? 'approved' : 'pending'
+                }`}
+                disabled={updatingId === developer.id}
+                onClick={() =>
+                  updateDeveloperCompany(developer.id, {
+                    verified: !developer.verified
+                  })
+                }
+              >
+                {developer.verified ? (
+                  <>
+                    <CheckCircle2 size={14} aria-hidden="true" />
+                    {copy.verifiedDeveloper}
+                  </>
+                ) : (
+                  <>
+                    <Clock3 size={14} aria-hidden="true" />
+                    {copy.pending}
+                  </>
+                )}
+              </button>
+            </td>
+
+            <td>
+              <button
+                type="button"
+                className={`status-pill ${
+                  developer.featured ? 'approved' : 'pending'
+                }`}
+                disabled={updatingId === developer.id}
+                onClick={() =>
+                  updateDeveloperCompany(developer.id, {
+                    featured: !developer.featured
+                  })
+                }
+              >
+                {developer.featured ? (
+                  <>
+                    <Sparkles size={14} aria-hidden="true" />
+                    {copy.featured}
+                  </>
+                ) : (
+                  <>
+                    <Clock3 size={14} aria-hidden="true" />
+                    {copy.pending}
+                  </>
+                )}
+              </button>
+            </td>
+
+            <td>
+              <div className="admin-action-buttons">
+                <ButtonLink
+                  to={`/developers/${developer.slug}`}
+                  variant="ghost"
+                >
+                  <Eye size={16} aria-hidden="true" />
+                </ButtonLink>
+
+                <button
+                  type="button"
+                  className="icon-action icon-action--reject"
+                  disabled={updatingId === developer.id}
+                  onClick={() =>
+                    deleteDeveloperCompany(developer.id)
+                  }
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                  <span className="sr-only">
+                    {copy.deleteDeveloper}
+                  </span>
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+
+        {developers.length === 0 ? (
+          <tr>
+            <td colSpan={6}>{copy.noDevelopers}</td>
+          </tr>
+        ) : null}
+      </tbody>
+    </table>
+  </div>
+</div>
 
           <div className="table-card table-card--premium">
             <div className="table-card__header">
@@ -664,167 +1419,352 @@ export default function Admin() {
               </ButtonLink>
             </div>
 
-            <form className="form-grid" onSubmit={createTravelAgency}>
-              <label>
-                {copy.agencyName}
-                <input
-                  required
-                  value={agencyForm.nameEn}
-                  onChange={(event) =>
-                    setAgencyForm((current) => ({ ...current, nameEn: event.target.value }))
-                  }
-                  placeholder="Muscat Coast Tours"
-                />
-              </label>
+<form className="admin-partner-form" onSubmit={createTravelAgency}>
+  <div className="admin-partner-form__header">
+    <div>
+      <span className="admin-partner-form__icon">
+        <Building2 size={22} aria-hidden="true" />
+      </span>
 
-              <label>
-                {copy.agencyNameAr}
-                <input
-                  value={agencyForm.nameAr}
-                  onChange={(event) =>
-                    setAgencyForm((current) => ({ ...current, nameAr: event.target.value }))
-                  }
-                  placeholder="جولات ساحل مسقط"
-                />
-              </label>
+      <div>
+        <h3>{copy.createAgency}</h3>
+        <p>{copy.agencyDetailsText}</p>
+      </div>
+    </div>
 
-              <label>
-                {copy.headquarters}
-                <input
-                  value={agencyForm.headquartersEn}
-                  onChange={(event) =>
-                    setAgencyForm((current) => ({
-                      ...current,
-                      headquartersEn: event.target.value
-                    }))
-                  }
-                  placeholder="Muscat, Oman"
-                />
-              </label>
+    <span className="admin-partner-form__required">
+      * {copy.requiredField}
+    </span>
+  </div>
 
-              <label>
-                {copy.logo}
-                <input
-                  type="url"
-                  value={agencyForm.logo}
-                  onChange={(event) =>
-                    setAgencyForm((current) => ({ ...current, logo: event.target.value }))
-                  }
-                  placeholder="https://images.unsplash.com/..."
-                />
-              </label>
+  {agencyFormError ? (
+    <div className="admin-form-feedback admin-form-feedback--error" role="alert">
+      <AlertCircle size={18} aria-hidden="true" />
+      <span>{agencyFormError}</span>
+    </div>
+  ) : null}
 
-              <label>
-                {copy.phone}
-                <input
-                  value={agencyForm.phone}
-                  onChange={(event) =>
-                    setAgencyForm((current) => ({ ...current, phone: event.target.value }))
-                  }
-                  placeholder="+968 9000 0000"
-                />
-              </label>
+  {agencyFormSuccess ? (
+    <div
+      className="admin-form-feedback admin-form-feedback--success"
+      role="status"
+      aria-live="polite"
+    >
+      <CheckCircle2 size={18} aria-hidden="true" />
+      <span>{agencyFormSuccess}</span>
+    </div>
+  ) : null}
 
-              <label>
-                {copy.email}
-                <input
-                  type="email"
-                  value={agencyForm.email}
-                  onChange={(event) =>
-                    setAgencyForm((current) => ({ ...current, email: event.target.value }))
-                  }
-                  placeholder="agency@lux.om"
-                />
-              </label>
+  <fieldset className="admin-partner-form__fieldset" disabled={creatingAgency}>
+    <section className="admin-form-section">
+      <div className="admin-form-section__heading">
+        <div>
+          <span>EN</span>
+          <div>
+            <h4>{copy.englishContent}</h4>
+            <p>{copy.agencyDetails}</p>
+          </div>
+        </div>
+      </div>
 
-              <label>
-                {copy.website}
-                <input
-                  type="url"
-                  value={agencyForm.website}
-                  onChange={(event) =>
-                    setAgencyForm((current) => ({ ...current, website: event.target.value }))
-                  }
-                  placeholder="https://agency.om"
-                />
-              </label>
+      <div className="admin-form-grid admin-form-grid--two">
+        <label className="admin-form-field">
+          <span>
+            {copy.agencyName}
+            <strong aria-hidden="true">*</strong>
+          </span>
 
-              <label>
-                {copy.establishedYear}
-                <input
-                  type="number"
-                  min="1800"
-                  value={agencyForm.establishedYear}
-                  onChange={(event) =>
-                    setAgencyForm((current) => ({
-                      ...current,
-                      establishedYear: event.target.value
-                    }))
-                  }
-                  placeholder="2018"
-                />
-              </label>
+          <input
+            required
+            value={agencyForm.nameEn}
+            onChange={(event) =>
+              setAgencyForm((current) => ({
+                ...current,
+                nameEn: event.target.value
+              }))
+            }
+            placeholder="Muscat Coast Tours"
+          />
+        </label>
 
-              <label>
-                {copy.description}
-                <textarea
-                  rows={4}
-                  value={agencyForm.descriptionEn}
-                  onChange={(event) =>
-                    setAgencyForm((current) => ({
-                      ...current,
-                      descriptionEn: event.target.value
-                    }))
-                  }
-                  placeholder="Premium Oman tours and curated activities."
-                />
-              </label>
+        <label className="admin-form-field">
+          <span>{copy.headquarters}</span>
 
-              <label>
-                {copy.descriptionAr}
-                <textarea
-                  rows={4}
-                  value={agencyForm.descriptionAr}
-                  onChange={(event) =>
-                    setAgencyForm((current) => ({
-                      ...current,
-                      descriptionAr: event.target.value
-                    }))
-                  }
-                  placeholder="وكالة متخصصة في تنظيم تجارب مختارة في عُمان."
-                />
-              </label>
+          <input
+            value={agencyForm.headquartersEn}
+            onChange={(event) =>
+              setAgencyForm((current) => ({
+                ...current,
+                headquartersEn: event.target.value
+              }))
+            }
+            placeholder="Muscat, Oman"
+          />
+        </label>
 
-              <div className="toggle-filter-grid">
-                <button
-                  type="button"
-                  className={agencyForm.verified ? 'active' : ''}
-                  onClick={() =>
-                    setAgencyForm((current) => ({ ...current, verified: !current.verified }))
-                  }
-                >
-                  {copy.verifiedAgency}
-                </button>
+        <label className="admin-form-field admin-form-field--full">
+          <span>{copy.description}</span>
 
-                <button
-                  type="button"
-                  className={agencyForm.featured ? 'active' : ''}
-                  onClick={() =>
-                    setAgencyForm((current) => ({ ...current, featured: !current.featured }))
-                  }
-                >
-                  {copy.featuredAgency}
-                </button>
-              </div>
+          <textarea
+            rows={5}
+            value={agencyForm.descriptionEn}
+            onChange={(event) =>
+              setAgencyForm((current) => ({
+                ...current,
+                descriptionEn: event.target.value
+              }))
+            }
+            placeholder="Premium Oman tours and curated activities."
+          />
+        </label>
+      </div>
+    </section>
 
-              <button
-                className="button-link button-link--primary"
-                type="submit"
-                disabled={creatingAgency}
-              >
-                {creatingAgency ? copy.creating : copy.create}
-              </button>
-            </form>
+    <section className="admin-form-section admin-form-section--rtl">
+      <div className="admin-form-section__heading">
+        <div>
+          <span>ع</span>
+          <div>
+            <h4>{copy.arabicContent}</h4>
+            <p>{copy.agencyDetails}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-form-grid admin-form-grid--two">
+        <label className="admin-form-field">
+          <span>{copy.agencyNameAr}</span>
+
+          <input
+            dir="rtl"
+            value={agencyForm.nameAr}
+            onChange={(event) =>
+              setAgencyForm((current) => ({
+                ...current,
+                nameAr: event.target.value
+              }))
+            }
+            placeholder="جولات ساحل مسقط"
+          />
+        </label>
+
+        <label className="admin-form-field">
+          <span>{copy.headquartersAr}</span>
+
+          <input
+            dir="rtl"
+            value={agencyForm.headquartersAr}
+            onChange={(event) =>
+              setAgencyForm((current) => ({
+                ...current,
+                headquartersAr: event.target.value
+              }))
+            }
+            placeholder="مسقط، عُمان"
+          />
+        </label>
+
+        <label className="admin-form-field admin-form-field--full">
+          <span>{copy.descriptionAr}</span>
+
+          <textarea
+            dir="rtl"
+            rows={5}
+            value={agencyForm.descriptionAr}
+            onChange={(event) =>
+              setAgencyForm((current) => ({
+                ...current,
+                descriptionAr: event.target.value
+              }))
+            }
+            placeholder="وكالة متخصصة في تنظيم تجارب مختارة في عُمان."
+          />
+        </label>
+      </div>
+    </section>
+
+    <section className="admin-form-section">
+      <div className="admin-form-section__heading">
+        <div>
+          <span>
+            <Phone size={17} aria-hidden="true" />
+          </span>
+
+          <div>
+            <h4>{copy.contactDetails}</h4>
+            <p>{copy.agencyManagementText}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-form-grid admin-form-grid--two">
+        <label className="admin-form-field">
+          <span>{copy.phone}</span>
+
+          <input
+            type="tel"
+            dir="ltr"
+            value={agencyForm.phone}
+            onChange={(event) =>
+              setAgencyForm((current) => ({
+                ...current,
+                phone: event.target.value
+              }))
+            }
+            placeholder="+968 9000 0000"
+          />
+        </label>
+
+        <label className="admin-form-field">
+          <span>{copy.email}</span>
+
+          <input
+            type="email"
+            dir="ltr"
+            value={agencyForm.email}
+            onChange={(event) =>
+              setAgencyForm((current) => ({
+                ...current,
+                email: event.target.value
+              }))
+            }
+            placeholder="agency@lux.om"
+          />
+        </label>
+
+        <label className="admin-form-field">
+          <span>{copy.website}</span>
+
+          <input
+            type="url"
+            dir="ltr"
+            value={agencyForm.website}
+            onChange={(event) =>
+              setAgencyForm((current) => ({
+                ...current,
+                website: event.target.value
+              }))
+            }
+            placeholder="https://agency.om"
+          />
+        </label>
+
+        <label className="admin-form-field">
+          <span>{copy.establishedYear}</span>
+
+          <input
+            type="number"
+            min="1800"
+            max={new Date().getFullYear()}
+            value={agencyForm.establishedYear}
+            onChange={(event) =>
+              setAgencyForm((current) => ({
+                ...current,
+                establishedYear: event.target.value
+              }))
+            }
+            placeholder="2018"
+          />
+        </label>
+
+        <label className="admin-form-field admin-form-field--full">
+          <span>{copy.logo}</span>
+
+          <input
+            type="url"
+            dir="ltr"
+            value={agencyForm.logo}
+            onChange={(event) =>
+              setAgencyForm((current) => ({
+                ...current,
+                logo: event.target.value
+              }))
+            }
+            placeholder="https://images.unsplash.com/..."
+          />
+        </label>
+      </div>
+    </section>
+
+    <section className="admin-form-section">
+      <div className="admin-form-section__heading">
+        <div>
+          <span>
+            <ShieldCheck size={17} aria-hidden="true" />
+          </span>
+
+          <div>
+            <h4>{copy.publishingSettings}</h4>
+            <p>{copy.qualityGate}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-form-toggle-grid">
+        <button
+          type="button"
+          className={`admin-form-toggle ${
+            agencyForm.verified ? 'admin-form-toggle--active' : ''
+          }`}
+          aria-pressed={agencyForm.verified}
+          onClick={() =>
+            setAgencyForm((current) => ({
+              ...current,
+              verified: !current.verified
+            }))
+          }
+        >
+          <span className="admin-form-toggle__control" aria-hidden="true">
+            <span />
+          </span>
+
+          <span>
+            <strong>{copy.verifiedAgency}</strong>
+            <small>{copy.verifiedHelp}</small>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          className={`admin-form-toggle ${
+            agencyForm.featured ? 'admin-form-toggle--active' : ''
+          }`}
+          aria-pressed={agencyForm.featured}
+          onClick={() =>
+            setAgencyForm((current) => ({
+              ...current,
+              featured: !current.featured
+            }))
+          }
+        >
+          <span className="admin-form-toggle__control" aria-hidden="true">
+            <span />
+          </span>
+
+          <span>
+            <strong>{copy.featuredAgency}</strong>
+            <small>{copy.featuredHelp}</small>
+          </span>
+        </button>
+      </div>
+    </section>
+
+    <div className="admin-partner-form__submit">
+      <div>
+        <strong>{copy.createAgency}</strong>
+        <span>{copy.agencyManagementText}</span>
+      </div>
+
+      <button
+        className="button-link button-link--primary"
+        type="submit"
+        disabled={creatingAgency}
+      >
+        {creatingAgency ? copy.creating : copy.createAgency}
+      </button>
+    </div>
+  </fieldset>
+</form>
 
             <div className="responsive-table">
               <table>

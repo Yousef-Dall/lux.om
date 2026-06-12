@@ -1,9 +1,9 @@
-import { ArrowRight, Building2, MapPin, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 
 import { getDevelopers, getListings } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
+import PartnerCard from '../components/PartnerCard';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -34,11 +34,15 @@ export default function Developers() {
           developerProfiles: 'ملفات المطورين',
           featuredPartners: 'شركاء مميزون',
           linkedProperties: 'عقارات مرتبطة',
-          verifiedDeveloper: 'مطور موثق',
-          developer: 'مطور',
-          featured: 'مميز',
-          listedProperties: 'عقارات منشورة',
-          viewProfile: 'عرض الملف',
+         verifiedDeveloper: 'مطور موثق',
+developer: 'مطور',
+featured: 'مميز',
+headquarters: 'المقر',
+phone: 'الهاتف',
+email: 'البريد الإلكتروني',
+website: 'الموقع الإلكتروني',
+listedProperties: 'عقارات منشورة',
+viewProfile: 'عرض ملف الشركة',
           cardAria: 'عرض ملف المطور',
           loading: 'جاري تحميل المطورين...',
           error: 'تعذر تحميل المطورين. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.',
@@ -58,11 +62,15 @@ export default function Developers() {
           developerProfiles: 'developer profiles',
           featuredPartners: 'featured partners',
           linkedProperties: 'linked properties',
-          verifiedDeveloper: 'Verified developer',
-          developer: 'Developer',
-          featured: 'Featured',
-          listedProperties: 'listed properties',
-          viewProfile: 'View profile',
+         verifiedDeveloper: 'Verified developer',
+developer: 'Developer',
+featured: 'Featured',
+headquarters: 'Headquarters',
+phone: 'Phone',
+email: 'Email',
+website: 'Website',
+listedProperties: 'listed properties',
+viewProfile: 'View company profile',
           cardAria: 'View developer profile',
           loading: 'Loading developers...',
           error: 'Could not load developers. Make sure the backend is running and try again.',
@@ -163,82 +171,33 @@ export default function Developers() {
       ) : null}
 
       {!loading && !loadError && developmentCompanies.length > 0 ? (
-        <div className="developer-grid">
-          {developmentCompanies.map((developer) => {
-            const developerListings = listings.filter(
-              (listing) => listing.developerId === developer.id
-            );
-
-            return (
-              <article className="developer-card" key={developer.id}>
-                {developer.logo ? (
-                  <img src={developer.logo} alt={`${developer.name} logo`} loading="lazy" />
-                ) : (
-                  <div className="developer-card__logo-placeholder" aria-hidden="true">
-                    <Building2 size={32} />
-                  </div>
-                )}
-
-                <div className="developer-card__body">
-                  <div className="developer-card__topline">
-                    {developer.verified ? (
-                      <span>
-                        <ShieldCheck size={14} aria-hidden="true" />
-                        {copy.verifiedDeveloper}
-                      </span>
-                    ) : (
-                      <span>
-                        <Building2 size={14} aria-hidden="true" />
-                        {copy.developer}
-                      </span>
-                    )}
-
-                    {developer.featured ? (
-                      <span>
-                        <Sparkles size={14} aria-hidden="true" />
-                        {copy.featured}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <h2>{developer.name}</h2>
-
-                  <p className="developer-card__location">
-                    <MapPin size={16} aria-hidden="true" />
-                    {developer.headquarters || developer.location}
-                  </p>
-
-                  <p>{developer.description}</p>
-
-                  {developer.specialties.length > 0 ? (
-                    <div className="developer-card__specialties">
-                      {developer.specialties.slice(0, 3).map((specialty) => (
-                        <span key={specialty}>{specialty}</span>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  <div className="developer-card__footer">
-                    <strong>
-                      {developerListings.length}{' '}
-                      {copy.listedProperties}
-                    </strong>
-
-                    <Link
-                      to={`/developers/${developer.slug}`}
-                      className="text-link"
-                      aria-label={`${copy.cardAria}: ${developer.name}`}
-                    >
-                      {copy.viewProfile}
-                      <ArrowRight size={16} aria-hidden="true" />
-                    </Link>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      ) : null}
+  <div className="travel-agency-grid">
+    {developmentCompanies.map((developer) => (
+      <PartnerCard
+        key={developer.id}
+        href={`/developers/${developer.slug}`}
+        name={developer.name}
+        image={developer.logo}
+        description={developer.description}
+        headquarters={developer.headquarters || developer.location}
+        phone={developer.phone}
+        email={developer.email}
+        website={developer.website}
+        verified={developer.verified}
+        featured={developer.featured}
+        labels={{
+          verified: copy.verifiedDeveloper,
+          featured: copy.featured,
+          headquarters: copy.headquarters,
+          phone: copy.phone,
+          email: copy.email,
+          website: copy.website,
+          view: copy.viewProfile
+        }}
+      />
+    ))}
+  </div>
+) : null}
 
       {!loading && !loadError && developmentCompanies.length === 0 ? (
         <div className="empty-state empty-state--premium">

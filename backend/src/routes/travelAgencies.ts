@@ -42,12 +42,31 @@ const travelAgencyCreateSchema = z
   })
   .strict();
 
-const travelAgencyUpdateSchema = travelAgencyCreateSchema.partial().refine(
-  (data) => Object.keys(data).length > 0,
-  {
+const travelAgencyUpdateSchema = z
+  .object({
+    nameEn: z.string().trim().min(2).max(140).optional(),
+    nameAr: z.string().trim().max(140).optional(),
+    descriptionEn: z.string().trim().max(2000).optional(),
+    descriptionAr: z.string().trim().max(2000).optional(),
+    headquartersEn: z.string().trim().max(160).optional(),
+    headquartersAr: z.string().trim().max(160).optional(),
+    logo: z.string().trim().url().optional(),
+    phone: z.string().trim().max(40).optional(),
+    email: z.string().trim().email().optional(),
+    website: z.string().trim().url().optional(),
+    establishedYear: z.coerce
+      .number()
+      .int()
+      .min(1800)
+      .max(new Date().getFullYear())
+      .optional(),
+    verified: z.boolean().optional(),
+    featured: z.boolean().optional()
+  })
+  .strict()
+  .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field is required'
-  }
-);
+  });
 
 const travelAgencyInclude = {
   activities: {

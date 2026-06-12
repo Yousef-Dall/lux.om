@@ -1,4 +1,13 @@
-import { Globe2, LogOut, Menu, ShieldCheck, UserCircle, X } from 'lucide-react';
+import {
+  ChevronDown,
+  Globe2,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  ShieldCheck,
+  UserCircle,
+  X
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 
@@ -57,7 +66,8 @@ export default function Navbar() {
           dashboard: 'لوحة التحكم',
           admin: 'الأدمن',
           logout: 'خروج',
-          signedInAs: 'مسجل باسم'
+          signedInAs: 'مسجل باسم',
+          account: 'قائمة الحساب'
         }
       : {
           skip: 'Skip to content',
@@ -70,7 +80,8 @@ export default function Navbar() {
           dashboard: 'Dashboard',
           admin: 'Admin',
           logout: 'Logout',
-          signedInAs: 'Signed in as'
+          signedInAs: 'Signed in as',
+          account: 'Account menu'
         };
 
   useEffect(() => {
@@ -154,32 +165,61 @@ export default function Navbar() {
             </button>
 
             {isAuthenticated ? (
-              <>
-                <div
-                  className="nav-user-pill"
-                  title={`${accessibilityCopy.signedInAs} ${user?.email}`}
-                >
-                  <UserCircle size={16} aria-hidden="true" />
-                  <span>{user?.name}</span>
-                </div>
+  <details className="nav-account">
+    <summary
+      className="nav-account__trigger"
+      aria-label={accessibilityCopy.account}
+      title={`${accessibilityCopy.signedInAs} ${user?.email ?? ''}`}
+    >
+      <span className="nav-account__avatar" aria-hidden="true">
+        <UserCircle size={18} />
+      </span>
 
-                <ButtonLink to="/dashboard" variant="secondary" onClick={() => setIsOpen(false)}>
-                  {accessibilityCopy.dashboard}
-                </ButtonLink>
+      <span className="nav-account__identity">
+        <strong>{user?.name || accessibilityCopy.dashboard}</strong>
+        <small>{isAdmin ? accessibilityCopy.admin : user?.email}</small>
+      </span>
 
-                {isAdmin ? (
-                  <ButtonLink to="/admin" onClick={() => setIsOpen(false)}>
-                    <ShieldCheck size={15} aria-hidden="true" />
-                    {accessibilityCopy.admin}
-                  </ButtonLink>
-                ) : null}
+      <ChevronDown className="nav-account__chevron" size={16} aria-hidden="true" />
+    </summary>
 
-                <button className="nav-logout-button" type="button" onClick={handleLogout}>
-                  <LogOut size={15} aria-hidden="true" />
-                  {accessibilityCopy.logout}
-                </button>
-              </>
-            ) : (
+    <div className="nav-account__menu">
+      <div className="nav-account__profile">
+        <strong>{user?.name}</strong>
+        <span>{user?.email}</span>
+      </div>
+
+      <NavLink
+        to="/dashboard"
+        className="nav-account__item"
+        onClick={() => setIsOpen(false)}
+      >
+        <LayoutDashboard size={17} aria-hidden="true" />
+        {accessibilityCopy.dashboard}
+      </NavLink>
+
+      {isAdmin ? (
+        <NavLink
+          to="/admin"
+          className="nav-account__item"
+          onClick={() => setIsOpen(false)}
+        >
+          <ShieldCheck size={17} aria-hidden="true" />
+          {accessibilityCopy.admin}
+        </NavLink>
+      ) : null}
+
+      <button
+        className="nav-account__item nav-account__item--danger"
+        type="button"
+        onClick={handleLogout}
+      >
+        <LogOut size={17} aria-hidden="true" />
+        {accessibilityCopy.logout}
+      </button>
+    </div>
+  </details>
+) : (
               <>
                 <ButtonLink to="/login" variant="secondary" onClick={() => setIsOpen(false)}>
                   {accessibilityCopy.login}

@@ -2,6 +2,7 @@ import { apiClient } from './client';
 import type {
   ActivityStatus,
   ApiActivity,
+  ApiDeveloperCompany,
   ApiListing,
   ApiTravelAgency,
   Inquiry,
@@ -23,6 +24,30 @@ export type AdminInquiriesResponse = {
 export type TravelAgenciesResponse = {
   travelAgencies: ApiTravelAgency[];
 };
+
+export type DevelopersResponse = {
+  developers: ApiDeveloperCompany[];
+};
+
+export type CreateDeveloperPayload = {
+  nameEn: string;
+  nameAr?: string;
+  descriptionEn?: string;
+  descriptionAr?: string;
+  headquartersEn?: string;
+  headquartersAr?: string;
+  logo?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  establishedYear?: number;
+  verified: boolean;
+  featured: boolean;
+};
+
+export type UpdateDeveloperPayload = Partial<
+  Pick<ApiDeveloperCompany, 'verified' | 'featured'>
+>;
 
 export type CreateTravelAgencyPayload = {
   nameEn: string;
@@ -68,6 +93,10 @@ export async function getAdminInquiries(token: string) {
 
 export async function getAdminTravelAgencies(token: string) {
   return apiClient.get<TravelAgenciesResponse>('/api/travel-agencies', { token });
+}
+
+export async function getAdminDevelopers(token: string) {
+  return apiClient.get<DevelopersResponse>('/api/developers', { token });
 }
 
 export async function updateAdminListingStatus(
@@ -120,6 +149,36 @@ export async function updateAdminTravelAgency(
 export async function deleteAdminTravelAgency(agencyId: string, token: string) {
   return apiClient.delete<{ ok: boolean; deletedId: string }>(
     `/api/travel-agencies/${agencyId}`,
+    { token }
+  );
+}
+
+export async function createAdminDeveloper(
+  payload: CreateDeveloperPayload,
+  token: string
+) {
+  return apiClient.post<{ developer: ApiDeveloperCompany }>(
+    '/api/developers',
+    payload,
+    { token }
+  );
+}
+
+export async function updateAdminDeveloper(
+  developerId: string,
+  payload: UpdateDeveloperPayload,
+  token: string
+) {
+  return apiClient.patch<{ developer: ApiDeveloperCompany }>(
+    `/api/developers/${developerId}`,
+    payload,
+    { token }
+  );
+}
+
+export async function deleteAdminDeveloper(developerId: string, token: string) {
+  return apiClient.delete<{ ok: boolean; deletedId: string }>(
+    `/api/developers/${developerId}`,
     { token }
   );
 }
