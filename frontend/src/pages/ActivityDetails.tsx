@@ -167,7 +167,7 @@ export default function ActivityDetails() {
   ].filter(Boolean);
 
   return (
-    <article className="details-page">
+   <article className="details-page details-page--activity-detail">
       <section className="details-hero details-hero--activity">
         <div className="container">
           <Link className="back-link" to="/activities">
