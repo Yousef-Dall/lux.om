@@ -802,7 +802,7 @@ async function deleteDeveloperCompany(developerId: string) {
   }
 
   return (
-    <section className="page-section container">
+  <section className="page-section container admin-page">
       <SectionHeader
         eyebrow={t.admin.eyebrow}
         title={t.admin.title}
