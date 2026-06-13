@@ -188,6 +188,8 @@ model Listing {
 
   developerId String?
   developer   DeveloperCompany? @relation(fields: [developerId], references: [id], onDelete: SetNull)
+  developerNameEn String?
+  developerNameAr String?
 
   nearestLandmarkId       String?
   nearestLandmark         Landmark? @relation(fields: [nearestLandmarkId], references: [id], onDelete: SetNull)

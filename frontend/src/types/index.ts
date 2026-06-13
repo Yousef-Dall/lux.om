@@ -144,6 +144,7 @@ export type Listing = {
 
   developerId?: string;
   developer?: ListingDeveloperSummary;
+  developerName?: string;
 
   nearestLandmarkId?: string;
   nearestLandmarkName?: string;
@@ -334,6 +335,8 @@ export type ApiListing = {
 
   developerId?: string | null;
   developer?: ApiDeveloperCompany | null;
+  developerNameEn?: string | null;
+  developerNameAr?: string | null;
 
   nearestLandmarkId?: string | null;
   nearestLandmark?: ApiLandmark | null;

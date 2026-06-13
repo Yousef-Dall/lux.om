@@ -208,6 +208,12 @@ export function mapListing(apiListing: ApiListing, language: Language): Listing 
         )
       }
     : undefined;
+  const manualDeveloperName = pickLocalized(
+    language,
+    apiListing.developerNameEn,
+    apiListing.developerNameAr
+  );
+
 
   const nearestLandmark = apiListing.nearestLandmark
     ? mapLandmark(apiListing.nearestLandmark, language)
@@ -246,6 +252,7 @@ export function mapListing(apiListing: ApiListing, language: Language): Listing 
     featured: apiListing.developer?.featured === true,
     developerId: apiListing.developerId ?? undefined,
     developer,
+    developerName: manualDeveloperName || undefined,
     nearestLandmarkId: apiListing.nearestLandmarkId ?? undefined,
     nearestLandmarkName: nearestLandmark?.name,
     distanceFromLandmark: pickLocalized(

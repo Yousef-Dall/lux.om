@@ -1917,7 +1917,15 @@ async function deleteDeveloperCompany(developerId: string) {
                       ? language === 'ar'
                         ? listing.developer.nameAr || listing.developer.nameEn
                         : listing.developer.nameEn || listing.developer.nameAr
-                      : listing.owner?.name || copy.privateOwner;
+                      : language === 'ar'
+                        ? listing.developerNameAr ||
+                          listing.developerNameEn ||
+                          listing.owner?.name ||
+                          copy.privateOwner
+                        : listing.developerNameEn ||
+                          listing.developerNameAr ||
+                          listing.owner?.name ||
+                          copy.privateOwner;
 
                     return (
                       <tr key={listing.id}>

@@ -293,6 +293,13 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
               </strong>
             </span>
           </Link>
+        ) : listing.developerName ? (
+          <div className="lux-card-developer">
+            <span>
+              <small>{copy.developedBy}</small>
+              <strong>{listing.developerName}</strong>
+            </span>
+          </div>
         ) : null}
 
         <p className="lux-card-description">{listing.description}</p>

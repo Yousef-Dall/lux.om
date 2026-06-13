@@ -392,6 +392,13 @@ activitiesRouter.post(
         throw new AppError(400, 'Selected travel agency was not found');
       }
 
+      if (data.travelAgencyId && (data.providerEn || data.providerAr)) {
+        throw new AppError(
+          400,
+          'Choose either a listed travel agency or enter a manual organizer name'
+        );
+      }
+
       const activity = await prisma.activity.create({
         data: {
           slug,

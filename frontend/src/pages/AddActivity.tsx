@@ -69,12 +69,15 @@ const suggestedHighlights = [
   'Hotel pickup'
 ];
 
+type OrganizerMode = 'none' | 'existing' | 'manual';
+
 const initialForm = {
   title: '',
   category: 'Desert',
   location: '',
   nearestLandmarkId: '',
   distanceFromLandmark: '',
+  organizerMode: 'none' as OrganizerMode,
   travelAgencyId: '',
   provider: '',
   groupSize: '',
@@ -138,9 +141,13 @@ export default function AddActivity() {
           activityPreview: 'معاينة صورة النشاط',
           providerInfo: 'معلومات المنظم',
           providerDetails: 'اربط النشاط بوكالة سفر وأضف تفاصيل تجربة الضيوف',
+          organizerMode: 'طريقة إضافة المنظم',
           travelAgency: 'وكالة السفر',
-          noTravelAgency: 'بدون وكالة محددة',
-          providerName: 'اسم المنظم اليدوي',
+          noTravelAgency: 'بدون وكالة أو منظم',
+          existingTravelAgency: 'وكالة سفر مسجلة',
+          manualOrganizer: 'منظم آخر غير مسجل',
+          selectTravelAgency: 'اختر وكالة السفر',
+          providerName: 'اسم المنظم',
           providerPlaceholder: 'مثال: Muscat Coast Activities',
           groupSize: 'حجم المجموعة',
           groupSizePlaceholder: 'مثال: 2-8 ضيوف',
@@ -170,9 +177,13 @@ export default function AddActivity() {
           activityPreview: 'Activity preview',
           providerInfo: 'Organizer information',
           providerDetails: 'Connect this activity to a travel agency and add guest details',
+          organizerMode: 'Organizer option',
           travelAgency: 'Travel agency',
-          noTravelAgency: 'No travel agency selected',
-          providerName: 'Manual organizer name',
+          noTravelAgency: 'No organizer',
+          existingTravelAgency: 'Existing travel agency',
+          manualOrganizer: 'Other / not listed',
+          selectTravelAgency: 'Select travel agency',
+          providerName: 'Organizer name',
           providerPlaceholder: 'Example: Muscat Coast Activities',
           groupSize: 'Group size',
           groupSizePlaceholder: 'Example: 2-8 guests',
@@ -323,8 +334,6 @@ export default function AddActivity() {
       const imageUrl =
         imageMode === 'upload' && imageFile ? await uploadImage(imageFile, token) : form.image.trim();
 
-      const selectedAgency = travelAgencies.find((agency) => agency.id === form.travelAgencyId);
-
       const highlightTexts = [
         ...selectedHighlights,
         ...form.highlights
@@ -339,8 +348,16 @@ export default function AddActivity() {
     descriptionEn: form.description,
     locationEn: form.location,
     categoryEn: form.category,
-    travelAgencyId: optionalText(form.travelAgencyId),
-    providerEn: optionalText(form.provider) ?? selectedAgency?.name,
+    travelAgencyId:
+      form.organizerMode === 'existing' ? optionalText(form.travelAgencyId) : undefined,
+    providerEn:
+      form.organizerMode === 'manual' && language === 'en'
+        ? optionalText(form.provider)
+        : undefined,
+    providerAr:
+      form.organizerMode === 'manual' && language === 'ar'
+        ? optionalText(form.provider)
+        : undefined,
     price: form.price,
     durationMinutes: Number(form.durationMinutes),
     durationLabelEn: form.duration,
@@ -538,42 +555,60 @@ export default function AddActivity() {
 
           <div className="form-grid">
             <label>
-              {copy.travelAgency}
+              {copy.organizerMode}
               <select
-                value={form.travelAgencyId}
-                disabled={loadingOptions}
+                value={form.organizerMode}
                 onChange={(event) => {
-                  const selectedAgency = travelAgencies.find(
-                    (agency) => agency.id === event.target.value
-                  );
+                  const organizerMode = event.target.value as OrganizerMode;
 
                   setSubmitted(false);
                   setSubmitError('');
                   setForm((current) => ({
                     ...current,
-                    travelAgencyId: event.target.value,
-                    provider: selectedAgency?.name ?? current.provider
+                    organizerMode,
+                    travelAgencyId: '',
+                    provider: ''
                   }));
                 }}
               >
-                <option value="">{copy.noTravelAgency}</option>
-                {travelAgencies.map((agency) => (
-                  <option key={agency.id} value={agency.id}>
-                    {agency.name}
-                    {agency.verified ? ' ✓' : ''}
-                  </option>
-                ))}
+                <option value="none">{copy.noTravelAgency}</option>
+                <option value="existing">{copy.existingTravelAgency}</option>
+                <option value="manual">{copy.manualOrganizer}</option>
               </select>
             </label>
 
-            <label>
-              {copy.providerName}
-              <input
-                value={form.provider}
-                onChange={(event) => updateForm('provider', event.target.value)}
-                placeholder={copy.providerPlaceholder}
-              />
-            </label>
+            {form.organizerMode === 'existing' ? (
+              <label>
+                {copy.travelAgency}
+                <select
+                  required
+                  value={form.travelAgencyId}
+                  disabled={loadingOptions}
+                  onChange={(event) => updateForm('travelAgencyId', event.target.value)}
+                >
+                  <option value="">{copy.selectTravelAgency}</option>
+                  {travelAgencies.map((agency) => (
+                    <option key={agency.id} value={agency.id}>
+                      {agency.name}
+                      {agency.verified ? ' ✓' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            {form.organizerMode === 'manual' ? (
+              <label>
+                {copy.providerName}
+                <input
+                  required
+                  value={form.provider}
+                  onChange={(event) => updateForm('provider', event.target.value)}
+                  placeholder={copy.providerPlaceholder}
+                  maxLength={120}
+                />
+              </label>
+            ) : null}
 
             <label>
               {copy.groupSize}

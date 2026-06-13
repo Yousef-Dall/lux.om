@@ -307,6 +307,18 @@ const specItems = [
                   </div>
                 </div>
               </section>
+            ) : listing.developerName ? (
+              <section className="developer-detail-card" aria-labelledby="listing-developer-title">
+                <div className="developer-detail-card__content">
+                  <p className="eyebrow">{copy.developmentCompany}</p>
+
+                  <div className="developer-detail-card__title">
+                    <h2 id="listing-developer-title">
+                      {copy.developedBy} {listing.developerName}
+                    </h2>
+                  </div>
+                </div>
+              </section>
             ) : null}
 
             <h2>{t.addListing.searchableSpecs}</h2>
@@ -399,6 +411,13 @@ const specItems = [
                 </strong>
               </span>
             </Link>
+          ) : listing.developerName ? (
+            <div className="booking-panel-developer">
+              <span>
+                <small>{copy.developedBy}</small>
+                <strong>{listing.developerName}</strong>
+              </span>
+            </div>
           ) : null}
 
           <ButtonLink to="/contact" isFullWidth>

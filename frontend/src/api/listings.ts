@@ -21,6 +21,8 @@ export type CreateListingPayload = {
   amenities: string[];
 
   developerId?: string;
+  developerNameEn?: string;
+  developerNameAr?: string;
   nearestLandmarkId?: string;
   distanceFromLandmark?: string;
 

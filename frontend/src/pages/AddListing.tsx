@@ -63,6 +63,8 @@ const viewOptions = [
   'Golf view'
 ];
 
+type DeveloperMode = 'none' | 'existing' | 'manual';
+
 const initialForm = {
   title: '',
   type: 'Villa',
@@ -75,7 +77,9 @@ const initialForm = {
   image: '',
   description: '',
   amenities: '',
+  developerMode: 'none' as DeveloperMode,
   developerId: '',
+  developerName: '',
   nearestLandmarkId: '',
   distanceFromLandmark: '',
   minStayNights: '',
@@ -141,7 +145,13 @@ export default function AddListing() {
           developerAndLocation: 'المطور والموقع',
           marketplaceContext: 'ربط العقار بالمطور والمعلم القريب',
           developer: 'المطور العقاري',
-          noDeveloper: 'بدون مطور محدد',
+          developerMode: 'طريقة إضافة المطور',
+          noDeveloper: 'بدون مطور',
+          existingDeveloper: 'مطور مسجل',
+          manualDeveloper: 'مطور آخر غير مسجل',
+          selectDeveloper: 'اختر المطور',
+          manualDeveloperName: 'اسم المطور',
+          manualDeveloperPlaceholder: 'مثال: شركة مسقط للتطوير',
           landmark: 'أقرب معلم أو منطقة',
           noLandmark: 'بدون معلم محدد',
           distance: 'المسافة من المعلم',
@@ -164,7 +174,13 @@ export default function AddListing() {
           developerAndLocation: 'Developer and location context',
           marketplaceContext: 'Connect this property to a developer and nearby landmark',
           developer: 'Development company',
-          noDeveloper: 'No developer selected',
+          developerMode: 'Developer option',
+          noDeveloper: 'No developer',
+          existingDeveloper: 'Existing developer',
+          manualDeveloper: 'Other / not listed',
+          selectDeveloper: 'Select developer',
+          manualDeveloperName: 'Developer name',
+          manualDeveloperPlaceholder: 'Example: Muscat Development Company',
           landmark: 'Nearest landmark or area',
           noLandmark: 'No landmark selected',
           distance: 'Distance from landmark',
@@ -309,7 +325,16 @@ export default function AddListing() {
     image: imageUrl,
     description: form.description,
     amenities,
-    developerId: optionalText(form.developerId),
+    developerId:
+      form.developerMode === 'existing' ? optionalText(form.developerId) : undefined,
+    developerNameEn:
+      form.developerMode === 'manual' && language === 'en'
+        ? optionalText(form.developerName)
+        : undefined,
+    developerNameAr:
+      form.developerMode === 'manual' && language === 'ar'
+        ? optionalText(form.developerName)
+        : undefined,
     nearestLandmarkId: optionalText(form.nearestLandmarkId),
     distanceFromLandmark: optionalText(form.distanceFromLandmark),
     minStayNights: optionalNumber(form.minStayNights),
@@ -503,20 +528,59 @@ export default function AddListing() {
 
           <div className="form-grid">
             <label>
-              {copy.developer}
+              {copy.developerMode}
               <select
-                value={form.developerId}
-                disabled={loadingOptions}
-                onChange={(event) => updateForm('developerId', event.target.value)}
+                value={form.developerMode}
+                onChange={(event) => {
+                  const developerMode = event.target.value as DeveloperMode;
+
+                  setSubmitted(false);
+                  setSubmitError('');
+                  setForm((current) => ({
+                    ...current,
+                    developerMode,
+                    developerId: '',
+                    developerName: ''
+                  }));
+                }}
               >
-                <option value="">{copy.noDeveloper}</option>
-                {developers.map((developer) => (
-                  <option key={developer.id} value={developer.id}>
-                    {developer.name}
-                  </option>
-                ))}
+                <option value="none">{copy.noDeveloper}</option>
+                <option value="existing">{copy.existingDeveloper}</option>
+                <option value="manual">{copy.manualDeveloper}</option>
               </select>
             </label>
+
+            {form.developerMode === 'existing' ? (
+              <label>
+                {copy.developer}
+                <select
+                  required
+                  value={form.developerId}
+                  disabled={loadingOptions}
+                  onChange={(event) => updateForm('developerId', event.target.value)}
+                >
+                  <option value="">{copy.selectDeveloper}</option>
+                  {developers.map((developer) => (
+                    <option key={developer.id} value={developer.id}>
+                      {developer.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            {form.developerMode === 'manual' ? (
+              <label>
+                {copy.manualDeveloperName}
+                <input
+                  required
+                  value={form.developerName}
+                  onChange={(event) => updateForm('developerName', event.target.value)}
+                  placeholder={copy.manualDeveloperPlaceholder}
+                  maxLength={120}
+                />
+              </label>
+            ) : null}
 
             <label>
               {copy.landmark}

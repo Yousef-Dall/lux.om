@@ -54,6 +54,8 @@ const listingSchema = z
     amenities: z.array(z.string().trim().min(1).max(50)).max(30).default([]),
 
     developerId: optionalIdSchema,
+    developerNameEn: optionalTextSchema,
+    developerNameAr: optionalTextSchema,
     nearestLandmarkId: optionalIdSchema,
     distanceFromLandmark: optionalTextSchema,
     distanceFromLandmarkEn: optionalTextSchema,
@@ -366,6 +368,13 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
       throw new AppError(400, 'Selected development company was not found');
     }
 
+    if (data.developerId && (data.developerNameEn || data.developerNameAr)) {
+      throw new AppError(
+        400,
+        'Choose either a listed development company or enter a manual developer name'
+      );
+    }
+
     const nearestLandmark = data.nearestLandmarkId
       ? await prisma.landmark.findUnique({
           where: {
@@ -404,6 +413,8 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
         ownerId: req.user!.id,
 
         developerId: developer?.id,
+        developerNameEn: developer ? null : data.developerNameEn,
+        developerNameAr: developer ? null : data.developerNameAr,
         nearestLandmarkId: nearestLandmark?.id,
         distanceFromLandmarkEn,
         distanceFromLandmarkAr: data.distanceFromLandmarkAr,
