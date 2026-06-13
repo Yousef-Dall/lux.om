@@ -1,3 +1,5 @@
+import { resolveAssetUrl } from './assets';
+
 import type {
   Activity,
   ActivityDifficulty,
@@ -140,7 +142,7 @@ export function mapDeveloperCompany(
     id: apiDeveloper.id,
     slug: apiDeveloper.slug,
     name,
-    logo: apiDeveloper.logo || '',
+    logo: resolveAssetUrl(apiDeveloper.logo),
     description,
     headquarters,
     location: headquarters,
@@ -176,7 +178,7 @@ export function mapTravelAgency(
     id: apiTravelAgency.id,
     slug: apiTravelAgency.slug,
     name,
-    logo: apiTravelAgency.logo || '',
+    logo: resolveAssetUrl(apiTravelAgency.logo),
     description,
     headquarters,
     location: headquarters,
@@ -197,7 +199,7 @@ export function mapListing(apiListing: ApiListing, language: Language): Listing 
         id: apiListing.developer.id,
         slug: apiListing.developer.slug,
         name: pickLocalized(language, apiListing.developer.nameEn, apiListing.developer.nameAr),
-        logo: apiListing.developer.logo || '',
+        logo: resolveAssetUrl(apiListing.developer.logo),
         verified: apiListing.developer.verified,
         shortDescription: pickLocalized(
           language,
@@ -235,7 +237,7 @@ export function mapListing(apiListing: ApiListing, language: Language): Listing 
     beds: apiListing.beds,
     baths: apiListing.baths,
     sqm: apiListing.sqm,
-    image: firstImage || apiListing.image,
+    image: resolveAssetUrl(firstImage || apiListing.image),
     status: apiListing.status,
     amenities:
       apiListing.amenities?.map((amenity) =>
@@ -275,7 +277,7 @@ export function mapActivity(apiActivity: ApiActivity, language: Language): Activ
           apiActivity.travelAgency.nameEn,
           apiActivity.travelAgency.nameAr
         ),
-        logo: apiActivity.travelAgency.logo || '',
+        logo: resolveAssetUrl(apiActivity.travelAgency.logo),
         verified: apiActivity.travelAgency.verified,
         shortDescription: pickLocalized(
           language,
@@ -303,7 +305,7 @@ export function mapActivity(apiActivity: ApiActivity, language: Language): Activ
     duration,
     durationMinutes: apiActivity.durationMinutes ?? 0,
     price: apiActivity.price,
-    image: firstImage,
+    image: resolveAssetUrl(firstImage),
     category: pickLocalized(language, apiActivity.categoryEn, apiActivity.categoryAr),
     highlights:
       apiActivity.highlights?.map((highlight) =>

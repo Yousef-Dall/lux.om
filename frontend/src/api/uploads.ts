@@ -1,3 +1,4 @@
+import { normalizeAssetReference } from './assets';
 import { apiClient } from './client';
 
 type UploadResponse = {
@@ -35,5 +36,5 @@ export async function uploadImage(file: File, token: string) {
     throw new Error('Upload succeeded, but no image URL was returned');
   }
 
-  return uploadedUrl.startsWith('/') ? uploadedUrl : `/${uploadedUrl}`;
+  return normalizeAssetReference(uploadedUrl);
 }
