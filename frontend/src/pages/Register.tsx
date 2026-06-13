@@ -89,7 +89,7 @@ export default function Register() {
   }
 
   return (
-    <section className="page-section container auth-page">
+    <section className="page-section container auth-page auth-page--register">
       <div className="auth-card">
         <div className="form-group-heading">
           <span className="form-section-icon">

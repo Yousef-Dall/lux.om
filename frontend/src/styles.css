@@ -10989,7 +10989,7 @@ html[dir='rtl'] .footer-contact a:hover {
    Visual system refresh — login page v1
    ========================================================= */
 
-.auth-page--login {
+.auth-page:is(.auth-page--login, .auth-page--register) {
   display: grid;
   place-items: center;
   min-height: calc(100vh - 88px);
@@ -10997,7 +10997,7 @@ html[dir='rtl'] .footer-contact a:hover {
   padding-bottom: clamp(64px, 8vw, 110px);
 }
 
-.auth-page--login .auth-card {
+.auth-page:is(.auth-page--login, .auth-page--register) .auth-card {
   position: relative;
   isolation: isolate;
   overflow: hidden;
@@ -11013,7 +11013,7 @@ html[dir='rtl'] .footer-contact a:hover {
     inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
-.auth-page--login .auth-card::before {
+.auth-page:is(.auth-page--login, .auth-page--register) .auth-card::before {
   content: "";
   position: absolute;
   z-index: -1;
@@ -11026,7 +11026,7 @@ html[dir='rtl'] .footer-contact a:hover {
   pointer-events: none;
 }
 
-.auth-page--login .form-group-heading {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-group-heading {
   position: relative;
   isolation: isolate;
   display: flex;
@@ -11054,7 +11054,7 @@ html[dir='rtl'] .footer-contact a:hover {
   color: #ffffff;
 }
 
-.auth-page--login .form-group-heading::after {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-group-heading::after {
   content: "";
   position: absolute;
   z-index: -1;
@@ -11066,11 +11066,11 @@ html[dir='rtl'] .footer-contact a:hover {
   border-radius: 50%;
 }
 
-.auth-page--login .form-group-heading > div {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-group-heading > div {
   max-width: 470px;
 }
 
-.auth-page--login .form-group-heading .form-section-icon {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-group-heading .form-section-icon {
   position: absolute;
   top: 42px;
   inset-inline-start: clamp(30px, 5vw, 58px);
@@ -11086,15 +11086,15 @@ html[dir='rtl'] .footer-contact a:hover {
   backdrop-filter: blur(14px);
 }
 
-.auth-page--login .form-group-heading .eyebrow {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-group-heading .eyebrow {
   color: #e0bb6d;
 }
 
-.auth-page--login .form-group-heading .eyebrow::before {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-group-heading .eyebrow::before {
   background: #e0bb6d;
 }
 
-.auth-page--login .form-group-heading h1 {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-group-heading h1 {
   max-width: 520px;
   margin: 0;
   color: #ffffff;
@@ -11104,7 +11104,7 @@ html[dir='rtl'] .footer-contact a:hover {
   text-wrap: balance;
 }
 
-.auth-page--login .form-group-heading h1 + p {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-group-heading h1 + p {
   max-width: 500px;
   margin: 22px 0 0;
   color: rgba(255, 255, 255, 0.7);
@@ -11112,7 +11112,7 @@ html[dir='rtl'] .footer-contact a:hover {
   line-height: 1.78;
 }
 
-.auth-page--login .form-card {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-card {
   align-self: center;
   display: grid;
   gap: 20px;
@@ -11126,7 +11126,7 @@ html[dir='rtl'] .footer-contact a:hover {
   box-shadow: none;
 }
 
-.auth-page--login .form-card label {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-card label {
   display: grid;
   gap: 9px;
   color: var(--color-primary);
@@ -11134,12 +11134,12 @@ html[dir='rtl'] .footer-contact a:hover {
   font-weight: 900;
 }
 
-.auth-page--login .input-with-icon {
+.auth-page:is(.auth-page--login, .auth-page--register) .input-with-icon {
   position: relative;
   display: block;
 }
 
-.auth-page--login .input-with-icon svg {
+.auth-page:is(.auth-page--login, .auth-page--register) .input-with-icon svg {
   position: absolute;
   z-index: 2;
   top: 50%;
@@ -11149,7 +11149,7 @@ html[dir='rtl'] .footer-contact a:hover {
   transform: translateY(-50%);
 }
 
-.auth-page--login .form-card input {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-card input {
   width: 100%;
   min-height: 54px;
   padding-inline-start: 48px;
@@ -11160,18 +11160,18 @@ html[dir='rtl'] .footer-contact a:hover {
   box-shadow: 0 11px 28px rgba(7, 56, 62, 0.045);
 }
 
-.auth-page--login .form-card input:hover {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-card input:hover {
   border-color: rgba(7, 56, 62, 0.2);
 }
 
-.auth-page--login .form-card input:focus {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-card input:focus {
   border-color: rgba(194, 154, 82, 0.8);
   box-shadow:
     0 0 0 4px rgba(194, 154, 82, 0.14),
     0 12px 30px rgba(7, 56, 62, 0.055);
 }
 
-.auth-page--login .form-card > .button-link {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-card > .button-link {
   width: 100%;
   min-height: 52px;
   margin-top: 4px;
@@ -11179,12 +11179,12 @@ html[dir='rtl'] .footer-contact a:hover {
   font-weight: 900;
 }
 
-.auth-page--login .form-card > .button-link:disabled {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-card > .button-link:disabled {
   cursor: wait;
   opacity: 0.65;
 }
 
-.auth-page--login .form-error {
+.auth-page:is(.auth-page--login, .auth-page--register) .form-error {
   margin: 0;
   padding: 13px 15px;
   border: 1px solid rgba(180, 49, 49, 0.15);
@@ -11196,7 +11196,7 @@ html[dir='rtl'] .footer-contact a:hover {
   line-height: 1.55;
 }
 
-.auth-page--login .auth-helper {
+.auth-page:is(.auth-page--login, .auth-page--register) .auth-helper {
   margin: 0;
   color: var(--color-muted);
   font-size: 0.84rem;
@@ -11204,16 +11204,16 @@ html[dir='rtl'] .footer-contact a:hover {
   text-align: center;
 }
 
-.auth-page--login .auth-helper .text-link {
+.auth-page:is(.auth-page--login, .auth-page--register) .auth-helper .text-link {
   color: var(--color-primary);
   font-weight: 900;
 }
 
-.auth-page--login .auth-helper .text-link:hover {
+.auth-page:is(.auth-page--login, .auth-page--register) .auth-helper .text-link:hover {
   color: var(--color-gold);
 }
 
-.auth-page--login .auth-card > .button-link {
+.auth-page:is(.auth-page--login, .auth-page--register) .auth-card > .button-link {
   position: absolute;
   z-index: 4;
   top: 28px;
@@ -11228,59 +11228,59 @@ html[dir='rtl'] .footer-contact a:hover {
   backdrop-filter: blur(14px);
 }
 
-.auth-page--login .auth-card > .button-link:hover {
+.auth-page:is(.auth-page--login, .auth-page--register) .auth-card > .button-link:hover {
   background: rgba(255, 255, 255, 0.15);
   color: #ffffff;
 }
 
 @media (max-width: 880px) {
-  .auth-page--login .auth-card {
+  .auth-page:is(.auth-page--login, .auth-page--register) .auth-card {
     grid-template-columns: 1fr;
     min-height: 0;
   }
 
-  .auth-page--login .form-group-heading {
+  .auth-page:is(.auth-page--login, .auth-page--register) .form-group-heading {
     min-height: 430px;
   }
 
-  .auth-page--login .form-card {
+  .auth-page:is(.auth-page--login, .auth-page--register) .form-card {
     max-width: 620px;
   }
 }
 
 @media (max-width: 600px) {
-  .auth-page--login {
+  .auth-page:is(.auth-page--login, .auth-page--register) {
     display: block;
     min-height: 0;
     padding-top: 34px;
     padding-bottom: 78px;
   }
 
-  .auth-page--login .auth-card {
+  .auth-page:is(.auth-page--login, .auth-page--register) .auth-card {
     border-radius: 30px;
   }
 
-  .auth-page--login .form-group-heading {
+  .auth-page:is(.auth-page--login, .auth-page--register) .form-group-heading {
     min-height: 390px;
     padding: 96px 24px 38px;
   }
 
-  .auth-page--login .form-group-heading .form-section-icon {
+  .auth-page:is(.auth-page--login, .auth-page--register) .form-group-heading .form-section-icon {
     top: 30px;
     inset-inline-start: 24px;
     width: 52px;
     height: 52px;
   }
 
-  .auth-page--login .form-group-heading h1 {
+  .auth-page:is(.auth-page--login, .auth-page--register) .form-group-heading h1 {
     font-size: clamp(2.5rem, 13vw, 4rem);
   }
 
-  .auth-page--login .form-card {
+  .auth-page:is(.auth-page--login, .auth-page--register) .form-card {
     padding: 30px 22px 34px;
   }
 
-  .auth-page--login .auth-card > .button-link {
+  .auth-page:is(.auth-page--login, .auth-page--register) .auth-card > .button-link {
     top: 30px;
     inset-inline-end: 22px;
     inset-inline-start: auto;
@@ -11288,8 +11288,94 @@ html[dir='rtl'] .footer-contact a:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .auth-page--login input,
-  .auth-page--login .button-link {
+  .auth-page:is(.auth-page--login, .auth-page--register) input,
+  .auth-page:is(.auth-page--login, .auth-page--register) .button-link {
     transition: none;
+  }
+}
+
+/* =========================================================
+   Visual system refresh — register page v1
+   Extends the shared authentication shell
+   ========================================================= */
+
+.auth-page--register .auth-card {
+  min-height: 760px;
+}
+
+.auth-page--register .form-group-heading {
+  padding-bottom: clamp(46px, 6vw, 76px);
+}
+
+.auth-page--register .form-card {
+  gap: 16px;
+  padding-top: clamp(30px, 4vw, 48px);
+  padding-bottom: clamp(30px, 4vw, 48px);
+}
+
+.auth-page--register .form-card select {
+  width: 100%;
+  min-height: 54px;
+  padding: 0 44px 0 16px;
+  border: 1px solid rgba(7, 56, 62, 0.11);
+  border-radius: 18px;
+  background-color: #ffffff;
+  color: var(--color-primary);
+  font-weight: 800;
+  box-shadow: 0 11px 28px rgba(7, 56, 62, 0.045);
+  outline: none;
+  cursor: pointer;
+}
+
+[dir="rtl"] .auth-page--register .form-card select {
+  padding-right: 16px;
+  padding-left: 44px;
+}
+
+.auth-page--register .form-card select:hover {
+  border-color: rgba(7, 56, 62, 0.2);
+}
+
+.auth-page--register .form-card select:focus {
+  border-color: rgba(194, 154, 82, 0.8);
+  box-shadow:
+    0 0 0 4px rgba(194, 154, 82, 0.14),
+    0 12px 30px rgba(7, 56, 62, 0.055);
+}
+
+.auth-page--register .form-card input[type="tel"] {
+  direction: ltr;
+  text-align: start;
+}
+
+.auth-page--register .form-card > .button-link {
+  margin-top: 8px;
+}
+
+.auth-page--register .auth-helper {
+  padding-top: 2px;
+}
+
+@media (max-width: 880px) {
+  .auth-page--register .auth-card {
+    min-height: 0;
+  }
+
+  .auth-page--register .form-group-heading {
+    min-height: 390px;
+  }
+
+  .auth-page--register .form-card {
+    max-width: 650px;
+  }
+}
+
+@media (max-width: 600px) {
+  .auth-page--register .form-group-heading {
+    min-height: 360px;
+  }
+
+  .auth-page--register .form-card {
+    gap: 15px;
   }
 }
