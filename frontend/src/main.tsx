@@ -5,7 +5,10 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AuthProvider } from './auth/AuthContext';
 import { LanguageProvider } from './i18n/LanguageContext';
-import './styles.css';
+import './styles/legacy.css';
+import './styles/foundation.css';
+import './styles/marketplace.css';
+import './styles/pages.css';
 
 function Root() {
   return (
