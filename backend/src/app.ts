@@ -17,6 +17,7 @@ import { landmarksRouter } from './routes/landmarks';
 import { listingsRouter } from './routes/listings';
 import { travelAgenciesRouter } from './routes/travelAgencies';
 import { uploadsRouter } from './routes/uploads';
+import { prisma } from './lib/prisma';
 
 export function createApp() {
   const app = express();
@@ -76,6 +77,28 @@ export function createApp() {
       environment: env.NODE_ENV
     });
   });
+
+  app.get('/api/ready', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+
+    res.json({
+      ok: true,
+      app: 'lux.om API',
+      database: 'connected',
+      environment: env.NODE_ENV
+    });
+  } catch (error) {
+    console.error('Readiness check failed:', error);
+
+    res.status(503).json({
+      ok: false,
+      app: 'lux.om API',
+      database: 'unavailable',
+      environment: env.NODE_ENV
+    });
+  }
+});
 
   app.use('/api/auth', authRouter);
   app.use('/api/dashboard', dashboardRouter);
