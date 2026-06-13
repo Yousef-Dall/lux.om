@@ -462,8 +462,8 @@ export default function Listings() {
     setSortBy('Recommended');
   }
 
-  return (
-    <section className="page-section container">
+return (
+  <section className="page-section container listings-page">
       <SectionHeader
         eyebrow={t.listings.eyebrow}
         title={t.listings.title}
@@ -833,13 +833,13 @@ export default function Listings() {
         </div>
       ) : null}
 
-      {!loading && !loadError ? (
-        <div className="listing-grid">
-          {filteredListings.map((listing) => (
-            <ListingCard key={listing.id} listing={listing} />
-          ))}
-        </div>
-      ) : null}
+     {!loading && !loadError && filteredListings.length > 0 ? (
+  <div className="listing-grid listings-page__grid">
+    {filteredListings.map((listing) => (
+      <ListingCard key={listing.id} listing={listing} />
+    ))}
+  </div>
+) : null}
 
       {!loading && !loadError && filteredListings.length === 0 ? (
         <div className="empty-state empty-state--premium">
