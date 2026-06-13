@@ -394,7 +394,7 @@ export default function AddActivity() {
   }
 
   return (
-    <section className="page-section container">
+  <section className="page-section container add-listing-page add-activity-page">
       <SectionHeader
         eyebrow={addActivityCopy.eyebrow}
         title={addActivityCopy.title ?? copy.addActivityTitle}
