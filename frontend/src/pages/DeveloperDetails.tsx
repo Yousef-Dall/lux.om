@@ -153,7 +153,7 @@ export default function DeveloperDetails() {
   }
 
   return (
-    <article>
+    <article className="developer-details-page">
       <section className="developer-profile-hero">
         <div className="container developer-profile-hero__grid">
           <div>
