@@ -118,7 +118,7 @@ viewProfile: 'View company profile',
   const linkedPropertyCount = listings.filter((listing) => listing.developerId).length;
 
   return (
-    <section className="page-section container">
+    <section className="page-section container partner-directory-page developers-page">
       <SectionHeader
         eyebrow={copy.eyebrow}
         title={copy.title}
@@ -131,14 +131,20 @@ viewProfile: 'View company profile',
         }
       />
 
-      <section className="developer-hero-panel" aria-labelledby="developer-network-title">
+      <section
+  className="developer-hero-panel partner-directory-hero"
+  aria-labelledby="developer-network-title"
+>
         <div>
           <p className="eyebrow">{copy.network}</p>
           <h2 id="developer-network-title">{copy.heroTitle}</h2>
           <p>{copy.heroText}</p>
         </div>
 
-        <div className="developer-hero-stats" aria-label="Developer marketplace statistics">
+        <div
+  className="developer-hero-stats partner-directory-stats"
+  aria-label="Developer marketplace statistics"
+>
           <span>
             <strong>{developmentCompanies.length}</strong>
             {copy.developerProfiles}
