@@ -34,6 +34,33 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { Activity, DevelopmentCompany, Landmark, Listing, TravelAgency } from '../types';
 
+function prioritizeFeaturedItems<T extends { featured?: boolean }>(
+  items: T[],
+  limit = 3
+): T[] {
+  return [
+    ...items.filter((item) => item.featured === true),
+    ...items.filter((item) => item.featured !== true)
+  ].slice(0, limit);
+}
+
+function prioritizePartners<
+  T extends { featured?: boolean; verified?: boolean }
+>(
+  partners: T[],
+  limit = 3
+): T[] {
+  return [
+    ...partners.filter((partner) => partner.featured === true),
+    ...partners.filter(
+      (partner) => partner.featured !== true && partner.verified === true
+    ),
+    ...partners.filter(
+      (partner) => partner.featured !== true && partner.verified !== true
+    )
+  ].slice(0, limit);
+}
+
 export default function Home() {
   const { t, language } = useLanguage();
   const navigate = useNavigate();
@@ -51,14 +78,25 @@ export default function Home() {
   const [selectedLandmark, setSelectedLandmark] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<DiscoveryCategoryValue>('all');
 
-  const featuredListings = listings.filter((listing) => listing.featured).slice(0, 3);
-  const featuredActivities = activities.filter((activity) => activity.featured).slice(0, 3);
-  const featuredDevelopers = developmentCompanies
-    .filter((developer) => developer.featured)
-    .slice(0, 3);
-  const featuredTravelAgencies = travelAgencies
-    .filter((agency) => agency.featured || agency.verified)
-    .slice(0, 3);
+  const homepageListings = useMemo(
+    () => prioritizeFeaturedItems(listings),
+    [listings]
+  );
+
+  const homepageActivities = useMemo(
+    () => prioritizeFeaturedItems(activities),
+    [activities]
+  );
+
+  const homepageDevelopers = useMemo(
+    () => prioritizePartners(developmentCompanies),
+    [developmentCompanies]
+  );
+
+  const homepageTravelAgencies = useMemo(
+    () => prioritizePartners(travelAgencies),
+    [travelAgencies]
+  );
 
   const localizedQuickSearches =
     language === 'ar'
@@ -447,115 +485,128 @@ viewProfile: 'View company profile',
             </div>
           </section>
 
-          <section className="page-section container">
-            <SectionHeader
-              eyebrow={t.home.featuredHomesEyebrow}
-              title={t.home.featuredHomesTitle}
-              description={t.home.featuredHomesDescription}
-              actions={
-                <ButtonLink to="/listings" variant="soft">
-                  {t.common.exploreListings}
-                  <ArrowRight size={16} aria-hidden="true" />
-                </ButtonLink>
-              }
-            />
+          {homepageListings.length > 0 ? (
+            <section className="page-section container home-section home-section--featured">
+              <SectionHeader
+                eyebrow={t.home.featuredHomesEyebrow}
+                title={t.home.featuredHomesTitle}
+                description={t.home.featuredHomesDescription}
+                actions={
+                  <ButtonLink to="/listings" variant="soft">
+                    {t.common.exploreListings}
+                    <ArrowRight size={16} aria-hidden="true" />
+                  </ButtonLink>
+                }
+              />
 
-            <div className="listing-grid listing-grid--featured lux-featured-grid">
-              {featuredListings.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} variant="featured" />
-              ))}
-            </div>
-          </section>
+              <div className="listing-grid listing-grid--featured lux-featured-grid">
+                {homepageListings.map((listing) => (
+                  <ListingCard key={listing.id} listing={listing} variant="featured" />
+                ))}
+              </div>
+            </section>
+          ) : null}
 
-          <section className="page-section container">
-            <SectionHeader
-              eyebrow={discoveryCopy.developersEyebrow}
-              title={discoveryCopy.developersTitle}
-              description={discoveryCopy.developersDescription}
-              actions={
-                <ButtonLink to="/developers" variant="soft">
-                  {discoveryCopy.viewDevelopers}
-                  <ArrowRight size={16} aria-hidden="true" />
-                </ButtonLink>
-              }
-            />
+          {homepageDevelopers.length > 0 ? (
+            <section className="page-section container home-section home-section--partners">
+              <SectionHeader
+                eyebrow={discoveryCopy.developersEyebrow}
+                title={discoveryCopy.developersTitle}
+                description={discoveryCopy.developersDescription}
+                actions={
+                  <ButtonLink to="/developers" variant="soft">
+                    {discoveryCopy.viewDevelopers}
+                    <ArrowRight size={16} aria-hidden="true" />
+                  </ButtonLink>
+                }
+              />
 
-            <div className="travel-agency-grid">
-  {featuredDevelopers.map((developer) => (
-    <PartnerCard
-      key={developer.id}
-      href={`/developers/${developer.slug}`}
-      name={developer.name}
-      image={developer.logo}
-      description={developer.description}
-      headquarters={developer.headquarters || developer.location}
-      phone={developer.phone}
-      email={developer.email}
-      website={developer.website}
-      verified={developer.verified}
-      featured={developer.featured}
-      labels={{
-        verified: discoveryCopy.verifiedDeveloper,
-        featured: discoveryCopy.featured,
-        headquarters: discoveryCopy.headquarters,
-        phone: discoveryCopy.phone,
-        email: discoveryCopy.email,
-        website: discoveryCopy.website,
-        view: discoveryCopy.viewProfile
-      }}
-    />
-  ))}
-</div>
-          </section>
+              <div className="travel-agency-grid home-partner-grid">
+                {homepageDevelopers.map((developer) => (
+                  <PartnerCard
+                    key={developer.id}
+                    href={`/developers/${developer.slug}`}
+                    name={developer.name}
+                    image={developer.logo}
+                    description={developer.description}
+                    headquarters={developer.headquarters || developer.location}
+                    phone={developer.phone}
+                    email={developer.email}
+                    website={developer.website}
+                    verified={developer.verified}
+                    featured={developer.featured}
+                    labels={{
+                      verified: discoveryCopy.verifiedDeveloper,
+                      featured: discoveryCopy.featured,
+                      headquarters: discoveryCopy.headquarters,
+                      phone: discoveryCopy.phone,
+                      email: discoveryCopy.email,
+                      website: discoveryCopy.website,
+                      view: discoveryCopy.viewProfile
+                    }}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
 
-          <section className="page-section container">
-            <SectionHeader
-              eyebrow={discoveryCopy.agenciesEyebrow}
-              title={discoveryCopy.agenciesTitle}
-              description={discoveryCopy.agenciesDescription}
-              actions={
-                <ButtonLink to="/travel-agencies" variant="soft">
-                  {discoveryCopy.viewAgencies}
-                  <ArrowRight size={16} aria-hidden="true" />
-                </ButtonLink>
-              }
-            />
+          {homepageTravelAgencies.length > 0 ? (
+            <section className="page-section container home-section home-section--partners home-section--partners-alt">
+              <SectionHeader
+                eyebrow={discoveryCopy.agenciesEyebrow}
+                title={discoveryCopy.agenciesTitle}
+                description={discoveryCopy.agenciesDescription}
+                actions={
+                  <ButtonLink to="/travel-agencies" variant="soft">
+                    {discoveryCopy.viewAgencies}
+                    <ArrowRight size={16} aria-hidden="true" />
+                  </ButtonLink>
+                }
+              />
 
-            <div className="travel-agency-grid">
-  {featuredTravelAgencies.map((agency) => (
-    <PartnerCard
-      key={agency.id}
-      href={`/travel-agencies/${agency.slug}`}
-      name={agency.name}
-      image={agency.logo}
-      description={agency.description}
-      headquarters={agency.headquarters || agency.location}
-      phone={agency.phone}
-      email={agency.email}
-      website={agency.website}
-      verified={agency.verified}
-      featured={agency.featured}
-      labels={{
-        verified: discoveryCopy.verifiedAgency,
-        featured: discoveryCopy.featured,
-        headquarters: discoveryCopy.headquarters,
-        phone: discoveryCopy.phone,
-        email: discoveryCopy.email,
-        website: discoveryCopy.website,
-        view: discoveryCopy.viewAgency
-      }}
-    />
-  ))}
-</div>
-          </section>
+              <div className="travel-agency-grid home-partner-grid">
+                {homepageTravelAgencies.map((agency) => (
+                  <PartnerCard
+                    key={agency.id}
+                    href={`/travel-agencies/${agency.slug}`}
+                    name={agency.name}
+                    image={agency.logo}
+                    description={agency.description}
+                    headquarters={agency.headquarters || agency.location}
+                    phone={agency.phone}
+                    email={agency.email}
+                    website={agency.website}
+                    verified={agency.verified}
+                    featured={agency.featured}
+                    labels={{
+                      verified: discoveryCopy.verifiedAgency,
+                      featured: discoveryCopy.featured,
+                      headquarters: discoveryCopy.headquarters,
+                      phone: discoveryCopy.phone,
+                      email: discoveryCopy.email,
+                      website: discoveryCopy.website,
+                      view: discoveryCopy.viewAgency
+                    }}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section className="lux-trust-section">
             <div className="container">
-              <SectionHeader eyebrow={t.home.whyEyebrow} title={t.home.whyTitle} align="center" />
+              <SectionHeader
+                eyebrow={t.home.whyEyebrow}
+                title={t.home.whyTitle}
+                align="center"
+              />
 
               <div className="benefit-grid lux-benefit-grid">
                 {t.home.benefits.map((item, index) => (
-                  <article className="benefit-card lux-benefit-card" key={item}>
+                  <article
+                    className="benefit-card lux-benefit-card home-benefit-card"
+                    key={item}
+                  >
                     {index === 0 ? (
                       <ShieldCheck aria-hidden="true" />
                     ) : index === 1 ? (
@@ -572,24 +623,27 @@ viewProfile: 'View company profile',
             </div>
           </section>
 
-          <section className="page-section container">
-            <SectionHeader
-              eyebrow={t.home.activitiesEyebrow}
-              title={t.home.activitiesTitle}
-              description={t.home.activitiesDescription}
-              actions={
-                <ButtonLink to="/activities" variant="soft">
-                  {t.common.viewActivities}
-                  <ArrowRight size={16} aria-hidden="true" />
-                </ButtonLink>
-              }
-            />
-            <div className="activity-grid lux-activity-row">
-              {featuredActivities.map((activity) => (
-                <ActivityCard key={activity.id} activity={activity} variant="featured" />
-              ))}
-            </div>
-          </section>
+          {homepageActivities.length > 0 ? (
+            <section className="page-section container home-section home-section--activities">
+              <SectionHeader
+                eyebrow={t.home.activitiesEyebrow}
+                title={t.home.activitiesTitle}
+                description={t.home.activitiesDescription}
+                actions={
+                  <ButtonLink to="/activities" variant="soft">
+                    {t.common.viewActivities}
+                    <ArrowRight size={16} aria-hidden="true" />
+                  </ButtonLink>
+                }
+              />
+
+              <div className="activity-grid lux-activity-row">
+                {homepageActivities.map((activity) => (
+                  <ActivityCard key={activity.id} activity={activity} variant="featured" />
+                ))}
+              </div>
+            </section>
+          ) : null}
         </>
       ) : null}
     </>
