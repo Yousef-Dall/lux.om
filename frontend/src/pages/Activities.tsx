@@ -359,7 +359,7 @@ export default function Activities() {
   }
 
   return (
-    <section className="page-section container">
+  <section className="page-section container activities-page">
       <SectionHeader
         eyebrow={activityCopy.eyebrow}
         title={activityCopy.title}
@@ -646,13 +646,13 @@ export default function Activities() {
         </div>
       ) : null}
 
-      {!loading && !loadError ? (
-        <div className="activity-grid">
-          {filteredActivities.map((activity) => (
-            <ActivityCard key={activity.id} activity={activity} />
-          ))}
-        </div>
-      ) : null}
+      {!loading && !loadError && filteredActivities.length > 0 ? (
+  <div className="activity-grid activities-page__grid">
+    {filteredActivities.map((activity) => (
+      <ActivityCard key={activity.id} activity={activity} />
+    ))}
+  </div>
+) : null}
 
       {!loading && !loadError && filteredActivities.length === 0 ? (
         <div className="empty-state empty-state--premium">
