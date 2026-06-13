@@ -191,7 +191,7 @@ const specItems = [
 ];
 
   return (
-    <article className="details-page">
+    <article className="details-page details-page--listing-detail">
       <section className="details-hero details-hero--listing">
         <div className="container">
           <Link className="back-link" to="/listings">
