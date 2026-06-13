@@ -174,7 +174,7 @@ const listings = dashboardData?.listings ?? [];
 const activities = dashboardData?.activities ?? [];
 
   return (
-    <section className="page-section container">
+   <section className="page-section container dashboard-page">
       <SectionHeader
         eyebrow={t.dashboard.eyebrow}
         title={t.dashboard.title}
