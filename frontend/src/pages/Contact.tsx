@@ -182,7 +182,7 @@ export default function Contact() {
   }
 
   return (
-    <section className="page-section container">
+    <section className="page-section container contact-page">
       <SectionHeader
         eyebrow={t.contact.eyebrow}
         title={t.contact.title}
