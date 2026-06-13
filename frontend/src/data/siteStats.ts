@@ -1,22 +1,22 @@
 export const siteStats = [
   {
-    value: 'Curated',
-    labelEn: 'premium homes and stays',
-    labelAr: 'عقارات وإقامات مختارة'
+    value: 'Properties',
+    labelEn: 'homes, rentals, stays, and investment opportunities',
+    labelAr: 'منازل وإيجارات وإقامات وفرص استثمارية'
   },
   {
-    value: 'Oman',
-    labelEn: 'landmarks and areas covered',
-    labelAr: 'معالم ومناطق داخل عُمان'
+    value: 'Experiences',
+    labelEn: 'curated activities and things to do across Oman',
+    labelAr: 'أنشطة وتجارب مختارة في مختلف أنحاء عُمان'
   },
   {
     value: 'Review-first',
-    labelEn: 'publishing standard',
-    labelAr: 'معيار نشر بعد المراجعة'
+    labelEn: 'marketplace publishing and quality standard',
+    labelAr: 'معيار مراجعة وجودة قبل النشر'
   },
   {
-    value: 'Verified',
-    labelEn: 'partner-ready marketplace',
-    labelAr: 'سوق جاهز للشركاء الموثوقين'
+    value: 'Bilingual',
+    labelEn: 'Arabic and English discovery experience',
+    labelAr: 'تجربة اكتشاف بالعربية والإنجليزية'
   }
 ];

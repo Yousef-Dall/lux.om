@@ -429,28 +429,70 @@ export const translations = {
     },
 
     about: {
-      eyebrow: 'About',
-      title: 'A cleaner marketplace for Oman’s premium property and lifestyle economy',
-      description:
-        'lux.om is designed around trust, presentation, and ease. Owners, buyers, renters, guests, and development companies get a polished marketplace built for serious discovery.',
-      cards: [
-        {
-          title: 'For renters and buyers',
-          text:
-            'Search homes, villas, chalets, short stays, and developer-linked projects with a clear premium experience across mobile and desktop.'
-        },
-        {
-          title: 'For owners and agents',
-          text:
-            'Submit listings, manage inquiries, and keep property presentation consistent through an approval-first publishing workflow.'
-        },
-        {
-          title: 'For development companies',
-          text:
-            'Showcase company profiles, featured projects, and property pipelines so buyers can understand the developer behind each opportunity.'
-        }
-      ]
+  eyebrow: 'About lux.om',
+  title: 'One premium marketplace for discovering Oman',
+  description:
+    'lux.om connects properties, short stays, curated activities, developers, travel agencies, and trusted local partners through one clear bilingual marketplace.',
+
+  visionEyebrow: 'Our vision',
+  visionTitle: 'To become Oman’s most trusted digital destination for places and experiences.',
+  visionText:
+    'We envision one platform where residents, visitors, investors, and partners can confidently discover where to live, stay, invest, and what to experience across Oman.',
+
+  missionEyebrow: 'Our mission',
+  missionTitle: 'Make discovering Oman clearer, more credible, and more connected.',
+  missionText:
+    'We bring verified marketplace supply, transparent information, premium presentation, practical search tools, and local partners together in one easy-to-use Arabic and English experience.',
+
+  discoverEyebrow: 'What you can discover',
+  discoverTitle: 'More than a property marketplace',
+  cards: [
+    {
+      title: 'Properties',
+      text:
+        'Explore homes, apartments, villas, commercial spaces, and investment opportunities for sale or long-term rent across Oman.'
     },
+    {
+      title: 'Short stays',
+      text:
+        'Find curated chalets, holiday homes, villas, and flexible stays for weekends, family trips, and longer visits.'
+    },
+    {
+      title: 'Activities and experiences',
+      text:
+        'Discover outdoor adventures, cultural experiences, tours, wellness activities, family entertainment, and memorable things to do.'
+    },
+    {
+      title: 'Developers and travel agencies',
+      text:
+        'Understand the companies behind projects and experiences through dedicated profiles, approved offerings, and trusted marketplace presence.'
+    }
+  ],
+
+  trustEyebrow: 'Built for confidence',
+  trustTitle: 'A marketplace designed around trust',
+  trustText:
+    'lux.om prioritizes reviewed content, clear information, credible partners, and consistent presentation so users can compare opportunities with greater confidence.',
+  trustItems: [
+    'Review-first marketplace publishing',
+    'Clear property and activity information',
+    'Dedicated developer and travel agency profiles',
+    'Arabic and English discovery experience'
+  ],
+
+  audienceEyebrow: 'Who lux.om serves',
+  audienceTitle: 'Built for people exploring Oman and partners growing within it',
+  audienceText:
+    'The platform supports buyers, renters, residents, tourists, families, investors, owners, agents, developers, travel agencies, and activity providers.',
+
+  ctaEyebrow: 'Start discovering',
+  ctaTitle: 'Find a place, choose an experience, or grow your presence in Oman',
+  ctaText:
+    'Browse curated marketplace opportunities or join lux.om as an owner, activity provider, developer, or travel partner.',
+  exploreProperties: 'Explore properties',
+  exploreActivities: 'Explore activities',
+  becomePartner: 'Become a partner'
+},
 
     dashboard: {
       eyebrow: 'Owner dashboard',
@@ -657,28 +699,70 @@ export const translations = {
     },
 
     about: {
-      eyebrow: 'من نحن',
-      title: 'منصة أوضح لسوق العقارات ونمط الحياة الفاخر في عمان',
-      description:
-        'تم تصميم lux.om حول الثقة، جودة العرض، وسهولة الاستخدام. يحصل الملاك والمشترون والمستأجرون والضيوف وشركات التطوير على منصة احترافية للاكتشاف الجاد.',
-      cards: [
-        {
-          title: 'للمستأجرين والمشترين',
-          text:
-            'ابحث عن البيوت، الفلل، الشاليهات، الإقامات القصيرة، والمشاريع المرتبطة بالمطورين من خلال تجربة واضحة وراقية على الجوال والكمبيوتر.'
-        },
-        {
-          title: 'للملاك والوكلاء',
-          text:
-            'أرسل العقارات، تابع الاستفسارات، وحافظ على جودة عرض العقارات من خلال نظام مراجعة قبل النشر.'
-        },
-        {
-          title: 'لشركات التطوير',
-          text:
-            'اعرض ملفات الشركات والمشاريع المميزة وقوائم العقارات حتى يفهم المشترون المطور خلف كل فرصة.'
-        }
-      ]
+  eyebrow: 'عن lux.om',
+  title: 'منصة واحدة راقية لاكتشاف عُمان',
+  description:
+    'تجمع lux.om العقارات، الإقامات القصيرة، الأنشطة المختارة، المطورين، وكالات السفر، والشركاء المحليين الموثوقين في سوق رقمي ثنائي اللغة وواضح.',
+
+  visionEyebrow: 'رؤيتنا',
+  visionTitle: 'أن نصبح الوجهة الرقمية الأكثر موثوقية في عُمان للأماكن والتجارب.',
+  visionText:
+    'نطمح إلى منصة واحدة تساعد السكان والزوار والمستثمرين والشركاء على اكتشاف أماكن السكن والإقامة والاستثمار والتجارب المميزة في مختلف أنحاء عُمان بثقة.',
+
+  missionEyebrow: 'رسالتنا',
+  missionTitle: 'جعل اكتشاف عُمان أوضح وأكثر موثوقية وترابطاً.',
+  missionText:
+    'نجمع العروض المراجعة، المعلومات الواضحة، جودة العرض، أدوات البحث العملية، والشركاء المحليين في تجربة سهلة الاستخدام باللغتين العربية والإنجليزية.',
+
+  discoverEyebrow: 'ماذا يمكنك أن تكتشف',
+  discoverTitle: 'أكثر من مجرد منصة عقارية',
+  cards: [
+    {
+      title: 'العقارات',
+      text:
+        'اكتشف المنازل والشقق والفلل والعقارات التجارية والفرص الاستثمارية للبيع أو الإيجار طويل المدة في مختلف مناطق عُمان.'
     },
+    {
+      title: 'الإقامات القصيرة',
+      text:
+        'اختر من الشاليهات وبيوت العطلات والفلل والإقامات المرنة لعطلات نهاية الأسبوع والرحلات العائلية والزيارات الطويلة.'
+    },
+    {
+      title: 'الأنشطة والتجارب',
+      text:
+        'اكتشف المغامرات الخارجية والتجارب الثقافية والجولات والأنشطة الصحية والترفيه العائلي والفعاليات المميزة.'
+    },
+    {
+      title: 'المطورون ووكالات السفر',
+      text:
+        'تعرّف إلى الشركات التي تقف خلف المشاريع والتجارب من خلال ملفات مخصصة وعروض معتمدة وحضور موثوق داخل المنصة.'
+    }
+  ],
+
+  trustEyebrow: 'مصممة للثقة',
+  trustTitle: 'سوق رقمي يعتمد على الوضوح والمصداقية',
+  trustText:
+    'تعطي lux.om الأولوية للمحتوى المراجع والمعلومات الواضحة والشركاء الموثوقين والعرض المتناسق لمساعدة المستخدمين على المقارنة واتخاذ قرارات أفضل.',
+  trustItems: [
+    'مراجعة المحتوى قبل النشر',
+    'معلومات واضحة للعقارات والأنشطة',
+    'ملفات مخصصة للمطورين ووكالات السفر',
+    'تجربة اكتشاف بالعربية والإنجليزية'
+  ],
+
+  audienceEyebrow: 'لمن صُممت lux.om',
+  audienceTitle: 'للأشخاص الذين يكتشفون عُمان وللشركاء الذين ينمون فيها',
+  audienceText:
+    'تخدم المنصة المشترين والمستأجرين والسكان والسياح والعائلات والمستثمرين والملاك والوكلاء والمطورين ووكالات السفر ومقدمي الأنشطة.',
+
+  ctaEyebrow: 'ابدأ الاكتشاف',
+  ctaTitle: 'ابحث عن مكان، اختر تجربة، أو وسّع حضورك في عُمان',
+  ctaText:
+    'تصفح فرص السوق المختارة أو انضم إلى lux.om كمالك أو مقدم نشاط أو مطور أو شريك سياحي.',
+  exploreProperties: 'استكشف العقارات',
+  exploreActivities: 'استكشف الأنشطة',
+  becomePartner: 'انضم كشريك'
+},
 
     dashboard: {
       eyebrow: 'لوحة المالك',
