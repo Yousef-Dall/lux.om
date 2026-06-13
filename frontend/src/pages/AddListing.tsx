@@ -353,7 +353,7 @@ export default function AddListing() {
   }
 
   return (
-    <section className="page-section container">
+  <section className="page-section container add-listing-page">
       <SectionHeader
         eyebrow={t.addListing.eyebrow}
         title={t.addListing.title}
