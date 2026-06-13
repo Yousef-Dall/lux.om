@@ -118,7 +118,7 @@ export default function TravelAgencyDetails() {
   }
 
   return (
-    <article className="details-page">
+    <article className="details-page travel-agency-details-page">
       <section className="details-hero details-hero--developer">
         <div className="container">
           <Link className="back-link" to="/travel-agencies">
