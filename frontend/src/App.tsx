@@ -133,32 +133,56 @@ function RequireAdmin({ children }: { children: ReactNode }) {
 function NotFoundPage() {
   const { language } = useLanguage();
 
-  const copy =
-    language === 'ar'
-      ? {
-          eyebrow: '404',
-          title: 'الصفحة غير موجودة',
-          text: 'الصفحة التي تبحث عنها غير موجودة أو تم نقلها.',
-          action: 'الرجوع للرئيسية'
-        }
-      : {
-          eyebrow: '404',
-          title: 'Page not found',
-          text: 'The page you are looking for does not exist or has been moved.',
-          action: 'Back to home'
-        };
+ const copy =
+  language === 'ar'
+    ? {
+        eyebrow: 'خطأ 404',
+        title: 'يبدو أنك وصلت إلى مكان غير موجود',
+        text:
+          'قد يكون الرابط قديمًا أو تم نقل الصفحة. يمكنك العودة للرئيسية أو متابعة اكتشاف العقارات والأنشطة في عُمان.',
+        home: 'العودة للرئيسية',
+        properties: 'استكشف العقارات',
+        activities: 'استكشف الأنشطة'
+      }
+    : {
+        eyebrow: 'Error 404',
+        title: 'This destination could not be found',
+        text:
+          'The link may be outdated or the page may have moved. Return home or continue discovering properties and activities across Oman.',
+        home: 'Back to home',
+        properties: 'Explore properties',
+        activities: 'Explore activities'
+      };
 
   return (
-    <section className="page-section container not-found" aria-labelledby="not-found-title">
-      <p className="eyebrow">{copy.eyebrow}</p>
-      <h1 id="not-found-title">{copy.title}</h1>
-      <p>{copy.text}</p>
+  <section className="page-section container not-found" aria-labelledby="not-found-title">
+    <div className="not-found__panel">
+      <span className="not-found__code" aria-hidden="true">
+        404
+      </span>
 
-      <Link className="button-link button-link--primary" to="/">
-        {copy.action}
-      </Link>
-    </section>
-  );
+      <div className="not-found__content">
+        <p className="eyebrow">{copy.eyebrow}</p>
+        <h1 id="not-found-title">{copy.title}</h1>
+        <p>{copy.text}</p>
+
+        <div className="not-found__actions">
+          <Link className="button-link button-link--primary" to="/">
+            {copy.home}
+          </Link>
+
+          <Link className="button-link button-link--secondary" to="/listings">
+            {copy.properties}
+          </Link>
+
+          <Link className="button-link button-link--ghost" to="/activities">
+            {copy.activities}
+          </Link>
+        </div>
+      </div>
+    </div>
+  </section>
+);
 }
 
 export default function App() {
