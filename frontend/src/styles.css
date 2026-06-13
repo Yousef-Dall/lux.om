@@ -11379,3 +11379,26 @@ html[dir='rtl'] .footer-contact a:hover {
     gap: 15px;
   }
 }
+/* Fix nested-looking authentication inputs */
+
+.auth-page:is(.auth-page--login, .auth-page--register) .input-with-icon {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.auth-page:is(.auth-page--login, .auth-page--register)
+  .input-with-icon
+  input {
+  display: block;
+  width: 100%;
+  margin: 0;
+  box-sizing: border-box;
+}
