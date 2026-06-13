@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { env } from '../config/env';
+import { storeImageInCloudinary } from './cloudinaryStorage';
 
 export type StoreImageInput = {
   buffer: Buffer;
@@ -53,6 +54,10 @@ async function storeImageLocally(input: StoreImageInput): Promise<StoredImage> {
 export async function storeImage(input: StoreImageInput): Promise<StoredImage> {
   if (env.STORAGE_DRIVER === 'local') {
     return storeImageLocally(input);
+  }
+
+  if (env.STORAGE_DRIVER === 'cloudinary') {
+    return storeImageInCloudinary(input);
   }
 
   throw new Error(`Unsupported storage driver: ${env.STORAGE_DRIVER}`);

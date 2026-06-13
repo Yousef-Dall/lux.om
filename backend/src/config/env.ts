@@ -43,9 +43,13 @@ const envSchema = z
     }),
     JWT_SECRET: z.string().min(24, 'JWT_SECRET must be at least 24 characters long'),
     CORS_ORIGIN: corsOriginsSchema,
-    STORAGE_DRIVER: z.enum(['local']).default('local'),
+    STORAGE_DRIVER: z.enum(['local', 'cloudinary']).default('local'),
     UPLOAD_DIR: z.string().default('uploads'),
-    MAX_UPLOAD_MB: z.coerce.number().positive().default(5)
+    MAX_UPLOAD_MB: z.coerce.number().positive().default(5),
+    CLOUDINARY_CLOUD_NAME: z.string().trim().optional().transform((value) => value || undefined),
+    CLOUDINARY_API_KEY: z.string().trim().optional().transform((value) => value || undefined),
+    CLOUDINARY_API_SECRET: z.string().trim().optional().transform((value) => value || undefined),
+    CLOUDINARY_FOLDER: z.string().trim().default('lux-om')
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && env.JWT_SECRET.includes('replace-this')) {
@@ -54,6 +58,24 @@ const envSchema = z
         path: ['JWT_SECRET'],
         message: 'JWT_SECRET must be changed before running in production'
       });
+    }
+
+    if (env.STORAGE_DRIVER === 'cloudinary') {
+      const requiredCloudinaryFields = [
+        ['CLOUDINARY_CLOUD_NAME', env.CLOUDINARY_CLOUD_NAME],
+        ['CLOUDINARY_API_KEY', env.CLOUDINARY_API_KEY],
+        ['CLOUDINARY_API_SECRET', env.CLOUDINARY_API_SECRET]
+      ] as const;
+
+      for (const [field, value] of requiredCloudinaryFields) {
+        if (!value) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: 'Cloudinary credentials are required when STORAGE_DRIVER=cloudinary'
+          });
+        }
+      }
     }
   });
 
