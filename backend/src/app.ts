@@ -1,4 +1,3 @@
-import path from 'path';
 import compression from 'compression';
 import cors from 'cors';
 import express from 'express';
@@ -17,12 +16,14 @@ import { landmarksRouter } from './routes/landmarks';
 import { listingsRouter } from './routes/listings';
 import { travelAgenciesRouter } from './routes/travelAgencies';
 import { uploadsRouter } from './routes/uploads';
+import {
+  getLocalUploadDirectory,
+  usesLocalImageStorage
+} from './storage/imageStorage';
 import { prisma } from './lib/prisma';
 
 export function createApp() {
   const app = express();
-  const uploadDirectory = path.resolve(process.cwd(), env.UPLOAD_DIR);
-
   app.set('trust proxy', 1);
 
   app.use(
@@ -54,13 +55,15 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: false }));
 
-  app.use(
-    '/uploads',
-    express.static(uploadDirectory, {
-      maxAge: isProduction ? '7d' : 0,
-      immutable: isProduction
-    })
-  );
+  if (usesLocalImageStorage()) {
+    app.use(
+      '/uploads',
+      express.static(getLocalUploadDirectory(), {
+        maxAge: isProduction ? '7d' : 0,
+        immutable: isProduction
+      })
+    );
+  }
 
   app.get('/health', (_req, res) => {
     res.json({

@@ -43,6 +43,7 @@ const envSchema = z
     }),
     JWT_SECRET: z.string().min(24, 'JWT_SECRET must be at least 24 characters long'),
     CORS_ORIGIN: corsOriginsSchema,
+    STORAGE_DRIVER: z.enum(['local']).default('local'),
     UPLOAD_DIR: z.string().default('uploads'),
     MAX_UPLOAD_MB: z.coerce.number().positive().default(5)
   })

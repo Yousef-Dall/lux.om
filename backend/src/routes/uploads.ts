@@ -1,42 +1,31 @@
-import fs from 'fs';
-import path from 'path';
-import crypto from 'crypto';
+import path from 'node:path';
 import { Router } from 'express';
 import multer from 'multer';
 
 import { env, maxUploadBytes } from '../config/env';
 import { requireAuth } from '../middleware/auth';
+import { storeImage } from '../storage/imageStorage';
 import { AppError } from '../utils/http';
 
 export const uploadsRouter = Router();
 
-const uploadPath = path.resolve(process.cwd(), env.UPLOAD_DIR);
+const allowedMimeTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif'
+]);
 
-fs.mkdirSync(uploadPath, {
-  recursive: true
-});
-
-const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
-
-const allowedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
-
-const storage = multer.diskStorage({
-  destination: uploadPath,
-  filename: (_req, file, callback) => {
-    const extension = path.extname(file.originalname).toLowerCase();
-
-    if (!allowedExtensions.has(extension)) {
-      callback(new AppError(400, 'Unsupported image file extension'), '');
-      return;
-    }
-
-    const safeFilename = `${Date.now()}-${crypto.randomBytes(12).toString('hex')}${extension}`;
-    callback(null, safeFilename);
-  }
-});
+const allowedExtensions = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.gif'
+]);
 
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: maxUploadBytes,
     files: 1
@@ -62,16 +51,7 @@ function getUploadedFile(req: Express.Request) {
   return files?.image?.[0] ?? files?.file?.[0] ?? null;
 }
 
-function deleteUploadedFile(filePath: string) {
-  fs.unlink(filePath, (error) => {
-    if (error) {
-      console.error(`Failed to delete invalid upload: ${filePath}`, error);
-    }
-  });
-}
-
-function hasValidImageSignature(filePath: string, mimetype: string) {
-  const buffer = fs.readFileSync(filePath);
+function hasValidImageSignature(buffer: Buffer, mimetype: string) {
   const header = buffer.subarray(0, 16);
 
   if (mimetype === 'image/jpeg') {
@@ -122,11 +102,14 @@ uploadsRouter.post('/', requireAuth(), (req, res, next) => {
   upload.fields([
     { name: 'image', maxCount: 1 },
     { name: 'file', maxCount: 1 }
-  ])(req, res, (error) => {
+  ])(req, res, async (error) => {
     try {
       if (error instanceof multer.MulterError) {
         if (error.code === 'LIMIT_FILE_SIZE') {
-          throw new AppError(400, `File is too large. Maximum size is ${env.MAX_UPLOAD_MB}MB`);
+          throw new AppError(
+            400,
+            `File is too large. Maximum size is ${env.MAX_UPLOAD_MB}MB`
+          );
         }
 
         if (error.code === 'LIMIT_UNEXPECTED_FILE') {
@@ -146,26 +129,31 @@ uploadsRouter.post('/', requireAuth(), (req, res, next) => {
         throw new AppError(400, 'No file uploaded');
       }
 
-      const isValidImage = hasValidImageSignature(uploadedFile.path, uploadedFile.mimetype);
+      const extension = path.extname(uploadedFile.originalname).toLowerCase();
 
-      if (!isValidImage) {
-        deleteUploadedFile(uploadedFile.path);
-        throw new AppError(400, 'Uploaded file content does not match a supported image format');
+      if (!allowedExtensions.has(extension)) {
+        throw new AppError(400, 'Unsupported image file extension');
       }
 
-      const url = `/uploads/${uploadedFile.filename}`;
+      if (!hasValidImageSignature(uploadedFile.buffer, uploadedFile.mimetype)) {
+        throw new AppError(
+          400,
+          'Uploaded file content does not match a supported image format'
+        );
+      }
+
+      const storedFile = await storeImage({
+        buffer: uploadedFile.buffer,
+        extension,
+        mimetype: uploadedFile.mimetype,
+        originalName: uploadedFile.originalname
+      });
 
       res.status(201).json({
-        url,
-        fileUrl: url,
-        imageUrl: url,
-        file: {
-          originalName: uploadedFile.originalname,
-          filename: uploadedFile.filename,
-          size: uploadedFile.size,
-          mimetype: uploadedFile.mimetype,
-          url
-        }
+        url: storedFile.url,
+        fileUrl: storedFile.url,
+        imageUrl: storedFile.url,
+        file: storedFile
       });
     } catch (caughtError) {
       next(caughtError);
