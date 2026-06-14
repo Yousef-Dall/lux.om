@@ -6,6 +6,11 @@ import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
 import { getLinkedPartnerTier, getManualPartnerTier } from '../utils/partnerTier';
+import {
+  buildSearchRelevance,
+  paginateRankedIds,
+  restoreRankedOrder
+} from '../utils/searchRanking';
 import { slugify } from '../utils/slugify';
 
 export const listingsRouter = Router();
@@ -465,23 +470,185 @@ listingsRouter.get('/', async (req, res, next) => {
     }
 
 
-    const listings = await prisma.listing.findMany({
-      where: {
-        status: 'APPROVED',
-        AND: listingFilters
-      },
-      include: listingInclude,
-      orderBy: [
-        {
-          partnerTier: 'desc'
-        },
-        {
-          createdAt: 'desc'
+    const listingWhere: Prisma.ListingWhereInput = {
+      status: 'APPROVED',
+      AND: listingFilters
+    };
+
+    let listings: Prisma.ListingGetPayload<{
+      include: typeof listingInclude;
+    }>[];
+
+    if (search) {
+      const candidates = await prisma.listing.findMany({
+        where: listingWhere,
+        select: {
+          id: true,
+          title: true,
+          titleEn: true,
+          titleAr: true,
+          description: true,
+          descriptionEn: true,
+          descriptionAr: true,
+          location: true,
+          locationEn: true,
+          locationAr: true,
+          type: true,
+          typeEn: true,
+          typeAr: true,
+          price: true,
+
+          developerId: true,
+          developerNameEn: true,
+          developerNameAr: true,
+          nearestLandmarkId: true,
+
+          beds: true,
+          baths: true,
+          sqm: true,
+          maxGuests: true,
+          minStayNights: true,
+          parking: true,
+          floor: true,
+          furnishing: true,
+          view: true,
+          paymentFrequency: true,
+
+          partnerTier: true,
+          createdAt: true,
+
+          developer: {
+            select: {
+              nameEn: true,
+              nameAr: true
+            }
+          },
+          nearestLandmark: {
+            select: {
+              nameEn: true,
+              nameAr: true
+            }
+          },
+          amenities: {
+            select: {
+              name: true,
+              nameEn: true,
+              nameAr: true
+            }
+          },
+          images: {
+            select: {
+              id: true
+            }
+          }
         }
-      ],
-      take: query.take,
-      skip: query.skip
-    });
+      });
+
+      const orderedIds = paginateRankedIds(
+        candidates.map((candidate) => {
+          const relatedSearchValues = [
+            candidate.developerNameEn,
+            candidate.developerNameAr,
+            candidate.developer?.nameEn,
+            candidate.developer?.nameAr,
+            candidate.nearestLandmark?.nameEn,
+            candidate.nearestLandmark?.nameAr,
+            ...candidate.amenities.flatMap((amenity) => [
+              amenity.name,
+              amenity.nameEn,
+              amenity.nameAr
+            ])
+          ];
+
+          const qualityScore =
+            Math.min(candidate.images.length, 3) * 2 +
+            Math.min(candidate.amenities.length, 5) +
+            Number((candidate.descriptionEn ?? '').trim().length >= 80) +
+            Number(Boolean(candidate.titleAr)) +
+            Number(Boolean(candidate.descriptionAr)) +
+            Number(Boolean(candidate.locationAr)) +
+            Number(Boolean(candidate.typeAr)) +
+            Number(candidate.beds > 0) +
+            Number(candidate.baths > 0) +
+            Number(candidate.sqm > 0) +
+            Number(Boolean(candidate.maxGuests)) +
+            Number(Boolean(candidate.minStayNights)) +
+            Number(candidate.parking === true) +
+            Number(Boolean(candidate.floor)) +
+            Number(Boolean(candidate.furnishing)) +
+            Number(Boolean(candidate.view)) +
+            Number(Boolean(candidate.paymentFrequency)) +
+            Number(Boolean(candidate.nearestLandmarkId)) +
+            Number(
+              Boolean(
+                candidate.developerId ||
+                  candidate.developerNameEn ||
+                  candidate.developerNameAr
+              )
+            );
+
+          return {
+            id: candidate.id,
+            relevance: buildSearchRelevance(search, [
+              [
+                candidate.title,
+                candidate.titleEn,
+                candidate.titleAr
+              ],
+              [
+                candidate.type,
+                candidate.typeEn,
+                candidate.typeAr,
+                candidate.location,
+                candidate.locationEn,
+                candidate.locationAr,
+                candidate.price
+              ],
+              relatedSearchValues,
+              [
+                candidate.description,
+                candidate.descriptionEn,
+                candidate.descriptionAr
+              ]
+            ]),
+            partnerTier: candidate.partnerTier,
+            qualityScore,
+            createdAt: candidate.createdAt
+          };
+        }),
+        query.skip,
+        query.take
+      );
+
+      const rankedListings =
+        orderedIds.length > 0
+          ? await prisma.listing.findMany({
+              where: {
+                id: {
+                  in: orderedIds
+                }
+              },
+              include: listingInclude
+            })
+          : [];
+
+      listings = restoreRankedOrder(rankedListings, orderedIds);
+    } else {
+      listings = await prisma.listing.findMany({
+        where: listingWhere,
+        include: listingInclude,
+        orderBy: [
+          {
+            partnerTier: 'desc'
+          },
+          {
+            createdAt: 'desc'
+          }
+        ],
+        take: query.take,
+        skip: query.skip
+      });
+    }
 
     res.json({
       listings,

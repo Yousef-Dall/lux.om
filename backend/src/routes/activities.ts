@@ -6,6 +6,11 @@ import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
 import { getLinkedPartnerTier, getManualPartnerTier } from '../utils/partnerTier';
+import {
+  buildSearchRelevance,
+  paginateRankedIds,
+  restoreRankedOrder
+} from '../utils/searchRanking';
 import { slugify } from '../utils/slugify';
 
 export const activitiesRouter = Router();
@@ -596,23 +601,192 @@ activitiesRouter.get('/', async (req, res, next) => {
       });
     }
 
-    const activities = await prisma.activity.findMany({
-      where: {
-        status: 'APPROVED',
-        AND: activityFilters
-      },
-      include: activityInclude,
-      orderBy: [
-        {
-          partnerTier: 'desc'
-        },
-        {
-          createdAt: 'desc'
+    const activityWhere: Prisma.ActivityWhereInput = {
+      status: 'APPROVED',
+      AND: activityFilters
+    };
+
+    let activities: Prisma.ActivityGetPayload<{
+      include: typeof activityInclude;
+    }>[];
+
+    if (search) {
+      const candidates = await prisma.activity.findMany({
+        where: activityWhere,
+        select: {
+          id: true,
+          titleEn: true,
+          titleAr: true,
+          descriptionEn: true,
+          descriptionAr: true,
+          locationEn: true,
+          locationAr: true,
+          categoryEn: true,
+          categoryAr: true,
+          providerEn: true,
+          providerAr: true,
+          price: true,
+
+          durationMinutes: true,
+          durationLabelEn: true,
+          durationLabelAr: true,
+          durationType: true,
+          groupSize: true,
+          language: true,
+          difficulty: true,
+          activityType: true,
+
+          availabilityDays: true,
+          availabilityStartTime: true,
+          availabilityEndTime: true,
+
+          familyFriendly: true,
+          includesTransfer: true,
+          mealIncluded: true,
+          outdoor: true,
+
+          travelAgencyId: true,
+          nearestLandmarkId: true,
+          partnerTier: true,
+          createdAt: true,
+
+          travelAgency: {
+            select: {
+              nameEn: true,
+              nameAr: true
+            }
+          },
+          nearestLandmark: {
+            select: {
+              nameEn: true,
+              nameAr: true
+            }
+          },
+          highlights: {
+            select: {
+              textEn: true,
+              textAr: true
+            }
+          },
+          images: {
+            select: {
+              id: true
+            }
+          }
         }
-      ],
-      take: query.take,
-      skip: query.skip
-    });
+      });
+
+      const orderedIds = paginateRankedIds(
+        candidates.map((candidate) => {
+          const relatedSearchValues = [
+            candidate.providerEn,
+            candidate.providerAr,
+            candidate.travelAgency?.nameEn,
+            candidate.travelAgency?.nameAr,
+            candidate.nearestLandmark?.nameEn,
+            candidate.nearestLandmark?.nameAr,
+            ...candidate.highlights.flatMap((highlight) => [
+              highlight.textEn,
+              highlight.textAr
+            ])
+          ];
+
+          const qualityScore =
+            Math.min(candidate.images.length, 3) * 2 +
+            Math.min(candidate.highlights.length, 5) +
+            Number(candidate.descriptionEn.trim().length >= 80) +
+            Number(Boolean(candidate.titleAr)) +
+            Number(Boolean(candidate.descriptionAr)) +
+            Number(Boolean(candidate.locationAr)) +
+            Number(Boolean(candidate.categoryAr)) +
+            Number(Boolean(candidate.durationMinutes)) +
+            Number(Boolean(candidate.durationLabelEn)) +
+            Number(Boolean(candidate.durationLabelAr)) +
+            Number(Boolean(candidate.durationType)) +
+            Number(Boolean(candidate.groupSize)) +
+            Number(Boolean(candidate.language)) +
+            Number(Boolean(candidate.difficulty)) +
+            Number(Boolean(candidate.activityType)) +
+            Number(candidate.availabilityDays.length > 0) +
+            Number(Boolean(candidate.availabilityStartTime)) +
+            Number(Boolean(candidate.availabilityEndTime)) +
+            Number(Boolean(candidate.nearestLandmarkId)) +
+            Number(
+              Boolean(
+                candidate.travelAgencyId ||
+                  candidate.providerEn ||
+                  candidate.providerAr
+              )
+            );
+
+          return {
+            id: candidate.id,
+            relevance: buildSearchRelevance(search, [
+              [
+                candidate.titleEn,
+                candidate.titleAr
+              ],
+              [
+                candidate.categoryEn,
+                candidate.categoryAr,
+                candidate.locationEn,
+                candidate.locationAr,
+                candidate.price,
+                candidate.durationLabelEn,
+                candidate.durationLabelAr,
+                candidate.durationType,
+                candidate.activityType,
+                candidate.groupSize,
+                candidate.difficulty,
+                candidate.language
+              ],
+              relatedSearchValues,
+              [
+                candidate.descriptionEn,
+                candidate.descriptionAr
+              ]
+            ]),
+            partnerTier: candidate.partnerTier,
+            qualityScore,
+            createdAt: candidate.createdAt
+          };
+        }),
+        query.skip,
+        query.take
+      );
+
+      const rankedActivities =
+        orderedIds.length > 0
+          ? await prisma.activity.findMany({
+              where: {
+                id: {
+                  in: orderedIds
+                }
+              },
+              include: activityInclude
+            })
+          : [];
+
+      activities = restoreRankedOrder(
+        rankedActivities,
+        orderedIds
+      );
+    } else {
+      activities = await prisma.activity.findMany({
+        where: activityWhere,
+        include: activityInclude,
+        orderBy: [
+          {
+            partnerTier: 'desc'
+          },
+          {
+            createdAt: 'desc'
+          }
+        ],
+        take: query.take,
+        skip: query.skip
+      });
+    }
 
     res.json({
       activities,
