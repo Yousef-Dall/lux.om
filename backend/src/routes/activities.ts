@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -102,12 +103,38 @@ familyFriendly: z.coerce.boolean().default(false),
   })
   .strict();
 
+const optionalBooleanQuerySchema = z
+  .union([z.boolean(), z.enum(['true', 'false'])])
+  .optional()
+  .transform((value) => {
+    if (value === undefined) return undefined;
+
+    return value === true || value === 'true';
+  });
+
 const activitiesQuerySchema = z.object({
   search: z.string().trim().optional(),
   category: z.string().trim().optional(),
   difficulty: z.string().trim().optional(),
+  location: z.string().trim().optional(),
+  nearestLandmarkId: z.string().trim().optional(),
   travelAgencyId: z.string().trim().optional(),
-  featured: z.coerce.boolean().optional(),
+
+  availableDay: dayNameSchema.optional(),
+  availableFrom: timeSchema.optional(),
+  availableUntil: timeSchema.optional(),
+
+  durationType: z.enum(['Short', 'Half day', 'Full day', 'Overnight']).optional(),
+  activityType: z.enum(['Private', 'Group', 'Both']).optional(),
+
+  familyFriendly: optionalBooleanQuerySchema,
+  includesTransfer: optionalBooleanQuerySchema,
+  mealIncluded: optionalBooleanQuerySchema,
+  outdoor: optionalBooleanQuerySchema,
+  featured: optionalBooleanQuerySchema,
+
+  price: z.string().trim().optional(),
+
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0)
 });
@@ -150,133 +177,429 @@ activitiesRouter.get('/', async (req, res, next) => {
   try {
     const query = activitiesQuerySchema.parse(req.query);
     const search = query.search?.trim();
+    const activityFilters: Prisma.ActivityWhereInput[] = [];
 
-    const activities = await prisma.activity.findMany({
-      where: {
-        status: 'APPROVED',
-       ...(typeof query.featured === 'boolean'
-  ? query.featured
-    ? {
-        travelAgency: {
-          is: {
-            featured: true
-          }
-        }
-      }
-    : {
+    if (typeof query.featured === 'boolean') {
+      activityFilters.push(
+        query.featured
+          ? {
+              travelAgency: {
+                is: {
+                  featured: true
+                }
+              }
+            }
+          : {
+              OR: [
+                {
+                  travelAgencyId: null
+                },
+                {
+                  travelAgency: {
+                    is: {
+                      featured: false
+                    }
+                  }
+                }
+              ]
+            }
+      );
+    }
+
+    if (query.travelAgencyId) {
+      activityFilters.push({
+        travelAgencyId: query.travelAgencyId
+      });
+    }
+
+    if (query.category) {
+      activityFilters.push({
         OR: [
           {
-            travelAgencyId: null
+            categoryEn: {
+              contains: query.category,
+              mode: 'insensitive'
+            }
           },
           {
-            travelAgency: {
+            categoryAr: {
+              contains: query.category,
+              mode: 'insensitive'
+            }
+          }
+        ]
+      });
+    }
+
+    if (query.difficulty) {
+      activityFilters.push({
+        difficulty: {
+          contains: query.difficulty,
+          mode: 'insensitive'
+        }
+      });
+    }
+
+    if (query.location) {
+      activityFilters.push({
+        OR: [
+          {
+            locationEn: {
+              contains: query.location,
+              mode: 'insensitive'
+            }
+          },
+          {
+            locationAr: {
+              contains: query.location,
+              mode: 'insensitive'
+            }
+          },
+          {
+            nearestLandmark: {
               is: {
-                featured: false
+                OR: [
+                  {
+                    nameEn: {
+                      contains: query.location,
+                      mode: 'insensitive'
+                    }
+                  },
+                  {
+                    nameAr: {
+                      contains: query.location,
+                      mode: 'insensitive'
+                    }
+                  }
+                ]
               }
             }
           }
         ]
+      });
+    }
+
+    if (query.nearestLandmarkId) {
+      activityFilters.push({
+        nearestLandmarkId: query.nearestLandmarkId
+      });
+    }
+
+    if (query.availableDay) {
+      activityFilters.push({
+        OR: [
+          {
+            availabilityDays: {
+              has: query.availableDay
+            }
+          },
+          {
+            availabilityDays: {
+              isEmpty: true
+            }
+          }
+        ]
+      });
+    }
+
+    if (query.availableFrom) {
+      const startTimeFilters: Prisma.ActivityWhereInput[] = [
+        {
+          availabilityStartTime: {
+            gte: query.availableFrom
+          }
+        }
+      ];
+
+      if (query.availableFrom <= '09:00') {
+        startTimeFilters.push({
+          availabilityStartTime: null
+        });
       }
-  : {}),
-        ...(query.travelAgencyId ? { travelAgencyId: query.travelAgencyId } : {}),
-        ...(query.category
+
+      activityFilters.push({
+        OR: startTimeFilters
+      });
+    }
+
+    if (query.availableUntil) {
+      const endTimeFilters: Prisma.ActivityWhereInput[] = [
+        {
+          availabilityEndTime: {
+            lte: query.availableUntil
+          }
+        }
+      ];
+
+      if (query.availableUntil >= '18:00') {
+        endTimeFilters.push({
+          availabilityEndTime: null
+        });
+      }
+
+      activityFilters.push({
+        OR: endTimeFilters
+      });
+    }
+
+    if (query.durationType) {
+      activityFilters.push(
+        query.durationType === 'Short'
           ? {
               OR: [
                 {
-                  categoryEn: {
-                    contains: query.category,
-                    mode: 'insensitive'
-                  }
+                  durationType: 'Short'
                 },
                 {
-                  categoryAr: {
-                    contains: query.category,
-                    mode: 'insensitive'
-                  }
+                  durationType: null
                 }
               ]
             }
-          : {}),
-        ...(query.difficulty
-          ? {
-              difficulty: {
-                contains: query.difficulty,
-                mode: 'insensitive'
+          : {
+              durationType: query.durationType
+            }
+      );
+    }
+
+    if (query.activityType) {
+      if (query.activityType === 'Both') {
+        activityFilters.push({
+          activityType: 'Both'
+        });
+      } else if (query.activityType === 'Private') {
+        activityFilters.push({
+          OR: [
+            {
+              activityType: {
+                in: ['Private', 'Both']
+              }
+            },
+            {
+              activityType: null
+            }
+          ]
+        });
+      } else {
+        activityFilters.push({
+          activityType: {
+            in: ['Group', 'Both']
+          }
+        });
+      }
+    }
+
+    if (query.familyFriendly === true) {
+      activityFilters.push({
+        familyFriendly: true
+      });
+    }
+
+    if (query.includesTransfer === true) {
+      activityFilters.push({
+        includesTransfer: true
+      });
+    }
+
+    if (query.mealIncluded === true) {
+      activityFilters.push({
+        mealIncluded: true
+      });
+    }
+
+    if (query.outdoor === true) {
+      activityFilters.push({
+        outdoor: true
+      });
+    }
+
+    if (query.price) {
+      activityFilters.push({
+        price: {
+          contains: query.price,
+          mode: 'insensitive'
+        }
+      });
+    }
+
+    if (search) {
+      activityFilters.push({
+        OR: [
+          {
+            titleEn: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            titleAr: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            descriptionEn: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            descriptionAr: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            locationEn: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            locationAr: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            categoryEn: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            categoryAr: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            providerEn: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            providerAr: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            price: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            durationLabelEn: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            durationLabelAr: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            durationType: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            activityType: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            groupSize: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            difficulty: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            language: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            travelAgency: {
+              is: {
+                OR: [
+                  {
+                    nameEn: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  },
+                  {
+                    nameAr: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  }
+                ]
               }
             }
-          : {}),
-        ...(search
-          ? {
-              OR: [
-                {
-                  titleEn: {
-                    contains: search,
-                    mode: 'insensitive'
+          },
+          {
+            nearestLandmark: {
+              is: {
+                OR: [
+                  {
+                    nameEn: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  },
+                  {
+                    nameAr: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
                   }
-                },
-                {
-                  titleAr: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  descriptionEn: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  descriptionAr: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  locationEn: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  locationAr: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  providerEn: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  providerAr: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  travelAgency: {
-                    OR: [
-                      {
-                        nameEn: {
-                          contains: search,
-                          mode: 'insensitive'
-                        }
-                      },
-                      {
-                        nameAr: {
-                          contains: search,
-                          mode: 'insensitive'
-                        }
-                      }
-                    ]
-                  }
-                }
-              ]
+                ]
+              }
             }
-          : {})
+          },
+          {
+            highlights: {
+              some: {
+                OR: [
+                  {
+                    textEn: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  },
+                  {
+                    textAr: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      });
+    }
+
+    const activities = await prisma.activity.findMany({
+      where: {
+        status: 'APPROVED',
+        AND: activityFilters
       },
       include: activityInclude,
       orderBy: [

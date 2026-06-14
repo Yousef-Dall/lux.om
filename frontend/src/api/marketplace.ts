@@ -32,13 +32,40 @@ type ListingParams = ListParams & {
   transaction?: string;
   type?: string;
   location?: string;
+  nearestLandmarkId?: string;
+  developerId?: string;
+  minBeds?: number;
+  minBaths?: number;
+  minSqm?: number;
+  minGuests?: number;
+  minParking?: number;
+  price?: string;
+  furnishing?: string;
+  view?: string;
+  amenities?: string;
 };
 
 type ActivityParams = ListParams & {
   category?: string;
   difficulty?: string;
+  location?: string;
+  nearestLandmarkId?: string;
   travelAgencyId?: string;
+
+  availableDay?: string;
+  availableFrom?: string;
+  availableUntil?: string;
+
+  durationType?: string;
+  activityType?: string;
+
+  familyFriendly?: boolean;
+  includesTransfer?: boolean;
+  mealIncluded?: boolean;
+  outdoor?: boolean;
   featured?: boolean;
+
+  price?: string;
 };
 
 type DeveloperParams = ListParams & {

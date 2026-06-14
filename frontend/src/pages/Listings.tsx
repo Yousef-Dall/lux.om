@@ -17,6 +17,7 @@ import { getDevelopers, getLandmarks, getListings } from '../api/marketplace';
 import { ListingCard } from '../components/Cards';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { DevelopmentCompany, Landmark, Listing, ListingTransaction } from '../types';
 
@@ -121,6 +122,10 @@ export default function Listings() {
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortOption>('Recommended');
 
+  const debouncedQuery = useDebouncedValue(query);
+  const debouncedLocation = useDebouncedValue(location);
+  const debouncedPriceKeyword = useDebouncedValue(priceKeyword);
+
   const copy =
     language === 'ar'
       ? {
@@ -163,22 +168,87 @@ export default function Listings() {
   useEffect(() => {
     let isMounted = true;
 
-    async function loadPageData() {
+    async function loadFilterData() {
       try {
-        setLoading(true);
-        setLoadError('');
-
-        const [apiListings, apiLandmarks, apiDevelopers] = await Promise.all([
-          getListings(language, { take: 100 }),
+        const [apiLandmarks, apiDevelopers] = await Promise.all([
           getLandmarks(language, { take: 100 }),
           getDevelopers(language, { take: 100 })
         ]);
 
         if (!isMounted) return;
 
-        setListings(apiListings);
         setLandmarks(apiLandmarks);
         setDevelopmentCompanies(apiDevelopers);
+      } catch (error) {
+        if (!isMounted) return;
+
+        console.error(error);
+        setLoadError(copy.error);
+      }
+    }
+
+    void loadFilterData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [language, copy.error]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const selectedLandmarkId = selectedLandmarkSlug
+      ? landmarks.find((landmark) => landmark.slug === selectedLandmarkSlug)?.id
+      : undefined;
+
+    const selectedDeveloperId = selectedDeveloperSlug
+      ? developmentCompanies.find(
+          (developer) => developer.slug === selectedDeveloperSlug
+        )?.id
+      : undefined;
+
+    if (selectedLandmarkSlug && !selectedLandmarkId) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    if (selectedDeveloperSlug && !selectedDeveloperId) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    async function loadListings() {
+      try {
+        setLoading(true);
+        setLoadError('');
+
+        const apiListings = await getListings(language, {
+          search: debouncedQuery.trim() || undefined,
+          transaction: transaction !== 'All' ? transaction : undefined,
+          type: propertyType !== 'All' ? propertyType : undefined,
+          location: debouncedLocation.trim() || undefined,
+          nearestLandmarkId: selectedLandmarkId,
+          developerId: selectedDeveloperId,
+          minBeds: minBeds ? Number(minBeds) : undefined,
+          minBaths: minBaths ? Number(minBaths) : undefined,
+          minSqm: minSqm ? Number(minSqm) : undefined,
+          minGuests: minGuests ? Number(minGuests) : undefined,
+          minParking: minParking ? Number(minParking) : undefined,
+          price: debouncedPriceKeyword.trim() || undefined,
+          furnishing: furnishing !== 'All' ? furnishing : undefined,
+          view: view !== 'All' ? view : undefined,
+          amenities:
+            selectedAmenities.length > 0
+              ? selectedAmenities.join(',')
+              : undefined,
+          take: 100
+        });
+
+        if (!isMounted) return;
+
+        setListings(apiListings);
       } catch (error) {
         if (!isMounted) return;
 
@@ -191,12 +261,32 @@ export default function Listings() {
       }
     }
 
-    void loadPageData();
+    void loadListings();
 
     return () => {
       isMounted = false;
     };
-  }, [language, copy.error]);
+  }, [
+    language,
+    debouncedQuery,
+    transaction,
+    propertyType,
+    debouncedLocation,
+    selectedLandmarkSlug,
+    selectedDeveloperSlug,
+    landmarks,
+    developmentCompanies,
+    minBeds,
+    minBaths,
+    minSqm,
+    minGuests,
+    minParking,
+    debouncedPriceKeyword,
+    furnishing,
+    view,
+    selectedAmenities,
+    copy.error
+  ]);
 
   const selectedLandmark = useMemo(
     () => landmarks.find((landmark) => landmark.slug === selectedLandmarkSlug),
@@ -332,104 +422,30 @@ export default function Listings() {
   const activeFilterCount = activeChips.length;
 
   const filteredListings = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    const normalizedLocation = location.trim().toLowerCase();
-    const normalizedPriceKeyword = priceKeyword.trim().toLowerCase();
-
-    const filtered = listings.filter((listing) => {
-      const searchableListingText = [
-        listing.title,
-        listing.location,
-        listing.type,
-        listing.description,
-        listing.price,
-        listing.developer?.name,
-        listing.nearestLandmarkName,
-        ...listing.amenities
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      const matchesQuery = !normalizedQuery || searchableListingText.includes(normalizedQuery);
-      const matchesTransaction = transaction === 'All' || listing.transaction === transaction;
-      const matchesType = propertyType === 'All' || listing.type === propertyType;
-
-      const matchesLocation =
-        !normalizedLocation || listing.location.toLowerCase().includes(normalizedLocation);
-
-      const matchesLandmark =
-        !selectedLandmark || listing.nearestLandmarkId === selectedLandmark.id;
-
-      const matchesDeveloper =
-        !selectedDeveloper || listing.developerId === selectedDeveloper.id;
-
-      const matchesBeds = !minBeds || listing.beds >= Number(minBeds);
-      const matchesBaths = !minBaths || listing.baths >= Number(minBaths);
-      const matchesSqm = !minSqm || listing.sqm >= Number(minSqm);
-      const matchesGuests = !minGuests || (listing.maxGuests ?? 0) >= Number(minGuests);
-      const matchesParking = !minParking || (listing.parkingSpaces ?? 0) >= Number(minParking);
-
-      const matchesPriceKeyword =
-        !normalizedPriceKeyword || listing.price.toLowerCase().includes(normalizedPriceKeyword);
-
-      const matchesFurnishing = furnishing === 'All' || listing.furnishing === furnishing;
-      const matchesView = view === 'All' || listing.view === view;
-
-      const matchesAmenities =
-        selectedAmenities.length === 0 ||
-        selectedAmenities.every((amenity) => listing.amenities.includes(amenity));
-
-      return (
-        matchesQuery &&
-        matchesTransaction &&
-        matchesType &&
-        matchesLocation &&
-        matchesLandmark &&
-        matchesDeveloper &&
-        matchesBeds &&
-        matchesBaths &&
-        matchesSqm &&
-        matchesGuests &&
-        matchesParking &&
-        matchesPriceKeyword &&
-        matchesFurnishing &&
-        matchesView &&
-        matchesAmenities
-      );
-    });
-
     if (sortBy === 'Recommended') {
-      return filtered;
+      return listings;
     }
 
-    return [...filtered].sort((a, b) => {
-      if (sortBy === 'Price low to high') return getPriceValue(a.price) - getPriceValue(b.price);
-      if (sortBy === 'Price high to low') return getPriceValue(b.price) - getPriceValue(a.price);
-      if (sortBy === 'Largest area') return b.sqm - a.sqm;
-      if (sortBy === 'Newest') return b.id.localeCompare(a.id);
+    return [...listings].sort((a, b) => {
+      if (sortBy === 'Price low to high') {
+        return getPriceValue(a.price) - getPriceValue(b.price);
+      }
+
+      if (sortBy === 'Price high to low') {
+        return getPriceValue(b.price) - getPriceValue(a.price);
+      }
+
+      if (sortBy === 'Largest area') {
+        return b.sqm - a.sqm;
+      }
+
+      if (sortBy === 'Newest') {
+        return b.id.localeCompare(a.id);
+      }
 
       return 0;
     });
-  }, [
-    listings,
-    query,
-    transaction,
-    propertyType,
-    location,
-    selectedLandmark,
-    selectedDeveloper,
-    minBeds,
-    minBaths,
-    minSqm,
-    minGuests,
-    minParking,
-    priceKeyword,
-    furnishing,
-    view,
-    selectedAmenities,
-    sortBy
-  ]);
+  }, [listings, sortBy]);
 
   function toggleAmenity(amenity: string) {
     setSelectedAmenities((current) =>

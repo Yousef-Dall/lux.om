@@ -17,6 +17,7 @@ import ButtonLink from '../components/ButtonLink';
 import { ActivityCard } from '../components/Cards';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { Activity, Landmark } from '../types';
 
@@ -81,6 +82,16 @@ export default function Activities() {
 
   const [priceKeyword, setPriceKeyword] = useState('');
 
+  const debouncedQuery = useDebouncedValue(query);
+  const debouncedLocation = useDebouncedValue(location);
+  const debouncedPriceKeyword = useDebouncedValue(priceKeyword);
+
+  const hasTimeError =
+    Boolean(freeFrom) &&
+    Boolean(freeUntil) &&
+    convertTimeToMinutes(freeFrom) >= convertTimeToMinutes(freeUntil);
+
+
   const activityCopy = t.activities ?? t.experiences;
 
   const copy =
@@ -119,23 +130,85 @@ export default function Activities() {
   useEffect(() => {
     let isMounted = true;
 
-    async function loadPageData() {
+    async function loadLandmarks() {
+      try {
+        const apiLandmarks = await getLandmarks(language, {
+          take: 100
+        });
+
+        if (!isMounted) return;
+
+        setLandmarks(apiLandmarks);
+      } catch (error) {
+        if (!isMounted) return;
+
+        console.error(error);
+        setLoadError(copy.error);
+      }
+    }
+
+    void loadLandmarks();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [language, copy.error]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const selectedLandmarkId = nearLandmark
+      ? landmarks.find((landmark) => landmark.slug === nearLandmark)?.id
+      : undefined;
+
+    if (nearLandmark && !selectedLandmarkId) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    if (hasTimeError) {
+      setActivities([]);
+      setLoading(false);
+
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    async function loadActivities() {
       try {
         setLoading(true);
         setLoadError('');
 
-        const [apiActivities, apiLandmarks] = await Promise.all([
-          getActivities(language, {
-            take: 100,
-            travelAgencyId: travelAgencyIdParam || undefined
-          }),
-          getLandmarks(language, { take: 100 })
-        ]);
+        const selectedDay = getDayName(selectedDate);
+
+        const apiActivities = await getActivities(language, {
+          search: debouncedQuery.trim() || undefined,
+          category: category !== 'All' ? category : undefined,
+          location: debouncedLocation.trim() || undefined,
+          nearestLandmarkId: selectedLandmarkId,
+          travelAgencyId: travelAgencyIdParam || undefined,
+
+          availableDay: selectedDay || undefined,
+          availableFrom: freeFrom || undefined,
+          availableUntil: freeUntil || undefined,
+
+          durationType: durationType !== 'All' ? durationType : undefined,
+          activityType: activityType !== 'All' ? activityType : undefined,
+
+          familyFriendly: familyFriendly || undefined,
+          includesTransfer: includesTransfer || undefined,
+          mealIncluded: mealIncluded || undefined,
+          outdoor: outdoor || undefined,
+
+          price: debouncedPriceKeyword.trim() || undefined,
+          take: 100
+        });
 
         if (!isMounted) return;
 
         setActivities(apiActivities);
-        setLandmarks(apiLandmarks);
       } catch (error) {
         if (!isMounted) return;
 
@@ -148,12 +221,32 @@ export default function Activities() {
       }
     }
 
-    void loadPageData();
+    void loadActivities();
 
     return () => {
       isMounted = false;
     };
-  }, [language, travelAgencyIdParam, copy.error]);
+  }, [
+    language,
+    debouncedQuery,
+    category,
+    debouncedLocation,
+    nearLandmark,
+    landmarks,
+    travelAgencyIdParam,
+    selectedDate,
+    freeFrom,
+    freeUntil,
+    durationType,
+    activityType,
+    familyFriendly,
+    includesTransfer,
+    mealIncluded,
+    outdoor,
+    debouncedPriceKeyword,
+    hasTimeError,
+    copy.error
+  ]);
 
   const selectedLandmark = useMemo(() => {
     return landmarks.find((landmark) => landmark.slug === nearLandmark);
@@ -169,11 +262,6 @@ export default function Activities() {
       ''
     );
   }, [activities, travelAgencyIdParam]);
-
-  const hasTimeError =
-    Boolean(freeFrom) &&
-    Boolean(freeUntil) &&
-    convertTimeToMinutes(freeFrom) >= convertTimeToMinutes(freeUntil);
 
   const activeFilterCount = useMemo(() => {
     return [
@@ -211,114 +299,7 @@ export default function Activities() {
     priceKeyword
   ]);
 
-  const filteredActivities = useMemo(() => {
-    if (hasTimeError) {
-      return [];
-    }
-
-    const selectedDay = getDayName(selectedDate);
-    const normalizedQuery = query.trim().toLowerCase();
-    const normalizedLocation = location.trim().toLowerCase();
-    const normalizedPriceKeyword = priceKeyword.trim().toLowerCase();
-    const normalizedCategory = category.toLowerCase();
-
-    return activities.filter((activity) => {
-      const searchableText = [
-        activity.title,
-        activity.location,
-        activity.category,
-        activity.description,
-        activity.provider,
-        activity.travelAgency?.name,
-        activity.groupSize,
-        activity.difficulty,
-        activity.language,
-        activity.nearestLandmarkName,
-        ...activity.highlights
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      const matchesQuery = !normalizedQuery || searchableText.includes(normalizedQuery);
-
-      const matchesCategory =
-        category === 'All' || activity.category.toLowerCase().includes(normalizedCategory);
-
-      const matchesLocation =
-        !normalizedLocation ||
-        activity.location.toLowerCase().includes(normalizedLocation) ||
-        activity.nearestLandmarkName?.toLowerCase().includes(normalizedLocation);
-
-      const matchesLandmark =
-        !selectedLandmark || activity.nearestLandmarkId === selectedLandmark.id;
-
-      const matchesDate =
-        !selectedDay ||
-        activity.availability.days.includes(
-          selectedDay as (typeof activity.availability.days)[number]
-        );
-
-      const activityStart = convertTimeToMinutes(activity.availability.startTime);
-      const activityEnd = convertTimeToMinutes(activity.availability.endTime);
-
-      const userStart = freeFrom ? convertTimeToMinutes(freeFrom) : null;
-      const userEnd = freeUntil ? convertTimeToMinutes(freeUntil) : null;
-
-      const matchesTime =
-        (userStart === null || activityStart >= userStart) &&
-        (userEnd === null || activityEnd <= userEnd);
-
-      const matchesDuration =
-        durationType === 'All' || activity.specs.durationType === durationType;
-
-      const matchesActivityType =
-        activityType === 'All' ||
-        activity.specs.experienceType === activityType ||
-        activity.specs.experienceType === 'Both';
-
-      const matchesFamily = !familyFriendly || activity.specs.familyFriendly;
-      const matchesTransfer = !includesTransfer || activity.specs.includesTransfer;
-      const matchesMeal = !mealIncluded || activity.specs.mealIncluded;
-      const matchesOutdoor = !outdoor || activity.specs.outdoor;
-
-      const matchesPrice =
-        !normalizedPriceKeyword || activity.price.toLowerCase().includes(normalizedPriceKeyword);
-
-      return (
-        matchesQuery &&
-        matchesCategory &&
-        matchesLocation &&
-        matchesLandmark &&
-        matchesDate &&
-        matchesTime &&
-        matchesDuration &&
-        matchesActivityType &&
-        matchesFamily &&
-        matchesTransfer &&
-        matchesMeal &&
-        matchesOutdoor &&
-        matchesPrice
-      );
-    });
-  }, [
-    activities,
-    query,
-    category,
-    location,
-    selectedDate,
-    freeFrom,
-    freeUntil,
-    selectedLandmark,
-    durationType,
-    activityType,
-    familyFriendly,
-    includesTransfer,
-    mealIncluded,
-    outdoor,
-    priceKeyword,
-    hasTimeError
-  ]);
+  const filteredActivities = hasTimeError ? [] : activities;
 
   function resetFilters() {
     setQuery('');

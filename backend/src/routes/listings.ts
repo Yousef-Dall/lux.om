@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -78,6 +79,17 @@ const listQuerySchema = z.object({
   transaction: z.enum(['Sale', 'Rent', 'Short stay']).optional(),
   type: z.string().trim().optional(),
   location: z.string().trim().optional(),
+  nearestLandmarkId: z.string().trim().optional(),
+  developerId: z.string().trim().optional(),
+  minBeds: z.coerce.number().int().min(0).optional(),
+  minBaths: z.coerce.number().int().min(0).optional(),
+  minSqm: z.coerce.number().int().min(0).optional(),
+  minGuests: z.coerce.number().int().min(0).optional(),
+  minParking: z.coerce.number().int().min(0).optional(),
+  price: z.string().trim().optional(),
+  furnishing: z.string().trim().optional(),
+  view: z.string().trim().optional(),
+  amenities: z.string().trim().optional(),
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0)
 });
@@ -120,137 +132,343 @@ listingsRouter.get('/', async (req, res, next) => {
   try {
     const query = listQuerySchema.parse(req.query);
     const search = query.search?.trim();
+    const selectedAmenities =
+      query.amenities
+        ?.split(',')
+        .map((amenity) => amenity.trim())
+        .filter(Boolean) ?? [];
+    const listingFilters: Prisma.ListingWhereInput[] = [];
+
+    if (query.transaction) {
+      listingFilters.push({
+        transaction: query.transaction
+      });
+    }
+
+    if (query.type) {
+      listingFilters.push({
+        OR: [
+          {
+            type: {
+              contains: query.type,
+              mode: 'insensitive'
+            }
+          },
+          {
+            typeEn: {
+              contains: query.type,
+              mode: 'insensitive'
+            }
+          },
+          {
+            typeAr: {
+              contains: query.type,
+              mode: 'insensitive'
+            }
+          }
+        ]
+      });
+    }
+
+    if (query.location) {
+      listingFilters.push({
+        OR: [
+          {
+            location: {
+              contains: query.location,
+              mode: 'insensitive'
+            }
+          },
+          {
+            locationEn: {
+              contains: query.location,
+              mode: 'insensitive'
+            }
+          },
+          {
+            locationAr: {
+              contains: query.location,
+              mode: 'insensitive'
+            }
+          }
+        ]
+      });
+    }
+
+    if (query.nearestLandmarkId) {
+      listingFilters.push({
+        nearestLandmarkId: query.nearestLandmarkId
+      });
+    }
+
+    if (query.developerId) {
+      listingFilters.push({
+        developerId: query.developerId
+      });
+    }
+
+    if (query.minBeds !== undefined) {
+      listingFilters.push({
+        beds: {
+          gte: query.minBeds
+        }
+      });
+    }
+
+    if (query.minBaths !== undefined) {
+      listingFilters.push({
+        baths: {
+          gte: query.minBaths
+        }
+      });
+    }
+
+    if (query.minSqm !== undefined) {
+      listingFilters.push({
+        sqm: {
+          gte: query.minSqm
+        }
+      });
+    }
+
+    if (query.minGuests !== undefined) {
+      listingFilters.push({
+        maxGuests: {
+          gte: query.minGuests
+        }
+      });
+    }
+
+    if (query.minParking !== undefined && query.minParking > 0) {
+      listingFilters.push(
+        query.minParking === 1
+          ? {
+              parking: true
+            }
+          : {
+              id: '__no_listing_matches_parking_requirement__'
+            }
+      );
+    }
+
+    if (query.price) {
+      listingFilters.push({
+        price: {
+          contains: query.price,
+          mode: 'insensitive'
+        }
+      });
+    }
+
+    if (query.furnishing) {
+      listingFilters.push({
+        furnishing: query.furnishing
+      });
+    }
+
+    if (query.view) {
+      listingFilters.push({
+        view: query.view
+      });
+    }
+
+    for (const amenity of selectedAmenities) {
+      listingFilters.push({
+        amenities: {
+          some: {
+            OR: [
+              {
+                name: {
+                  equals: amenity,
+                  mode: 'insensitive'
+                }
+              },
+              {
+                nameEn: {
+                  equals: amenity,
+                  mode: 'insensitive'
+                }
+              },
+              {
+                nameAr: {
+                  equals: amenity,
+                  mode: 'insensitive'
+                }
+              }
+            ]
+          }
+        }
+      });
+    }
+
+    if (search) {
+      listingFilters.push({
+        OR: [
+          {
+            title: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            titleEn: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            titleAr: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            description: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            descriptionEn: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            descriptionAr: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            location: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            locationEn: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            locationAr: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            type: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            typeEn: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            typeAr: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            price: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            developerNameEn: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            developerNameAr: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            developer: {
+              is: {
+                OR: [
+                  {
+                    nameEn: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  },
+                  {
+                    nameAr: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            nearestLandmark: {
+              is: {
+                OR: [
+                  {
+                    nameEn: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  },
+                  {
+                    nameAr: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            amenities: {
+              some: {
+                OR: [
+                  {
+                    name: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  },
+                  {
+                    nameEn: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  },
+                  {
+                    nameAr: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      });
+    }
+
 
     const listings = await prisma.listing.findMany({
       where: {
         status: 'APPROVED',
-        ...(query.transaction ? { transaction: query.transaction } : {}),
-        ...(query.type
-          ? {
-              OR: [
-                {
-                  type: {
-                    contains: query.type,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  typeEn: {
-                    contains: query.type,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  typeAr: {
-                    contains: query.type,
-                    mode: 'insensitive'
-                  }
-                }
-              ]
-            }
-          : {}),
-        ...(query.location
-          ? {
-              OR: [
-                {
-                  location: {
-                    contains: query.location,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  locationEn: {
-                    contains: query.location,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  locationAr: {
-                    contains: query.location,
-                    mode: 'insensitive'
-                  }
-                }
-              ]
-            }
-          : {}),
-        ...(search
-          ? {
-              OR: [
-                {
-                  title: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  titleEn: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  titleAr: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  description: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  descriptionEn: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  descriptionAr: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  location: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  locationEn: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  locationAr: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  type: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  typeEn: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                },
-                {
-                  typeAr: {
-                    contains: search,
-                    mode: 'insensitive'
-                  }
-                }
-              ]
-            }
-          : {})
+        AND: listingFilters
       },
       include: listingInclude,
       orderBy: [
