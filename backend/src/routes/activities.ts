@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
+import { getLinkedPartnerTier, getManualPartnerTier } from '../utils/partnerTier';
 import { slugify } from '../utils/slugify';
 
 export const activitiesRouter = Router();
@@ -278,9 +279,14 @@ activitiesRouter.get('/', async (req, res, next) => {
           : {})
       },
       include: activityInclude,
-      orderBy: {
-        createdAt: 'desc'
-      },
+      orderBy: [
+        {
+          partnerTier: 'desc'
+        },
+        {
+          createdAt: 'desc'
+        }
+      ],
       take: query.take,
       skip: query.skip
     });
@@ -399,6 +405,10 @@ activitiesRouter.post(
         );
       }
 
+      const partnerTier = travelAgency
+        ? getLinkedPartnerTier(travelAgency)
+        : getManualPartnerTier(data.providerEn, data.providerAr);
+
       const activity = await prisma.activity.create({
         data: {
           slug,
@@ -411,6 +421,7 @@ activitiesRouter.post(
           categoryEn: data.categoryEn,
           categoryAr: data.categoryAr,
 
+          partnerTier,
           travelAgencyId: travelAgency?.id,
           providerEn: data.providerEn ?? travelAgency?.nameEn,
           providerAr: data.providerAr ?? travelAgency?.nameAr,

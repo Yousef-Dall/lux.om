@@ -4,6 +4,11 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
+import {
+  getLinkedPartnerTier,
+  PARTNER_TIER,
+  resolvePartnerStatus
+} from '../utils/partnerTier';
 import { slugify } from '../utils/slugify';
 
 export const travelAgenciesRouter = Router();
@@ -172,6 +177,13 @@ travelAgenciesRouter.post('/', requireAuth(), requireRole('ADMIN'), async (req, 
   try {
     const data = travelAgencyCreateSchema.parse(req.body);
     const slug = `${slugify(data.nameEn)}-${Date.now().toString(36)}`;
+    const partnerStatus = resolvePartnerStatus(
+      {
+        verified: false,
+        featured: false
+      },
+      data
+    );
 
     const travelAgency = await prisma.travelAgency.create({
       data: {
@@ -187,8 +199,8 @@ travelAgenciesRouter.post('/', requireAuth(), requireRole('ADMIN'), async (req, 
         email: data.email,
         website: data.website,
         establishedYear: data.establishedYear,
-        verified: data.verified,
-        featured: data.featured
+        verified: partnerStatus.verified,
+        featured: partnerStatus.featured
       }
     });
 
@@ -215,11 +227,30 @@ travelAgenciesRouter.patch('/:id', requireAuth(), requireRole('ADMIN'), async (r
       throw new AppError(404, 'Travel agency not found');
     }
 
-    const travelAgency = await prisma.travelAgency.update({
-      where: {
-        id
-      },
-      data
+    const partnerStatus = resolvePartnerStatus(existingAgency, data);
+    const partnerTier = getLinkedPartnerTier(partnerStatus);
+
+    const travelAgency = await prisma.$transaction(async (transaction) => {
+      const updatedAgency = await transaction.travelAgency.update({
+        where: {
+          id
+        },
+        data: {
+          ...data,
+          ...partnerStatus
+        }
+      });
+
+      await transaction.activity.updateMany({
+        where: {
+          travelAgencyId: id
+        },
+        data: {
+          partnerTier
+        }
+      });
+
+      return updatedAgency;
     });
 
     res.json({
@@ -244,10 +275,23 @@ travelAgenciesRouter.delete('/:id', requireAuth(), requireRole('ADMIN'), async (
       throw new AppError(404, 'Travel agency not found');
     }
 
-    await prisma.travelAgency.delete({
-      where: {
-        id
-      }
+    await prisma.$transaction(async (transaction) => {
+      await transaction.activity.updateMany({
+        where: {
+          travelAgencyId: id
+        },
+        data: {
+          providerEn: existingAgency.nameEn,
+          providerAr: existingAgency.nameAr,
+          partnerTier: PARTNER_TIER.UNVERIFIED_OR_MANUAL
+        }
+      });
+
+      await transaction.travelAgency.delete({
+        where: {
+          id
+        }
+      });
     });
 
     res.json({

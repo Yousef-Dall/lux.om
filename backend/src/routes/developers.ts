@@ -4,6 +4,11 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
+import {
+  getLinkedPartnerTier,
+  PARTNER_TIER,
+  resolvePartnerStatus
+} from '../utils/partnerTier';
 import { slugify } from '../utils/slugify';
 
 export const developersRouter = Router();
@@ -202,6 +207,13 @@ developersRouter.post(
     try {
       const data = developerCreateSchema.parse(req.body);
       const slug = `${slugify(data.nameEn)}-${Date.now().toString(36)}`;
+      const partnerStatus = resolvePartnerStatus(
+        {
+          verified: false,
+          featured: false
+        },
+        data
+      );
 
       const developer = await prisma.developerCompany.create({
         data: {
@@ -217,8 +229,8 @@ developersRouter.post(
           email: data.email,
           website: data.website,
           establishedYear: data.establishedYear,
-          verified: data.verified,
-          featured: data.featured
+          verified: partnerStatus.verified,
+          featured: partnerStatus.featured
         },
         include: {
           _count: {
@@ -257,18 +269,37 @@ developersRouter.patch(
         throw new AppError(404, 'Developer company not found');
       }
 
-      const developer = await prisma.developerCompany.update({
-        where: {
-          id
-        },
-        data,
-        include: {
-          _count: {
-            select: {
-              listings: true
+      const partnerStatus = resolvePartnerStatus(existingDeveloper, data);
+      const partnerTier = getLinkedPartnerTier(partnerStatus);
+
+      const developer = await prisma.$transaction(async (transaction) => {
+        const updatedDeveloper = await transaction.developerCompany.update({
+          where: {
+            id
+          },
+          data: {
+            ...data,
+            ...partnerStatus
+          },
+          include: {
+            _count: {
+              select: {
+                listings: true
+              }
             }
           }
-        }
+        });
+
+        await transaction.listing.updateMany({
+          where: {
+            developerId: id
+          },
+          data: {
+            partnerTier
+          }
+        });
+
+        return updatedDeveloper;
       });
 
       res.json({
@@ -298,10 +329,23 @@ developersRouter.delete(
         throw new AppError(404, 'Developer company not found');
       }
 
-      await prisma.developerCompany.delete({
-        where: {
-          id
-        }
+      await prisma.$transaction(async (transaction) => {
+        await transaction.listing.updateMany({
+          where: {
+            developerId: id
+          },
+          data: {
+            developerNameEn: existingDeveloper.nameEn,
+            developerNameAr: existingDeveloper.nameAr,
+            partnerTier: PARTNER_TIER.UNVERIFIED_OR_MANUAL
+          }
+        });
+
+        await transaction.developerCompany.delete({
+          where: {
+            id
+          }
+        });
       });
 
       res.json({

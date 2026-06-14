@@ -399,13 +399,17 @@ export default function Listings() {
       );
     });
 
+    if (sortBy === 'Recommended') {
+      return filtered;
+    }
+
     return [...filtered].sort((a, b) => {
       if (sortBy === 'Price low to high') return getPriceValue(a.price) - getPriceValue(b.price);
       if (sortBy === 'Price high to low') return getPriceValue(b.price) - getPriceValue(a.price);
       if (sortBy === 'Largest area') return b.sqm - a.sqm;
       if (sortBy === 'Newest') return b.id.localeCompare(a.id);
 
-      return Number(Boolean(b.featured)) - Number(Boolean(a.featured));
+      return 0;
     });
   }, [
     listings,

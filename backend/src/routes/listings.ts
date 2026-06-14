@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
+import { getLinkedPartnerTier, getManualPartnerTier } from '../utils/partnerTier';
 import { slugify } from '../utils/slugify';
 
 export const listingsRouter = Router();
@@ -252,9 +253,14 @@ listingsRouter.get('/', async (req, res, next) => {
           : {})
       },
       include: listingInclude,
-      orderBy: {
-        createdAt: 'desc'
-      },
+      orderBy: [
+        {
+          partnerTier: 'desc'
+        },
+        {
+          createdAt: 'desc'
+        }
+      ],
       take: query.take,
       skip: query.skip
     });
@@ -390,6 +396,10 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
     const distanceFromLandmarkEn =
       data.distanceFromLandmarkEn ?? data.distanceFromLandmark ?? undefined;
 
+    const partnerTier = developer
+      ? getLinkedPartnerTier(developer)
+      : getManualPartnerTier(data.developerNameEn, data.developerNameAr);
+
     const listing = await prisma.listing.create({
       data: {
         title: data.title,
@@ -412,6 +422,7 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
         status: req.user?.role === 'ADMIN' ? 'APPROVED' : 'PENDING',
         ownerId: req.user!.id,
 
+        partnerTier,
         developerId: developer?.id,
         developerNameEn: developer ? null : data.developerNameEn,
         developerNameAr: developer ? null : data.developerNameAr,
