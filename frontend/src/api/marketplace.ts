@@ -13,6 +13,7 @@ import type {
   ApiDeveloperCompany,
   ApiLandmark,
   ApiListResponse,
+  ApiPagination,
   ApiListing,
   ApiTravelAgency,
   DevelopmentCompany,
@@ -24,11 +25,63 @@ import type {
 
 type ListParams = {
   search?: string;
+  page?: number;
+  pageSize?: number;
   take?: number;
   skip?: number;
 };
 
+export type MarketplacePagination = {
+  take: number;
+  skip: number;
+  count: number;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
+
+export type MarketplacePage<T> = {
+  items: T[];
+  pagination: MarketplacePagination;
+};
+
+function normalizePagination(
+  pagination: ApiPagination
+): MarketplacePagination {
+  const pageSize = pagination.pageSize ?? pagination.take;
+  const page =
+    pagination.page ??
+    Math.floor(pagination.skip / Math.max(pageSize, 1)) + 1;
+  const total = pagination.total ?? pagination.skip + pagination.count;
+  const totalPages =
+    pagination.totalPages ??
+    (total === 0 ? 0 : Math.ceil(total / Math.max(pageSize, 1)));
+
+  return {
+    take: pagination.take,
+    skip: pagination.skip,
+    count: pagination.count,
+    page,
+    pageSize,
+    total,
+    totalPages,
+    hasNextPage:
+      pagination.hasNextPage ?? page < totalPages,
+    hasPreviousPage:
+      pagination.hasPreviousPage ?? page > 1
+  };
+}
+
 type ListingParams = ListParams & {
+  sort?:
+    | 'recommended'
+    | 'newest'
+    | 'price_asc'
+    | 'price_desc'
+    | 'area_desc';
   transaction?: string;
   type?: string;
   location?: string;
@@ -46,6 +99,11 @@ type ListingParams = ListParams & {
 };
 
 type ActivityParams = ListParams & {
+  sort?:
+    | 'recommended'
+    | 'newest'
+    | 'price_asc'
+    | 'price_desc';
   category?: string;
   difficulty?: string;
   location?: string;
@@ -83,15 +141,31 @@ type LandmarkParams = ListParams & {
   category?: string;
 };
 
+export async function getListingsPage(
+  language: Language,
+  params?: ListingParams
+): Promise<MarketplacePage<Listing>> {
+  const response = await apiClient.get<
+    ApiListResponse<ApiListing, 'listings'>
+  >('/api/listings', {
+    params
+  });
+
+  return {
+    items: response.listings.map((listing) =>
+      mapListing(listing, language)
+    ),
+    pagination: normalizePagination(response.pagination)
+  };
+}
+
 export async function getListings(
   language: Language,
   params?: ListingParams
 ): Promise<Listing[]> {
-  const response = await apiClient.get<ApiListResponse<ApiListing, 'listings'>>('/api/listings', {
-    params
-  });
+  const result = await getListingsPage(language, params);
 
-  return response.listings.map((listing) => mapListing(listing, language));
+  return result.items;
 }
 
 export async function getListingBySlug(
@@ -103,18 +177,31 @@ export async function getListingBySlug(
   return mapListing(response.listing, language);
 }
 
+export async function getActivitiesPage(
+  language: Language,
+  params?: ActivityParams
+): Promise<MarketplacePage<Activity>> {
+  const response = await apiClient.get<
+    ApiListResponse<ApiActivity, 'activities'>
+  >('/api/activities', {
+    params
+  });
+
+  return {
+    items: response.activities.map((activity) =>
+      mapActivity(activity, language)
+    ),
+    pagination: normalizePagination(response.pagination)
+  };
+}
+
 export async function getActivities(
   language: Language,
   params?: ActivityParams
 ): Promise<Activity[]> {
-  const response = await apiClient.get<ApiListResponse<ApiActivity, 'activities'>>(
-    '/api/activities',
-    {
-      params
-    }
-  );
+  const result = await getActivitiesPage(language, params);
 
-  return response.activities.map((activity) => mapActivity(activity, language));
+  return result.items;
 }
 
 export async function getActivityBySlug(

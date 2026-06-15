@@ -218,6 +218,12 @@ export type ApiPagination = {
   take: number;
   skip: number;
   count: number;
+  page?: number;
+  pageSize?: number;
+  total?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
+  hasPreviousPage?: boolean;
 };
 
 export type PublicUser = {

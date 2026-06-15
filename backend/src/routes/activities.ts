@@ -3,11 +3,16 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
+import {
+  createPaginationMetadata,
+  resolvePagination
+} from '../utils/pagination';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
 import { getLinkedPartnerTier, getManualPartnerTier } from '../utils/partnerTier';
 import {
   buildSearchRelevance,
+  paginateExplicitlySortedIds,
   paginateRankedIds,
   restoreRankedOrder
 } from '../utils/searchRanking';
@@ -139,6 +144,17 @@ const activitiesQuerySchema = z.object({
   featured: optionalBooleanQuerySchema,
 
   price: z.string().trim().optional(),
+
+  sort: z
+    .enum([
+      'recommended',
+      'newest',
+      'price_asc',
+      'price_desc'
+    ])
+    .default('recommended'),
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
 
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0)
@@ -606,11 +622,55 @@ activitiesRouter.get('/', async (req, res, next) => {
       AND: activityFilters
     };
 
+    const pagination = resolvePagination(query);
+    const total = await prisma.activity.count({
+      where: activityWhere
+    });
+
     let activities: Prisma.ActivityGetPayload<{
       include: typeof activityInclude;
     }>[];
 
-    if (search) {
+    if (query.sort !== 'recommended') {
+      const candidates = await prisma.activity.findMany({
+        where: activityWhere,
+        select: {
+          id: true,
+          price: true,
+          partnerTier: true,
+          createdAt: true
+        }
+      });
+
+      const orderedIds = paginateExplicitlySortedIds(
+        candidates.map((candidate) => ({
+          id: candidate.id,
+          price: candidate.price,
+          partnerTier: candidate.partnerTier,
+          createdAt: candidate.createdAt
+        })),
+        query.sort,
+        pagination.skip,
+        pagination.take
+      );
+
+      const explicitlySortedActivities =
+        orderedIds.length > 0
+          ? await prisma.activity.findMany({
+              where: {
+                id: {
+                  in: orderedIds
+                }
+              },
+              include: activityInclude
+            })
+          : [];
+
+      activities = restoreRankedOrder(
+        explicitlySortedActivities,
+        orderedIds
+      );
+    } else if (search) {
       const candidates = await prisma.activity.findMany({
         where: activityWhere,
         select: {
@@ -751,8 +811,8 @@ activitiesRouter.get('/', async (req, res, next) => {
             createdAt: candidate.createdAt
           };
         }),
-        query.skip,
-        query.take
+        pagination.skip,
+        pagination.take
       );
 
       const rankedActivities =
@@ -783,18 +843,18 @@ activitiesRouter.get('/', async (req, res, next) => {
             createdAt: 'desc'
           }
         ],
-        take: query.take,
-        skip: query.skip
+        take: pagination.take,
+        skip: pagination.skip
       });
     }
 
     res.json({
       activities,
-      pagination: {
-        take: query.take,
-        skip: query.skip,
-        count: activities.length
-      }
+      pagination: createPaginationMetadata(
+        total,
+        activities.length,
+        pagination
+      )
     });
   } catch (error) {
     next(error);

@@ -13,7 +13,12 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { getDevelopers, getLandmarks, getListings } from '../api/marketplace';
+import {
+  getDevelopers,
+  getLandmarks,
+  getListingsPage,
+  type MarketplacePagination
+} from '../api/marketplace';
 import { ListingCard } from '../components/Cards';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -70,16 +75,47 @@ const sortOptions = [
 type TransactionFilter = (typeof transactionFilters)[number];
 type SortOption = (typeof sortOptions)[number];
 
+type ListingSort =
+  | 'recommended'
+  | 'newest'
+  | 'price_asc'
+  | 'price_desc'
+  | 'area_desc';
+
+const LISTINGS_PAGE_SIZE = 12;
+
+const initialPagination: MarketplacePagination = {
+  take: LISTINGS_PAGE_SIZE,
+  skip: 0,
+  count: 0,
+  page: 1,
+  pageSize: LISTINGS_PAGE_SIZE,
+  total: 0,
+  totalPages: 0,
+  hasNextPage: false,
+  hasPreviousPage: false
+};
+
+function getListingSort(sortBy: SortOption): ListingSort {
+  switch (sortBy) {
+    case 'Newest':
+      return 'newest';
+    case 'Price low to high':
+      return 'price_asc';
+    case 'Price high to low':
+      return 'price_desc';
+    case 'Largest area':
+      return 'area_desc';
+    default:
+      return 'recommended';
+  }
+}
+
 type ActiveChip = {
   key: string;
   label: string;
   onRemove: () => void;
 };
-
-function getPriceValue(price: string) {
-  const match = price.replace(/,/g, '').match(/\d+/);
-  return match ? Number(match[0]) : 0;
-}
 
 function isTransactionFilter(value: string | null): value is ListingTransaction {
   return value === 'Sale' || value === 'Rent' || value === 'Short stay';
@@ -100,6 +136,9 @@ export default function Listings() {
   const [developmentCompanies, setDevelopmentCompanies] = useState<DevelopmentCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] =
+    useState<MarketplacePagination>(initialPagination);
 
   const [query, setQuery] = useState('');
   const [transaction, setTransaction] = useState<TransactionFilter>(
@@ -144,7 +183,11 @@ export default function Listings() {
           quickFilters: 'فلاتر سريعة للغرف والحمامات',
           activeFilters: 'الفلاتر النشطة',
           loading: 'جاري تحميل العقارات...',
-          error: 'تعذر تحميل العقارات. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
+          error: 'تعذر تحميل العقارات. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.',
+          previous: 'السابق',
+          next: 'التالي',
+          page: 'الصفحة',
+          of: 'من'
         }
       : {
           landmark: 'Landmark or area',
@@ -162,7 +205,11 @@ export default function Listings() {
           quickFilters: 'Quick bedroom and bathroom filters',
           activeFilters: 'Active filters',
           loading: 'Loading listings...',
-          error: 'Could not load listings. Make sure the backend is running and try again.'
+          error: 'Could not load listings. Make sure the backend is running and try again.',
+          previous: 'Previous',
+          next: 'Next',
+          page: 'Page',
+          of: 'of'
         };
 
   useEffect(() => {
@@ -195,6 +242,28 @@ export default function Listings() {
   }, [language, copy.error]);
 
   useEffect(() => {
+    setPage(1);
+  }, [
+    language,
+    debouncedQuery,
+    transaction,
+    propertyType,
+    debouncedLocation,
+    selectedLandmarkSlug,
+    selectedDeveloperSlug,
+    minBeds,
+    minBaths,
+    minSqm,
+    minGuests,
+    minParking,
+    debouncedPriceKeyword,
+    furnishing,
+    view,
+    selectedAmenities,
+    sortBy
+  ]);
+
+  useEffect(() => {
     let isMounted = true;
 
     const selectedLandmarkId = selectedLandmarkSlug
@@ -224,10 +293,13 @@ export default function Listings() {
         setLoading(true);
         setLoadError('');
 
-        const apiListings = await getListings(language, {
+        const result = await getListingsPage(language, {
           search: debouncedQuery.trim() || undefined,
-          transaction: transaction !== 'All' ? transaction : undefined,
-          type: propertyType !== 'All' ? propertyType : undefined,
+          sort: getListingSort(sortBy),
+          transaction:
+            transaction !== 'All' ? transaction : undefined,
+          type:
+            propertyType !== 'All' ? propertyType : undefined,
           location: debouncedLocation.trim() || undefined,
           nearestLandmarkId: selectedLandmarkId,
           developerId: selectedDeveloperId,
@@ -237,18 +309,21 @@ export default function Listings() {
           minGuests: minGuests ? Number(minGuests) : undefined,
           minParking: minParking ? Number(minParking) : undefined,
           price: debouncedPriceKeyword.trim() || undefined,
-          furnishing: furnishing !== 'All' ? furnishing : undefined,
+          furnishing:
+            furnishing !== 'All' ? furnishing : undefined,
           view: view !== 'All' ? view : undefined,
           amenities:
             selectedAmenities.length > 0
               ? selectedAmenities.join(',')
               : undefined,
-          take: 100
+          page,
+          pageSize: LISTINGS_PAGE_SIZE
         });
 
         if (!isMounted) return;
 
-        setListings(apiListings);
+        setListings(result.items);
+        setPagination(result.pagination);
       } catch (error) {
         if (!isMounted) return;
 
@@ -285,6 +360,8 @@ export default function Listings() {
     furnishing,
     view,
     selectedAmenities,
+    sortBy,
+    page,
     copy.error
   ]);
 
@@ -421,32 +498,6 @@ export default function Listings() {
 
   const activeFilterCount = activeChips.length;
 
-  const filteredListings = useMemo(() => {
-    if (sortBy === 'Recommended') {
-      return listings;
-    }
-
-    return [...listings].sort((a, b) => {
-      if (sortBy === 'Price low to high') {
-        return getPriceValue(a.price) - getPriceValue(b.price);
-      }
-
-      if (sortBy === 'Price high to low') {
-        return getPriceValue(b.price) - getPriceValue(a.price);
-      }
-
-      if (sortBy === 'Largest area') {
-        return b.sqm - a.sqm;
-      }
-
-      if (sortBy === 'Newest') {
-        return b.id.localeCompare(a.id);
-      }
-
-      return 0;
-    });
-  }, [listings, sortBy]);
-
   function toggleAmenity(amenity: string) {
     setSelectedAmenities((current) =>
       current.includes(amenity)
@@ -480,6 +531,7 @@ export default function Listings() {
     setView('All');
     setSelectedAmenities([]);
     setSortBy('Recommended');
+    setPage(1);
   }
 
 return (
@@ -815,8 +867,10 @@ return (
 
       <div className="listing-results-header listing-results-header--enhanced">
         <p>
-          <strong>{filteredListings.length}</strong>{' '}
-          {filteredListings.length === 1 ? t.listings.result : t.listings.results}
+          <strong>{pagination.total}</strong>{' '}
+          {pagination.total === 1
+            ? t.listings.result
+            : t.listings.results}
         </p>
 
         <div className="results-toolbar">
@@ -853,15 +907,49 @@ return (
         </div>
       ) : null}
 
-     {!loading && !loadError && filteredListings.length > 0 ? (
-  <div className="listing-grid listings-page__grid">
-    {filteredListings.map((listing) => (
-      <ListingCard key={listing.id} listing={listing} />
-    ))}
-  </div>
-) : null}
+      {!loading && !loadError && listings.length > 0 ? (
+        <>
+          <div className="listing-grid listings-page__grid">
+            {listings.map((listing) => (
+              <ListingCard key={listing.id} listing={listing} />
+            ))}
+          </div>
 
-      {!loading && !loadError && filteredListings.length === 0 ? (
+          {pagination.totalPages > 1 ? (
+            <nav
+              className="marketplace-pagination"
+              aria-label={copy.page}
+            >
+              <button
+                type="button"
+                disabled={!pagination.hasPreviousPage}
+                onClick={() =>
+                  setPage((current) => Math.max(1, current - 1))
+                }
+              >
+                {copy.previous}
+              </button>
+
+              <span aria-live="polite">
+                {copy.page} {pagination.page} {copy.of}{' '}
+                {pagination.totalPages}
+              </span>
+
+              <button
+                type="button"
+                disabled={!pagination.hasNextPage}
+                onClick={() =>
+                  setPage((current) => current + 1)
+                }
+              >
+                {copy.next}
+              </button>
+            </nav>
+          ) : null}
+        </>
+      ) : null}
+
+      {!loading && !loadError && listings.length === 0 ? (
         <div className="empty-state empty-state--premium">
           <Sparkles size={34} aria-hidden="true" />
           <h2>{t.listings.noResultsTitle}</h2>

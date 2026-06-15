@@ -12,7 +12,11 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { getActivities, getLandmarks } from '../api/marketplace';
+import {
+  getActivitiesPage,
+  getLandmarks,
+  type MarketplacePagination
+} from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
 import { ActivityCard } from '../components/Cards';
 import SectionHeader from '../components/SectionHeader';
@@ -34,6 +38,46 @@ const categoryFilters = [
 const durationFilters = ['All', 'Short', 'Half day', 'Full day', 'Overnight'] as const;
 
 const activityTypeFilters = ['All', 'Private', 'Group', 'Both'] as const;
+
+const activitySortOptions = [
+  {
+    value: 'recommended',
+    en: 'Recommended',
+    ar: 'موصى به'
+  },
+  {
+    value: 'newest',
+    en: 'Newest',
+    ar: 'الأحدث'
+  },
+  {
+    value: 'price_asc',
+    en: 'Price low to high',
+    ar: 'السعر من الأقل إلى الأعلى'
+  },
+  {
+    value: 'price_desc',
+    en: 'Price high to low',
+    ar: 'السعر من الأعلى إلى الأقل'
+  }
+] as const;
+
+type ActivitySort =
+  (typeof activitySortOptions)[number]['value'];
+
+const ACTIVITIES_PAGE_SIZE = 12;
+
+const initialPagination: MarketplacePagination = {
+  take: ACTIVITIES_PAGE_SIZE,
+  skip: 0,
+  count: 0,
+  page: 1,
+  pageSize: ACTIVITIES_PAGE_SIZE,
+  total: 0,
+  totalPages: 0,
+  hasNextPage: false,
+  hasPreviousPage: false
+};
 
 function getDayName(dateString: string) {
   if (!dateString) return null;
@@ -61,6 +105,9 @@ export default function Activities() {
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] =
+    useState<MarketplacePagination>(initialPagination);
 
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<(typeof categoryFilters)[number]>('All');
@@ -81,6 +128,8 @@ export default function Activities() {
   const [outdoor, setOutdoor] = useState(false);
 
   const [priceKeyword, setPriceKeyword] = useState('');
+  const [sortBy, setSortBy] =
+    useState<ActivitySort>('recommended');
 
   const debouncedQuery = useDebouncedValue(query);
   const debouncedLocation = useDebouncedValue(location);
@@ -107,7 +156,12 @@ export default function Activities() {
           activityType: 'نوع النشاط',
           activeFilters: 'الفلاتر النشطة',
           loading: 'جاري تحميل الأنشطة...',
-          error: 'تعذر تحميل الأنشطة. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
+          error: 'تعذر تحميل الأنشطة. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.',
+          sortBy: 'ترتيب حسب',
+          previous: 'السابق',
+          next: 'التالي',
+          page: 'الصفحة',
+          of: 'من'
         }
       : {
           showingNear: 'Showing activities near',
@@ -120,7 +174,12 @@ export default function Activities() {
           activityType: 'Activity type',
           activeFilters: 'Active filters',
           loading: 'Loading activities...',
-          error: 'Could not load activities. Make sure the backend is running and try again.'
+          error: 'Could not load activities. Make sure the backend is running and try again.',
+          sortBy: 'Sort by',
+          previous: 'Previous',
+          next: 'Next',
+          page: 'Page',
+          of: 'of'
         };
 
   useEffect(() => {
@@ -155,6 +214,28 @@ export default function Activities() {
   }, [language, copy.error]);
 
   useEffect(() => {
+    setPage(1);
+  }, [
+    language,
+    debouncedQuery,
+    category,
+    debouncedLocation,
+    nearLandmark,
+    travelAgencyIdParam,
+    selectedDate,
+    freeFrom,
+    freeUntil,
+    durationType,
+    activityType,
+    familyFriendly,
+    includesTransfer,
+    mealIncluded,
+    outdoor,
+    debouncedPriceKeyword,
+    sortBy
+  ]);
+
+  useEffect(() => {
     let isMounted = true;
 
     const selectedLandmarkId = nearLandmark
@@ -169,6 +250,7 @@ export default function Activities() {
 
     if (hasTimeError) {
       setActivities([]);
+      setPagination(initialPagination);
       setLoading(false);
 
       return () => {
@@ -183,8 +265,9 @@ export default function Activities() {
 
         const selectedDay = getDayName(selectedDate);
 
-        const apiActivities = await getActivities(language, {
+        const result = await getActivitiesPage(language, {
           search: debouncedQuery.trim() || undefined,
+          sort: sortBy,
           category: category !== 'All' ? category : undefined,
           location: debouncedLocation.trim() || undefined,
           nearestLandmarkId: selectedLandmarkId,
@@ -194,8 +277,10 @@ export default function Activities() {
           availableFrom: freeFrom || undefined,
           availableUntil: freeUntil || undefined,
 
-          durationType: durationType !== 'All' ? durationType : undefined,
-          activityType: activityType !== 'All' ? activityType : undefined,
+          durationType:
+            durationType !== 'All' ? durationType : undefined,
+          activityType:
+            activityType !== 'All' ? activityType : undefined,
 
           familyFriendly: familyFriendly || undefined,
           includesTransfer: includesTransfer || undefined,
@@ -203,12 +288,14 @@ export default function Activities() {
           outdoor: outdoor || undefined,
 
           price: debouncedPriceKeyword.trim() || undefined,
-          take: 100
+          page,
+          pageSize: ACTIVITIES_PAGE_SIZE
         });
 
         if (!isMounted) return;
 
-        setActivities(apiActivities);
+        setActivities(result.items);
+        setPagination(result.pagination);
       } catch (error) {
         if (!isMounted) return;
 
@@ -245,6 +332,8 @@ export default function Activities() {
     outdoor,
     debouncedPriceKeyword,
     hasTimeError,
+    sortBy,
+    page,
     copy.error
   ]);
 
@@ -300,6 +389,7 @@ export default function Activities() {
   ]);
 
   const filteredActivities = hasTimeError ? [] : activities;
+  const resultTotal = hasTimeError ? 0 : pagination.total;
 
   function resetFilters() {
     setQuery('');
@@ -316,6 +406,8 @@ export default function Activities() {
     setMealIncluded(false);
     setOutdoor(false);
     setPriceKeyword('');
+    setSortBy('recommended');
+    setPage(1);
     setSearchParams({});
   }
 
@@ -595,22 +687,40 @@ export default function Activities() {
         </div>
       </div>
 
-      <div className="listing-results-header">
+      <div className="listing-results-header listing-results-header--enhanced">
         <p>
-          <strong>{filteredActivities.length}</strong>{' '}
-          {filteredActivities.length === 1
+          <strong>{resultTotal}</strong>{' '}
+          {resultTotal === 1
             ? activityCopy.resultFound
             : activityCopy.resultsFound}
         </p>
 
-        <span>
-          <Sparkles size={16} aria-hidden="true" />
-          {travelAgencyIdParam
-            ? `${copy.resultsAgency}${selectedAgencyName ? ` · ${selectedAgencyName}` : ''}`
-            : selectedLandmark
-              ? `${copy.resultsNear} ${selectedLandmark.name}`
-              : activityCopy.normalAdvanced}
-        </span>
+        <div className="results-toolbar">
+          <label>
+            {copy.sortBy}
+            <select
+              value={sortBy}
+              onChange={(event) =>
+                setSortBy(event.target.value as ActivitySort)
+              }
+            >
+              {activitySortOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {language === 'ar' ? option.ar : option.en}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <span>
+            <Sparkles size={16} aria-hidden="true" />
+            {travelAgencyIdParam
+              ? `${copy.resultsAgency}${selectedAgencyName ? ` · ${selectedAgencyName}` : ''}`
+              : selectedLandmark
+                ? `${copy.resultsNear} ${selectedLandmark.name}`
+                : activityCopy.normalAdvanced}
+          </span>
+        </div>
       </div>
 
       {loading ? (
@@ -628,12 +738,49 @@ export default function Activities() {
       ) : null}
 
       {!loading && !loadError && filteredActivities.length > 0 ? (
-  <div className="activity-grid activities-page__grid">
-    {filteredActivities.map((activity) => (
-      <ActivityCard key={activity.id} activity={activity} />
-    ))}
-  </div>
-) : null}
+        <>
+          <div className="activity-grid activities-page__grid">
+            {filteredActivities.map((activity) => (
+              <ActivityCard
+                key={activity.id}
+                activity={activity}
+              />
+            ))}
+          </div>
+
+          {pagination.totalPages > 1 ? (
+            <nav
+              className="marketplace-pagination"
+              aria-label={copy.page}
+            >
+              <button
+                type="button"
+                disabled={!pagination.hasPreviousPage}
+                onClick={() =>
+                  setPage((current) => Math.max(1, current - 1))
+                }
+              >
+                {copy.previous}
+              </button>
+
+              <span aria-live="polite">
+                {copy.page} {pagination.page} {copy.of}{' '}
+                {pagination.totalPages}
+              </span>
+
+              <button
+                type="button"
+                disabled={!pagination.hasNextPage}
+                onClick={() =>
+                  setPage((current) => current + 1)
+                }
+              >
+                {copy.next}
+              </button>
+            </nav>
+          ) : null}
+        </>
+      ) : null}
 
       {!loading && !loadError && filteredActivities.length === 0 ? (
         <div className="empty-state empty-state--premium">

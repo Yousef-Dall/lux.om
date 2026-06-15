@@ -136,3 +136,116 @@ export function restoreRankedOrder<T extends { id: string }>(
     return record ? [record] : [];
   });
 }
+
+export type ExplicitMarketplaceSort =
+  | 'newest'
+  | 'price_asc'
+  | 'price_desc'
+  | 'area_desc';
+
+export type ExplicitSortCandidate = {
+  id: string;
+  price?: string | null;
+  area?: number | null;
+  partnerTier: number;
+  createdAt: Date;
+};
+
+export function parseSortablePrice(
+  value: string | null | undefined
+): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const match = value
+    .replace(/,/g, '')
+    .match(/\d+(?:\.\d+)?/);
+
+  if (!match) {
+    return null;
+  }
+
+  const amount = Number(match[0]);
+
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function compareNullableNumbers(
+  left: number | null,
+  right: number | null,
+  direction: 'asc' | 'desc'
+) {
+  if (left === null && right === null) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+
+  return direction === 'asc'
+    ? left - right
+    : right - left;
+}
+
+export function paginateExplicitlySortedIds(
+  candidates: ExplicitSortCandidate[],
+  sort: ExplicitMarketplaceSort,
+  skip: number,
+  take: number
+) {
+  return [...candidates]
+    .sort((left, right) => {
+      let primaryDifference = 0;
+
+      if (sort === 'newest') {
+        primaryDifference =
+          right.createdAt.getTime() -
+          left.createdAt.getTime();
+      }
+
+      if (sort === 'price_asc') {
+        primaryDifference = compareNullableNumbers(
+          parseSortablePrice(left.price),
+          parseSortablePrice(right.price),
+          'asc'
+        );
+      }
+
+      if (sort === 'price_desc') {
+        primaryDifference = compareNullableNumbers(
+          parseSortablePrice(left.price),
+          parseSortablePrice(right.price),
+          'desc'
+        );
+      }
+
+      if (sort === 'area_desc') {
+        primaryDifference = compareNullableNumbers(
+          left.area ?? null,
+          right.area ?? null,
+          'desc'
+        );
+      }
+
+      if (primaryDifference !== 0) {
+        return primaryDifference;
+      }
+
+      const partnerDifference =
+        right.partnerTier - left.partnerTier;
+
+      if (partnerDifference !== 0) {
+        return partnerDifference;
+      }
+
+      const freshnessDifference =
+        right.createdAt.getTime() -
+        left.createdAt.getTime();
+
+      if (freshnessDifference !== 0) {
+        return freshnessDifference;
+      }
+
+      return left.id.localeCompare(right.id);
+    })
+    .slice(skip, skip + take)
+    .map((candidate) => candidate.id);
+}
