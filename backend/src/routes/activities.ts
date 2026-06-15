@@ -10,6 +10,7 @@ import {
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
 import { getLinkedPartnerTier, getManualPartnerTier } from '../utils/partnerTier';
+import { deriveStructuredPrice } from '../utils/pricing';
 import {
   buildSearchRelevance,
   paginateExplicitlySortedIds,
@@ -637,6 +638,7 @@ activitiesRouter.get('/', async (req, res, next) => {
         select: {
           id: true,
           price: true,
+          priceAmount: true,
           partnerTier: true,
           createdAt: true
         }
@@ -645,7 +647,9 @@ activitiesRouter.get('/', async (req, res, next) => {
       const orderedIds = paginateExplicitlySortedIds(
         candidates.map((candidate) => ({
           id: candidate.id,
-          price: candidate.price,
+          price:
+            candidate.priceAmount?.toString() ??
+            candidate.price,
           partnerTier: candidate.partnerTier,
           createdAt: candidate.createdAt
         })),
@@ -966,6 +970,8 @@ activitiesRouter.post(
         ? getLinkedPartnerTier(travelAgency)
         : getManualPartnerTier(data.providerEn, data.providerAr);
 
+      const structuredPrice = deriveStructuredPrice(data.price);
+
       const activity = await prisma.activity.create({
         data: {
           slug,
@@ -984,6 +990,10 @@ activitiesRouter.post(
           providerAr: data.providerAr ?? travelAgency?.nameAr,
 
           price: data.price,
+          priceAmount: structuredPrice.priceAmount,
+          priceCurrency: structuredPrice.priceCurrency,
+          priceQualifier: structuredPrice.priceQualifier,
+          priceUnit: structuredPrice.priceUnit,
           durationMinutes: data.durationMinutes,
 durationLabelEn: data.durationLabelEn,
 durationLabelAr: data.durationLabelAr,

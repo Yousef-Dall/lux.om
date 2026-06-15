@@ -109,7 +109,8 @@ async function seedMarketplaceFixtures() {
       titleEn: 'Budget Apartment',
       type: 'Apartment',
       typeEn: 'Apartment',
-      price: 'OMR 100',
+      price: 'OMR 9,999',
+      priceAmount: '100',
       sqm: 80,
       partnerTier: 0,
       createdAt: new Date('2026-01-01T00:00:00.000Z')
@@ -124,7 +125,8 @@ async function seedMarketplaceFixtures() {
       titleEn: 'Villa',
       type: 'Residence',
       typeEn: 'Residence',
-      price: 'OMR 900',
+      price: 'OMR 1',
+      priceAmount: '900',
       sqm: 200,
       partnerTier: 0,
       createdAt: new Date('2026-02-01T00:00:00.000Z')
@@ -140,6 +142,7 @@ async function seedMarketplaceFixtures() {
       type: 'Residence',
       typeEn: 'Residence',
       price: 'OMR 3,000',
+      priceAmount: '3000',
       sqm: 400,
       partnerTier: 3,
       developerId: featuredDeveloper.id,
@@ -193,7 +196,8 @@ async function seedMarketplaceFixtures() {
       slug: 'integration-city-walk',
       titleEn: 'City Walk',
       providerEn: 'Independent Oman',
-      price: 'OMR 20',
+      price: 'OMR 999',
+      priceAmount: '20',
       partnerTier: 1,
       familyFriendly: false,
       createdAt: new Date('2026-01-01T00:00:00.000Z')
@@ -205,7 +209,8 @@ async function seedMarketplaceFixtures() {
       ...activityBase,
       slug: 'integration-mountain-hike',
       titleEn: 'Mountain Hike',
-      price: 'OMR 50',
+      price: 'OMR 1',
+      priceAmount: '50',
       partnerTier: 2,
       travelAgencyId: standardAgency.id,
       outdoor: true,
@@ -219,6 +224,7 @@ async function seedMarketplaceFixtures() {
       slug: 'integration-muscat',
       titleEn: 'Muscat',
       price: 'OMR 150',
+      priceAmount: '150',
       partnerTier: 3,
       travelAgencyId: featuredAgency.id,
       familyFriendly: true,
@@ -340,7 +346,7 @@ describe('GET /api/listings', () => {
     ]);
   });
 
-  it('sorts numeric prices ascending and nonnumeric prices last', async () => {
+  it('sorts by structured listing amounts and leaves missing amounts last', async () => {
     const response = await request(app)
       .get('/api/listings')
       .query({
@@ -443,7 +449,7 @@ describe('GET /api/activities', () => {
     );
   });
 
-  it('sorts numeric prices ascending and nonnumeric prices last', async () => {
+  it('sorts by structured activity amounts and leaves missing amounts last', async () => {
     const response = await request(app)
       .get('/api/activities')
       .query({

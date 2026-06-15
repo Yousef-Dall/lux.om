@@ -10,6 +10,7 @@ import {
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
 import { getLinkedPartnerTier, getManualPartnerTier } from '../utils/partnerTier';
+import { deriveStructuredPrice } from '../utils/pricing';
 import {
   buildSearchRelevance,
   paginateExplicitlySortedIds,
@@ -508,6 +509,7 @@ listingsRouter.get('/', async (req, res, next) => {
         select: {
           id: true,
           price: true,
+          priceAmount: true,
           sqm: true,
           partnerTier: true,
           createdAt: true
@@ -517,7 +519,9 @@ listingsRouter.get('/', async (req, res, next) => {
       const orderedIds = paginateExplicitlySortedIds(
         candidates.map((candidate) => ({
           id: candidate.id,
-          price: candidate.price,
+          price:
+            candidate.priceAmount?.toString() ??
+            candidate.price,
           area: candidate.sqm,
           partnerTier: candidate.partnerTier,
           createdAt: candidate.createdAt
@@ -849,6 +853,11 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
       ? getLinkedPartnerTier(developer)
       : getManualPartnerTier(data.developerNameEn, data.developerNameAr);
 
+    const structuredPrice = deriveStructuredPrice(
+      data.price,
+      data.paymentFrequency
+    );
+
     const listing = await prisma.listing.create({
       data: {
         title: data.title,
@@ -857,6 +866,10 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
         transaction: data.transaction,
         location: data.location,
         price: data.price,
+        priceAmount: structuredPrice.priceAmount,
+        priceCurrency: structuredPrice.priceCurrency,
+        priceQualifier: structuredPrice.priceQualifier,
+        priceUnit: structuredPrice.priceUnit,
         beds: data.beds,
         baths: data.baths,
         sqm: data.sqm,

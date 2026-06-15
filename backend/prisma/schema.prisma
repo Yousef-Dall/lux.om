@@ -27,6 +27,24 @@ enum ActivityStatus {
   REJECTED
 }
 
+enum PriceQualifier {
+  FIXED
+  FROM
+  ON_REQUEST
+}
+
+enum PriceUnit {
+  TOTAL
+  NIGHT
+  MONTH
+  YEAR
+  PERSON
+  GROUP
+  HOUR
+  DAY
+  ACTIVITY
+}
+
 enum BookingStatus {
   PENDING
   OWNER_APPROVED
@@ -142,7 +160,7 @@ model Listing {
   id   String @id @default(cuid())
   slug String @unique
 
-  /*
+  /**
    * Current single-language fields.
    * Keep these for compatibility with existing backend/frontend routes.
    * Later we will gradually move the frontend to titleEn/titleAr etc.
@@ -153,7 +171,7 @@ model Listing {
   transaction String
   location    String
 
-  /*
+  /**
    * Phase 3 bilingual fields.
    * Optional for now so old create-listing route still works.
    * Later, after frontend forms are upgraded, we can make these required.
@@ -167,14 +185,23 @@ model Listing {
   typeEn        String?
   typeAr        String?
 
-  price          String
+  price String
+
+  priceAmount Decimal? @db.Decimal(14, 3)
+
+  priceCurrency String? @db.VarChar(3)
+
+  priceQualifier PriceQualifier @default(FIXED)
+
+  priceUnit PriceUnit?
+
   beds           Int
   baths          Int
   sqm            Int
   image          String
   status         ListingStatus @default(PENDING)
   rejectedReason String?
-  partnerTier   Int @default(0)
+  partnerTier    Int           @default(0)
 
   maxGuests        Int?
   minStayNights    Int?
@@ -187,15 +214,15 @@ model Listing {
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  developerId String?
-  developer   DeveloperCompany? @relation(fields: [developerId], references: [id], onDelete: SetNull)
+  developerId     String?
+  developer       DeveloperCompany? @relation(fields: [developerId], references: [id], onDelete: SetNull)
   developerNameEn String?
   developerNameAr String?
 
-  nearestLandmarkId       String?
-  nearestLandmark         Landmark? @relation(fields: [nearestLandmarkId], references: [id], onDelete: SetNull)
-  distanceFromLandmarkEn  String?
-  distanceFromLandmarkAr  String?
+  nearestLandmarkId      String?
+  nearestLandmark        Landmark? @relation(fields: [nearestLandmarkId], references: [id], onDelete: SetNull)
+  distanceFromLandmarkEn String?
+  distanceFromLandmarkAr String?
 
   amenities Amenity[]
   images    ListingImage[]
@@ -207,6 +234,7 @@ model Listing {
 
   @@index([status, createdAt])
   @@index([status, partnerTier, createdAt])
+  @@index([status, priceAmount])
   @@index([ownerId])
   @@index([developerId])
   @@index([nearestLandmarkId])
@@ -228,11 +256,11 @@ model Amenity {
 }
 
 model ListingImage {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   url       String
   altEn     String?
   altAr     String?
-  sortOrder Int    @default(0)
+  sortOrder Int     @default(0)
 
   listingId String
   listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
@@ -258,28 +286,37 @@ model Activity {
   providerEn String?
   providerAr String?
 
-  price           String
-durationMinutes Int?
-durationLabelEn String?
-durationLabelAr String?
-durationType    String?
-groupSize       String?
-language        String?
-difficulty      String?
-activityType    String?
+  price String
 
-availabilityDays      String[] @default([])
-availabilityStartTime String?
-availabilityEndTime   String?
+  priceAmount Decimal? @db.Decimal(14, 3)
 
-  familyFriendly  Boolean @default(false)
+  priceCurrency String? @db.VarChar(3)
+
+  priceQualifier PriceQualifier @default(FIXED)
+
+  priceUnit PriceUnit?
+
+  durationMinutes Int?
+  durationLabelEn String?
+  durationLabelAr String?
+  durationType    String?
+  groupSize       String?
+  language        String?
+  difficulty      String?
+  activityType    String?
+
+  availabilityDays      String[] @default([])
+  availabilityStartTime String?
+  availabilityEndTime   String?
+
+  familyFriendly   Boolean @default(false)
   includesTransfer Boolean @default(false)
-  mealIncluded    Boolean @default(false)
-  outdoor         Boolean @default(false)
+  mealIncluded     Boolean @default(false)
+  outdoor          Boolean @default(false)
 
   status         ActivityStatus @default(PENDING)
   rejectedReason String?
-  partnerTier   Int @default(0)
+  partnerTier    Int            @default(0)
 
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -301,6 +338,7 @@ availabilityEndTime   String?
 
   @@index([status, createdAt])
   @@index([status, partnerTier, createdAt])
+  @@index([status, priceAmount])
   @@index([ownerId])
   @@index([travelAgencyId])
   @@index([nearestLandmarkId])
@@ -308,11 +346,11 @@ availabilityEndTime   String?
 }
 
 model ActivityImage {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   url       String
   altEn     String?
   altAr     String?
-  sortOrder Int    @default(0)
+  sortOrder Int     @default(0)
 
   activityId String
   activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
@@ -323,7 +361,7 @@ model ActivityImage {
 }
 
 model ActivityHighlight {
-  id     String @id @default(cuid())
+  id     String  @id @default(cuid())
   textEn String
   textAr String?
 
