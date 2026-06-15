@@ -17,7 +17,9 @@
     "db:studio": "npm run db:studio -w backend",
     "db:migrate:deploy": "npm run db:migrate:deploy -w backend",
     "test": "npm run test -w backend",
-    "test:watch": "npm run test:watch -w backend"
+    "test:watch": "npm run test:watch -w backend",
+    "test:integration": "npm run test:integration -w backend",
+    "test:all": "npm run test:all -w backend"
   },
   "workspaces": [
     "backend",
