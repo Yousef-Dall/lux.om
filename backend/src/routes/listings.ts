@@ -10,7 +10,11 @@ import {
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
 import { getLinkedPartnerTier, getManualPartnerTier } from '../utils/partnerTier';
-import { deriveStructuredPrice } from '../utils/pricing';
+import {
+  priceQualifierValues,
+  priceUnitValues,
+  resolvePriceInput
+} from '../utils/pricing';
 import {
   buildSearchRelevance,
   paginateExplicitlySortedIds,
@@ -51,6 +55,35 @@ const optionalNumberSchema = z
   .optional()
   .transform((value) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined));
 
+const optionalPriceAmountSchema = z
+  .preprocess(
+    (value) =>
+      value === '' ||
+      value === null ||
+      value === undefined
+        ? undefined
+        : value,
+    z.union([
+      z.coerce
+        .number()
+        .finite()
+        .min(0)
+        .max(99999999999.999),
+      z.undefined()
+    ])
+  )
+  .optional()
+  .transform((value) =>
+    value === undefined ? undefined : value.toString()
+  );
+
+const optionalCurrencySchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z]{3}$/)
+  .transform((value) => value.toUpperCase())
+  .optional();
+
 const listingSchema = z
   .object({
     title: z.string().trim().min(3).max(120),
@@ -58,7 +91,11 @@ const listingSchema = z
     type: z.string().trim().min(2).max(40),
     transaction: z.enum(['Sale', 'Rent', 'Short stay']),
     location: z.string().trim().min(2).max(120),
-    price: z.string().trim().min(2).max(80),
+    price: z.string().trim().min(1).max(80).optional(),
+    priceAmount: optionalPriceAmountSchema,
+    priceCurrency: optionalCurrencySchema,
+    priceQualifier: z.enum(priceQualifierValues).optional(),
+    priceUnit: z.enum(priceUnitValues).optional(),
     beds: z.coerce.number().int().min(0).max(50),
     baths: z.coerce.number().int().min(0).max(50),
     sqm: z.coerce.number().int().min(1).max(100000),
@@ -83,7 +120,48 @@ const listingSchema = z
     view: optionalTextSchema,
     paymentFrequency: optionalTextSchema
   })
-  .strict();
+  .strict()
+  .superRefine((data, context) => {
+    const hasStructuredPrice =
+      data.priceAmount !== undefined ||
+      data.priceCurrency !== undefined ||
+      data.priceQualifier !== undefined ||
+      data.priceUnit !== undefined;
+
+    if (!data.price && !hasStructuredPrice) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['price'],
+        message: 'A display or structured price is required'
+      });
+    }
+
+    if (
+      data.priceQualifier === 'ON_REQUEST' &&
+      data.priceAmount !== undefined
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['priceAmount'],
+        message:
+          'On-request pricing cannot include an amount'
+      });
+    }
+
+    if (
+      hasStructuredPrice &&
+      data.priceQualifier !== 'ON_REQUEST' &&
+      data.priceAmount === undefined &&
+      !data.price
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['priceAmount'],
+        message:
+          'A numeric amount is required for this price type'
+      });
+    }
+  });
 
 const listQuerySchema = z.object({
   search: z.string().trim().optional(),
@@ -853,10 +931,14 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
       ? getLinkedPartnerTier(developer)
       : getManualPartnerTier(data.developerNameEn, data.developerNameAr);
 
-    const structuredPrice = deriveStructuredPrice(
-      data.price,
-      data.paymentFrequency
-    );
+    const resolvedPrice = resolvePriceInput({
+      displayPrice: data.price,
+      priceAmount: data.priceAmount,
+      priceCurrency: data.priceCurrency,
+      priceQualifier: data.priceQualifier,
+      priceUnit: data.priceUnit,
+      paymentFrequency: data.paymentFrequency
+    });
 
     const listing = await prisma.listing.create({
       data: {
@@ -865,11 +947,11 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
         type: data.type,
         transaction: data.transaction,
         location: data.location,
-        price: data.price,
-        priceAmount: structuredPrice.priceAmount,
-        priceCurrency: structuredPrice.priceCurrency,
-        priceQualifier: structuredPrice.priceQualifier,
-        priceUnit: structuredPrice.priceUnit,
+        price: resolvedPrice.price,
+        priceAmount: resolvedPrice.priceAmount,
+        priceCurrency: resolvedPrice.priceCurrency,
+        priceQualifier: resolvedPrice.priceQualifier,
+        priceUnit: resolvedPrice.priceUnit,
         beds: data.beds,
         baths: data.baths,
         sqm: data.sqm,

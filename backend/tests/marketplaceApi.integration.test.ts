@@ -9,8 +9,12 @@ import request from 'supertest';
 
 import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
+import { signToken } from '../src/middleware/auth';
 
 const app = createApp();
+
+let ownerToken = '';
+let activityProviderToken = '';
 
 async function clearTestDatabase() {
   const databaseUrl = new URL(process.env.DATABASE_URL ?? '');
@@ -58,6 +62,9 @@ async function seedMarketplaceFixtures() {
       role: 'ACTIVITY_PROVIDER'
     }
   });
+
+  ownerToken = signToken(owner);
+  activityProviderToken = signToken(activityProvider);
 
   const featuredDeveloper =
     await prisma.developerCompany.create({
@@ -513,5 +520,193 @@ describe('GET /api/activities', () => {
     expect(response.body).toMatchObject({
       message: 'Validation failed'
     });
+  });
+});
+
+describe('POST /api/listings pricing compatibility', () => {
+  const listingPayload = {
+    description:
+      'A detailed property description for authenticated integration testing.',
+    type: 'Apartment',
+    transaction: 'Rent',
+    location: 'Muscat, Oman',
+    beds: 2,
+    baths: 2,
+    sqm: 120,
+    image: 'https://example.com/new-listing.jpg',
+    amenities: ['Parking']
+  };
+
+  it('continues accepting a legacy display-price payload', async () => {
+    const response = await request(app)
+      .post('/api/listings')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        ...listingPayload,
+        title: 'Legacy Price Listing',
+        price: 'OMR 900 /mo'
+      })
+      .expect(201);
+
+    const createdListing =
+      await prisma.listing.findUniqueOrThrow({
+        where: {
+          id: response.body.listing.id
+        }
+      });
+
+    expect(createdListing.price).toBe('OMR 900 /mo');
+    expect(createdListing.priceAmount?.toString()).toBe('900');
+    expect(createdListing.priceCurrency).toBe('OMR');
+    expect(createdListing.priceQualifier).toBe('FIXED');
+    expect(createdListing.priceUnit).toBe('MONTH');
+  });
+
+  it('creates a canonical display price from structured fields', async () => {
+    const response = await request(app)
+      .post('/api/listings')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        ...listingPayload,
+        title: 'Structured Price Listing',
+        priceAmount: '2800',
+        priceCurrency: 'omr',
+        priceQualifier: 'FIXED',
+        priceUnit: 'MONTH'
+      })
+      .expect(201);
+
+    const createdListing =
+      await prisma.listing.findUniqueOrThrow({
+        where: {
+          id: response.body.listing.id
+        }
+      });
+
+    expect(createdListing.price).toBe('OMR 2,800 /mo');
+    expect(createdListing.priceAmount?.toString()).toBe('2800');
+    expect(createdListing.priceCurrency).toBe('OMR');
+    expect(createdListing.priceQualifier).toBe('FIXED');
+    expect(createdListing.priceUnit).toBe('MONTH');
+  });
+
+  it('rejects on-request pricing that includes an amount', async () => {
+    await request(app)
+      .post('/api/listings')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        ...listingPayload,
+        title: 'Invalid Structured Price Listing',
+        priceAmount: '100',
+        priceCurrency: 'OMR',
+        priceQualifier: 'ON_REQUEST'
+      })
+      .expect(400);
+  });
+});
+
+describe('POST /api/activities pricing compatibility', () => {
+  const activityPayload = {
+    descriptionEn:
+      'A detailed activity description for authenticated integration testing.',
+    locationEn: 'Muscat, Oman',
+    categoryEn: 'Experience',
+    durationMinutes: 120,
+    availabilityDays: ['Thursday', 'Friday'],
+    availabilityStartTime: '09:00',
+    availabilityEndTime: '17:00',
+    familyFriendly: true,
+    includesTransfer: false,
+    mealIncluded: false,
+    outdoor: true,
+    images: [
+      {
+        url: 'https://example.com/new-activity.jpg',
+        sortOrder: 0
+      }
+    ],
+    highlights: [
+      {
+        textEn: 'Professional local guide'
+      }
+    ]
+  };
+
+  it('continues accepting a legacy display-price payload', async () => {
+    const response = await request(app)
+      .post('/api/activities')
+      .set(
+        'Authorization',
+        `Bearer ${activityProviderToken}`
+      )
+      .send({
+        ...activityPayload,
+        titleEn: 'Legacy Price Activity',
+        price: 'From OMR 45'
+      })
+      .expect(201);
+
+    const createdActivity =
+      await prisma.activity.findUniqueOrThrow({
+        where: {
+          id: response.body.activity.id
+        }
+      });
+
+    expect(createdActivity.price).toBe('From OMR 45');
+    expect(createdActivity.priceAmount?.toString()).toBe('45');
+    expect(createdActivity.priceCurrency).toBe('OMR');
+    expect(createdActivity.priceQualifier).toBe('FROM');
+    expect(createdActivity.priceUnit).toBeNull();
+  });
+
+  it('creates a canonical display price from structured fields', async () => {
+    const response = await request(app)
+      .post('/api/activities')
+      .set(
+        'Authorization',
+        `Bearer ${activityProviderToken}`
+      )
+      .send({
+        ...activityPayload,
+        titleEn: 'Structured Price Activity',
+        priceAmount: '35',
+        priceCurrency: 'omr',
+        priceQualifier: 'FROM',
+        priceUnit: 'PERSON'
+      })
+      .expect(201);
+
+    const createdActivity =
+      await prisma.activity.findUniqueOrThrow({
+        where: {
+          id: response.body.activity.id
+        }
+      });
+
+    expect(createdActivity.price).toBe(
+      'From OMR 35 /person'
+    );
+    expect(createdActivity.priceAmount?.toString()).toBe('35');
+    expect(createdActivity.priceCurrency).toBe('OMR');
+    expect(createdActivity.priceQualifier).toBe('FROM');
+    expect(createdActivity.priceUnit).toBe('PERSON');
+  });
+
+  it('rejects fixed structured pricing without an amount', async () => {
+    await request(app)
+      .post('/api/activities')
+      .set(
+        'Authorization',
+        `Bearer ${activityProviderToken}`
+      )
+      .send({
+        ...activityPayload,
+        titleEn: 'Invalid Structured Price Activity',
+        priceCurrency: 'OMR',
+        priceQualifier: 'FIXED',
+        priceUnit: 'PERSON'
+      })
+      .expect(400);
   });
 });

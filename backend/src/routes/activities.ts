@@ -10,7 +10,11 @@ import {
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
 import { getLinkedPartnerTier, getManualPartnerTier } from '../utils/partnerTier';
-import { deriveStructuredPrice } from '../utils/pricing';
+import {
+  priceQualifierValues,
+  priceUnitValues,
+  resolvePriceInput
+} from '../utils/pricing';
 import {
   buildSearchRelevance,
   paginateExplicitlySortedIds,
@@ -51,6 +55,35 @@ const timeSchema = z
     message: 'Time must use HH:mm format'
   });
 
+const optionalPriceAmountSchema = z
+  .preprocess(
+    (value) =>
+      value === '' ||
+      value === null ||
+      value === undefined
+        ? undefined
+        : value,
+    z.union([
+      z.coerce
+        .number()
+        .finite()
+        .min(0)
+        .max(99999999999.999),
+      z.undefined()
+    ])
+  )
+  .optional()
+  .transform((value) =>
+    value === undefined ? undefined : value.toString()
+  );
+
+const optionalCurrencySchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z]{3}$/)
+  .transform((value) => value.toUpperCase())
+  .optional();
+
 const activityCreateSchema = z
   .object({
     titleEn: z.string().trim().min(3).max(140),
@@ -67,7 +100,11 @@ const activityCreateSchema = z
     providerEn: z.string().trim().max(120).optional(),
     providerAr: z.string().trim().max(120).optional(),
 
-    price: z.string().trim().min(1).max(80),
+    price: z.string().trim().min(1).max(80).optional(),
+    priceAmount: optionalPriceAmountSchema,
+    priceCurrency: optionalCurrencySchema,
+    priceQualifier: z.enum(priceQualifierValues).optional(),
+    priceUnit: z.enum(priceUnitValues).optional(),
     durationMinutes: z.coerce.number().int().positive().max(10080).optional(),
     durationLabelEn: z.string().trim().max(80).optional(),
 durationLabelAr: z.string().trim().max(80).optional(),
@@ -112,7 +149,48 @@ familyFriendly: z.coerce.boolean().default(false),
       .max(20)
       .default([])
   })
-  .strict();
+  .strict()
+  .superRefine((data, context) => {
+    const hasStructuredPrice =
+      data.priceAmount !== undefined ||
+      data.priceCurrency !== undefined ||
+      data.priceQualifier !== undefined ||
+      data.priceUnit !== undefined;
+
+    if (!data.price && !hasStructuredPrice) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['price'],
+        message: 'A display or structured price is required'
+      });
+    }
+
+    if (
+      data.priceQualifier === 'ON_REQUEST' &&
+      data.priceAmount !== undefined
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['priceAmount'],
+        message:
+          'On-request pricing cannot include an amount'
+      });
+    }
+
+    if (
+      hasStructuredPrice &&
+      data.priceQualifier !== 'ON_REQUEST' &&
+      data.priceAmount === undefined &&
+      !data.price
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['priceAmount'],
+        message:
+          'A numeric amount is required for this price type'
+      });
+    }
+  });
 
 const optionalBooleanQuerySchema = z
   .union([z.boolean(), z.enum(['true', 'false'])])
@@ -970,7 +1048,13 @@ activitiesRouter.post(
         ? getLinkedPartnerTier(travelAgency)
         : getManualPartnerTier(data.providerEn, data.providerAr);
 
-      const structuredPrice = deriveStructuredPrice(data.price);
+      const resolvedPrice = resolvePriceInput({
+        displayPrice: data.price,
+        priceAmount: data.priceAmount,
+        priceCurrency: data.priceCurrency,
+        priceQualifier: data.priceQualifier,
+        priceUnit: data.priceUnit
+      });
 
       const activity = await prisma.activity.create({
         data: {
@@ -989,11 +1073,11 @@ activitiesRouter.post(
           providerEn: data.providerEn ?? travelAgency?.nameEn,
           providerAr: data.providerAr ?? travelAgency?.nameAr,
 
-          price: data.price,
-          priceAmount: structuredPrice.priceAmount,
-          priceCurrency: structuredPrice.priceCurrency,
-          priceQualifier: structuredPrice.priceQualifier,
-          priceUnit: structuredPrice.priceUnit,
+          price: resolvedPrice.price,
+          priceAmount: resolvedPrice.priceAmount,
+          priceCurrency: resolvedPrice.priceCurrency,
+          priceQualifier: resolvedPrice.priceQualifier,
+          priceUnit: resolvedPrice.priceUnit,
           durationMinutes: data.durationMinutes,
 durationLabelEn: data.durationLabelEn,
 durationLabelAr: data.durationLabelAr,
