@@ -21,7 +21,13 @@ import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
-import type { DayName, Landmark, TravelAgency } from '../types';
+import type {
+  DayName,
+  Landmark,
+  PriceQualifier,
+  PriceUnit,
+  TravelAgency
+} from '../types';
 
 type ImageMode = 'upload' | 'url';
 
@@ -56,6 +62,33 @@ const activityTypeOptions = ['Private', 'Group', 'Both'];
 
 const difficultyOptions = ['Easy', 'Moderate', 'Challenging'];
 
+const priceQualifierOptions: PriceQualifier[] = [
+  'FIXED',
+  'FROM',
+  'ON_REQUEST'
+];
+
+const activityPriceUnitOptions: PriceUnit[] = [
+  'PERSON',
+  'GROUP',
+  'ACTIVITY',
+  'HOUR',
+  'DAY',
+  'NIGHT'
+];
+
+const currencyOptions = [
+  'OMR',
+  'USD',
+  'EUR',
+  'GBP',
+  'AED',
+  'SAR',
+  'QAR',
+  'BHD',
+  'KWD'
+];
+
 const suggestedHighlights = [
   'Private guide',
   'Dinner setup',
@@ -83,7 +116,10 @@ const initialForm = {
   groupSize: '',
   difficulty: 'Easy',
   language: 'Arabic / English',
-  price: '',
+  priceAmount: '',
+  priceCurrency: 'OMR',
+  priceQualifier: 'FROM' as PriceQualifier,
+  priceUnit: 'PERSON' as PriceUnit,
   duration: '',
   durationMinutes: '',
   image: '',
@@ -128,6 +164,61 @@ export default function AddActivity() {
   const [travelAgencies, setTravelAgencies] = useState<TravelAgency[]>([]);
 
   const addActivityCopy = t.addActivity ?? t.addExperience;
+
+  const pricingCopy =
+    language === 'ar'
+      ? {
+          priceType: 'نوع السعر',
+          fixedPrice: 'سعر ثابت',
+          startingFrom: 'ابتداءً من',
+          priceOnRequest: 'السعر عند الطلب',
+          priceAmount: 'المبلغ',
+          priceAmountPlaceholder: '٤٥',
+          priceCurrency: 'العملة',
+          priceUnit: 'وحدة التسعير',
+          perPerson: 'لكل شخص',
+          perGroup: 'لكل مجموعة',
+          perActivity: 'لكل نشاط',
+          perHour: 'لكل ساعة',
+          perDay: 'لكل يوم',
+          perNight: 'لكل ليلة'
+        }
+      : {
+          priceType: 'Price type',
+          fixedPrice: 'Fixed price',
+          startingFrom: 'Starting from',
+          priceOnRequest: 'Price on request',
+          priceAmount: 'Amount',
+          priceAmountPlaceholder: '45',
+          priceCurrency: 'Currency',
+          priceUnit: 'Pricing unit',
+          perPerson: 'Per person',
+          perGroup: 'Per group',
+          perActivity: 'Per activity',
+          perHour: 'Per hour',
+          perDay: 'Per day',
+          perNight: 'Per night'
+        };
+
+  const priceQualifierLabels: Record<
+    PriceQualifier,
+    string
+  > = {
+    FIXED: pricingCopy.fixedPrice,
+    FROM: pricingCopy.startingFrom,
+    ON_REQUEST: pricingCopy.priceOnRequest
+  };
+
+  const activityPriceUnitLabels: Partial<
+    Record<PriceUnit, string>
+  > = {
+    PERSON: pricingCopy.perPerson,
+    GROUP: pricingCopy.perGroup,
+    ACTIVITY: pricingCopy.perActivity,
+    HOUR: pricingCopy.perHour,
+    DAY: pricingCopy.perDay,
+    NIGHT: pricingCopy.perNight
+  };
 
   const copy =
     language === 'ar'
@@ -259,7 +350,9 @@ export default function AddActivity() {
       form.title,
       form.category,
       form.location,
-      form.price,
+      form.priceQualifier === 'ON_REQUEST'
+        ? 'price'
+        : form.priceAmount.trim(),
       form.duration,
       form.durationMinutes,
       form.description,
@@ -358,7 +451,19 @@ export default function AddActivity() {
       form.organizerMode === 'manual' && language === 'ar'
         ? optionalText(form.provider)
         : undefined,
-    price: form.price,
+    priceAmount:
+      form.priceQualifier === 'ON_REQUEST'
+        ? undefined
+        : form.priceAmount,
+    priceCurrency:
+      form.priceQualifier === 'ON_REQUEST'
+        ? undefined
+        : form.priceCurrency,
+    priceQualifier: form.priceQualifier,
+    priceUnit:
+      form.priceQualifier === 'ON_REQUEST'
+        ? undefined
+        : form.priceUnit,
     durationMinutes: Number(form.durationMinutes),
     durationLabelEn: form.duration,
     durationType: optionalText(form.durationType),
@@ -508,15 +613,100 @@ export default function AddActivity() {
               />
             </label>
 
-            <label>
-              {addActivityCopy.price}
-              <input
-                required
-                value={form.price}
-                onChange={(event) => updateForm('price', event.target.value)}
-                placeholder={addActivityCopy.pricePlaceholder}
-              />
-            </label>
+            <fieldset className="pricing-fieldset">
+              <legend>{addActivityCopy.price}</legend>
+
+              <div className="pricing-grid">
+                <label>
+                  {pricingCopy.priceType}
+                  <select
+                    value={form.priceQualifier}
+                    onChange={(event) =>
+                      updateForm(
+                        'priceQualifier',
+                        event.target.value as PriceQualifier
+                      )
+                    }
+                  >
+                    {priceQualifierOptions.map((qualifier) => (
+                      <option key={qualifier} value={qualifier}>
+                        {priceQualifierLabels[qualifier]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  {pricingCopy.priceAmount}
+                  <input
+                    required={
+                      form.priceQualifier !== 'ON_REQUEST'
+                    }
+                    disabled={
+                      form.priceQualifier === 'ON_REQUEST'
+                    }
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    inputMode="decimal"
+                    placeholder={
+                      pricingCopy.priceAmountPlaceholder
+                    }
+                    value={form.priceAmount}
+                    onChange={(event) =>
+                      updateForm(
+                        'priceAmount',
+                        event.target.value
+                      )
+                    }
+                  />
+                </label>
+
+                <label>
+                  {pricingCopy.priceCurrency}
+                  <select
+                    disabled={
+                      form.priceQualifier === 'ON_REQUEST'
+                    }
+                    value={form.priceCurrency}
+                    onChange={(event) =>
+                      updateForm(
+                        'priceCurrency',
+                        event.target.value
+                      )
+                    }
+                  >
+                    {currencyOptions.map((currency) => (
+                      <option key={currency} value={currency}>
+                        {currency}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  {pricingCopy.priceUnit}
+                  <select
+                    disabled={
+                      form.priceQualifier === 'ON_REQUEST'
+                    }
+                    value={form.priceUnit}
+                    onChange={(event) =>
+                      updateForm(
+                        'priceUnit',
+                        event.target.value as PriceUnit
+                      )
+                    }
+                  >
+                    {activityPriceUnitOptions.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {activityPriceUnitLabels[unit] ?? unit}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </fieldset>
 
             <label>
               {addActivityCopy.duration}

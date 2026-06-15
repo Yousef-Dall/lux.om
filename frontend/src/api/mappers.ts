@@ -240,6 +240,10 @@ export function mapListing(apiListing: ApiListing, language: Language): Listing 
       apiListing.location
     ),
     price: apiListing.price,
+    priceAmount: apiListing.priceAmount ?? undefined,
+    priceCurrency: apiListing.priceCurrency ?? undefined,
+    priceQualifier: apiListing.priceQualifier ?? undefined,
+    priceUnit: apiListing.priceUnit ?? undefined,
     beds: apiListing.beds,
     baths: apiListing.baths,
     sqm: apiListing.sqm,
@@ -312,6 +316,10 @@ export function mapActivity(apiActivity: ApiActivity, language: Language): Activ
     duration,
     durationMinutes: apiActivity.durationMinutes ?? 0,
     price: apiActivity.price,
+    priceAmount: apiActivity.priceAmount ?? undefined,
+    priceCurrency: apiActivity.priceCurrency ?? undefined,
+    priceQualifier: apiActivity.priceQualifier ?? undefined,
+    priceUnit: apiActivity.priceUnit ?? undefined,
     image: resolveAssetUrl(firstImage),
     category: pickLocalized(language, apiActivity.categoryEn, apiActivity.categoryAr),
     highlights:

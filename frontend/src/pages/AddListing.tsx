@@ -19,7 +19,12 @@ import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
-import type { DevelopmentCompany, Landmark } from '../types';
+import type {
+  DevelopmentCompany,
+  Landmark,
+  PriceQualifier,
+  PriceUnit
+} from '../types';
 
 const amenityOptions = [
   'Private pool',
@@ -44,13 +49,39 @@ const propertyTypes = ['Villa', 'Apartment', 'Chalet', 'Penthouse', 'Resort apar
 
 const transactionTypes = ['Rent', 'Sale', 'Short stay'];
 
-const paymentFrequencies = [
-  'Not specified',
-  'Per night',
-  'Per month',
-  'Per year',
-  'Total sale price'
+const priceQualifierOptions: PriceQualifier[] = [
+  'FIXED',
+  'FROM',
+  'ON_REQUEST'
 ];
+
+const listingPriceUnitOptions: PriceUnit[] = [
+  'TOTAL',
+  'NIGHT',
+  'MONTH',
+  'YEAR'
+];
+
+const currencyOptions = [
+  'OMR',
+  'USD',
+  'EUR',
+  'GBP',
+  'AED',
+  'SAR',
+  'QAR',
+  'BHD',
+  'KWD'
+];
+
+const defaultListingPriceUnit: Record<
+  CreateListingPayload['transaction'],
+  PriceUnit
+> = {
+  Sale: 'TOTAL',
+  Rent: 'MONTH',
+  'Short stay': 'NIGHT'
+};
 
 const furnishingOptions = ['Not specified', 'Furnished', 'Semi-furnished', 'Unfurnished'];
 
@@ -70,7 +101,10 @@ const initialForm = {
   type: 'Villa',
   transaction: 'Rent',
   location: '',
-  price: '',
+  priceAmount: '',
+  priceCurrency: 'OMR',
+  priceQualifier: 'FIXED' as PriceQualifier,
+  priceUnit: 'MONTH' as PriceUnit,
   beds: '3',
   baths: '3',
   sqm: '',
@@ -87,8 +121,7 @@ const initialForm = {
   parkingSpaces: '',
   floorNumber: '',
   furnishing: 'Not specified',
-  view: 'Not specified',
-  paymentFrequency: 'Not specified'
+  view: 'Not specified'
 };
 
 type ImageMode = 'upload' | 'url';
@@ -159,7 +192,19 @@ export default function AddListing() {
           submitting: 'جاري الإرسال...',
           submitError: 'تعذر إرسال العقار للمراجعة. حاولي مرة أخرى.',
           authError: 'يجب تسجيل الدخول قبل إضافة عقار.',
-          optionsError: 'تعذر تحميل المطورين والمعالم من الخادم.'
+          optionsError: 'تعذر تحميل المطورين والمعالم من الخادم.',
+          priceType: 'نوع السعر',
+          fixedPrice: 'سعر ثابت',
+          startingFrom: 'ابتداءً من',
+          priceOnRequest: 'السعر عند الطلب',
+          priceAmount: 'المبلغ',
+          priceAmountPlaceholder: '٩٠٠',
+          priceCurrency: 'العملة',
+          priceUnit: 'وحدة التسعير',
+          totalPrice: 'السعر الإجمالي',
+          perNight: 'لكل ليلة',
+          perMonth: 'لكل شهر',
+          perYear: 'لكل سنة'
         }
       : {
           qualityEyebrow: 'Listing quality',
@@ -188,8 +233,38 @@ export default function AddListing() {
           submitting: 'Submitting...',
           submitError: 'Could not submit this listing for review. Please try again.',
           authError: 'You must be logged in before adding a listing.',
-          optionsError: 'Could not load developers and landmarks from the server.'
+          optionsError: 'Could not load developers and landmarks from the server.',
+          priceType: 'Price type',
+          fixedPrice: 'Fixed price',
+          startingFrom: 'Starting from',
+          priceOnRequest: 'Price on request',
+          priceAmount: 'Amount',
+          priceAmountPlaceholder: '900',
+          priceCurrency: 'Currency',
+          priceUnit: 'Pricing unit',
+          totalPrice: 'Total price',
+          perNight: 'Per night',
+          perMonth: 'Per month',
+          perYear: 'Per year'
         };
+
+  const priceQualifierLabels: Record<
+    PriceQualifier,
+    string
+  > = {
+    FIXED: copy.fixedPrice,
+    FROM: copy.startingFrom,
+    ON_REQUEST: copy.priceOnRequest
+  };
+
+  const listingPriceUnitLabels: Partial<
+    Record<PriceUnit, string>
+  > = {
+    TOTAL: copy.totalPrice,
+    NIGHT: copy.perNight,
+    MONTH: copy.perMonth,
+    YEAR: copy.perYear
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -245,7 +320,9 @@ export default function AddListing() {
     const requiredValues = [
       form.title,
       form.location,
-      form.price,
+      form.priceQualifier === 'ON_REQUEST'
+        ? 'price'
+        : form.priceAmount.trim(),
       form.beds,
       form.baths,
       form.sqm,
@@ -258,10 +335,16 @@ export default function AddListing() {
 
   const formCompletion = Math.round((completedRequiredFields / 8) * 100);
 
-  function updateForm(field: keyof typeof initialForm, value: string) {
+  function updateForm<K extends keyof typeof initialForm>(
+    field: K,
+    value: (typeof initialForm)[K]
+  ) {
     setSubmitted(false);
     setSubmitError('');
-    setForm((current) => ({ ...current, [field]: value }));
+    setForm((current) => ({
+      ...current,
+      [field]: value
+    }));
   }
 
   function toggleAmenity(amenity: string) {
@@ -318,7 +401,19 @@ export default function AddListing() {
     type: form.type,
     transaction: form.transaction as CreateListingPayload['transaction'],
     location: form.location,
-    price: form.price,
+    priceAmount:
+      form.priceQualifier === 'ON_REQUEST'
+        ? undefined
+        : form.priceAmount,
+    priceCurrency:
+      form.priceQualifier === 'ON_REQUEST'
+        ? undefined
+        : form.priceCurrency,
+    priceQualifier: form.priceQualifier,
+    priceUnit:
+      form.priceQualifier === 'ON_REQUEST'
+        ? undefined
+        : form.priceUnit,
     beds: Number(form.beds),
     baths: Number(form.baths),
     sqm: Number(form.sqm),
@@ -348,11 +443,7 @@ export default function AddListing() {
     view:
       form.view === 'Not specified'
         ? undefined
-        : (optionalText(form.view) as CreateListingPayload['view']),
-    paymentFrequency:
-      form.paymentFrequency === 'Not specified'
-        ? undefined
-        : (optionalText(form.paymentFrequency) as CreateListingPayload['paymentFrequency'])
+        : (optionalText(form.view) as CreateListingPayload['view'])
   },
   token
 );
@@ -440,7 +531,19 @@ export default function AddListing() {
               {t.addListing.transaction}
               <select
                 value={form.transaction}
-                onChange={(event) => updateForm('transaction', event.target.value)}
+                onChange={(event) => {
+                  const transaction =
+                    event.target.value as CreateListingPayload['transaction'];
+
+                  setSubmitted(false);
+                  setSubmitError('');
+                  setForm((current) => ({
+                    ...current,
+                    transaction,
+                    priceUnit:
+                      defaultListingPriceUnit[transaction]
+                  }));
+                }}
               >
                 {transactionTypes.map((transaction) => (
                   <option key={transaction}>{transaction}</option>
@@ -458,27 +561,98 @@ export default function AddListing() {
               />
             </label>
 
-            <label>
-              {t.addListing.price}
-              <input
-                required
-                placeholder={t.addListing.pricePlaceholder}
-                value={form.price}
-                onChange={(event) => updateForm('price', event.target.value)}
-              />
-            </label>
+            <fieldset className="pricing-fieldset">
+              <legend>{t.addListing.price}</legend>
 
-            <label>
-              {t.addListing.paymentFrequency}
-              <select
-                value={form.paymentFrequency}
-                onChange={(event) => updateForm('paymentFrequency', event.target.value)}
-              >
-                {paymentFrequencies.map((frequency) => (
-                  <option key={frequency}>{frequency}</option>
-                ))}
-              </select>
-            </label>
+              <div className="pricing-grid">
+                <label>
+                  {copy.priceType}
+                  <select
+                    value={form.priceQualifier}
+                    onChange={(event) =>
+                      updateForm(
+                        'priceQualifier',
+                        event.target.value as PriceQualifier
+                      )
+                    }
+                  >
+                    {priceQualifierOptions.map((qualifier) => (
+                      <option key={qualifier} value={qualifier}>
+                        {priceQualifierLabels[qualifier]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  {copy.priceAmount}
+                  <input
+                    required={
+                      form.priceQualifier !== 'ON_REQUEST'
+                    }
+                    disabled={
+                      form.priceQualifier === 'ON_REQUEST'
+                    }
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    inputMode="decimal"
+                    placeholder={copy.priceAmountPlaceholder}
+                    value={form.priceAmount}
+                    onChange={(event) =>
+                      updateForm(
+                        'priceAmount',
+                        event.target.value
+                      )
+                    }
+                  />
+                </label>
+
+                <label>
+                  {copy.priceCurrency}
+                  <select
+                    disabled={
+                      form.priceQualifier === 'ON_REQUEST'
+                    }
+                    value={form.priceCurrency}
+                    onChange={(event) =>
+                      updateForm(
+                        'priceCurrency',
+                        event.target.value
+                      )
+                    }
+                  >
+                    {currencyOptions.map((currency) => (
+                      <option key={currency} value={currency}>
+                        {currency}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  {copy.priceUnit}
+                  <select
+                    disabled={
+                      form.priceQualifier === 'ON_REQUEST'
+                    }
+                    value={form.priceUnit}
+                    onChange={(event) =>
+                      updateForm(
+                        'priceUnit',
+                        event.target.value as PriceUnit
+                      )
+                    }
+                  >
+                    {listingPriceUnitOptions.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {listingPriceUnitLabels[unit] ?? unit}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </fieldset>
 
             <label>
               {t.addListing.bedrooms}

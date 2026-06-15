@@ -45,6 +45,22 @@ export type PaymentFrequency =
   | 'Per year'
   | 'Total sale price';
 
+export type PriceQualifier =
+  | 'FIXED'
+  | 'FROM'
+  | 'ON_REQUEST';
+
+export type PriceUnit =
+  | 'TOTAL'
+  | 'NIGHT'
+  | 'MONTH'
+  | 'YEAR'
+  | 'PERSON'
+  | 'GROUP'
+  | 'HOUR'
+  | 'DAY'
+  | 'ACTIVITY';
+
 export type LandmarkCategory =
   | 'Mall'
   | 'Landmark'
@@ -134,6 +150,10 @@ export type Listing = {
   transaction: ListingTransaction;
   location: string;
   price: string;
+  priceAmount?: string;
+  priceCurrency?: string;
+  priceQualifier?: PriceQualifier;
+  priceUnit?: PriceUnit;
   beds: number;
   baths: number;
   sqm: number;
@@ -189,6 +209,10 @@ export type Activity = {
   duration: string;
   durationMinutes: number;
   price: string;
+  priceAmount?: string;
+  priceCurrency?: string;
+  priceQualifier?: PriceQualifier;
+  priceUnit?: PriceUnit;
   image: string;
   category: string;
   highlights: string[];
@@ -329,6 +353,10 @@ export type ApiListing = {
   typeAr?: string | null;
 
   price: string;
+  priceAmount?: string | null;
+  priceCurrency?: string | null;
+  priceQualifier?: PriceQualifier | null;
+  priceUnit?: PriceUnit | null;
   beds: number;
   baths: number;
   sqm: number;
@@ -397,6 +425,10 @@ export type ApiActivity = {
   providerAr?: string | null;
 
   price: string;
+  priceAmount?: string | null;
+  priceCurrency?: string | null;
+  priceQualifier?: PriceQualifier | null;
+  priceUnit?: PriceUnit | null;
   durationMinutes?: number | null;
 durationLabelEn?: string | null;
 durationLabelAr?: string | null;

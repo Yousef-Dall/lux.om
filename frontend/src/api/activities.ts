@@ -1,5 +1,10 @@
 import { apiClient } from './client';
-import type { ApiActivity, DayName } from '../types';
+import type {
+  ApiActivity,
+  DayName,
+  PriceQualifier,
+  PriceUnit
+} from '../types';
 
 export type CreateActivityPayload = {
   titleEn: string;
@@ -15,7 +20,16 @@ export type CreateActivityPayload = {
   providerEn?: string;
   providerAr?: string;
 
-  price: string;
+  /**
+   * Legacy display price remains supported while forms migrate.
+   */
+  price?: string;
+
+  priceAmount?: string | number;
+  priceCurrency?: string;
+  priceQualifier?: PriceQualifier;
+  priceUnit?: PriceUnit;
+
   durationMinutes?: number;
   durationLabelEn?: string;
   durationLabelAr?: string;

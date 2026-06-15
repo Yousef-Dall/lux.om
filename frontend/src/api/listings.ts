@@ -4,7 +4,9 @@ import type {
   ListingFurnishing,
   ListingTransaction,
   ListingView,
-  PaymentFrequency
+  PaymentFrequency,
+  PriceQualifier,
+  PriceUnit
 } from '../types';
 
 export type CreateListingPayload = {
@@ -13,7 +15,17 @@ export type CreateListingPayload = {
   type: string;
   transaction: ListingTransaction;
   location: string;
-  price: string;
+
+  /**
+   * Legacy display price remains supported while forms migrate.
+   */
+  price?: string;
+
+  priceAmount?: string | number;
+  priceCurrency?: string;
+  priceQualifier?: PriceQualifier;
+  priceUnit?: PriceUnit;
+
   beds: number;
   baths: number;
   sqm: number;
