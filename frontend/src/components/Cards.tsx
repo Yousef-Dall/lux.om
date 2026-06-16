@@ -17,7 +17,11 @@ import { Link } from 'react-router-dom';
 
 import { useLanguage } from '../i18n/LanguageContext';
 import type { Activity, Listing, ListingTransaction } from '../types';
-import { formatDayList, formatTimeRange } from '../utils/format';
+import {
+  formatDayList,
+  formatMarketplacePrice,
+  formatTimeRange
+} from '../utils/format';
 
 type ListingCardProps = {
   listing: Listing;
@@ -225,6 +229,15 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
   const transactionLabel = getTransactionLabel(listing.transaction, language);
   const propertyTypeLabel = getPropertyTypeLabel(listing.type, language);
 
+  const formattedPrice = formatMarketplacePrice({
+    price: listing.price,
+    priceAmount: listing.priceAmount,
+    priceCurrency: listing.priceCurrency,
+    priceQualifier: listing.priceQualifier,
+    priceUnit: listing.priceUnit,
+    language
+  });
+
   return (
     <article className={`listing-card lux-market-card lux-market-card--${variant}`}>
       <Link
@@ -244,7 +257,7 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
 
         <div className="lux-card-price">
           <span>{transactionLabel}</span>
-          <strong>{listing.price}</strong>
+          <strong>{formattedPrice}</strong>
         </div>
       </Link>
 
@@ -360,6 +373,15 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
   const agency = activity.travelAgency;
   const organizerName = agency?.name || activity.provider;
 
+  const formattedPrice = formatMarketplacePrice({
+    price: activity.price,
+    priceAmount: activity.priceAmount,
+    priceCurrency: activity.priceCurrency,
+    priceQualifier: activity.priceQualifier,
+    priceUnit: activity.priceUnit,
+    language
+  });
+
   return (
     <article className={`activity-card lux-market-card lux-activity-card lux-market-card--${variant}`}>
       <Link
@@ -379,7 +401,7 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
 
         <div className="lux-card-price">
           <span>{durationLabel}</span>
-          <strong>{activity.price}</strong>
+          <strong>{formattedPrice}</strong>
         </div>
       </Link>
 
