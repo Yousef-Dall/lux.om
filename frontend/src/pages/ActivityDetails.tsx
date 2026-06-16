@@ -19,7 +19,11 @@ import ButtonLink from '../components/ButtonLink';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { Activity } from '../types';
-import { formatDayList, formatTimeRange } from '../utils/format';
+import {
+  formatDayList,
+  formatMarketplacePrice,
+  formatTimeRange
+} from '../utils/format';
 
 export default function ActivityDetails() {
   const { t, language } = useLanguage();
@@ -312,7 +316,16 @@ export default function ActivityDetails() {
         <aside className="booking-panel booking-panel--premium" aria-label={copy.summary}>
           <div>
             <span className="booking-panel__label">{activity.category}</span>
-            <strong className="price">{activity.price}</strong>
+            <strong className="price">
+                {formatMarketplacePrice({
+                  price: activity.price,
+                  priceAmount: activity.priceAmount,
+                  priceCurrency: activity.priceCurrency,
+                  priceQualifier: activity.priceQualifier,
+                  priceUnit: activity.priceUnit,
+                  language
+                })}
+              </strong>
           </div>
 
           {organizerName ? (

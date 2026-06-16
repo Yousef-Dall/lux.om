@@ -19,6 +19,7 @@ import ButtonLink from '../components/ButtonLink';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { Listing } from '../types';
+import { formatMarketplacePrice } from '../utils/format';
 
 export default function ListingDetails() {
   const { t, language } = useLanguage();
@@ -350,7 +351,16 @@ const specItems = [
         <aside className="booking-panel booking-panel--premium" aria-label={t.listings.summary}>
           <div>
             <span className="booking-panel__label">{listing.transaction}</span>
-            <strong className="price">{listing.price}</strong>
+            <strong className="price">
+                {formatMarketplacePrice({
+                  price: listing.price,
+                  priceAmount: listing.priceAmount,
+                  priceCurrency: listing.priceCurrency,
+                  priceQualifier: listing.priceQualifier,
+                  priceUnit: listing.priceUnit,
+                  language
+                })}
+              </strong>
           </div>
 
           <div className="listing-card__facts listing-card__facts--large">

@@ -20,6 +20,7 @@ import ButtonLink from '../components/ButtonLink';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import { formatMarketplacePrice } from '../utils/format';
 
 function getStatusClass(status?: string) {
   if (status === 'APPROVED') return 'approved';
@@ -318,7 +319,16 @@ const activities = dashboardData?.activities ?? [];
 
                           <td>{listing.location}</td>
                           <td>{listing.type}</td>
-                          <td>{listing.price}</td>
+                          <td>
+                              {formatMarketplacePrice({
+                                price: listing.price,
+                                priceAmount: listing.priceAmount,
+                                priceCurrency: listing.priceCurrency,
+                                priceQualifier: listing.priceQualifier,
+                                priceUnit: listing.priceUnit,
+                                language
+                              })}
+                            </td>
 
                           <td>
                             <span className={`status-pill ${getStatusClass(listing.status)}`}>
