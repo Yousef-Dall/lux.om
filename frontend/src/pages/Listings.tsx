@@ -155,7 +155,8 @@ export default function Listings() {
   const [minSqm, setMinSqm] = useState('');
   const [minGuests, setMinGuests] = useState('');
   const [minParking, setMinParking] = useState('');
-  const [priceKeyword, setPriceKeyword] = useState('');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
   const [furnishing, setFurnishing] = useState<(typeof furnishingFilters)[number]>('All');
   const [view, setView] = useState<(typeof viewFilters)[number]>('All');
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
@@ -163,7 +164,8 @@ export default function Listings() {
 
   const debouncedQuery = useDebouncedValue(query);
   const debouncedLocation = useDebouncedValue(location);
-  const debouncedPriceKeyword = useDebouncedValue(priceKeyword);
+  const debouncedMinPrice = useDebouncedValue(minPrice);
+  const debouncedMaxPrice = useDebouncedValue(maxPrice);
 
   const copy =
     language === 'ar'
@@ -256,7 +258,8 @@ export default function Listings() {
     minSqm,
     minGuests,
     minParking,
-    debouncedPriceKeyword,
+    debouncedMinPrice,
+    debouncedMaxPrice,
     furnishing,
     view,
     selectedAmenities,
@@ -308,7 +311,12 @@ export default function Listings() {
           minSqm: minSqm ? Number(minSqm) : undefined,
           minGuests: minGuests ? Number(minGuests) : undefined,
           minParking: minParking ? Number(minParking) : undefined,
-          price: debouncedPriceKeyword.trim() || undefined,
+          minPrice: debouncedMinPrice.trim()
+            ? Number(debouncedMinPrice)
+            : undefined,
+          maxPrice: debouncedMaxPrice.trim()
+            ? Number(debouncedMaxPrice)
+            : undefined,
           furnishing:
             furnishing !== 'All' ? furnishing : undefined,
           view: view !== 'All' ? view : undefined,
@@ -356,7 +364,8 @@ export default function Listings() {
     minSqm,
     minGuests,
     minParking,
-    debouncedPriceKeyword,
+    debouncedMinPrice,
+    debouncedMaxPrice,
     furnishing,
     view,
     selectedAmenities,
@@ -452,11 +461,19 @@ export default function Listings() {
     if (minGuests) chips.push({ key: 'minGuests', label: `${minGuests}+ guests`, onRemove: () => setMinGuests('') });
     if (minParking) chips.push({ key: 'minParking', label: `${minParking}+ parking`, onRemove: () => setMinParking('') });
 
-    if (priceKeyword.trim()) {
+    if (minPrice.trim()) {
       chips.push({
-        key: 'priceKeyword',
-        label: `Price: ${priceKeyword}`,
-        onRemove: () => setPriceKeyword('')
+        key: 'minPrice',
+        label: `${language === 'ar' ? 'السعر من' : 'Price from'}: OMR ${minPrice}`,
+        onRemove: () => setMinPrice('')
+      });
+    }
+
+    if (maxPrice.trim()) {
+      chips.push({
+        key: 'maxPrice',
+        label: `${language === 'ar' ? 'السعر حتى' : 'Price up to'}: OMR ${maxPrice}`,
+        onRemove: () => setMaxPrice('')
       });
     }
 
@@ -490,7 +507,9 @@ export default function Listings() {
     minSqm,
     minGuests,
     minParking,
-    priceKeyword,
+    minPrice,
+    maxPrice,
+    language,
     furnishing,
     view,
     selectedAmenities
@@ -526,7 +545,8 @@ export default function Listings() {
     setMinSqm('');
     setMinGuests('');
     setMinParking('');
-    setPriceKeyword('');
+    setMinPrice('');
+    setMaxPrice('');
     setFurnishing('All');
     setView('All');
     setSelectedAmenities([]);
@@ -807,11 +827,24 @@ return (
                 </label>
 
                 <label>
-                  {t.listings.priceKeyword}
+                  {language === 'ar' ? 'أقل سعر' : 'Min price'}
                   <input
-                    placeholder="OMR 500, /night, /mo..."
-                    value={priceKeyword}
-                    onChange={(event) => setPriceKeyword(event.target.value)}
+                    type="number"
+                    min="0"
+                    placeholder={t.common.any}
+                    value={minPrice}
+                    onChange={(event) => setMinPrice(event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  {language === 'ar' ? 'أعلى سعر' : 'Max price'}
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder={t.common.any}
+                    value={maxPrice}
+                    onChange={(event) => setMaxPrice(event.target.value)}
                   />
                 </label>
 

@@ -127,13 +127,15 @@ export default function Activities() {
   const [mealIncluded, setMealIncluded] = useState(false);
   const [outdoor, setOutdoor] = useState(false);
 
-  const [priceKeyword, setPriceKeyword] = useState('');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
   const [sortBy, setSortBy] =
     useState<ActivitySort>('recommended');
 
   const debouncedQuery = useDebouncedValue(query);
   const debouncedLocation = useDebouncedValue(location);
-  const debouncedPriceKeyword = useDebouncedValue(priceKeyword);
+  const debouncedMinPrice = useDebouncedValue(minPrice);
+  const debouncedMaxPrice = useDebouncedValue(maxPrice);
 
   const hasTimeError =
     Boolean(freeFrom) &&
@@ -231,7 +233,8 @@ export default function Activities() {
     includesTransfer,
     mealIncluded,
     outdoor,
-    debouncedPriceKeyword,
+    debouncedMinPrice,
+    debouncedMaxPrice,
     sortBy
   ]);
 
@@ -287,7 +290,12 @@ export default function Activities() {
           mealIncluded: mealIncluded || undefined,
           outdoor: outdoor || undefined,
 
-          price: debouncedPriceKeyword.trim() || undefined,
+          minPrice: debouncedMinPrice.trim()
+            ? Number(debouncedMinPrice)
+            : undefined,
+          maxPrice: debouncedMaxPrice.trim()
+            ? Number(debouncedMaxPrice)
+            : undefined,
           page,
           pageSize: ACTIVITIES_PAGE_SIZE
         });
@@ -330,7 +338,8 @@ export default function Activities() {
     includesTransfer,
     mealIncluded,
     outdoor,
-    debouncedPriceKeyword,
+    debouncedMinPrice,
+    debouncedMaxPrice,
     hasTimeError,
     sortBy,
     page,
@@ -368,7 +377,8 @@ export default function Activities() {
       includesTransfer ? 'transfer' : '',
       mealIncluded ? 'meal' : '',
       outdoor ? 'outdoor' : '',
-      priceKeyword
+      minPrice,
+      maxPrice
     ].filter(Boolean).length;
   }, [
     query,
@@ -385,7 +395,8 @@ export default function Activities() {
     includesTransfer,
     mealIncluded,
     outdoor,
-    priceKeyword
+    minPrice,
+    maxPrice
   ]);
 
   const filteredActivities = hasTimeError ? [] : activities;
@@ -405,7 +416,8 @@ export default function Activities() {
     setIncludesTransfer(false);
     setMealIncluded(false);
     setOutdoor(false);
-    setPriceKeyword('');
+    setMinPrice('');
+    setMaxPrice('');
     setSortBy('recommended');
     setPage(1);
     setSearchParams({});
@@ -640,11 +652,24 @@ export default function Activities() {
                 </label>
 
                 <label>
-                  {activityCopy.maxPriceKeyword}
+                  {language === 'ar' ? 'أقل سعر' : 'Min price'}
                   <input
-                    placeholder="OMR 40, OMR 100..."
-                    value={priceKeyword}
-                    onChange={(event) => setPriceKeyword(event.target.value)}
+                    type="number"
+                    min="0"
+                    placeholder={t.common.any}
+                    value={minPrice}
+                    onChange={(event) => setMinPrice(event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  {language === 'ar' ? 'أعلى سعر' : 'Max price'}
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder={t.common.any}
+                    value={maxPrice}
+                    onChange={(event) => setMaxPrice(event.target.value)}
                   />
                 </label>
               </div>

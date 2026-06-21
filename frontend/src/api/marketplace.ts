@@ -92,7 +92,8 @@ type ListingParams = ListParams & {
   minSqm?: number;
   minGuests?: number;
   minParking?: number;
-  price?: string;
+  minPrice?: number;
+  maxPrice?: number;
   furnishing?: string;
   view?: string;
   amenities?: string;
@@ -123,7 +124,8 @@ type ActivityParams = ListParams & {
   outdoor?: boolean;
   featured?: boolean;
 
-  price?: string;
+  minPrice?: number;
+  maxPrice?: number;
 };
 
 type DeveloperParams = ListParams & {
