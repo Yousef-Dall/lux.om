@@ -15,6 +15,7 @@ const app = createApp();
 
 let ownerToken = '';
 let activityProviderToken = '';
+let customerToken = '';
 
 async function clearTestDatabase() {
   const databaseUrl = new URL(process.env.DATABASE_URL ?? '');
@@ -63,8 +64,19 @@ async function seedMarketplaceFixtures() {
     }
   });
 
+    const customer = await prisma.user.create({
+      data: {
+        name: 'Integration Customer',
+        email: 'integration-customer@lux.test',
+        password: 'test-password',
+        role: 'USER',
+        phone: '+96890000000'
+      }
+    });
+
   ownerToken = signToken(owner);
   activityProviderToken = signToken(activityProvider);
+    customerToken = signToken(customer);
 
   const featuredDeveloper =
     await prisma.developerCompany.create({
@@ -706,6 +718,126 @@ describe('GET /api/activities', () => {
     expect(response.body).toMatchObject({
       message: 'Validation failed'
     });
+  });
+});
+
+describe('POST /api/bookings', () => {
+  it('creates a direct activity booking request for an approved activity', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-07-15',
+        preferredTime: '10:30',
+        guests: 3,
+        contactName: 'Integration Customer',
+        contactEmail: 'customer@lux.test',
+        contactPhone: '+96890000000',
+        message: 'Please confirm hotel pickup.'
+      })
+      .expect(201);
+
+    expect(response.body.booking).toMatchObject({
+      activityId: activity.id,
+      listingId: null,
+      status: 'PENDING',
+      guests: 3,
+      preferredTime: '10:30',
+      contactName: 'Integration Customer',
+      contactEmail: 'customer@lux.test',
+      contactPhone: '+96890000000',
+      message: 'Please confirm hotel pickup.'
+    });
+
+    expect(response.body.booking.scheduledDate).toContain('2026-07-15');
+    expect(response.body.booking.activity.slug).toBe('integration-city-walk');
+    expect(response.body.booking.payment).toMatchObject({
+      status: 'NOT_REQUIRED'
+    });
+  });
+
+  it('requires a scheduled date for activity booking requests', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        guests: 2
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      message: 'Scheduled date is required for activity bookings'
+    });
+  });
+
+  it('prevents activity providers from booking their own activities', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${activityProviderToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-07-15',
+        guests: 1
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      message: 'You cannot create a booking request for your own activity'
+    });
+  });
+
+  it('rejects booking payloads that target both a listing and an activity', async () => {
+    const listing = await prisma.listing.findUniqueOrThrow({
+      where: {
+        slug: 'integration-budget-apartment'
+      }
+    });
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        listingId: listing.id,
+        activityId: activity.id,
+        scheduledDate: '2026-07-15'
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      message: 'Validation failed'
+    });
+    expect(response.body.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'activityId'
+        })
+      ])
+    );
   });
 });
 

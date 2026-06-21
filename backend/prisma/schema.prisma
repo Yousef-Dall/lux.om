@@ -180,12 +180,12 @@ model Listing {
    * Keep these for compatibility with existing backend/frontend routes.
    * Later we will gradually move the frontend to titleEn/titleAr etc.
    */
-  title       String
-  description String
-  type        String
-  transaction String
+  title            String
+  description      String
+  type             String
+  transaction      String
   buyerEligibility ListingBuyerEligibility[] @default([])
-  location    String
+  location         String
 
   /**
    * Phase 3 bilingual fields.
@@ -320,7 +320,7 @@ model Activity {
   language        String?
   difficulty      String?
   activityType    String?
-  travelRegion   ActivityTravelRegion @default(INSIDE_OMAN)
+  travelRegion    ActivityTravelRegion @default(INSIDE_OMAN)
 
   availabilityDays      String[] @default([])
   availabilityStartTime String?
@@ -349,6 +349,7 @@ model Activity {
   images     ActivityImage[]
   highlights ActivityHighlight[]
   inquiries  Inquiry[]
+  bookings   Booking[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -394,8 +395,19 @@ model Booking {
   message String?
   status  BookingStatus @default(PENDING)
 
-  listingId String
-  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId String?
+  listing   Listing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  activityId String?
+  activity   Activity? @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  scheduledDate DateTime?
+  preferredTime String?
+  guests        Int       @default(1)
+
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -405,8 +417,10 @@ model Booking {
   updatedAt DateTime @updatedAt
 
   @@index([listingId])
+  @@index([activityId])
   @@index([userId])
   @@index([status])
+  @@index([scheduledDate])
 }
 
 model Payment {

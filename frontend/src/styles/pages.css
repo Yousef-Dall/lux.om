@@ -6516,3 +6516,78 @@
   object-fit: cover;
   width: 100%;
 }
+
+
+.activity-booking-card {
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 1.35rem;
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+}
+
+.activity-booking-card h2 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+.activity-booking-card > p {
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.activity-booking-form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.activity-booking-form label {
+  color: var(--color-muted);
+  display: grid;
+  font-size: 0.82rem;
+  font-weight: 800;
+  gap: 0.35rem;
+}
+
+.activity-booking-form input,
+.activity-booking-form textarea {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 0.9rem;
+  color: var(--color-ink);
+  font: inherit;
+  padding: 0.75rem 0.85rem;
+}
+
+.activity-booking-form textarea {
+  resize: vertical;
+}
+
+.activity-booking-form .button-link {
+  border: 0;
+  justify-content: center;
+  width: 100%;
+}
+
+.activity-booking-login {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.activity-booking-login p {
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.form-success {
+  background: rgba(22, 163, 74, 0.1);
+  border: 1px solid rgba(22, 163, 74, 0.2);
+  border-radius: 0.9rem;
+  color: #166534;
+  font-size: 0.9rem;
+  font-weight: 800;
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+}

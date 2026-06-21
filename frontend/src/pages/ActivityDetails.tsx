@@ -7,14 +7,18 @@ import {
   Moon,
   Mountain,
   MoveRight,
+    Send,
   Sparkles,
   Users,
   Utensils
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+import { createBooking } from '../api/bookings';
+import { ApiError } from '../api/client';
 import { getActivityBySlug } from '../api/marketplace';
+import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -27,11 +31,22 @@ import {
 
 export default function ActivityDetails() {
   const { t, language } = useLanguage();
+    const { token, user, isAuthenticated } = useAuth();
   const { slug } = useParams();
 
   const [activity, setActivity] = useState<Activity | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+    const [bookingDate, setBookingDate] = useState('');
+    const [bookingTime, setBookingTime] = useState('');
+    const [bookingGuests, setBookingGuests] = useState('2');
+    const [bookingName, setBookingName] = useState('');
+    const [bookingEmail, setBookingEmail] = useState('');
+    const [bookingPhone, setBookingPhone] = useState('');
+    const [bookingMessage, setBookingMessage] = useState('');
+    const [bookingSubmitting, setBookingSubmitting] = useState(false);
+    const [bookingError, setBookingError] = useState('');
+    const [bookingSuccess, setBookingSuccess] = useState('');
 
   useDocumentTitle(activity ? activity.title : 'Activity details');
 
@@ -53,6 +68,23 @@ export default function ActivityDetails() {
           travelRegion: 'نطاق النشاط',
           insideOman: 'داخل عُمان',
           outsideOman: 'خارج عُمان',
+            bookingTitle: 'اطلبي الحجز مباشرة',
+            bookingText: 'اختاري التاريخ والوقت وعدد الضيوف، وسيراجع فريق lux.om الطلب مع منظم النشاط.',
+            bookingDate: 'تاريخ الحجز',
+            bookingTime: 'الوقت المفضل',
+            guests: 'عدد الضيوف',
+            contactName: 'اسم التواصل',
+            contactEmail: 'بريد التواصل',
+            contactPhone: 'رقم الهاتف',
+            message: 'ملاحظات إضافية',
+            messagePlaceholder: 'مثلاً: لدينا طفلان، نحتاج نقل من الفندق...',
+            submitBooking: 'إرسال طلب الحجز',
+            submittingBooking: 'جاري إرسال الطلب...',
+            loginToBook: 'سجلي الدخول لإرسال طلب حجز مباشر.',
+            goToLogin: 'تسجيل الدخول',
+            bookingSuccess: 'تم إرسال طلب الحجز بنجاح. يمكنك متابعة الطلب من لوحة التحكم.',
+            bookingError: 'تعذر إرسال طلب الحجز. حاولي مرة أخرى.',
+            requiredBookingFields: 'يرجى تعبئة تاريخ الحجز واسم التواصل والبريد الإلكتروني.',
           loading: 'جاري تحميل النشاط...',
           error: 'تعذر تحميل تفاصيل النشاط. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
@@ -70,6 +102,23 @@ export default function ActivityDetails() {
           travelRegion: 'Activity region',
           insideOman: 'Inside Oman',
           outsideOman: 'Outside Oman',
+            bookingTitle: 'Book this activity directly',
+            bookingText: 'Choose your date, preferred time, and guest count. lux.om will route the request to the activity provider.',
+            bookingDate: 'Booking date',
+            bookingTime: 'Preferred time',
+            guests: 'Guests',
+            contactName: 'Contact name',
+            contactEmail: 'Contact email',
+            contactPhone: 'Phone',
+            message: 'Additional notes',
+            messagePlaceholder: 'Example: We have two children and need hotel pickup...',
+            submitBooking: 'Send booking request',
+            submittingBooking: 'Sending request...',
+            loginToBook: 'Log in to send a direct booking request.',
+            goToLogin: 'Log in',
+            bookingSuccess: 'Booking request sent successfully. You can follow it from your dashboard.',
+            bookingError: 'Could not send the booking request. Please try again.',
+            requiredBookingFields: 'Please fill booking date, contact name, and contact email.',
           loading: 'Loading activity...',
           error: 'Could not load activity details. Make sure the backend is running and try again.'
         };
@@ -112,6 +161,66 @@ export default function ActivityDetails() {
       isMounted = false;
     };
   }, [slug, language, copy.error]);
+
+
+    useEffect(() => {
+      if (!user) return;
+
+      setBookingName((current) => current || user.name || '');
+      setBookingEmail((current) => current || user.email || '');
+      setBookingPhone((current) => current || user.phone || '');
+    }, [user]);
+
+    async function handleBookingSubmit(event: FormEvent<HTMLFormElement>) {
+      event.preventDefault();
+
+      if (!activity) return;
+
+      if (!token) {
+        setBookingError(copy.loginToBook);
+        return;
+      }
+
+      if (!bookingDate || !bookingName.trim() || !bookingEmail.trim()) {
+        setBookingError(copy.requiredBookingFields);
+        return;
+      }
+
+      try {
+        setBookingSubmitting(true);
+        setBookingError('');
+        setBookingSuccess('');
+
+        await createBooking(
+          {
+            activityId: activity.id,
+            scheduledDate: bookingDate,
+            preferredTime: bookingTime || undefined,
+            guests: Number(bookingGuests) || 1,
+            contactName: bookingName.trim(),
+            contactEmail: bookingEmail.trim(),
+            contactPhone: bookingPhone.trim() || undefined,
+            message: bookingMessage.trim() || undefined,
+            amount: 0,
+            commission: 0
+          },
+          token
+        );
+
+        setBookingSuccess(copy.bookingSuccess);
+        setBookingMessage('');
+      } catch (error) {
+        console.error(error);
+
+        if (error instanceof ApiError) {
+          setBookingError(error.message);
+        } else {
+          setBookingError(copy.bookingError);
+        }
+      } finally {
+        setBookingSubmitting(false);
+      }
+    }
 
   if (loading) {
     return (
@@ -428,13 +537,105 @@ export default function ActivityDetails() {
               <span key={item}>{item}</span>
             ))}
           </div>
+            <div className="activity-booking-card">
+              <h2>{copy.bookingTitle}</h2>
+              <p>{copy.bookingText}</p>
 
-          <ButtonLink to="/contact" isFullWidth>
-            {activityCopy.requestBooking}
-            <MoveRight size={16} aria-hidden="true" />
-          </ButtonLink>
+              {isAuthenticated ? (
+                <form className="activity-booking-form" onSubmit={handleBookingSubmit}>
+                  <label>
+                    {copy.bookingDate}
+                    <input
+                      type="date"
+                      value={bookingDate}
+                      onChange={(event) => setBookingDate(event.target.value)}
+                      required
+                    />
+                  </label>
 
-          <p>{activityCopy.finalConfirmation}</p>
+                  <label>
+                    {copy.bookingTime}
+                    <input
+                      type="time"
+                      value={bookingTime}
+                      onChange={(event) => setBookingTime(event.target.value)}
+                    />
+                  </label>
+
+                  <label>
+                    {copy.guests}
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={bookingGuests}
+                      onChange={(event) => setBookingGuests(event.target.value)}
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    {copy.contactName}
+                    <input
+                      value={bookingName}
+                      onChange={(event) => setBookingName(event.target.value)}
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    {copy.contactEmail}
+                    <input
+                      type="email"
+                      value={bookingEmail}
+                      onChange={(event) => setBookingEmail(event.target.value)}
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    {copy.contactPhone}
+                    <input
+                      value={bookingPhone}
+                      onChange={(event) => setBookingPhone(event.target.value)}
+                    />
+                  </label>
+
+                  <label className="activity-booking-form__full">
+                    {copy.message}
+                    <textarea
+                      value={bookingMessage}
+                      onChange={(event) => setBookingMessage(event.target.value)}
+                      placeholder={copy.messagePlaceholder}
+                      rows={4}
+                    />
+                  </label>
+
+                  {bookingError ? (
+                    <p className="form-error" role="alert">{bookingError}</p>
+                  ) : null}
+
+                  {bookingSuccess ? (
+                    <p className="form-success" role="status">{bookingSuccess}</p>
+                  ) : null}
+
+                  <button className="button-link button-link--primary" type="submit" disabled={bookingSubmitting}>
+                    {bookingSubmitting ? copy.submittingBooking : copy.submitBooking}
+                    <Send size={16} aria-hidden="true" />
+                  </button>
+                </form>
+              ) : (
+                <div className="activity-booking-login">
+                  <p>{copy.loginToBook}</p>
+                  <ButtonLink to="/login" isFullWidth>
+                    {copy.goToLogin}
+                    <MoveRight size={16} aria-hidden="true" />
+                  </ButtonLink>
+                </div>
+              )}
+            </div>
+
+            <p>{activityCopy.finalConfirmation}</p>
         </aside>
       </section>
     </article>
