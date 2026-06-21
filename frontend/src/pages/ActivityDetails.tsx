@@ -140,6 +140,25 @@ export default function ActivityDetails() {
       ? copy.outsideOman
       : copy.insideOman;
 
+  const activityGalleryImages = (
+    activity.images?.length
+      ? activity.images.map((image, imageIndex) => ({
+          url: image.url,
+          alt: image.altEn || image.altAr || `${activity.title} ${imageIndex + 1}`
+        }))
+      : [
+          {
+            url: activity.image,
+            alt: activity.title
+          }
+        ]
+  ).filter((image) => image.url);
+
+  const primaryActivityImage = activityGalleryImages[0] ?? {
+    url: activity.image,
+    alt: activity.title
+  };
+
   const specItems = [
     {
       label: activityCopy.durationType,
@@ -208,8 +227,14 @@ export default function ActivityDetails() {
 
       <section className="container details-grid">
         <div>
-          <div className="details-image-wrap">
-            <img className="details-image" src={activity.image} alt={activity.title} />
+            <div className="details-gallery">
+              <div className="details-image-wrap">
+                <img
+                  className="details-image"
+                  src={primaryActivityImage.url}
+                  alt={primaryActivityImage.alt}
+                />
+
 
             {activity.featured ? (
               <span className="details-image-badge">
@@ -217,7 +242,21 @@ export default function ActivityDetails() {
                 {copy.featured}
               </span>
             ) : null}
-          </div>
+              </div>
+
+              {activityGalleryImages.length > 1 ? (
+                <div className="details-gallery-grid">
+                  {activityGalleryImages.slice(1).map((image, imageIndex) => (
+                    <img
+                      key={`${image.url}-${imageIndex}`}
+                      src={image.url}
+                      alt={image.alt}
+                      loading="lazy"
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
 
           <div className="details-content">
             <div className="details-section-heading">

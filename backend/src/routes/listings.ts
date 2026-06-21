@@ -131,6 +131,17 @@ const listingSchema = z
     baths: z.coerce.number().int().min(0).max(50),
     sqm: z.coerce.number().int().min(1).max(100000),
     image: imageUrlSchema,
+    images: z
+      .array(
+        z.object({
+          url: imageUrlSchema,
+          altEn: z.string().trim().max(160).optional(),
+          altAr: z.string().trim().max(160).optional(),
+          sortOrder: z.coerce.number().int().min(0).default(0)
+        })
+      )
+      .max(20)
+      .optional(),
 
     amenities: z.array(z.string().trim().min(1).max(50)).max(30).default([]),
 
@@ -1052,6 +1063,17 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
       paymentFrequency: data.paymentFrequency
     });
 
+    const listingImages =
+      data.images && data.images.length > 0
+        ? data.images
+        : [
+            {
+              url: data.image,
+              altEn: data.title,
+              sortOrder: 0
+            }
+          ];
+
     const listing = await prisma.listing.create({
       data: {
         title: data.title,
@@ -1104,13 +1126,7 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
         },
 
         images: {
-          create: [
-            {
-              url: data.image,
-              altEn: data.title,
-              sortOrder: 0
-            }
-          ]
+          create: listingImages
         }
       },
       include: listingInclude

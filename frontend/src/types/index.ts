@@ -170,6 +170,7 @@ export type Listing = {
   baths: number;
   sqm: number;
   image: string;
+  images?: ApiListingImage[];
   status?: ListingStatus;
   amenities: string[];
   featured?: boolean;
@@ -226,6 +227,7 @@ export type Activity = {
   priceQualifier?: PriceQualifier;
   priceUnit?: PriceUnit;
   image: string;
+  images?: ApiActivityImage[];
   category: string;
   highlights: string[];
   availability: ActivityAvailability;

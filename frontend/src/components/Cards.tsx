@@ -265,6 +265,9 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
     language
   });
 
+  const listingPrimaryImage = listing.images?.[0]?.url || listing.image;
+  const listingImageCount = listing.images?.length ?? 0;
+
   return (
     <article className={`listing-card lux-market-card lux-market-card--${variant}`}>
       <Link
@@ -272,7 +275,11 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
         to={`/listings/${listing.slug}`}
         aria-label={`${t.common.view} ${listing.title}`}
       >
-        <img src={listing.image} alt={listing.title} loading="lazy" />
+        <img src={listingPrimaryImage} alt={listing.title} loading="lazy" />
+
+        {listingImageCount > 1 ? (
+          <span className="lux-card-image-count">{listingImageCount} photos</span>
+        ) : null}
 
         <span className="lux-card-badge lux-card-badge--top">{transactionLabel}</span>
 
@@ -414,6 +421,9 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
     language
   });
 
+  const activityPrimaryImage = activity.images?.[0]?.url || activity.image;
+  const activityImageCount = activity.images?.length ?? 0;
+
   return (
     <article className={`activity-card lux-market-card lux-activity-card lux-market-card--${variant}`}>
       <Link
@@ -421,7 +431,11 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
         to={`/activities/${activity.slug}`}
         aria-label={`${t.common.view} ${activity.title}`}
       >
-        <img src={activity.image} alt={activity.title} loading="lazy" />
+        <img src={activityPrimaryImage} alt={activity.title} loading="lazy" />
+
+        {activityImageCount > 1 ? (
+          <span className="lux-card-image-count">{activityImageCount} photos</span>
+        ) : null}
 
         <span className="lux-card-badge lux-card-badge--top">{categoryLabel}</span>
 

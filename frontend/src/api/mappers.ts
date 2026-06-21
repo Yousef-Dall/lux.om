@@ -219,7 +219,15 @@ export function mapListing(apiListing: ApiListing, language: Language): Listing 
     ? mapLandmark(apiListing.nearestLandmark, language)
     : undefined;
 
-  const firstImage = apiListing.images?.[0]?.url;
+  const listingImages =
+    apiListing.images
+      ?.map((image) => ({
+        ...image,
+        url: resolveAssetUrl(image.url)
+      }))
+      .filter((image) => image.url) ?? [];
+
+  const firstImage = listingImages[0]?.url || apiListing.image;
 
   return {
     id: apiListing.id,
@@ -249,6 +257,7 @@ export function mapListing(apiListing: ApiListing, language: Language): Listing 
     baths: apiListing.baths,
     sqm: apiListing.sqm,
     image: resolveAssetUrl(firstImage || apiListing.image),
+      images: listingImages,
     status: apiListing.status,
     amenities:
       apiListing.amenities?.map((amenity) =>
@@ -299,7 +308,15 @@ export function mapActivity(apiActivity: ApiActivity, language: Language): Activ
       }
     : undefined;
 
-  const firstImage = apiActivity.images?.[0]?.url ?? '';
+  const activityImages =
+    apiActivity.images
+      ?.map((image) => ({
+        ...image,
+        url: resolveAssetUrl(image.url)
+      }))
+      .filter((image) => image.url) ?? [];
+
+  const firstImage = activityImages[0]?.url || '';
 
   const duration =
     pickLocalized(language, apiActivity.durationLabelEn, apiActivity.durationLabelAr) ||
@@ -322,6 +339,7 @@ export function mapActivity(apiActivity: ApiActivity, language: Language): Activ
     priceQualifier: apiActivity.priceQualifier ?? undefined,
     priceUnit: apiActivity.priceUnit ?? undefined,
     image: resolveAssetUrl(firstImage),
+    images: activityImages,
     category: pickLocalized(language, apiActivity.categoryEn, apiActivity.categoryAr),
     highlights:
       apiActivity.highlights?.map((highlight) =>

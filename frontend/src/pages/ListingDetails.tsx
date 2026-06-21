@@ -144,6 +144,25 @@ notSpecified: 'Not specified',
       ? formatListingBuyerEligibilityList(listing.buyerEligibility, language)
       : '';
 
+  const listingGalleryImages = (
+    listing.images?.length
+      ? listing.images.map((image, imageIndex) => ({
+          url: image.url,
+          alt: image.altEn || image.altAr || `${listing.title} ${imageIndex + 1}`
+        }))
+      : [
+          {
+            url: listing.image,
+            alt: listing.title
+          }
+        ]
+  ).filter((image) => image.url);
+
+  const primaryListingImage = listingGalleryImages[0] ?? {
+    url: listing.image,
+    alt: listing.title
+  };
+
   const specItems = [
   {
     label: t.addListing.bedrooms,
@@ -233,8 +252,14 @@ notSpecified: 'Not specified',
 
       <section className="container details-grid">
         <div>
-          <div className="details-image-wrap">
-            <img className="details-image" src={listing.image} alt={listing.title} />
+            <div className="details-gallery">
+              <div className="details-image-wrap">
+                <img
+                  className="details-image"
+                  src={primaryListingImage.url}
+                  alt={primaryListingImage.alt}
+                />
+
 
             {listing.featured ? (
               <span className="details-image-badge">
@@ -242,7 +267,21 @@ notSpecified: 'Not specified',
                 {copy.featured}
               </span>
             ) : null}
-          </div>
+              </div>
+
+              {listingGalleryImages.length > 1 ? (
+                <div className="details-gallery-grid">
+                  {listingGalleryImages.slice(1).map((image, imageIndex) => (
+                    <img
+                      key={`${image.url}-${imageIndex}`}
+                      src={image.url}
+                      alt={image.alt}
+                      loading="lazy"
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
 
           <div className="details-content">
             <div className="details-section-heading">

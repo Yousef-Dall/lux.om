@@ -32,6 +32,12 @@ export type CreateListingPayload = {
   baths: number;
   sqm: number;
   image: string;
+  images?: Array<{
+    url: string;
+    altEn?: string;
+    altAr?: string;
+    sortOrder?: number;
+  }>;
   amenities: string[];
 
   developerId?: string;

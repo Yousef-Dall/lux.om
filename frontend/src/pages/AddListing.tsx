@@ -13,7 +13,12 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 import { ApiError } from '../api/client';
 import { createListing, type CreateListingPayload } from '../api/listings';
-import { uploadImage } from '../api/uploads';
+import {
+  ACCEPTED_IMAGE_INPUT_TYPES,
+  MAX_IMAGE_UPLOAD_COUNT,
+  getImageUploadValidationError,
+  uploadImage
+} from '../api/uploads';
 import { getDevelopers, getLandmarks } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
@@ -165,8 +170,10 @@ export default function AddListing() {
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
 
   const [imageMode, setImageMode] = useState<ImageMode>('upload');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [uploadedImagePreview, setUploadedImagePreview] = useState('');
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [uploadedImagePreviews, setUploadedImagePreviews] = useState<
+    string[]
+  >([]);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
 
   const copy =
@@ -180,6 +187,10 @@ export default function AddListing() {
           submittedReview: 'تتم مراجعة العقارات قبل نشرها.',
           imageSource: 'مصدر الصورة',
           removeImage: 'إزالة الصورة',
+          invalidImageType: 'يرجى اختيار صورة بصيغة JPG أو PNG أو WEBP أو GIF.',
+          imageTooLarge: 'حجم الصورة كبير جداً. الحد الأقصى 5MB.',
+          imagesSelected: 'صور مختارة',
+          maxImages: 'يمكنك رفع حتى 8 صور.',
           previewAlt: 'معاينة صورة العقار',
           developerAndLocation: 'المطور والموقع',
           marketplaceContext: 'ربط العقار بالمطور والمعلم القريب',
@@ -223,6 +234,10 @@ export default function AddListing() {
           submittedReview: 'Listings are reviewed before going public.',
           imageSource: 'Image source',
           removeImage: 'Remove image',
+          invalidImageType: 'Please choose a JPG, PNG, WEBP, or GIF image.',
+          imageTooLarge: 'Image is too large. Maximum size is 5MB.',
+          imagesSelected: 'images selected',
+          maxImages: 'You can upload up to 8 images.',
           previewAlt: 'Property preview',
           developerAndLocation: 'Developer and location context',
           marketplaceContext: 'Connect this property to a developer and nearby landmark',
@@ -313,18 +328,25 @@ export default function AddListing() {
   }, [language]);
 
   useEffect(() => {
-    if (!imageFile) {
-      setUploadedImagePreview('');
+    if (imageFiles.length === 0) {
+      setUploadedImagePreviews([]);
       return;
     }
 
-    const objectUrl = URL.createObjectURL(imageFile);
-    setUploadedImagePreview(objectUrl);
+    const objectUrls = imageFiles.map((file) => URL.createObjectURL(file));
+    setUploadedImagePreviews(objectUrls);
 
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [imageFile]);
+    return () => {
+      objectUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
+    };
+  }, [imageFiles]);
 
-  const imagePreview = imageMode === 'upload' ? uploadedImagePreview : form.image.trim();
+  const imagePreviews =
+    imageMode === 'upload'
+      ? uploadedImagePreviews
+      : form.image.trim()
+        ? [form.image.trim()]
+        : [];
 
   const completedRequiredFields = useMemo(() => {
     const requiredValues = [
@@ -337,11 +359,11 @@ export default function AddListing() {
       form.baths,
       form.sqm,
       form.description,
-      imageMode === 'upload' ? imageFile?.name : form.image
+      imageMode === 'upload' ? (imageFiles.length > 0 ? 'images' : '') : form.image
     ];
 
     return requiredValues.filter(Boolean).length;
-  }, [form, imageMode, imageFile]);
+  }, [form, imageMode, imageFiles]);
 
   const formCompletion = Math.round((completedRequiredFields / 8) * 100);
 
@@ -378,8 +400,48 @@ export default function AddListing() {
     }));
   }
 
-  function clearUploadedImage() {
-    setImageFile(null);
+  function clearUploadedImage(indexToRemove?: number) {
+    setImageFiles((current) =>
+      typeof indexToRemove === 'number'
+        ? current.filter((_, index) => index !== indexToRemove)
+        : []
+    );
+    setSubmitError('');
+  }
+
+  function handleImageFileChange(files: FileList | null) {
+    setSubmitted(false);
+    setSubmitError('');
+
+    const selectedFiles = Array.from(files ?? []);
+
+    if (selectedFiles.length === 0) {
+      setImageFiles([]);
+      return;
+    }
+
+    if (selectedFiles.length > MAX_IMAGE_UPLOAD_COUNT) {
+      setImageFiles([]);
+      setSubmitError(copy.maxImages);
+      return;
+    }
+
+    const validationError = selectedFiles
+      .map((file) =>
+        getImageUploadValidationError(file, {
+          invalidType: copy.invalidImageType,
+          tooLarge: copy.imageTooLarge
+        })
+      )
+      .find(Boolean);
+
+    if (validationError) {
+      setImageFiles([]);
+      setSubmitError(validationError);
+      return;
+    }
+
+    setImageFiles(selectedFiles);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -390,7 +452,7 @@ export default function AddListing() {
       return;
     }
 
-    if (imageMode === 'upload' && !imageFile) {
+    if (imageMode === 'upload' && imageFiles.length === 0) {
       alert(t.addListing.uploadRequired);
       return;
     }
@@ -405,8 +467,11 @@ export default function AddListing() {
       setSubmitted(false);
       setSubmitError('');
 
-      const imageUrl =
-        imageMode === 'upload' && imageFile ? await uploadImage(imageFile, token) : form.image.trim();
+      const imageUrls =
+        imageMode === 'upload'
+          ? await Promise.all(imageFiles.map((file) => uploadImage(file, token)))
+          : [form.image.trim()];
+      const imageUrl = imageUrls[0] ?? '';
 
       const amenities = [
         ...selectedAmenities,
@@ -441,6 +506,11 @@ export default function AddListing() {
     baths: Number(form.baths),
     sqm: Number(form.sqm),
     image: imageUrl,
+    images: imageUrls.map((url, imageIndex) => ({
+      url,
+      altEn: form.title,
+      sortOrder: imageIndex
+    })),
     description: form.description,
     amenities,
     developerId:
@@ -473,7 +543,7 @@ export default function AddListing() {
 
       setSubmitted(true);
       setForm(initialForm);
-      setImageFile(null);
+      setImageFiles([]);
       setImageMode('upload');
       setSelectedAmenities([]);
     } catch (error) {
@@ -976,18 +1046,22 @@ export default function AddListing() {
             {imageMode === 'upload' ? (
               <label className="upload-box">
                 <input
+                  multiple
                   type="file"
-                  accept="image/png,image/jpeg,image/webp"
+                  accept={ACCEPTED_IMAGE_INPUT_TYPES}
                   onChange={(event) => {
-                    const file = event.target.files?.[0] ?? null;
-                    setImageFile(file);
-                    setSubmitted(false);
-                    setSubmitError('');
+                    handleImageFileChange(event.target.files);
                   }}
                 />
                 <UploadCloud size={28} aria-hidden="true" />
-                <span>{imageFile ? imageFile.name : t.addListing.chooseImage}</span>
-                <small>{t.addListing.imageHint}</small>
+                <span>
+                  {imageFiles.length > 0
+                    ? `${imageFiles.length} ${copy.imagesSelected}`
+                    : t.addListing.chooseImage}
+                </span>
+                <small>
+                  {t.addListing.imageHint} {copy.maxImages}
+                </small>
               </label>
             ) : (
               <label>
@@ -1002,15 +1076,23 @@ export default function AddListing() {
               </label>
             )}
 
-            {imagePreview ? (
-              <div className="image-preview">
-                <img src={imagePreview} alt={copy.previewAlt} />
+            {imagePreviews.length > 0 ? (
+              <div className="image-preview-grid">
+                {imagePreviews.map((preview, imageIndex) => (
+                  <div className="image-preview" key={`${preview}-${imageIndex}`}>
+                    <img src={preview} alt={`${copy.previewAlt} ${imageIndex + 1}`} />
 
-                {imageMode === 'upload' ? (
-                  <button type="button" onClick={clearUploadedImage} aria-label={copy.removeImage}>
-                    <X size={16} aria-hidden="true" />
-                  </button>
-                ) : null}
+                    {imageMode === 'upload' ? (
+                      <button
+                        type="button"
+                        onClick={() => clearUploadedImage(imageIndex)}
+                        aria-label={copy.removeImage}
+                      >
+                        <X size={16} aria-hidden="true" />
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
               </div>
             ) : null}
           </fieldset>

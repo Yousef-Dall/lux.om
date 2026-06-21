@@ -1237,3 +1237,22 @@ html[dir='rtl'] .footer-contact a:hover {
     transition: none;
   }
 }
+
+
+.lux-card-image-count {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  bottom: 1rem;
+  color: #fff;
+  display: inline-flex;
+  font-size: 0.74rem;
+  font-weight: 800;
+  gap: 0.35rem;
+  inset-inline-end: 1rem;
+  letter-spacing: 0.02em;
+  padding: 0.35rem 0.7rem;
+  position: absolute;
+  z-index: 3;
+}
