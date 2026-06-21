@@ -112,6 +112,7 @@ async function seedMarketplaceFixtures() {
     data: {
       ...listingBase,
       slug: 'integration-budget-apartment',
+      buyerEligibility: ['OMAN_RESIDENTS'],
       title: 'Budget Apartment',
       titleEn: 'Budget Apartment',
       type: 'Apartment',
@@ -131,6 +132,7 @@ async function seedMarketplaceFixtures() {
     data: {
       ...listingBase,
       slug: 'integration-exact-villa',
+      buyerEligibility: ['OMANI_ONLY'],
       title: 'Villa',
       titleEn: 'Villa',
       type: 'Residence',
@@ -150,6 +152,11 @@ async function seedMarketplaceFixtures() {
     data: {
       ...listingBase,
       slug: 'integration-villa-heights',
+      buyerEligibility: [
+          'FOREIGNERS_ALLOWED',
+          'FREEHOLD',
+          'COMPANY_PURCHASE_ALLOWED'
+        ],
       title: 'Villa Heights',
       titleEn: 'Villa Heights',
       type: 'Residence',
@@ -170,6 +177,7 @@ async function seedMarketplaceFixtures() {
     data: {
       ...listingBase,
       slug: 'integration-type-only-villa',
+      buyerEligibility: ['GCC_NATIONALS', 'USUFRUCT'],
       title: 'Modern Residence',
       titleEn: 'Modern Residence',
       type: 'Villa',
@@ -448,6 +456,36 @@ describe('GET /api/listings', () => {
         })
       ])
     );
+  });
+
+  it('filters listings by buyer eligibility', async () => {
+    const response = await request(app)
+      .get('/api/listings')
+      .query({
+        buyerEligibility: 'FOREIGNERS_ALLOWED'
+      })
+      .expect(200);
+
+    expect(
+      response.body.listings.map(
+        (listing: { slug: string }) => listing.slug
+      )
+    ).toEqual(['integration-villa-heights']);
+  });
+
+  it('matches buyer eligibility in listing search', async () => {
+    const response = await request(app)
+      .get('/api/listings')
+      .query({
+        search: 'freehold'
+      })
+      .expect(200);
+
+    expect(
+      response.body.listings.map(
+        (listing: { slug: string }) => listing.slug
+      )
+    ).toEqual(['integration-villa-heights']);
   });
 
   it('sorts area descending', async () => {
@@ -736,6 +774,35 @@ describe('POST /api/listings pricing compatibility', () => {
     expect(createdListing.priceCurrency).toBe('OMR');
     expect(createdListing.priceQualifier).toBe('FIXED');
     expect(createdListing.priceUnit).toBe('MONTH');
+  });
+
+  it('stores sale buyer eligibility values', async () => {
+    const response = await request(app)
+      .post('/api/listings')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        ...listingPayload,
+        title: 'Buyer Eligibility Listing',
+        transaction: 'Sale',
+        buyerEligibility: ['FOREIGNERS_ALLOWED', 'FREEHOLD'],
+        priceAmount: '75000',
+        priceCurrency: 'omr',
+        priceQualifier: 'FIXED',
+        priceUnit: 'TOTAL'
+      })
+      .expect(201);
+
+    const createdListing =
+      await prisma.listing.findUniqueOrThrow({
+        where: {
+          id: response.body.listing.id
+        }
+      });
+
+    expect(createdListing.buyerEligibility).toEqual([
+      'FOREIGNERS_ALLOWED',
+      'FREEHOLD'
+    ]);
   });
 
   it('rejects on-request pricing that includes an amount', async () => {

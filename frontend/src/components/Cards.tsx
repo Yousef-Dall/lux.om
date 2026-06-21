@@ -22,6 +22,7 @@ import {
   formatMarketplacePrice,
   formatTimeRange
 } from '../utils/format';
+import { formatListingBuyerEligibility } from '../utils/listingEligibility';
 
 type ListingCardProps = {
   listing: Listing;
@@ -247,6 +248,13 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
 
   const transactionLabel = getTransactionLabel(listing.transaction, language);
   const propertyTypeLabel = getPropertyTypeLabel(listing.type, language);
+  const buyerEligibilityPreview =
+    listing.transaction === 'Sale' && listing.buyerEligibility?.length
+      ? listing.buyerEligibility
+          .slice(0, 2)
+          .map((item) => formatListingBuyerEligibility(item, language))
+          .join(language === 'ar' ? '، ' : ', ')
+      : '';
 
   const formattedPrice = formatMarketplacePrice({
     price: listing.price,
@@ -283,6 +291,8 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
       <div className="listing-card__body lux-market-card__body">
         <div className="lux-card-meta">
           <span>{propertyTypeLabel}</span>
+
+          {buyerEligibilityPreview ? <span>{buyerEligibilityPreview}</span> : null}
 
           {listing.featured ? (
             <span>

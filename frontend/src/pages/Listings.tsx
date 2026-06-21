@@ -24,7 +24,17 @@ import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useLanguage } from '../i18n/LanguageContext';
-import type { DevelopmentCompany, Landmark, Listing, ListingTransaction } from '../types';
+import {
+  formatListingBuyerEligibility,
+  listingBuyerEligibilityOptions
+} from '../utils/listingEligibility';
+import type {
+  DevelopmentCompany,
+  Landmark,
+  Listing,
+  ListingBuyerEligibility,
+  ListingTransaction
+} from '../types';
 
 const transactionFilters = ['All', 'Sale', 'Rent', 'Short stay'] as const;
 
@@ -48,6 +58,8 @@ const viewFilters = [
   'Garden view',
   'Golf view'
 ] as const;
+
+const buyerEligibilityFilters = ['All', ...listingBuyerEligibilityOptions] as const;
 
 const amenityFilters = [
   'Private pool',
@@ -73,6 +85,7 @@ const sortOptions = [
 ] as const;
 
 type TransactionFilter = (typeof transactionFilters)[number];
+type BuyerEligibilityFilter = 'All' | ListingBuyerEligibility;
 type SortOption = (typeof sortOptions)[number];
 
 type ListingSort =
@@ -145,6 +158,7 @@ export default function Listings() {
     isTransactionFilter(initialType) ? initialType : 'All'
   );
   const [propertyType, setPropertyType] = useState<(typeof typeFilters)[number]>('All');
+  const [buyerEligibility, setBuyerEligibility] = useState<BuyerEligibilityFilter>('All');
   const [location, setLocation] = useState('');
   const [selectedLandmarkSlug, setSelectedLandmarkSlug] = useState(initialNear);
   const [selectedDeveloperSlug, setSelectedDeveloperSlug] = useState(initialDeveloper);
@@ -181,6 +195,8 @@ export default function Listings() {
           parking: 'مواقف السيارات',
           furnishing: 'التأثيث',
           view: 'الإطلالة',
+          buyerEligibility: 'أهلية الشراء',
+          allBuyerEligibility: 'كل فئات المشترين',
           sortBy: 'ترتيب حسب',
           quickFilters: 'فلاتر سريعة للغرف والحمامات',
           activeFilters: 'الفلاتر النشطة',
@@ -203,6 +219,8 @@ export default function Listings() {
           parking: 'Parking spaces',
           furnishing: 'Furnishing',
           view: 'View',
+          buyerEligibility: 'Buyer eligibility',
+          allBuyerEligibility: 'All buyer groups',
           sortBy: 'Sort by',
           quickFilters: 'Quick bedroom and bathroom filters',
           activeFilters: 'Active filters',
@@ -250,6 +268,7 @@ export default function Listings() {
     debouncedQuery,
     transaction,
     propertyType,
+    buyerEligibility,
     debouncedLocation,
     selectedLandmarkSlug,
     selectedDeveloperSlug,
@@ -301,6 +320,8 @@ export default function Listings() {
           sort: getListingSort(sortBy),
           transaction:
             transaction !== 'All' ? transaction : undefined,
+          buyerEligibility:
+            buyerEligibility !== 'All' ? buyerEligibility : undefined,
           type:
             propertyType !== 'All' ? propertyType : undefined,
           location: debouncedLocation.trim() || undefined,
@@ -354,6 +375,7 @@ export default function Listings() {
     debouncedQuery,
     transaction,
     propertyType,
+    buyerEligibility,
     debouncedLocation,
     selectedLandmarkSlug,
     selectedDeveloperSlug,
@@ -455,6 +477,14 @@ export default function Listings() {
       });
     }
 
+    if (buyerEligibility !== 'All') {
+      chips.push({
+        key: 'buyerEligibility',
+        label: formatListingBuyerEligibility(buyerEligibility, language),
+        onRemove: () => setBuyerEligibility('All')
+      });
+    }
+
     if (minBeds) chips.push({ key: 'minBeds', label: `${minBeds}+ beds`, onRemove: () => setMinBeds('') });
     if (minBaths) chips.push({ key: 'minBaths', label: `${minBaths}+ baths`, onRemove: () => setMinBaths('') });
     if (minSqm) chips.push({ key: 'minSqm', label: `${minSqm}+ sqm`, onRemove: () => setMinSqm('') });
@@ -502,6 +532,7 @@ export default function Listings() {
     selectedDeveloper,
     transaction,
     propertyType,
+    buyerEligibility,
     minBeds,
     minBaths,
     minSqm,
@@ -537,6 +568,7 @@ export default function Listings() {
     setQuery('');
     setTransaction('All');
     setPropertyType('All');
+    setBuyerEligibility('All');
     setLocation('');
     setSelectedLandmarkSlug('');
     setSelectedDeveloperSlug('');
@@ -644,6 +676,24 @@ return (
             >
               {typeFilters.map((item) => (
                 <option key={item}>{item}</option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            {copy.buyerEligibility}
+            <select
+              value={buyerEligibility}
+              onChange={(event) =>
+                setBuyerEligibility(event.target.value as BuyerEligibilityFilter)
+              }
+            >
+              {buyerEligibilityFilters.map((item) => (
+                <option key={item} value={item}>
+                  {item === 'All'
+                    ? copy.allBuyerEligibility
+                    : formatListingBuyerEligibility(item, language)}
+                </option>
               ))}
             </select>
           </label>

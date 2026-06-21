@@ -1,6 +1,7 @@
 import { apiClient } from './client';
 import type {
   ApiListing,
+  ListingBuyerEligibility,
   ListingFurnishing,
   ListingTransaction,
   ListingView,
@@ -14,6 +15,7 @@ export type CreateListingPayload = {
   description: string;
   type: string;
   transaction: ListingTransaction;
+  buyerEligibility?: ListingBuyerEligibility[];
   location: string;
 
   /**

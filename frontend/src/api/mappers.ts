@@ -233,6 +233,7 @@ export function mapListing(apiListing: ApiListing, language: Language): Listing 
     ),
     type: pickLocalized(language, apiListing.typeEn, apiListing.typeAr, apiListing.type),
     transaction: asListingTransaction(apiListing.transaction),
+    buyerEligibility: apiListing.buyerEligibility ?? [],
     location: pickLocalized(
       language,
       apiListing.locationEn,

@@ -20,6 +20,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { Listing } from '../types';
 import { formatMarketplacePrice } from '../utils/format';
+import { formatListingBuyerEligibilityList } from '../utils/listingEligibility';
 
 export default function ListingDetails() {
   const { t, language } = useLanguage();
@@ -52,6 +53,7 @@ notSpecified: 'غير محدد',
           verifiedDeveloper: 'مطور موثق',
           viewCompanyProfile: 'عرض ملف الشركة',
           viewDeveloperListings: 'عرض عقارات هذا المطور',
+          buyerEligibility: 'أهلية الشراء',
           loading: 'جاري تحميل العقار...',
           error: 'تعذر تحميل تفاصيل العقار. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
@@ -74,6 +76,7 @@ notSpecified: 'Not specified',
           verifiedDeveloper: 'Verified developer',
           viewCompanyProfile: 'View company profile',
           viewDeveloperListings: 'View properties by this developer',
+          buyerEligibility: 'Buyer eligibility',
           loading: 'Loading listing...',
           error: 'Could not load listing details. Make sure the backend is running and try again.'
         };
@@ -136,7 +139,12 @@ notSpecified: 'Not specified',
     );
   }
 
-const specItems = [
+  const buyerEligibilityLabel =
+    listing.transaction === 'Sale' && listing.buyerEligibility?.length
+      ? formatListingBuyerEligibilityList(listing.buyerEligibility, language)
+      : '';
+
+  const specItems = [
   {
     label: t.addListing.bedrooms,
     value: `${listing.beds}`,
@@ -188,7 +196,16 @@ const specItems = [
     label: t.addListing.paymentFrequency,
     value: listing.paymentFrequency ?? copy.notSpecified,
     icon: Building2
-  }
+  },
+    ...(buyerEligibilityLabel
+      ? [
+          {
+            label: copy.buyerEligibility,
+            value: buyerEligibilityLabel,
+            icon: ShieldCheck
+          }
+        ]
+      : [])
 ];
 
   return (
@@ -250,6 +267,13 @@ const specItems = [
                 <Ruler size={17} aria-hidden="true" />
                 {listing.sqm} {copy.sqm}
               </span>
+
+              {buyerEligibilityLabel ? (
+                <span>
+                  <ShieldCheck size={17} aria-hidden="true" />
+                  {buyerEligibilityLabel}
+                </span>
+              ) : null}
 
               {listing.nearestLandmarkName ? (
                 <span>
@@ -384,6 +408,11 @@ const specItems = [
             <span>{listing.type}</span>
             {listing.view ? <span>{listing.view}</span> : null}
             {listing.furnishing ? <span>{listing.furnishing}</span> : null}
+            {buyerEligibilityLabel ? (
+              <span>
+                {copy.buyerEligibility}: {buyerEligibilityLabel}
+              </span>
+            ) : null}
             {listing.parkingSpaces ? <span>{copy.parking}</span> : null}
             {listing.nearestLandmarkName ? (
               <span>

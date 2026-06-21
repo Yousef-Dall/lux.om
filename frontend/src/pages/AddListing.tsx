@@ -19,9 +19,14 @@ import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import {
+  formatListingBuyerEligibility,
+  listingBuyerEligibilityOptions
+} from '../utils/listingEligibility';
 import type {
   DevelopmentCompany,
   Landmark,
+  ListingBuyerEligibility,
   PriceQualifier,
   PriceUnit
 } from '../types';
@@ -100,6 +105,7 @@ const initialForm = {
   title: '',
   type: 'Villa',
   transaction: 'Rent',
+  buyerEligibility: [] as ListingBuyerEligibility[],
   location: '',
   priceAmount: '',
   priceCurrency: 'OMR',
@@ -201,6 +207,8 @@ export default function AddListing() {
           priceAmountPlaceholder: '٩٠٠',
           priceCurrency: 'العملة',
           priceUnit: 'وحدة التسعير',
+          buyerEligibility: 'أهلية الشراء',
+          buyerEligibilityHint: 'تظهر فقط لعقارات البيع وتوضح من يمكنه شراء العقار.',
           totalPrice: 'السعر الإجمالي',
           perNight: 'لكل ليلة',
           perMonth: 'لكل شهر',
@@ -242,6 +250,8 @@ export default function AddListing() {
           priceAmountPlaceholder: '900',
           priceCurrency: 'Currency',
           priceUnit: 'Pricing unit',
+          buyerEligibility: 'Buyer eligibility',
+          buyerEligibilityHint: 'Shown only for sale listings to clarify who can buy this property.',
           totalPrice: 'Total price',
           perNight: 'Per night',
           perMonth: 'Per month',
@@ -357,6 +367,17 @@ export default function AddListing() {
     );
   }
 
+  function toggleBuyerEligibility(value: ListingBuyerEligibility) {
+    setSubmitted(false);
+    setSubmitError('');
+    setForm((current) => ({
+      ...current,
+      buyerEligibility: current.buyerEligibility.includes(value)
+        ? current.buyerEligibility.filter((item) => item !== value)
+        : [...current.buyerEligibility, value]
+    }));
+  }
+
   function clearUploadedImage() {
     setImageFile(null);
   }
@@ -400,6 +421,8 @@ export default function AddListing() {
     title: form.title,
     type: form.type,
     transaction: form.transaction as CreateListingPayload['transaction'],
+    buyerEligibility:
+      form.transaction === 'Sale' ? form.buyerEligibility : undefined,
     location: form.location,
     priceAmount:
       form.priceQualifier === 'ON_REQUEST'
@@ -540,6 +563,8 @@ export default function AddListing() {
                   setForm((current) => ({
                     ...current,
                     transaction,
+                    buyerEligibility:
+                      transaction === 'Sale' ? current.buyerEligibility : [],
                     priceUnit:
                       defaultListingPriceUnit[transaction]
                   }));
@@ -550,6 +575,26 @@ export default function AddListing() {
                 ))}
               </select>
             </label>
+
+            {form.transaction === 'Sale' ? (
+              <div className="amenity-picker">
+                <p>{copy.buyerEligibility}</p>
+                <small>{copy.buyerEligibilityHint}</small>
+
+                <div className="amenity-filter-list">
+                  {listingBuyerEligibilityOptions.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      className={form.buyerEligibility.includes(option) ? 'active' : ''}
+                      onClick={() => toggleBuyerEligibility(option)}
+                    >
+                      {formatListingBuyerEligibility(option, language)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <label>
               {t.addListing.location}

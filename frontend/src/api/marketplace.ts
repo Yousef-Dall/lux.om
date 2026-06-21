@@ -20,6 +20,7 @@ import type {
   DevelopmentCompany,
   Landmark,
   Language,
+  ListingBuyerEligibility,
   Listing,
   TravelAgency
 } from '../types';
@@ -84,6 +85,7 @@ type ListingParams = ListParams & {
     | 'price_desc'
     | 'area_desc';
   transaction?: string;
+  buyerEligibility?: ListingBuyerEligibility;
   type?: string;
   location?: string;
   nearestLandmarkId?: string;

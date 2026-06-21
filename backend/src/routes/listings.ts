@@ -84,12 +84,43 @@ const optionalCurrencySchema = z
   .transform((value) => value.toUpperCase())
   .optional();
 
+const listingBuyerEligibilityValues = [
+  'OMANI_ONLY',
+  'GCC_NATIONALS',
+  'OMAN_RESIDENTS',
+  'FOREIGNERS_ALLOWED',
+  'COMPANY_PURCHASE_ALLOWED',
+  'FREEHOLD',
+  'USUFRUCT'
+] as const;
+
+function normalizeBuyerEligibilitySearch(value: string) {
+  return value.toLowerCase().replace(/[_-]+/g, ' ').trim();
+}
+
+function getBuyerEligibilitySearchMatches(search: string) {
+  const normalizedSearch = normalizeBuyerEligibilitySearch(search);
+
+  return listingBuyerEligibilityValues.filter((value) => {
+    const normalizedValue = normalizeBuyerEligibilitySearch(value);
+
+    return (
+      normalizedValue.includes(normalizedSearch) ||
+      normalizedSearch.includes(normalizedValue)
+    );
+  });
+}
+
 const listingSchema = z
   .object({
     title: z.string().trim().min(3).max(120),
     description: z.string().trim().min(20).max(3000),
     type: z.string().trim().min(2).max(40),
     transaction: z.enum(['Sale', 'Rent', 'Short stay']),
+    buyerEligibility: z
+      .array(z.enum(listingBuyerEligibilityValues))
+      .max(listingBuyerEligibilityValues.length)
+      .default([]),
     location: z.string().trim().min(2).max(120),
     price: z.string().trim().min(1).max(80).optional(),
     priceAmount: optionalPriceAmountSchema,
@@ -166,6 +197,7 @@ const listingSchema = z
 const listQuerySchema = z.object({
   search: z.string().trim().optional(),
   transaction: z.enum(['Sale', 'Rent', 'Short stay']).optional(),
+  buyerEligibility: z.enum(listingBuyerEligibilityValues).optional(),
   type: z.string().trim().optional(),
   location: z.string().trim().optional(),
   nearestLandmarkId: z.string().trim().optional(),
@@ -268,6 +300,14 @@ listingsRouter.get('/', async (req, res, next) => {
     if (query.transaction) {
       listingFilters.push({
         transaction: query.transaction
+      });
+    }
+
+    if (query.buyerEligibility) {
+      listingFilters.push({
+        buyerEligibility: {
+          has: query.buyerEligibility
+        }
       });
     }
 
@@ -462,6 +502,8 @@ listingsRouter.get('/', async (req, res, next) => {
     }
 
     if (search) {
+      const matchingBuyerEligibility = getBuyerEligibilitySearchMatches(search);
+
       listingFilters.push({
         OR: [
           {
@@ -542,6 +584,15 @@ listingsRouter.get('/', async (req, res, next) => {
               mode: 'insensitive'
             }
           },
+          ...(matchingBuyerEligibility.length > 0
+            ? [
+                {
+                  buyerEligibility: {
+                    hasSome: matchingBuyerEligibility
+                  }
+                }
+              ]
+            : []),
           {
             developerNameEn: {
               contains: search,
@@ -701,6 +752,7 @@ listingsRouter.get('/', async (req, res, next) => {
           typeEn: true,
           typeAr: true,
           price: true,
+          buyerEligibility: true,
 
           developerId: true,
           developerNameEn: true,
@@ -782,6 +834,7 @@ listingsRouter.get('/', async (req, res, next) => {
             Number(Boolean(candidate.furnishing)) +
             Number(Boolean(candidate.view)) +
             Number(Boolean(candidate.paymentFrequency)) +
+            Number(candidate.buyerEligibility.length > 0) +
             Number(Boolean(candidate.nearestLandmarkId)) +
             Number(
               Boolean(
@@ -806,7 +859,8 @@ listingsRouter.get('/', async (req, res, next) => {
                 candidate.location,
                 candidate.locationEn,
                 candidate.locationAr,
-                candidate.price
+                candidate.price,
+                ...candidate.buyerEligibility
               ],
               relatedSearchValues,
               [
@@ -1004,6 +1058,8 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
         description: data.description,
         type: data.type,
         transaction: data.transaction,
+        buyerEligibility:
+          data.transaction === 'Sale' ? data.buyerEligibility : [],
         location: data.location,
         price: resolvedPrice.price,
         priceAmount: resolvedPrice.priceAmount,

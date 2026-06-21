@@ -161,6 +161,16 @@ model TravelAgency {
   @@index([featured])
 }
 
+enum ListingBuyerEligibility {
+  OMANI_ONLY
+  GCC_NATIONALS
+  OMAN_RESIDENTS
+  FOREIGNERS_ALLOWED
+  COMPANY_PURCHASE_ALLOWED
+  FREEHOLD
+  USUFRUCT
+}
+
 model Listing {
   id   String @id @default(cuid())
   slug String @unique
@@ -174,6 +184,7 @@ model Listing {
   description String
   type        String
   transaction String
+  buyerEligibility ListingBuyerEligibility[] @default([])
   location    String
 
   /**

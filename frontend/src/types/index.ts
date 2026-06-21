@@ -13,6 +13,15 @@ export type UserRole = 'USER' | 'OWNER' | 'ACTIVITY_PROVIDER' | 'DEVELOPER' | 'A
 
 export type ListingTransaction = 'Sale' | 'Rent' | 'Short stay';
 
+export type ListingBuyerEligibility =
+  | 'OMANI_ONLY'
+  | 'GCC_NATIONALS'
+  | 'OMAN_RESIDENTS'
+  | 'FOREIGNERS_ALLOWED'
+  | 'COMPANY_PURCHASE_ALLOWED'
+  | 'FREEHOLD'
+  | 'USUFRUCT';
+
 export type ListingStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export type ActivityStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -150,6 +159,7 @@ export type Listing = {
   description: string;
   type: string;
   transaction: ListingTransaction;
+  buyerEligibility?: ListingBuyerEligibility[];
   location: string;
   price: string;
   priceAmount?: string;
@@ -344,6 +354,7 @@ export type ApiListing = {
   description: string;
   type: string;
   transaction: ListingTransaction | string;
+  buyerEligibility?: ListingBuyerEligibility[] | null;
   location: string;
 
   titleEn?: string | null;
