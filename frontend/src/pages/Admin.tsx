@@ -181,6 +181,22 @@ function isPendingStatus(status?: string) {
   return status === 'PENDING' || !status;
 }
 
+type ReviewStatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED';
+
+const reviewStatusFilters: ReviewStatusFilter[] = [
+  'ALL',
+  'PENDING',
+  'APPROVED',
+  'REJECTED'
+];
+
+function matchesReviewStatus(status: string | undefined, filter: ReviewStatusFilter) {
+  if (filter === 'ALL') return true;
+  if (filter === 'PENDING') return isPendingStatus(status);
+
+  return status === filter;
+}
+
 
 const initialAgencyForm = {
   nameEn: '',
@@ -237,6 +253,7 @@ const [developerForm, setDeveloperForm] = useState(initialDeveloperForm);
 const [loading, setLoading] = useState(true);
 const [loadError, setLoadError] = useState('');
 const [updatingId, setUpdatingId] = useState('');
+const [reviewStatusFilter, setReviewStatusFilter] = useState<ReviewStatusFilter>('ALL');
 
 const [creatingAgency, setCreatingAgency] = useState(false);
 const [agencyFormError, setAgencyFormError] = useState('');
@@ -287,6 +304,13 @@ requiredField: 'مطلوب',
           needsAttention: 'يحتاج انتباهاً',
           missingVerification: 'عناصر قيد المراجعة',
           reviewQueue: 'قائمة المراجعة',
+          reviewFilter: 'فلترة قائمة المراجعة',
+          allStatuses: 'كل الحالات',
+          pendingOnly: 'قيد المراجعة',
+          approvedOnly: 'مقبول',
+          rejectedOnly: 'مرفوض',
+          sendToPending: 'إرجاع للمراجعة',
+          rejectionNote: 'سبب الرفض',
           listingQueue: 'مراجعة العقارات',
           viewMarketplace: 'عرض السوق',
           quality: 'الجودة',
@@ -373,6 +397,13 @@ requiredField: 'Required',
           needsAttention: 'Needs attention',
           missingVerification: 'Items waiting for review',
           reviewQueue: 'Review queue',
+          reviewFilter: 'Filter review queue',
+          allStatuses: 'All statuses',
+          pendingOnly: 'Pending',
+          approvedOnly: 'Approved',
+          rejectedOnly: 'Rejected',
+          sendToPending: 'Move back to pending',
+          rejectionNote: 'Rejection note',
           listingQueue: 'Listing queue',
           viewMarketplace: 'View marketplace',
           quality: 'Quality',
@@ -502,6 +533,22 @@ const metrics = useMemo(() => {
     verifiedDevelopers: developers.filter((developer) => developer.verified).length
   };
 }, [activities, developers, listings, travelAgencies]);
+
+  const filteredListings = useMemo(
+    () =>
+      listings.filter((listing) =>
+        matchesReviewStatus(listing.status, reviewStatusFilter)
+      ),
+    [listings, reviewStatusFilter]
+  );
+
+  const filteredActivities = useMemo(
+    () =>
+      activities.filter((activity) =>
+        matchesReviewStatus(activity.status, reviewStatusFilter)
+      ),
+    [activities, reviewStatusFilter]
+  );
   async function updateListingStatus(
     listingId: string,
     status: ListingStatus,
@@ -798,6 +845,37 @@ async function deleteDeveloperCompany(developerId: string) {
         <Clock3 size={14} aria-hidden="true" />
         {copy.pending}
       </span>
+    );
+  }
+
+  function getReviewStatusFilterLabel(filter: ReviewStatusFilter) {
+    if (filter === 'ALL') return copy.allStatuses;
+    if (filter === 'APPROVED') return copy.approvedOnly;
+    if (filter === 'REJECTED') return copy.rejectedOnly;
+
+    return copy.pendingOnly;
+  }
+
+  function renderReviewToolbar() {
+    return (
+      <div className="admin-review-toolbar" role="group" aria-label={copy.reviewFilter}>
+        <span>{copy.reviewFilter}</span>
+
+        <div className="admin-review-toolbar__filters">
+          {reviewStatusFilters.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              className={`admin-review-filter ${
+                reviewStatusFilter === filter ? 'admin-review-filter--active' : ''
+              }`}
+              onClick={() => setReviewStatusFilter(filter)}
+            >
+              {getReviewStatusFilterLabel(filter)}
+            </button>
+          ))}
+        </div>
+      </div>
     );
   }
 
@@ -1896,6 +1974,8 @@ async function deleteDeveloperCompany(developerId: string) {
               </ButtonLink>
             </div>
 
+              {renderReviewToolbar()}
+
             <div className="responsive-table">
               <table>
                 <thead>
@@ -1911,7 +1991,7 @@ async function deleteDeveloperCompany(developerId: string) {
                 </thead>
 
                 <tbody>
-                  {listings.map((listing, index) => {
+                  {filteredListings.map((listing, index) => {
                     const qualityScore = getListingQualityScore(listing, index);
                     const owner = listing.developer
                       ? language === 'ar'
@@ -1932,6 +2012,11 @@ async function deleteDeveloperCompany(developerId: string) {
                         <td>
                           <strong>{getListingTitle(listing, language)}</strong>
                           <span>{listing.transaction}</span>
+                          {listing.rejectedReason ? (
+                            <span className="admin-rejection-note">
+                              {copy.rejectionNote}: {listing.rejectedReason}
+                            </span>
+                          ) : null}
                         </td>
 
                         <td>{getListingLocation(listing, language)}</td>
@@ -1949,6 +2034,16 @@ async function deleteDeveloperCompany(developerId: string) {
 
                         <td>
                           <div className="admin-action-buttons">
+                            <button
+                              type="button"
+                              className="icon-action icon-action--pending"
+                              disabled={updatingId === listing.id}
+                              onClick={() => updateListingStatus(listing.id, 'PENDING')}
+                            >
+                              <Clock3 size={16} aria-hidden="true" />
+                              <span className="sr-only">{copy.sendToPending}</span>
+                            </button>
+
                             <button
                               type="button"
                               className="icon-action icon-action--approve"
@@ -1974,7 +2069,7 @@ async function deleteDeveloperCompany(developerId: string) {
                     );
                   })}
 
-                  {listings.length === 0 ? (
+                  {filteredListings.length === 0 ? (
                     <tr>
                       <td colSpan={7}>{copy.noListings}</td>
                     </tr>
@@ -1997,6 +2092,8 @@ async function deleteDeveloperCompany(developerId: string) {
               </ButtonLink>
             </div>
 
+              {renderReviewToolbar()}
+
             <div className="responsive-table">
               <table>
                 <thead>
@@ -2012,7 +2109,7 @@ async function deleteDeveloperCompany(developerId: string) {
                 </thead>
 
                 <tbody>
-                  {activities.map((activity, index) => {
+                  {filteredActivities.map((activity, index) => {
                     const qualityScore = getActivityQualityScore(activity, index);
 
                     return (
@@ -2020,6 +2117,11 @@ async function deleteDeveloperCompany(developerId: string) {
                         <td>
                           <strong>{getActivityTitle(activity, language)}</strong>
                           <span>{activity.durationLabelEn || `${activity.durationMinutes ?? 0} min`}</span>
+                          {activity.rejectedReason ? (
+                            <span className="admin-rejection-note">
+                              {copy.rejectionNote}: {activity.rejectedReason}
+                            </span>
+                          ) : null}
                         </td>
 
                         <td>{getActivityLocation(activity, language)}</td>
@@ -2037,6 +2139,16 @@ async function deleteDeveloperCompany(developerId: string) {
 
                         <td>
                           <div className="admin-action-buttons">
+                            <button
+                              type="button"
+                              className="icon-action icon-action--pending"
+                              disabled={updatingId === activity.id}
+                              onClick={() => updateActivityStatus(activity.id, 'PENDING')}
+                            >
+                              <Clock3 size={16} aria-hidden="true" />
+                              <span className="sr-only">{copy.sendToPending}</span>
+                            </button>
+
                             <button
                               type="button"
                               className="icon-action icon-action--approve"
@@ -2062,7 +2174,7 @@ async function deleteDeveloperCompany(developerId: string) {
                     );
                   })}
 
-                  {activities.length === 0 ? (
+                  {filteredActivities.length === 0 ? (
                     <tr>
                       <td colSpan={7}>{copy.noActivities}</td>
                     </tr>
