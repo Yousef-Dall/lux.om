@@ -32,8 +32,7 @@ import type {
   DevelopmentCompany,
   Landmark,
   Listing,
-  ListingBuyerEligibility,
-  ListingTransaction
+  ListingBuyerEligibility
 } from '../types';
 
 const transactionFilters = ['All', 'Sale', 'Rent', 'Short stay'] as const;
@@ -130,8 +129,39 @@ type ActiveChip = {
   onRemove: () => void;
 };
 
-function isTransactionFilter(value: string | null): value is ListingTransaction {
-  return value === 'Sale' || value === 'Rent' || value === 'Short stay';
+function toOptionalNumber(value: string) {
+  const normalized = value.trim();
+
+  if (!normalized) return undefined;
+
+  const parsed = Number(normalized);
+
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function getFilterParam<T extends readonly string[]>(
+  value: string | null,
+  options: T,
+  fallback: T[number]
+) {
+  return value && options.includes(value as T[number]) ? (value as T[number]) : fallback;
+}
+
+function getNonNegativeNumberParam(value: string | null) {
+  if (!value) return '';
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed >= 0 ? value : '';
+}
+
+function getAmenitiesParam(value: string | null) {
+  if (!value) return [];
+
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => amenityFilters.includes(item));
 }
 
 export default function Listings() {
@@ -141,8 +171,25 @@ export default function Listings() {
   useDocumentTitle('Listings');
 
   const initialNear = searchParams.get('near') ?? '';
-  const initialType = searchParams.get('type');
+  const initialTransaction = searchParams.get('transaction') ?? searchParams.get('type');
   const initialDeveloper = searchParams.get('developer') ?? '';
+  const initialPropertyType = getFilterParam(
+    searchParams.get('propertyType'),
+    typeFilters,
+    'All'
+  );
+  const initialBuyerEligibility = getFilterParam(
+    searchParams.get('buyerEligibility'),
+    buyerEligibilityFilters,
+    'All'
+  ) as BuyerEligibilityFilter;
+  const initialFurnishing = getFilterParam(
+    searchParams.get('furnishing'),
+    furnishingFilters,
+    'All'
+  );
+  const initialView = getFilterParam(searchParams.get('view'), viewFilters, 'All');
+  const initialSortBy = getFilterParam(searchParams.get('sortBy'), sortOptions, 'Recommended');
 
   const [listings, setListings] = useState<Listing[]>([]);
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
@@ -153,28 +200,30 @@ export default function Listings() {
   const [pagination, setPagination] =
     useState<MarketplacePagination>(initialPagination);
 
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(searchParams.get('q') ?? '');
   const [transaction, setTransaction] = useState<TransactionFilter>(
-    isTransactionFilter(initialType) ? initialType : 'All'
+    getFilterParam(initialTransaction, transactionFilters, 'All')
   );
-  const [propertyType, setPropertyType] = useState<(typeof typeFilters)[number]>('All');
-  const [buyerEligibility, setBuyerEligibility] = useState<BuyerEligibilityFilter>('All');
-  const [location, setLocation] = useState('');
+  const [propertyType, setPropertyType] = useState<(typeof typeFilters)[number]>(initialPropertyType);
+  const [buyerEligibility, setBuyerEligibility] = useState<BuyerEligibilityFilter>(initialBuyerEligibility);
+  const [location, setLocation] = useState(searchParams.get('location') ?? '');
   const [selectedLandmarkSlug, setSelectedLandmarkSlug] = useState(initialNear);
   const [selectedDeveloperSlug, setSelectedDeveloperSlug] = useState(initialDeveloper);
 
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [minBeds, setMinBeds] = useState('');
-  const [minBaths, setMinBaths] = useState('');
-  const [minSqm, setMinSqm] = useState('');
-  const [minGuests, setMinGuests] = useState('');
-  const [minParking, setMinParking] = useState('');
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
-  const [furnishing, setFurnishing] = useState<(typeof furnishingFilters)[number]>('All');
-  const [view, setView] = useState<(typeof viewFilters)[number]>('All');
-  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
-  const [sortBy, setSortBy] = useState<SortOption>('Recommended');
+  const [minBeds, setMinBeds] = useState(getNonNegativeNumberParam(searchParams.get('minBeds')));
+  const [minBaths, setMinBaths] = useState(getNonNegativeNumberParam(searchParams.get('minBaths')));
+  const [minSqm, setMinSqm] = useState(getNonNegativeNumberParam(searchParams.get('minSqm')));
+  const [minGuests, setMinGuests] = useState(getNonNegativeNumberParam(searchParams.get('minGuests')));
+  const [minParking, setMinParking] = useState(getNonNegativeNumberParam(searchParams.get('minParking')));
+  const [minPrice, setMinPrice] = useState(getNonNegativeNumberParam(searchParams.get('minPrice')));
+  const [maxPrice, setMaxPrice] = useState(getNonNegativeNumberParam(searchParams.get('maxPrice')));
+  const [furnishing, setFurnishing] = useState<(typeof furnishingFilters)[number]>(initialFurnishing);
+  const [view, setView] = useState<(typeof viewFilters)[number]>(initialView);
+  const [selectedAmenities, setSelectedAmenities] = useState<string[]>(
+    getAmenitiesParam(searchParams.get('amenities'))
+  );
+  const [sortBy, setSortBy] = useState<SortOption>(initialSortBy);
 
   const debouncedQuery = useDebouncedValue(query);
   const debouncedLocation = useDebouncedValue(location);
@@ -327,11 +376,11 @@ export default function Listings() {
           location: debouncedLocation.trim() || undefined,
           nearestLandmarkId: selectedLandmarkId,
           developerId: selectedDeveloperId,
-          minBeds: minBeds ? Number(minBeds) : undefined,
-          minBaths: minBaths ? Number(minBaths) : undefined,
-          minSqm: minSqm ? Number(minSqm) : undefined,
-          minGuests: minGuests ? Number(minGuests) : undefined,
-          minParking: minParking ? Number(minParking) : undefined,
+          minBeds: toOptionalNumber(minBeds),
+          minBaths: toOptionalNumber(minBaths),
+          minSqm: toOptionalNumber(minSqm),
+          minGuests: toOptionalNumber(minGuests),
+          minParking: toOptionalNumber(minParking),
           minPrice: debouncedMinPrice.trim()
             ? Number(debouncedMinPrice)
             : undefined,
@@ -407,32 +456,77 @@ export default function Listings() {
   );
 
   useEffect(() => {
-    const nextNear = searchParams.get('near') ?? '';
-    const nextType = searchParams.get('type');
-    const nextDeveloper = searchParams.get('developer') ?? '';
+    const nextTransaction = searchParams.get('transaction') ?? searchParams.get('type');
 
-    setSelectedLandmarkSlug(nextNear);
-    setSelectedDeveloperSlug(nextDeveloper);
-    setTransaction(isTransactionFilter(nextType) ? nextType : 'All');
+    setQuery(searchParams.get('q') ?? '');
+    setSelectedLandmarkSlug(searchParams.get('near') ?? '');
+    setSelectedDeveloperSlug(searchParams.get('developer') ?? '');
+    setTransaction(getFilterParam(nextTransaction, transactionFilters, 'All'));
+    setPropertyType(getFilterParam(searchParams.get('propertyType'), typeFilters, 'All'));
+    setBuyerEligibility(
+      getFilterParam(searchParams.get('buyerEligibility'), buyerEligibilityFilters, 'All') as BuyerEligibilityFilter
+    );
+    setLocation(searchParams.get('location') ?? '');
+    setMinBeds(getNonNegativeNumberParam(searchParams.get('minBeds')));
+    setMinBaths(getNonNegativeNumberParam(searchParams.get('minBaths')));
+    setMinSqm(getNonNegativeNumberParam(searchParams.get('minSqm')));
+    setMinGuests(getNonNegativeNumberParam(searchParams.get('minGuests')));
+    setMinParking(getNonNegativeNumberParam(searchParams.get('minParking')));
+    setMinPrice(getNonNegativeNumberParam(searchParams.get('minPrice')));
+    setMaxPrice(getNonNegativeNumberParam(searchParams.get('maxPrice')));
+    setFurnishing(getFilterParam(searchParams.get('furnishing'), furnishingFilters, 'All'));
+    setView(getFilterParam(searchParams.get('view'), viewFilters, 'All'));
+    setSelectedAmenities(getAmenitiesParam(searchParams.get('amenities')));
+    setSortBy(getFilterParam(searchParams.get('sortBy'), sortOptions, 'Recommended'));
   }, [searchParams]);
 
   useEffect(() => {
     const params = new URLSearchParams();
 
-    if (selectedLandmarkSlug) {
-      params.set('near', selectedLandmarkSlug);
-    }
+    if (query.trim()) params.set('q', query.trim());
+    if (selectedLandmarkSlug) params.set('near', selectedLandmarkSlug);
+    if (selectedDeveloperSlug) params.set('developer', selectedDeveloperSlug);
+    if (transaction !== 'All') params.set('transaction', transaction);
+    if (propertyType !== 'All') params.set('propertyType', propertyType);
+    if (buyerEligibility !== 'All') params.set('buyerEligibility', buyerEligibility);
+    if (location.trim()) params.set('location', location.trim());
+    if (minBeds) params.set('minBeds', minBeds);
+    if (minBaths) params.set('minBaths', minBaths);
+    if (minSqm) params.set('minSqm', minSqm);
+    if (minGuests) params.set('minGuests', minGuests);
+    if (minParking) params.set('minParking', minParking);
+    if (minPrice) params.set('minPrice', minPrice);
+    if (maxPrice) params.set('maxPrice', maxPrice);
+    if (furnishing !== 'All') params.set('furnishing', furnishing);
+    if (view !== 'All') params.set('view', view);
+    if (selectedAmenities.length > 0) params.set('amenities', selectedAmenities.join(','));
+    if (sortBy !== 'Recommended') params.set('sortBy', sortBy);
 
-    if (transaction !== 'All') {
-      params.set('type', transaction);
+    if (params.toString() !== searchParams.toString()) {
+      setSearchParams(params, { replace: true });
     }
-
-    if (selectedDeveloperSlug) {
-      params.set('developer', selectedDeveloperSlug);
-    }
-
-    setSearchParams(params, { replace: true });
-  }, [selectedLandmarkSlug, selectedDeveloperSlug, transaction, setSearchParams]);
+  }, [
+    query,
+    selectedLandmarkSlug,
+    selectedDeveloperSlug,
+    transaction,
+    propertyType,
+    buyerEligibility,
+    location,
+    minBeds,
+    minBaths,
+    minSqm,
+    minGuests,
+    minParking,
+    minPrice,
+    maxPrice,
+    furnishing,
+    view,
+    selectedAmenities,
+    sortBy,
+    searchParams,
+    setSearchParams
+  ]);
 
   const activeChips = useMemo<ActiveChip[]>(() => {
     const chips: ActiveChip[] = [];

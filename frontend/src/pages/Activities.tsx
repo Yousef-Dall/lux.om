@@ -85,6 +85,42 @@ const initialPagination: MarketplacePagination = {
   hasPreviousPage: false
 };
 
+type ActiveChip = {
+  key: string;
+  label: string;
+  onRemove: () => void;
+};
+
+function toOptionalNumber(value: string) {
+  const normalized = value.trim();
+
+  if (!normalized) return undefined;
+
+  const parsed = Number(normalized);
+
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function getFilterParam<T extends readonly string[]>(
+  value: string | null,
+  options: T,
+  fallback: T[number]
+) {
+  return value && options.includes(value as T[number]) ? (value as T[number]) : fallback;
+}
+
+function getNonNegativeNumberParam(value: string | null) {
+  if (!value) return '';
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed >= 0 ? value : '';
+}
+
+function getBooleanParam(value: string | null) {
+  return value === '1' || value === 'true';
+}
+
 function getDayName(dateString: string) {
   if (!dateString) return null;
 
@@ -106,6 +142,27 @@ export default function Activities() {
 
   const nearParam = searchParams.get('near') ?? '';
   const travelAgencyIdParam = searchParams.get('travelAgencyId') ?? '';
+  const initialCategory = getFilterParam(searchParams.get('category'), categoryFilters, 'All');
+  const initialDurationType = getFilterParam(
+    searchParams.get('durationType'),
+    durationFilters,
+    'All'
+  );
+  const initialActivityType = getFilterParam(
+    searchParams.get('activityType'),
+    activityTypeFilters,
+    'All'
+  );
+  const initialTravelRegion = getFilterParam(
+    searchParams.get('travelRegion'),
+    travelRegionFilters,
+    'All'
+  );
+  const initialSortBy = getFilterParam(
+    searchParams.get('sortBy'),
+    activitySortOptions.map((option) => option.value),
+    'recommended'
+  ) as ActivitySort;
 
   const [activities, setActivities] = useState<Activity[]>([]);
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
@@ -115,30 +172,30 @@ export default function Activities() {
   const [pagination, setPagination] =
     useState<MarketplacePagination>(initialPagination);
 
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState<(typeof categoryFilters)[number]>('All');
-  const [location, setLocation] = useState('');
+  const [query, setQuery] = useState(searchParams.get('q') ?? '');
+  const [category, setCategory] = useState<(typeof categoryFilters)[number]>(initialCategory);
+  const [location, setLocation] = useState(searchParams.get('location') ?? '');
   const [nearLandmark, setNearLandmark] = useState(nearParam);
 
-  const [selectedDate, setSelectedDate] = useState('');
-  const [freeFrom, setFreeFrom] = useState('');
-  const [freeUntil, setFreeUntil] = useState('');
+  const [selectedDate, setSelectedDate] = useState(searchParams.get('date') ?? '');
+  const [freeFrom, setFreeFrom] = useState(searchParams.get('from') ?? '');
+  const [freeUntil, setFreeUntil] = useState(searchParams.get('until') ?? '');
 
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [durationType, setDurationType] = useState<(typeof durationFilters)[number]>('All');
-  const [activityType, setActivityType] = useState<(typeof activityTypeFilters)[number]>('All');
+  const [durationType, setDurationType] = useState<(typeof durationFilters)[number]>(initialDurationType);
+  const [activityType, setActivityType] = useState<(typeof activityTypeFilters)[number]>(initialActivityType);
   const [travelRegion, setTravelRegion] =
-    useState<(typeof travelRegionFilters)[number]>('All');
+    useState<(typeof travelRegionFilters)[number]>(initialTravelRegion);
 
-  const [familyFriendly, setFamilyFriendly] = useState(false);
-  const [includesTransfer, setIncludesTransfer] = useState(false);
-  const [mealIncluded, setMealIncluded] = useState(false);
-  const [outdoor, setOutdoor] = useState(false);
+  const [familyFriendly, setFamilyFriendly] = useState(getBooleanParam(searchParams.get('familyFriendly')));
+  const [includesTransfer, setIncludesTransfer] = useState(getBooleanParam(searchParams.get('includesTransfer')));
+  const [mealIncluded, setMealIncluded] = useState(getBooleanParam(searchParams.get('mealIncluded')));
+  const [outdoor, setOutdoor] = useState(getBooleanParam(searchParams.get('outdoor')));
 
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
+  const [minPrice, setMinPrice] = useState(getNonNegativeNumberParam(searchParams.get('minPrice')));
+  const [maxPrice, setMaxPrice] = useState(getNonNegativeNumberParam(searchParams.get('maxPrice')));
   const [sortBy, setSortBy] =
-    useState<ActivitySort>('recommended');
+    useState<ActivitySort>(initialSortBy);
 
   const debouncedQuery = useDebouncedValue(query);
   const debouncedLocation = useDebouncedValue(location);
@@ -201,8 +258,78 @@ export default function Activities() {
         };
 
   useEffect(() => {
-    setNearLandmark(nearParam);
-  }, [nearParam]);
+    setQuery(searchParams.get('q') ?? '');
+    setCategory(getFilterParam(searchParams.get('category'), categoryFilters, 'All'));
+    setLocation(searchParams.get('location') ?? '');
+    setNearLandmark(searchParams.get('near') ?? '');
+    setSelectedDate(searchParams.get('date') ?? '');
+    setFreeFrom(searchParams.get('from') ?? '');
+    setFreeUntil(searchParams.get('until') ?? '');
+    setDurationType(getFilterParam(searchParams.get('durationType'), durationFilters, 'All'));
+    setActivityType(getFilterParam(searchParams.get('activityType'), activityTypeFilters, 'All'));
+    setTravelRegion(getFilterParam(searchParams.get('travelRegion'), travelRegionFilters, 'All'));
+    setFamilyFriendly(getBooleanParam(searchParams.get('familyFriendly')));
+    setIncludesTransfer(getBooleanParam(searchParams.get('includesTransfer')));
+    setMealIncluded(getBooleanParam(searchParams.get('mealIncluded')));
+    setOutdoor(getBooleanParam(searchParams.get('outdoor')));
+    setMinPrice(getNonNegativeNumberParam(searchParams.get('minPrice')));
+    setMaxPrice(getNonNegativeNumberParam(searchParams.get('maxPrice')));
+    setSortBy(
+      getFilterParam(
+        searchParams.get('sortBy'),
+        activitySortOptions.map((option) => option.value),
+        'recommended'
+      ) as ActivitySort
+    );
+  }, [searchParams]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+
+    if (query.trim()) params.set('q', query.trim());
+    if (category !== 'All') params.set('category', category);
+    if (location.trim()) params.set('location', location.trim());
+    if (nearLandmark) params.set('near', nearLandmark);
+    if (travelAgencyIdParam) params.set('travelAgencyId', travelAgencyIdParam);
+    if (selectedDate) params.set('date', selectedDate);
+    if (freeFrom) params.set('from', freeFrom);
+    if (freeUntil) params.set('until', freeUntil);
+    if (durationType !== 'All') params.set('durationType', durationType);
+    if (activityType !== 'All') params.set('activityType', activityType);
+    if (travelRegion !== 'All') params.set('travelRegion', travelRegion);
+    if (familyFriendly) params.set('familyFriendly', '1');
+    if (includesTransfer) params.set('includesTransfer', '1');
+    if (mealIncluded) params.set('mealIncluded', '1');
+    if (outdoor) params.set('outdoor', '1');
+    if (minPrice) params.set('minPrice', minPrice);
+    if (maxPrice) params.set('maxPrice', maxPrice);
+    if (sortBy !== 'recommended') params.set('sortBy', sortBy);
+
+    if (params.toString() !== searchParams.toString()) {
+      setSearchParams(params, { replace: true });
+    }
+  }, [
+    query,
+    category,
+    location,
+    nearLandmark,
+    travelAgencyIdParam,
+    selectedDate,
+    freeFrom,
+    freeUntil,
+    durationType,
+    activityType,
+    travelRegion,
+    familyFriendly,
+    includesTransfer,
+    mealIncluded,
+    outdoor,
+    minPrice,
+    maxPrice,
+    sortBy,
+    searchParams,
+    setSearchParams
+  ]);
 
   useEffect(() => {
     let isMounted = true;
@@ -312,12 +439,8 @@ export default function Activities() {
           mealIncluded: mealIncluded || undefined,
           outdoor: outdoor || undefined,
 
-          minPrice: debouncedMinPrice.trim()
-            ? Number(debouncedMinPrice)
-            : undefined,
-          maxPrice: debouncedMaxPrice.trim()
-            ? Number(debouncedMaxPrice)
-            : undefined,
+          minPrice: toOptionalNumber(debouncedMinPrice),
+          maxPrice: toOptionalNumber(debouncedMaxPrice),
           page,
           pageSize: ACTIVITIES_PAGE_SIZE
         });
@@ -384,34 +507,155 @@ export default function Activities() {
     );
   }, [activities, travelAgencyIdParam]);
 
-  const activeFilterCount = useMemo(() => {
-    return [
-      query,
-      location,
-      selectedDate,
-      freeFrom,
-      freeUntil,
-      nearLandmark,
-      travelAgencyIdParam,
-      category !== 'All' ? category : '',
-      durationType !== 'All' ? durationType : '',
-      activityType !== 'All' ? activityType : '',
-      travelRegion !== 'All' ? travelRegion : '',
-      familyFriendly ? 'family' : '',
-      includesTransfer ? 'transfer' : '',
-      mealIncluded ? 'meal' : '',
-      outdoor ? 'outdoor' : '',
-      minPrice,
-      maxPrice
-    ].filter(Boolean).length;
+  const activeChips = useMemo<ActiveChip[]>(() => {
+    const chips: ActiveChip[] = [];
+
+    if (query.trim()) {
+      chips.push({
+        key: 'query',
+        label: `${language === 'ar' ? 'بحث' : 'Search'}: ${query}`,
+        onRemove: () => setQuery('')
+      });
+    }
+
+    if (location.trim()) {
+      chips.push({
+        key: 'location',
+        label: `${language === 'ar' ? 'الموقع' : 'Location'}: ${location}`,
+        onRemove: () => setLocation('')
+      });
+    }
+
+    if (selectedDate) {
+      chips.push({
+        key: 'date',
+        label: `${activityCopy.date}: ${selectedDate}`,
+        onRemove: () => setSelectedDate('')
+      });
+    }
+
+    if (freeFrom) {
+      chips.push({
+        key: 'freeFrom',
+        label: `${activityCopy.freeFrom}: ${freeFrom}`,
+        onRemove: () => setFreeFrom('')
+      });
+    }
+
+    if (freeUntil) {
+      chips.push({
+        key: 'freeUntil',
+        label: `${activityCopy.freeUntil}: ${freeUntil}`,
+        onRemove: () => setFreeUntil('')
+      });
+    }
+
+    if (selectedLandmark) {
+      chips.push({
+        key: 'nearLandmark',
+        label: `${copy.resultsNear}: ${selectedLandmark.name}`,
+        onRemove: () => handleLandmarkChange('')
+      });
+    }
+
+    if (travelAgencyIdParam) {
+      chips.push({
+        key: 'travelAgency',
+        label: `${copy.resultsAgency}: ${selectedAgencyName || travelAgencyIdParam}`,
+        onRemove: clearTravelAgencyFilter
+      });
+    }
+
+    if (category !== 'All') {
+      chips.push({
+        key: 'category',
+        label: category,
+        onRemove: () => setCategory('All')
+      });
+    }
+
+    if (durationType !== 'All') {
+      chips.push({
+        key: 'durationType',
+        label: durationType,
+        onRemove: () => setDurationType('All')
+      });
+    }
+
+    if (activityType !== 'All') {
+      chips.push({
+        key: 'activityType',
+        label: activityType,
+        onRemove: () => setActivityType('All')
+      });
+    }
+
+    if (travelRegion !== 'All') {
+      chips.push({
+        key: 'travelRegion',
+        label: travelRegion === 'INSIDE_OMAN' ? copy.insideOman : copy.outsideOman,
+        onRemove: () => setTravelRegion('All')
+      });
+    }
+
+    if (familyFriendly) {
+      chips.push({
+        key: 'familyFriendly',
+        label: activityCopy.familyFriendly,
+        onRemove: () => setFamilyFriendly(false)
+      });
+    }
+
+    if (includesTransfer) {
+      chips.push({
+        key: 'includesTransfer',
+        label: activityCopy.includesTransfer,
+        onRemove: () => setIncludesTransfer(false)
+      });
+    }
+
+    if (mealIncluded) {
+      chips.push({
+        key: 'mealIncluded',
+        label: activityCopy.mealIncluded,
+        onRemove: () => setMealIncluded(false)
+      });
+    }
+
+    if (outdoor) {
+      chips.push({
+        key: 'outdoor',
+        label: activityCopy.outdoor,
+        onRemove: () => setOutdoor(false)
+      });
+    }
+
+    if (minPrice.trim()) {
+      chips.push({
+        key: 'minPrice',
+        label: `${language === 'ar' ? 'السعر من' : 'Price from'}: OMR ${minPrice}`,
+        onRemove: () => setMinPrice('')
+      });
+    }
+
+    if (maxPrice.trim()) {
+      chips.push({
+        key: 'maxPrice',
+        label: `${language === 'ar' ? 'السعر حتى' : 'Price up to'}: OMR ${maxPrice}`,
+        onRemove: () => setMaxPrice('')
+      });
+    }
+
+    return chips;
   }, [
     query,
     location,
     selectedDate,
     freeFrom,
     freeUntil,
-    nearLandmark,
+    selectedLandmark,
     travelAgencyIdParam,
+    selectedAgencyName,
     category,
     durationType,
     activityType,
@@ -421,8 +665,22 @@ export default function Activities() {
     mealIncluded,
     outdoor,
     minPrice,
-    maxPrice
+    maxPrice,
+    language,
+    activityCopy.date,
+    activityCopy.freeFrom,
+    activityCopy.freeUntil,
+    activityCopy.familyFriendly,
+    activityCopy.includesTransfer,
+    activityCopy.mealIncluded,
+    activityCopy.outdoor,
+    copy.resultsNear,
+    copy.resultsAgency,
+    copy.insideOman,
+    copy.outsideOman
   ]);
+
+  const activeFilterCount = activeChips.length;
 
   const filteredActivities = hasTimeError ? [] : activities;
   const resultTotal = hasTimeError ? 0 : pagination.total;
