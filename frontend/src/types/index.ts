@@ -17,6 +17,8 @@ export type ListingStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export type ActivityStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
+export type ActivityTravelRegion = 'INSIDE_OMAN' | 'OUTSIDE_OMAN';
+
 export type InquiryType =
   | 'PROPERTY'
   | 'ACTIVITY'
@@ -220,6 +222,7 @@ export type Activity = {
   specs: ActivitySpecs;
   featured?: boolean;
   status?: ActivityStatus;
+  travelRegion?: ActivityTravelRegion;
 
   provider?: string;
 
@@ -437,6 +440,7 @@ groupSize?: string | null;
   language?: string | null;
   difficulty?: ActivityDifficulty | string | null;
   activityType?: ActivityType | string | null;
+  travelRegion?: ActivityTravelRegion | null;
   availabilityDays?: DayName[] | null;
 availabilityStartTime?: string | null;
 availabilityEndTime?: string | null;

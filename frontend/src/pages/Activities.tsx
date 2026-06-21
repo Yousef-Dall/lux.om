@@ -23,7 +23,7 @@ import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useLanguage } from '../i18n/LanguageContext';
-import type { Activity, Landmark } from '../types';
+import type { Activity, ActivityTravelRegion, Landmark } from '../types';
 
 const categoryFilters = [
   'All',
@@ -38,6 +38,12 @@ const categoryFilters = [
 const durationFilters = ['All', 'Short', 'Half day', 'Full day', 'Overnight'] as const;
 
 const activityTypeFilters = ['All', 'Private', 'Group', 'Both'] as const;
+
+const travelRegionFilters = [
+  'All',
+  'INSIDE_OMAN',
+  'OUTSIDE_OMAN'
+] as const;
 
 const activitySortOptions = [
   {
@@ -121,6 +127,8 @@ export default function Activities() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [durationType, setDurationType] = useState<(typeof durationFilters)[number]>('All');
   const [activityType, setActivityType] = useState<(typeof activityTypeFilters)[number]>('All');
+  const [travelRegion, setTravelRegion] =
+    useState<(typeof travelRegionFilters)[number]>('All');
 
   const [familyFriendly, setFamilyFriendly] = useState(false);
   const [includesTransfer, setIncludesTransfer] = useState(false);
@@ -156,6 +164,10 @@ export default function Activities() {
           resultsNear: 'بالقرب من',
           resultsAgency: 'حسب وكالة السفر',
           activityType: 'نوع النشاط',
+          travelRegion: 'نطاق النشاط',
+          allRegions: 'كل النطاقات',
+          insideOman: 'داخل عُمان',
+          outsideOman: 'خارج عُمان',
           activeFilters: 'الفلاتر النشطة',
           loading: 'جاري تحميل الأنشطة...',
           error: 'تعذر تحميل الأنشطة. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.',
@@ -174,6 +186,10 @@ export default function Activities() {
           resultsNear: 'Near',
           resultsAgency: 'By travel agency',
           activityType: 'Activity type',
+          travelRegion: 'Activity region',
+          allRegions: 'All regions',
+          insideOman: 'Inside Oman',
+          outsideOman: 'Outside Oman',
           activeFilters: 'Active filters',
           loading: 'Loading activities...',
           error: 'Could not load activities. Make sure the backend is running and try again.',
@@ -229,6 +245,7 @@ export default function Activities() {
     freeUntil,
     durationType,
     activityType,
+    travelRegion,
     familyFriendly,
     includesTransfer,
     mealIncluded,
@@ -285,6 +302,11 @@ export default function Activities() {
           activityType:
             activityType !== 'All' ? activityType : undefined,
 
+            travelRegion:
+              travelRegion !== 'All'
+                ? (travelRegion as ActivityTravelRegion)
+                : undefined,
+
           familyFriendly: familyFriendly || undefined,
           includesTransfer: includesTransfer || undefined,
           mealIncluded: mealIncluded || undefined,
@@ -334,6 +356,7 @@ export default function Activities() {
     freeUntil,
     durationType,
     activityType,
+    travelRegion,
     familyFriendly,
     includesTransfer,
     mealIncluded,
@@ -373,6 +396,7 @@ export default function Activities() {
       category !== 'All' ? category : '',
       durationType !== 'All' ? durationType : '',
       activityType !== 'All' ? activityType : '',
+      travelRegion !== 'All' ? travelRegion : '',
       familyFriendly ? 'family' : '',
       includesTransfer ? 'transfer' : '',
       mealIncluded ? 'meal' : '',
@@ -391,6 +415,7 @@ export default function Activities() {
     category,
     durationType,
     activityType,
+    travelRegion,
     familyFriendly,
     includesTransfer,
     mealIncluded,
@@ -412,6 +437,7 @@ export default function Activities() {
     setFreeUntil('');
     setDurationType('All');
     setActivityType('All');
+    setTravelRegion('All');
     setFamilyFriendly(false);
     setIncludesTransfer(false);
     setMealIncluded(false);
@@ -647,6 +673,28 @@ export default function Activities() {
                   >
                     {activityTypeFilters.map((item) => (
                       <option key={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  {copy.travelRegion}
+                  <select
+                    value={travelRegion}
+                    onChange={(event) =>
+                      setTravelRegion(
+                        event.target.value as (typeof travelRegionFilters)[number]
+                      )
+                    }
+                  >
+                    {travelRegionFilters.map((region) => (
+                      <option key={region} value={region}>
+                        {region === 'All'
+                          ? copy.allRegions
+                          : region === 'INSIDE_OMAN'
+                            ? copy.insideOman
+                            : copy.outsideOman}
+                      </option>
                     ))}
                   </select>
                 </label>

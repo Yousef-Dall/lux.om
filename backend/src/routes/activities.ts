@@ -55,6 +55,11 @@ const timeSchema = z
     message: 'Time must use HH:mm format'
   });
 
+const activityTravelRegionValues = [
+  'INSIDE_OMAN',
+  'OUTSIDE_OMAN'
+] as const;
+
 const optionalPriceAmountSchema = z
   .preprocess(
     (value) =>
@@ -113,6 +118,7 @@ groupSize: z.string().trim().max(80).optional(),
     language: z.string().trim().max(80).optional(),
     difficulty: z.string().trim().max(80).optional(),
   activityType: z.string().trim().max(80).optional(),
+  travelRegion: z.enum(activityTravelRegionValues).default('INSIDE_OMAN'),
 
 availabilityDays: z.array(dayNameSchema).max(7).default([]),
 availabilityStartTime: timeSchema.optional(),
@@ -215,6 +221,7 @@ const activitiesQuerySchema = z.object({
 
   durationType: z.enum(['Short', 'Half day', 'Full day', 'Overnight']).optional(),
   activityType: z.enum(['Private', 'Group', 'Both']).optional(),
+  travelRegion: z.enum(activityTravelRegionValues).optional(),
 
   familyFriendly: optionalBooleanQuerySchema,
   includesTransfer: optionalBooleanQuerySchema,
@@ -333,6 +340,12 @@ activitiesRouter.get('/', async (req, res, next) => {
     if (query.travelAgencyId) {
       activityFilters.push({
         travelAgencyId: query.travelAgencyId
+      });
+    }
+
+    if (query.travelRegion) {
+      activityFilters.push({
+        travelRegion: query.travelRegion
       });
     }
 
@@ -835,6 +848,7 @@ activitiesRouter.get('/', async (req, res, next) => {
           language: true,
           difficulty: true,
           activityType: true,
+          travelRegion: true,
 
           availabilityDays: true,
           availabilityStartTime: true,
@@ -907,6 +921,7 @@ activitiesRouter.get('/', async (req, res, next) => {
             Number(Boolean(candidate.language)) +
             Number(Boolean(candidate.difficulty)) +
             Number(Boolean(candidate.activityType)) +
+            Number(Boolean(candidate.travelRegion)) +
             Number(candidate.availabilityDays.length > 0) +
             Number(Boolean(candidate.availabilityStartTime)) +
             Number(Boolean(candidate.availabilityEndTime)) +
@@ -936,6 +951,7 @@ activitiesRouter.get('/', async (req, res, next) => {
                 candidate.durationLabelAr,
                 candidate.durationType,
                 candidate.activityType,
+                candidate.travelRegion,
                 candidate.groupSize,
                 candidate.difficulty,
                 candidate.language
@@ -1144,6 +1160,7 @@ groupSize: data.groupSize,
           language: data.language,
           difficulty: data.difficulty,
           activityType: data.activityType,
+          travelRegion: data.travelRegion,
 availabilityDays: data.availabilityDays,
 availabilityStartTime: data.availabilityStartTime,
 availabilityEndTime: data.availabilityEndTime,

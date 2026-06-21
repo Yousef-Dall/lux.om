@@ -104,6 +104,25 @@ function getDifficultyLabel(difficulty: string, language: 'en' | 'ar') {
   return difficulty;
 }
 
+function getActivityTravelRegionLabel(region: string, language: 'en' | 'ar') {
+  const labels: Record<string, { en: string; ar: string }> = {
+    INSIDE_OMAN: {
+      en: 'Inside Oman',
+      ar: 'داخل عُمان'
+    },
+    OUTSIDE_OMAN: {
+      en: 'Outside Oman',
+      ar: 'خارج عُمان'
+    }
+  };
+
+  const label = labels[region];
+
+  if (!label) return region;
+
+  return language === 'ar' ? label.ar : label.en;
+}
+
 function getActivityCategoryLabel(category: string, language: 'en' | 'ar') {
   if (language === 'ar') {
     const labels: Record<string, string> = {
@@ -369,6 +388,9 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
   const activityTypeLabel = getActivityTypeLabel(activity.specs.experienceType, language);
   const categoryLabel = getActivityCategoryLabel(activity.category, language);
   const durationLabel = getDurationLabel(activity.duration, language);
+  const travelRegionLabel = activity.travelRegion
+    ? getActivityTravelRegionLabel(activity.travelRegion, language)
+    : '';
 
   const agency = activity.travelAgency;
   const organizerName = agency?.name || activity.provider;
@@ -408,6 +430,8 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
       <div className="activity-card__body lux-market-card__body">
         <div className="lux-card-meta">
           <span>{activityTypeLabel}</span>
+
+          {travelRegionLabel ? <span>{travelRegionLabel}</span> : null}
 
           {activity.featured ? (
             <span>

@@ -27,6 +27,11 @@ enum ActivityStatus {
   REJECTED
 }
 
+enum ActivityTravelRegion {
+  INSIDE_OMAN
+  OUTSIDE_OMAN
+}
+
 enum PriceQualifier {
   FIXED
   FROM
@@ -304,6 +309,7 @@ model Activity {
   language        String?
   difficulty      String?
   activityType    String?
+  travelRegion   ActivityTravelRegion @default(INSIDE_OMAN)
 
   availabilityDays      String[] @default([])
   availabilityStartTime String?
@@ -343,6 +349,7 @@ model Activity {
   @@index([travelAgencyId])
   @@index([nearestLandmarkId])
   @@index([categoryEn])
+  @@index([travelRegion])
 }
 
 model ActivityImage {

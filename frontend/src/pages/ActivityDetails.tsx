@@ -50,6 +50,9 @@ export default function ActivityDetails() {
           travelAgency: 'وكالة السفر',
           verifiedAgency: 'وكالة موثقة',
           activityType: 'نوع النشاط',
+          travelRegion: 'نطاق النشاط',
+          insideOman: 'داخل عُمان',
+          outsideOman: 'خارج عُمان',
           loading: 'جاري تحميل النشاط...',
           error: 'تعذر تحميل تفاصيل النشاط. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
@@ -64,6 +67,9 @@ export default function ActivityDetails() {
           travelAgency: 'Travel agency',
           verifiedAgency: 'Verified agency',
           activityType: 'Activity type',
+          travelRegion: 'Activity region',
+          insideOman: 'Inside Oman',
+          outsideOman: 'Outside Oman',
           loading: 'Loading activity...',
           error: 'Could not load activity details. Make sure the backend is running and try again.'
         };
@@ -129,6 +135,10 @@ export default function ActivityDetails() {
   const specs = activity.specs;
   const agency = activity.travelAgency;
   const organizerName = agency?.name || activity.provider;
+  const travelRegionLabel =
+    activity.travelRegion === 'OUTSIDE_OMAN'
+      ? copy.outsideOman
+      : copy.insideOman;
 
   const specItems = [
     {
@@ -140,6 +150,11 @@ export default function ActivityDetails() {
       label: activityCopy.activityType ?? copy.activityType,
       value: specs.experienceType,
       icon: Users
+    },
+    {
+      label: copy.travelRegion,
+      value: travelRegionLabel,
+      icon: MapPin
     },
     {
       label: activityCopy.familyFriendly,
@@ -364,6 +379,7 @@ export default function ActivityDetails() {
           <div className="booking-panel-specs">
             <span>{specs.durationType}</span>
             <span>{specs.experienceType}</span>
+            <span>{travelRegionLabel}</span>
 
             {activity.groupSize ? <span>{activity.groupSize}</span> : null}
             {activity.difficulty ? <span>{activity.difficulty}</span> : null}

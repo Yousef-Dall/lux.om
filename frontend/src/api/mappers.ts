@@ -335,6 +335,7 @@ export function mapActivity(apiActivity: ApiActivity, language: Language): Activ
   endTime: apiActivity.availabilityEndTime ?? '18:00'
 },
 status: apiActivity.status,
+    travelRegion: apiActivity.travelRegion ?? undefined,
     specs: {
       durationType: asActivityDurationType(apiActivity.durationType),
       experienceType: asActivityType(apiActivity.activityType),

@@ -22,6 +22,7 @@ import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type {
+  ActivityTravelRegion,
   DayName,
   Landmark,
   PriceQualifier,
@@ -61,6 +62,11 @@ const durationTypeOptions = ['Short', 'Half day', 'Full day', 'Overnight'];
 const activityTypeOptions = ['Private', 'Group', 'Both'];
 
 const difficultyOptions = ['Easy', 'Moderate', 'Challenging'];
+
+const travelRegionOptions: ActivityTravelRegion[] = [
+  'INSIDE_OMAN',
+  'OUTSIDE_OMAN'
+];
 
 const priceQualifierOptions: PriceQualifier[] = [
   'FIXED',
@@ -107,6 +113,7 @@ type OrganizerMode = 'none' | 'existing' | 'manual';
 const initialForm = {
   title: '',
   category: 'Desert',
+  travelRegion: 'INSIDE_OMAN' as ActivityTravelRegion,
   location: '',
   nearestLandmarkId: '',
   distanceFromLandmark: '',
@@ -228,6 +235,9 @@ export default function AddActivity() {
           activityDetails: 'تفاصيل النشاط',
           activityTitle: 'عنوان النشاط',
           activityType: 'نوع النشاط',
+          travelRegion: 'نطاق النشاط',
+          insideOman: 'داخل عُمان',
+          outsideOman: 'خارج عُمان',
           activityImage: 'صورة النشاط',
           activityPreview: 'معاينة صورة النشاط',
           providerInfo: 'معلومات المنظم',
@@ -264,6 +274,9 @@ export default function AddActivity() {
           activityDetails: 'Activity details',
           activityTitle: 'Activity title',
           activityType: 'Activity type',
+          travelRegion: 'Activity region',
+          insideOman: 'Inside Oman',
+          outsideOman: 'Outside Oman',
           activityImage: 'Activity image',
           activityPreview: 'Activity preview',
           providerInfo: 'Organizer information',
@@ -471,6 +484,7 @@ export default function AddActivity() {
     language: optionalText(form.language),
     difficulty: optionalText(form.difficulty),
     activityType: optionalText(form.activityType),
+    travelRegion: form.travelRegion,
     availabilityDays: selectedDays,
     availabilityStartTime: form.startTime,
     availabilityEndTime: form.endTime,
@@ -577,6 +591,27 @@ export default function AddActivity() {
                 ))}
               </select>
             </label>
+
+              <label>
+                {copy.travelRegion}
+                <select
+                  value={form.travelRegion}
+                  onChange={(event) =>
+                    updateForm(
+                      'travelRegion',
+                      event.target.value as ActivityTravelRegion
+                    )
+                  }
+                >
+                  {travelRegionOptions.map((region) => (
+                    <option key={region} value={region}>
+                      {region === 'INSIDE_OMAN'
+                        ? copy.insideOman
+                        : copy.outsideOman}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
             <label>
               {addActivityCopy.location}

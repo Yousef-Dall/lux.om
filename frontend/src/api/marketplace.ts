@@ -9,6 +9,7 @@ import {
 
 import type {
   Activity,
+  ActivityTravelRegion,
   ApiActivity,
   ApiDeveloperCompany,
   ApiLandmark,
@@ -117,6 +118,7 @@ type ActivityParams = ListParams & {
 
   durationType?: string;
   activityType?: string;
+  travelRegion?: ActivityTravelRegion;
 
   familyFriendly?: boolean;
   includesTransfer?: boolean;

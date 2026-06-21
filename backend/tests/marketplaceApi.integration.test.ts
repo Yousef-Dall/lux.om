@@ -266,6 +266,7 @@ async function seedMarketplaceFixtures() {
       price: 'Price on request',
       priceQualifier: 'ON_REQUEST',
       partnerTier: 3,
+      travelRegion: 'OUTSIDE_OMAN',
       travelAgencyId: featuredAgency.id,
       createdAt: new Date('2026-04-01T00:00:00.000Z')
     }
@@ -608,6 +609,21 @@ describe('GET /api/activities', () => {
     );
   });
 
+  it('filters activities by travel region', async () => {
+    const response = await request(app)
+      .get('/api/activities')
+      .query({
+        travelRegion: 'OUTSIDE_OMAN'
+      })
+      .expect(200);
+
+    expect(
+      response.body.activities.map(
+        (activity: { slug: string }) => activity.slug
+      )
+    ).toEqual(['integration-desert-escape']);
+  });
+
   it('inherits featured status from featured travel agencies', async () => {
     const response = await request(app)
       .get('/api/activities')
@@ -823,6 +839,32 @@ describe('POST /api/activities pricing compatibility', () => {
     expect(createdActivity.priceCurrency).toBe('OMR');
     expect(createdActivity.priceQualifier).toBe('FROM');
     expect(createdActivity.priceUnit).toBe('PERSON');
+    expect(createdActivity.travelRegion).toBe('INSIDE_OMAN');
+  });
+
+  it('stores the selected travel region', async () => {
+    const response = await request(app)
+      .post('/api/activities')
+      .set(
+        'Authorization',
+        `Bearer ${activityProviderToken}`
+      )
+      .send({
+        ...activityPayload,
+        titleEn: 'Outside Oman Activity',
+        price: 'OMR 80',
+        travelRegion: 'OUTSIDE_OMAN'
+      })
+      .expect(201);
+
+    const createdActivity =
+      await prisma.activity.findUniqueOrThrow({
+        where: {
+          id: response.body.activity.id
+        }
+      });
+
+    expect(createdActivity.travelRegion).toBe('OUTSIDE_OMAN');
   });
 
   it('rejects fixed structured pricing without an amount', async () => {

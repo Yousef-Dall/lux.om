@@ -1,6 +1,7 @@
 import { apiClient } from './client';
 import type {
   ApiActivity,
+  ActivityTravelRegion,
   DayName,
   PriceQualifier,
   PriceUnit
@@ -38,6 +39,7 @@ export type CreateActivityPayload = {
   language?: string;
   difficulty?: string;
   activityType?: string;
+  travelRegion?: ActivityTravelRegion;
 
   availabilityDays: DayName[];
   availabilityStartTime: string;
