@@ -223,6 +223,16 @@ const activitiesQuerySchema = z.object({
   featured: optionalBooleanQuerySchema,
 
   price: z.string().trim().optional(),
+  minPrice: z.coerce.number().finite().min(0).optional(),
+  maxPrice: z.coerce.number().finite().min(0).optional(),
+  priceCurrency: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z]{3}$/)
+    .transform((value) => value.toUpperCase())
+    .optional(),
+  priceQualifier: z.enum(priceQualifierValues).optional(),
+  priceUnit: z.enum(priceUnitValues).optional(),
 
   sort: z
     .enum([
@@ -237,7 +247,21 @@ const activitiesQuerySchema = z.object({
 
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0)
-});
+})
+  .superRefine((data, context) => {
+    if (
+      data.minPrice !== undefined &&
+      data.maxPrice !== undefined &&
+      data.minPrice > data.maxPrice
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['maxPrice'],
+        message:
+          'Maximum price must be greater than or equal to minimum price'
+      });
+    }
+  });
 
 const idParamsSchema = z.object({
   id: z.string().min(1)
@@ -518,6 +542,40 @@ activitiesRouter.get('/', async (req, res, next) => {
           contains: query.price,
           mode: 'insensitive'
         }
+      });
+    }
+
+    if (
+      query.minPrice !== undefined ||
+      query.maxPrice !== undefined
+    ) {
+      activityFilters.push({
+        priceAmount: {
+          ...(query.minPrice !== undefined
+            ? { gte: query.minPrice }
+            : {}),
+          ...(query.maxPrice !== undefined
+            ? { lte: query.maxPrice }
+            : {})
+        }
+      });
+    }
+
+    if (query.priceCurrency) {
+      activityFilters.push({
+        priceCurrency: query.priceCurrency
+      });
+    }
+
+    if (query.priceQualifier) {
+      activityFilters.push({
+        priceQualifier: query.priceQualifier
+      });
+    }
+
+    if (query.priceUnit) {
+      activityFilters.push({
+        priceUnit: query.priceUnit
       });
     }
 

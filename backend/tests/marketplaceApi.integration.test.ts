@@ -118,6 +118,9 @@ async function seedMarketplaceFixtures() {
       typeEn: 'Apartment',
       price: 'OMR 9,999',
       priceAmount: '100',
+      priceCurrency: 'OMR',
+      priceQualifier: 'FIXED',
+      priceUnit: 'MONTH',
       sqm: 80,
       partnerTier: 0,
       createdAt: new Date('2026-01-01T00:00:00.000Z')
@@ -134,6 +137,9 @@ async function seedMarketplaceFixtures() {
       typeEn: 'Residence',
       price: 'OMR 1',
       priceAmount: '900',
+      priceCurrency: 'OMR',
+      priceQualifier: 'FROM',
+      priceUnit: 'MONTH',
       sqm: 200,
       partnerTier: 0,
       createdAt: new Date('2026-02-01T00:00:00.000Z')
@@ -150,6 +156,9 @@ async function seedMarketplaceFixtures() {
       typeEn: 'Residence',
       price: 'OMR 3,000',
       priceAmount: '3000',
+      priceCurrency: 'USD',
+      priceQualifier: 'FIXED',
+      priceUnit: 'TOTAL',
       sqm: 400,
       partnerTier: 3,
       developerId: featuredDeveloper.id,
@@ -166,6 +175,7 @@ async function seedMarketplaceFixtures() {
       type: 'Villa',
       typeEn: 'Villa',
       price: 'Price on request',
+      priceQualifier: 'ON_REQUEST',
       sqm: 500,
       partnerTier: 3,
       developerId: featuredDeveloper.id,
@@ -205,6 +215,9 @@ async function seedMarketplaceFixtures() {
       providerEn: 'Independent Oman',
       price: 'OMR 999',
       priceAmount: '20',
+      priceCurrency: 'OMR',
+      priceQualifier: 'FIXED',
+      priceUnit: 'PERSON',
       partnerTier: 1,
       familyFriendly: false,
       createdAt: new Date('2026-01-01T00:00:00.000Z')
@@ -218,6 +231,9 @@ async function seedMarketplaceFixtures() {
       titleEn: 'Mountain Hike',
       price: 'OMR 1',
       priceAmount: '50',
+      priceCurrency: 'OMR',
+      priceQualifier: 'FROM',
+      priceUnit: 'PERSON',
       partnerTier: 2,
       travelAgencyId: standardAgency.id,
       outdoor: true,
@@ -232,6 +248,9 @@ async function seedMarketplaceFixtures() {
       titleEn: 'Muscat',
       price: 'OMR 150',
       priceAmount: '150',
+      priceCurrency: 'USD',
+      priceQualifier: 'FIXED',
+      priceUnit: 'GROUP',
       partnerTier: 3,
       travelAgencyId: featuredAgency.id,
       familyFriendly: true,
@@ -245,6 +264,7 @@ async function seedMarketplaceFixtures() {
       slug: 'integration-desert-escape',
       titleEn: 'Desert Escape',
       price: 'Price on request',
+      priceQualifier: 'ON_REQUEST',
       partnerTier: 3,
       travelAgencyId: featuredAgency.id,
       createdAt: new Date('2026-04-01T00:00:00.000Z')
@@ -373,6 +393,62 @@ describe('GET /api/listings', () => {
     ]);
   });
 
+  it('filters listings by structured price range and metadata', async () => {
+    const response = await request(app)
+      .get('/api/listings')
+      .query({
+        minPrice: 800,
+        maxPrice: 1000,
+        priceCurrency: 'omr',
+        priceQualifier: 'FROM',
+        priceUnit: 'MONTH'
+      })
+      .expect(200);
+
+    expect(
+      response.body.listings.map(
+        (listing: { slug: string }) => listing.slug
+      )
+    ).toEqual(['integration-exact-villa']);
+  });
+
+  it('excludes listings without numeric prices from price ranges', async () => {
+    const response = await request(app)
+      .get('/api/listings')
+      .query({
+        maxPrice: 5000
+      })
+      .expect(200);
+
+    expect(
+      response.body.listings.map(
+        (listing: { slug: string }) => listing.slug
+      )
+    ).not.toContain('integration-type-only-villa');
+  });
+
+  it('rejects reversed listing price ranges', async () => {
+    const response = await request(app)
+      .get('/api/listings')
+      .query({
+        minPrice: 1000,
+        maxPrice: 100
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      message: 'Validation failed'
+    });
+
+    expect(response.body.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'maxPrice'
+        })
+      ])
+    );
+  });
+
   it('sorts area descending', async () => {
     const response = await request(app)
       .get('/api/listings')
@@ -474,6 +550,62 @@ describe('GET /api/activities', () => {
       'integration-muscat',
       'integration-desert-escape'
     ]);
+  });
+
+  it('filters activities by structured price range and metadata', async () => {
+    const response = await request(app)
+      .get('/api/activities')
+      .query({
+        minPrice: 40,
+        maxPrice: 60,
+        priceCurrency: 'omr',
+        priceQualifier: 'FROM',
+        priceUnit: 'PERSON'
+      })
+      .expect(200);
+
+    expect(
+      response.body.activities.map(
+        (activity: { slug: string }) => activity.slug
+      )
+    ).toEqual(['integration-mountain-hike']);
+  });
+
+  it('excludes activities without numeric prices from price ranges', async () => {
+    const response = await request(app)
+      .get('/api/activities')
+      .query({
+        maxPrice: 500
+      })
+      .expect(200);
+
+    expect(
+      response.body.activities.map(
+        (activity: { slug: string }) => activity.slug
+      )
+    ).not.toContain('integration-desert-escape');
+  });
+
+  it('rejects reversed activity price ranges', async () => {
+    const response = await request(app)
+      .get('/api/activities')
+      .query({
+        minPrice: 60,
+        maxPrice: 40
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      message: 'Validation failed'
+    });
+
+    expect(response.body.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'maxPrice'
+        })
+      ])
+    );
   });
 
   it('inherits featured status from featured travel agencies', async () => {

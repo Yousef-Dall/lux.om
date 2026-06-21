@@ -176,6 +176,16 @@ const listQuerySchema = z.object({
   minGuests: z.coerce.number().int().min(0).optional(),
   minParking: z.coerce.number().int().min(0).optional(),
   price: z.string().trim().optional(),
+  minPrice: z.coerce.number().finite().min(0).optional(),
+  maxPrice: z.coerce.number().finite().min(0).optional(),
+  priceCurrency: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z]{3}$/)
+    .transform((value) => value.toUpperCase())
+    .optional(),
+  priceQualifier: z.enum(priceQualifierValues).optional(),
+  priceUnit: z.enum(priceUnitValues).optional(),
   furnishing: z.string().trim().optional(),
   view: z.string().trim().optional(),
   amenities: z.string().trim().optional(),
@@ -194,7 +204,21 @@ const listQuerySchema = z.object({
 
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0)
-});
+})
+  .superRefine((data, context) => {
+    if (
+      data.minPrice !== undefined &&
+      data.maxPrice !== undefined &&
+      data.minPrice > data.maxPrice
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['maxPrice'],
+        message:
+          'Maximum price must be greater than or equal to minimum price'
+      });
+    }
+  });
 
 const statusSchema = z
   .object({
@@ -359,6 +383,40 @@ listingsRouter.get('/', async (req, res, next) => {
           contains: query.price,
           mode: 'insensitive'
         }
+      });
+    }
+
+    if (
+      query.minPrice !== undefined ||
+      query.maxPrice !== undefined
+    ) {
+      listingFilters.push({
+        priceAmount: {
+          ...(query.minPrice !== undefined
+            ? { gte: query.minPrice }
+            : {}),
+          ...(query.maxPrice !== undefined
+            ? { lte: query.maxPrice }
+            : {})
+        }
+      });
+    }
+
+    if (query.priceCurrency) {
+      listingFilters.push({
+        priceCurrency: query.priceCurrency
+      });
+    }
+
+    if (query.priceQualifier) {
+      listingFilters.push({
+        priceQualifier: query.priceQualifier
+      });
+    }
+
+    if (query.priceUnit) {
+      listingFilters.push({
+        priceUnit: query.priceUnit
       });
     }
 
