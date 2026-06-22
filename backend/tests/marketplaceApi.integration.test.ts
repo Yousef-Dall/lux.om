@@ -1370,6 +1370,155 @@ describe('POST /api/bookings', () => {
   });
 });
 
+
+describe('GET/PATCH /api/notifications', () => {
+  it('returns notifications for the current user with unread count', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const bookingResponse = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-07-23',
+        guests: 2
+      })
+      .expect(201);
+
+    const providerNotification = await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: activity.ownerId,
+        bookingId: bookingResponse.body.booking.id,
+        type: 'BOOKING_CREATED'
+      }
+    });
+
+    const response = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', `Bearer ${activityProviderToken}`)
+      .expect(200);
+
+    expect(
+      response.body.notifications.map(
+        (notification: { id: string }) => notification.id
+      )
+    ).toContain(providerNotification.id);
+
+    expect(response.body.unreadCount).toBeGreaterThan(0);
+    expect(response.body.pagination).toMatchObject({
+      count: expect.any(Number),
+      total: expect.any(Number)
+    });
+  });
+
+  it('marks one notification as read and blocks other users from changing it', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const bookingResponse = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-07-24',
+        guests: 1
+      })
+      .expect(201);
+
+    const providerNotification = await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: activity.ownerId,
+        bookingId: bookingResponse.body.booking.id,
+        type: 'BOOKING_CREATED'
+      }
+    });
+
+    await request(app)
+      .patch(`/api/notifications/${providerNotification.id}/read`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(404);
+
+    const response = await request(app)
+      .patch(`/api/notifications/${providerNotification.id}/read`)
+      .set('Authorization', `Bearer ${activityProviderToken}`)
+      .expect(200);
+
+    expect(response.body.notification).toMatchObject({
+      id: providerNotification.id,
+      readAt: expect.any(String)
+    });
+
+    const updatedNotification = await prisma.notification.findUniqueOrThrow({
+      where: {
+        id: providerNotification.id
+      }
+    });
+
+    expect(updatedNotification.readAt).toBeInstanceOf(Date);
+  });
+
+  it('marks all current-user notifications as read without touching other users', async () => {
+    const provider = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-activities@lux.test'
+      }
+    });
+
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    const providerNotification = await prisma.notification.create({
+      data: {
+        userId: provider.id,
+        type: 'BOOKING_CREATED',
+        title: 'Provider unread test',
+        message: 'Provider notification should be marked read.'
+      }
+    });
+
+    const customerNotification = await prisma.notification.create({
+      data: {
+        userId: customer.id,
+        type: 'BOOKING_CREATED',
+        title: 'Customer unread test',
+        message: 'Customer notification should stay unread.'
+      }
+    });
+
+    const response = await request(app)
+      .patch('/api/notifications/read-all')
+      .set('Authorization', `Bearer ${activityProviderToken}`)
+      .expect(200);
+
+    expect(response.body.count).toBeGreaterThan(0);
+
+    const updatedProviderNotification = await prisma.notification.findUniqueOrThrow({
+      where: {
+        id: providerNotification.id
+      }
+    });
+
+    const updatedCustomerNotification = await prisma.notification.findUniqueOrThrow({
+      where: {
+        id: customerNotification.id
+      }
+    });
+
+    expect(updatedProviderNotification.readAt).toBeInstanceOf(Date);
+    expect(updatedCustomerNotification.readAt).toBeNull();
+  });
+});
+
 describe('POST /api/listings pricing compatibility', () => {
   const listingPayload = {
     description:

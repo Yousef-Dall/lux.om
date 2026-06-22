@@ -14,6 +14,7 @@ import { developersRouter } from './routes/developers';
 import { inquiriesRouter } from './routes/inquiries';
 import { landmarksRouter } from './routes/landmarks';
 import { listingsRouter } from './routes/listings';
+import { notificationsRouter } from './routes/notifications';
 import { travelAgenciesRouter } from './routes/travelAgencies';
 import { uploadsRouter } from './routes/uploads';
 import {
@@ -112,6 +113,7 @@ export function createApp() {
   app.use('/api/landmarks', landmarksRouter);
   app.use('/api/inquiries', inquiriesRouter);
   app.use('/api/bookings', bookingsRouter);
+  app.use('/api/notifications', notificationsRouter);
   app.use('/api/uploads', uploadsRouter);
 
   app.use(notFoundHandler);

@@ -25,6 +25,10 @@ import {
 } from '../api/bookings';
 import { ApiError } from '../api/client';
 import { getDashboardData, type DashboardData } from '../api/dashboard';
+import {
+  markAllNotificationsRead,
+  markNotificationRead
+} from '../api/notifications';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
 import SectionHeader from '../components/SectionHeader';
@@ -203,6 +207,8 @@ export default function Dashboard() {
   const [bookingUpdatingId, setBookingUpdatingId] = useState('');
   const [bookingActionError, setBookingActionError] = useState('');
   const [bookingActionSuccess, setBookingActionSuccess] = useState('');
+  const [notificationUpdatingId, setNotificationUpdatingId] = useState('');
+  const [notificationActionError, setNotificationActionError] = useState('');
 
   const copy =
     language === 'ar'
@@ -231,6 +237,9 @@ export default function Dashboard() {
           notificationsText: 'آخر تحديثات الحجز والدفع المرتبطة بحسابك.',
           unreadNotifications: 'غير مقروء',
           emptyNotifications: 'لا توجد تنبيهات جديدة حالياً.',
+          markAsRead: 'تحديد كمقروء',
+          markAllAsRead: 'تحديد الكل كمقروء',
+          notificationActionError: 'تعذر تحديث التنبيهات.',
           nextActions: 'أفضل الخطوات التالية',
           improveDiscovery: 'حسّن الظهور في البحث',
           improveText:
@@ -308,6 +317,9 @@ export default function Dashboard() {
           notificationsText: 'Recent booking and payment updates connected to your account.',
           unreadNotifications: 'unread',
           emptyNotifications: 'No recent notifications yet.',
+          markAsRead: 'Mark as read',
+          markAllAsRead: 'Mark all as read',
+          notificationActionError: 'Could not update notifications.',
           nextActions: 'Next best actions',
           improveDiscovery: 'Improve discovery',
           improveText:
@@ -407,6 +419,61 @@ export default function Dashboard() {
     };
   }, [token, language, copy.error]);
 
+
+
+  async function runMarkNotificationRead(notificationId: string) {
+    if (!token) return;
+
+    try {
+      setNotificationUpdatingId(notificationId);
+      setNotificationActionError('');
+
+      const response = await markNotificationRead(notificationId, token);
+
+      setDashboardData((current) => {
+        if (!current) return current;
+
+        return {
+          ...current,
+          notifications: current.notifications.map((notification) =>
+            notification.id === notificationId ? response.notification : notification
+          )
+        };
+      });
+    } catch (error) {
+      console.error(error);
+
+      if (error instanceof ApiError) {
+        setNotificationActionError(error.message);
+      } else {
+        setNotificationActionError(copy.notificationActionError);
+      }
+    } finally {
+      setNotificationUpdatingId('');
+    }
+  }
+
+  async function runMarkAllNotificationsRead() {
+    if (!token) return;
+
+    try {
+      setNotificationUpdatingId('all');
+      setNotificationActionError('');
+
+      await markAllNotificationsRead(token);
+      await refreshDashboard();
+    } catch (error) {
+      console.error(error);
+
+      if (error instanceof ApiError) {
+        setNotificationActionError(error.message);
+      } else {
+        setNotificationActionError(copy.notificationActionError);
+      }
+    } finally {
+      setNotificationUpdatingId('');
+    }
+  }
 
   async function runOwnerBookingAction(
     bookingId: string,
@@ -1024,11 +1091,30 @@ export default function Dashboard() {
 
 
               <div className="dashboard-notifications-card">
-                <div>
-                  <p className="eyebrow">{copy.notifications}</p>
-                  <h2>{copy.notifications}</h2>
-                  <p>{copy.notificationsText}</p>
+                <div className="dashboard-notifications-header">
+                  <div>
+                    <p className="eyebrow">{copy.notifications}</p>
+                    <h2>{copy.notifications}</h2>
+                    <p>{copy.notificationsText}</p>
+                  </div>
+
+                  {unreadNotifications > 0 ? (
+                    <button
+                      className="button-link button-link--secondary dashboard-notification-read-button"
+                      type="button"
+                      disabled={notificationUpdatingId === 'all'}
+                      onClick={() => void runMarkAllNotificationsRead()}
+                    >
+                      {copy.markAllAsRead}
+                    </button>
+                  ) : null}
                 </div>
+
+                {notificationActionError ? (
+                  <p className="form-error" role="alert">
+                    {notificationActionError}
+                  </p>
+                ) : null}
 
                 {notifications.length > 0 ? (
                   <div className="dashboard-notifications-list">
@@ -1044,7 +1130,21 @@ export default function Dashboard() {
                           {notification.title}
                         </span>
                         <p>{notification.message}</p>
-                        <small>{formatBookingDate(notification.createdAt, language)}</small>
+
+                        <div className="dashboard-notification-footer">
+                          <small>{formatBookingDate(notification.createdAt, language)}</small>
+
+                          {!notification.readAt ? (
+                            <button
+                              className="button-link button-link--ghost dashboard-notification-read-button"
+                              type="button"
+                              disabled={notificationUpdatingId === notification.id}
+                              onClick={() => void runMarkNotificationRead(notification.id)}
+                            >
+                              {copy.markAsRead}
+                            </button>
+                          ) : null}
+                        </div>
                       </article>
                     ))}
                   </div>

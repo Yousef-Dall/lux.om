@@ -7796,3 +7796,37 @@ transition: none;
   color: var(--color-muted);
   font-weight: 760;
 }
+
+.dashboard-notifications-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.dashboard-notification-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.dashboard-notification-read-button {
+  min-height: 34px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .dashboard-notifications-header,
+  .dashboard-notification-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-notification-read-button {
+    justify-content: center;
+    width: 100%;
+  }
+}
