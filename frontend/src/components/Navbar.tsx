@@ -1,12 +1,12 @@
 import {
-  ChevronDown,
-  Globe2,
-  LayoutDashboard,
-  LogOut,
-  Menu,
-  ShieldCheck,
-  UserCircle,
-  X
+ChevronDown,
+Globe2,
+LayoutDashboard,
+LogOut,
+Menu,
+ShieldCheck,
+UserCircle,
+X
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
@@ -17,222 +17,230 @@ import { cn } from '../utils/format';
 import ButtonLink from './ButtonLink';
 
 export default function Navbar() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [hasScrolled, setHasScrolled] = useState(false);
+const [isOpen, setIsOpen] = useState(false);
+const [hasScrolled, setHasScrolled] = useState(false);
 
-  const { pathname } = useLocation();
-  const navigate = useNavigate();
-  const { t, toggleLanguage, language } = useLanguage();
-  const { user, isAuthenticated, isAdmin, logout } = useAuth();
+const { pathname } = useLocation();
+const navigate = useNavigate();
+const { t, toggleLanguage, language } = useLanguage();
+const { user, isAuthenticated, isAdmin, logout } = useAuth();
 
-  const navCopy =
-    language === 'ar'
-      ? {
-          travelAgencies: 'وكالات السفر'
-        }
-      : {
-          travelAgencies: 'Travel agencies'
-        };
+const navCopy =
+language === 'ar'
+? {
+investorInsights: 'رؤى المستثمر',
+travelAgencies: 'وكالات السفر'
+}
+: {
+investorInsights: 'Investor insights',
+travelAgencies: 'Travel agencies'
+};
 
-  const links = useMemo(
-    () => [
-      { to: '/listings', label: t.nav.listings },
-      { to: '/activities', label: t.nav.activities },
-      { to: '/developers', label: t.nav.developers },
-      { to: '/travel-agencies', label: navCopy.travelAgencies },
-      { to: '/about', label: t.nav.about },
-      { to: '/contact', label: t.nav.contact }
-    ],
-    [
-      navCopy.travelAgencies,
-      t.nav.about,
-      t.nav.activities,
-      t.nav.contact,
-      t.nav.developers,
-      t.nav.listings
-    ]
-  );
+const links = useMemo(
+() => [
+{ to: '/listings', label: t.nav.listings },
+{ to: '/market-insights', label: navCopy.investorInsights },
+{ to: '/activities', label: t.nav.activities },
+{ to: '/developers', label: t.nav.developers },
+{ to: '/travel-agencies', label: navCopy.travelAgencies },
+{ to: '/about', label: t.nav.about },
+{ to: '/contact', label: t.nav.contact }
+],
+[
+navCopy.investorInsights,
+navCopy.travelAgencies,
+t.nav.about,
+t.nav.activities,
+t.nav.contact,
+t.nav.developers,
+t.nav.listings
+]
+);
 
-  const accessibilityCopy =
-    language === 'ar'
-      ? {
-          skip: 'تخطي إلى المحتوى',
-          nav: 'التنقل الرئيسي',
-          open: 'فتح قائمة التنقل',
-          close: 'إغلاق قائمة التنقل',
-          language: 'تغيير اللغة',
-          login: 'تسجيل الدخول',
-          register: 'إنشاء حساب',
-          dashboard: 'لوحة التحكم',
-          admin: 'الأدمن',
-          logout: 'خروج',
-          signedInAs: 'مسجل باسم',
-          account: 'قائمة الحساب'
-        }
-      : {
-          skip: 'Skip to content',
-          nav: 'Main navigation',
-          open: 'Open navigation menu',
-          close: 'Close navigation menu',
-          language: 'Change language',
-          login: 'Login',
-          register: 'Register',
-          dashboard: 'Dashboard',
-          admin: 'Admin',
-          logout: 'Logout',
-          signedInAs: 'Signed in as',
-          account: 'Account menu'
-        };
+const accessibilityCopy =
+language === 'ar'
+? {
+skip: 'تخطي إلى المحتوى',
+nav: 'التنقل الرئيسي',
+open: 'فتح قائمة التنقل',
+close: 'إغلاق قائمة التنقل',
+language: 'تغيير اللغة',
+login: 'تسجيل الدخول',
+register: 'إنشاء حساب',
+dashboard: 'لوحة التحكم',
+admin: 'الأدمن',
+logout: 'خروج',
+signedInAs: 'مسجل باسم',
+account: 'قائمة الحساب'
+}
+: {
+skip: 'Skip to content',
+nav: 'Main navigation',
+open: 'Open navigation menu',
+close: 'Close navigation menu',
+language: 'Change language',
+login: 'Login',
+register: 'Register',
+dashboard: 'Dashboard',
+admin: 'Admin',
+logout: 'Logout',
+signedInAs: 'Signed in as',
+account: 'Account menu'
+};
 
-  useEffect(() => {
-    setIsOpen(false);
-  }, [pathname]);
+useEffect(() => {
+setIsOpen(false);
+}, [pathname]);
 
-  useEffect(() => {
-    function handleScroll() {
-      setHasScrolled(window.scrollY > 10);
-    }
+useEffect(() => {
+function handleScroll() {
+setHasScrolled(window.scrollY > 10);
+}
 
-    handleScroll();
-    window.addEventListener('scroll', handleScroll, { passive: true });
 
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+handleScroll();
+window.addEventListener('scroll', handleScroll, { passive: true });
 
-  function handleLogout() {
-    logout();
-    setIsOpen(false);
-    navigate('/');
-  }
+return () => window.removeEventListener('scroll', handleScroll);
 
-  return (
-    <header className={cn('site-header', hasScrolled && 'site-header--scrolled')}>
-      <a className="skip-link" href="#main-content">
-        {accessibilityCopy.skip}
-      </a>
 
-      <nav className="navbar container" aria-label={accessibilityCopy.nav}>
-        <Link to="/" className="brand" onClick={() => setIsOpen(false)} aria-label="lux.om homepage">
-          <span className="brand__mark" aria-hidden="true">
-            lux
-          </span>
+}, []);
 
-          <span>
-            <strong>lux.om</strong>
-            <small>Oman, curated</small>
-          </span>
-        </Link>
+function handleLogout() {
+logout();
+setIsOpen(false);
+navigate('/');
+}
 
-        <button
-          className="nav-toggle"
-          type="button"
-          aria-label={isOpen ? accessibilityCopy.close : accessibilityCopy.open}
-          aria-expanded={isOpen}
-          aria-controls="main-navigation-menu"
-          onClick={() => setIsOpen((value) => !value)}
-        >
-          {isOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
-        </button>
+return (
+<header className={cn('site-header', hasScrolled && 'site-header--scrolled')}> <a className="skip-link" href="#main-content">
+{accessibilityCopy.skip} </a>
 
-        <div id="main-navigation-menu" className={cn('nav-menu', isOpen && 'nav-menu--open')}>
-          <div className="nav-menu__links">
-            {links.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                className={({ isActive }) =>
-                  cn(
-                    'nav-link',
-                    (isActive || pathname.startsWith(`${link.to}/`)) && 'nav-link--active'
-                  )
-                }
-              >
-                {link.label}
-              </NavLink>
-            ))}
-          </div>
 
-          <div className="nav-menu__actions nav-menu__actions--auth">
-            <button
-              className="language-toggle"
-              type="button"
-              aria-label={accessibilityCopy.language}
-              onClick={toggleLanguage}
-            >
-              <Globe2 size={17} aria-hidden="true" />
-              <span>{t.common.language}</span>
-              <small>{language.toUpperCase()}</small>
-            </button>
+  <nav className="navbar container" aria-label={accessibilityCopy.nav}>
+    <Link to="/" className="brand" onClick={() => setIsOpen(false)} aria-label="lux.om homepage">
+      <span className="brand__mark" aria-hidden="true">
+        lux
+      </span>
 
-            {isAuthenticated ? (
-  <details className="nav-account">
-    <summary
-      className="nav-account__trigger"
-      aria-label={accessibilityCopy.account}
-      title={`${accessibilityCopy.signedInAs} ${user?.email ?? ''}`}
+      <span>
+        <strong>lux.om</strong>
+        <small>Oman, curated</small>
+      </span>
+    </Link>
+
+    <button
+      className="nav-toggle"
+      type="button"
+      aria-label={isOpen ? accessibilityCopy.close : accessibilityCopy.open}
+      aria-expanded={isOpen}
+      aria-controls="main-navigation-menu"
+      onClick={() => setIsOpen((value) => !value)}
     >
-      <span className="nav-account__avatar" aria-hidden="true">
-        <UserCircle size={18} />
-      </span>
+      {isOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
+    </button>
 
-      <span className="nav-account__identity">
-        <strong>{user?.name || accessibilityCopy.dashboard}</strong>
-        <small>{isAdmin ? accessibilityCopy.admin : user?.email}</small>
-      </span>
-
-      <ChevronDown className="nav-account__chevron" size={16} aria-hidden="true" />
-    </summary>
-
-    <div className="nav-account__menu">
-      <div className="nav-account__profile">
-        <strong>{user?.name}</strong>
-        <span>{user?.email}</span>
+    <div id="main-navigation-menu" className={cn('nav-menu', isOpen && 'nav-menu--open')}>
+      <div className="nav-menu__links">
+        {links.map((link) => (
+          <NavLink
+            key={link.to}
+            to={link.to}
+            className={({ isActive }) =>
+              cn(
+                'nav-link',
+                (isActive || pathname.startsWith(`${link.to}/`)) && 'nav-link--active'
+              )
+            }
+          >
+            {link.label}
+          </NavLink>
+        ))}
       </div>
 
-      <NavLink
-        to="/dashboard"
-        className="nav-account__item"
-        onClick={() => setIsOpen(false)}
-      >
-        <LayoutDashboard size={17} aria-hidden="true" />
-        {accessibilityCopy.dashboard}
-      </NavLink>
-
-      {isAdmin ? (
-        <NavLink
-          to="/admin"
-          className="nav-account__item"
-          onClick={() => setIsOpen(false)}
+      <div className="nav-menu__actions nav-menu__actions--auth">
+        <button
+          className="language-toggle"
+          type="button"
+          aria-label={accessibilityCopy.language}
+          onClick={toggleLanguage}
         >
-          <ShieldCheck size={17} aria-hidden="true" />
-          {accessibilityCopy.admin}
-        </NavLink>
-      ) : null}
+          <Globe2 size={17} aria-hidden="true" />
+          <span>{t.common.language}</span>
+          <small>{language.toUpperCase()}</small>
+        </button>
 
-      <button
-        className="nav-account__item nav-account__item--danger"
-        type="button"
-        onClick={handleLogout}
-      >
-        <LogOut size={17} aria-hidden="true" />
-        {accessibilityCopy.logout}
-      </button>
+        {isAuthenticated ? (
+          <details className="nav-account">
+            <summary
+              className="nav-account__trigger"
+              aria-label={accessibilityCopy.account}
+              title={`${accessibilityCopy.signedInAs} ${user?.email ?? ''}`}
+            >
+              <span className="nav-account__avatar" aria-hidden="true">
+                <UserCircle size={18} />
+              </span>
+
+              <span className="nav-account__identity">
+                <strong>{user?.name || accessibilityCopy.dashboard}</strong>
+                <small>{isAdmin ? accessibilityCopy.admin : user?.email}</small>
+              </span>
+
+              <ChevronDown className="nav-account__chevron" size={16} aria-hidden="true" />
+            </summary>
+
+            <div className="nav-account__menu">
+              <div className="nav-account__profile">
+                <strong>{user?.name}</strong>
+                <span>{user?.email}</span>
+              </div>
+
+              <NavLink
+                to="/dashboard"
+                className="nav-account__item"
+                onClick={() => setIsOpen(false)}
+              >
+                <LayoutDashboard size={17} aria-hidden="true" />
+                {accessibilityCopy.dashboard}
+              </NavLink>
+
+              {isAdmin ? (
+                <NavLink
+                  to="/admin"
+                  className="nav-account__item"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <ShieldCheck size={17} aria-hidden="true" />
+                  {accessibilityCopy.admin}
+                </NavLink>
+              ) : null}
+
+              <button
+                className="nav-account__item nav-account__item--danger"
+                type="button"
+                onClick={handleLogout}
+              >
+                <LogOut size={17} aria-hidden="true" />
+                {accessibilityCopy.logout}
+              </button>
+            </div>
+          </details>
+        ) : (
+          <>
+            <ButtonLink to="/login" variant="secondary" onClick={() => setIsOpen(false)}>
+              {accessibilityCopy.login}
+            </ButtonLink>
+
+            <ButtonLink to="/register" onClick={() => setIsOpen(false)}>
+              {accessibilityCopy.register}
+            </ButtonLink>
+          </>
+        )}
+      </div>
     </div>
-  </details>
-) : (
-              <>
-                <ButtonLink to="/login" variant="secondary" onClick={() => setIsOpen(false)}>
-                  {accessibilityCopy.login}
-                </ButtonLink>
+  </nav>
+</header>
 
-                <ButtonLink to="/register" onClick={() => setIsOpen(false)}>
-                  {accessibilityCopy.register}
-                </ButtonLink>
-              </>
-            )}
-          </div>
-        </div>
-      </nav>
-    </header>
-  );
+
+);
 }

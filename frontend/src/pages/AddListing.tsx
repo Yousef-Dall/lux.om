@@ -1126,8 +1126,8 @@ export default function AddListing() {
               <LinkIcon size={18} aria-hidden="true" />
             </span>
             <div>
-              <p className="eyebrow">Stage 8 media</p>
-              <h2>Premium media and investor notes</h2>
+              <p className="eyebrow">Premium media</p>
+              <h2>Premium media and investor eligibility notes</h2>
             </div>
           </div>
 

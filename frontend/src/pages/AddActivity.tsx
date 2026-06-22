@@ -377,7 +377,11 @@ reviewHint: 'تتم مراجعة الأنشطة قبل نشرها على lux.om.
 submitting: 'جاري الإرسال...',
 authError: 'يجب تسجيل الدخول قبل إضافة نشاط.',
 optionsError: 'تعذر تحميل وكالات السفر والمعالم من الخادم.',
-submitError: 'تعذر إرسال النشاط للمراجعة. حاولي مرة أخرى.'
+submitError: 'تعذر إرسال النشاط للمراجعة. حاولي مرة أخرى.',
+premiumMediaEyebrow: 'وسائط مميزة',
+premiumActivityMediaTitle: 'وسائط النشاط المميزة',
+premiumActivityMediaHint:
+'أضف روابط اختيارية للفيديو أو الجولات الافتراضية. سيتم عرض الروابط الآمنة فقط في صفحة النشاط.'
 }
 : {
 addActivityTitle: 'Add activity',
@@ -477,7 +481,11 @@ reviewHint: 'Activities are reviewed before going public on lux.om.',
 submitting: 'Submitting...',
 authError: 'You must be logged in before adding an activity.',
 optionsError: 'Could not load travel agencies and landmarks from the server.',
-submitError: 'Could not submit this activity for review. Please try again.'
+submitError: 'Could not submit this activity for review. Please try again.',
+premiumMediaEyebrow: 'Premium media',
+premiumActivityMediaTitle: 'Premium activity media',
+premiumActivityMediaHint:
+'Add optional video walkthroughs, 360 tours, or virtual tour links. Only safe supported links are displayed on the public activity page.'
 };
 
 useEffect(() => {
@@ -1803,8 +1811,9 @@ description={addActivityCopy.description ?? copy.addActivityDescription}
           <LinkIcon size={18} aria-hidden="true" />
         </span>
         <div>
-          <p className="eyebrow">Stage 8 media</p>
-          <h2>Premium activity media</h2>
+          <p className="eyebrow">{copy.premiumMediaEyebrow}</p>
+          <h2>{copy.premiumActivityMediaTitle}</h2>
+          <p className="form-section-hint">{copy.premiumActivityMediaHint}</p>
         </div>
       </div>
 

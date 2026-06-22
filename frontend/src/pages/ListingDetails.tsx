@@ -61,6 +61,7 @@ notSpecified: 'غير محدد',
           buyerEligibility: 'أهلية الشراء',
           investorReadiness: 'جاهزية المستثمر',
           eligibilityDisclaimer: 'يجب التحقق من الأهلية قبل الشراء وتخضع للوائح عُمان المعمول بها.',
+          eligibilityNotSpecified: 'لم يتم تحديد أهلية المستثمر لهذا العقار بعد.',
           premiumMedia: 'الوسائط المميزة',
           floorPlan: 'مخطط العقار',
           report: 'الإبلاغ عن هذا العقار',
@@ -89,6 +90,7 @@ notSpecified: 'Not specified',
           buyerEligibility: 'Buyer eligibility',
           investorReadiness: 'Investor readiness',
           eligibilityDisclaimer: 'Eligibility should be verified before purchase and is subject to applicable Omani regulations.',
+          eligibilityNotSpecified: 'Investor eligibility has not been marked yet.',
           premiumMedia: 'Premium media',
           floorPlan: 'Floor plan',
           report: 'Report this listing',
@@ -256,11 +258,11 @@ notSpecified: 'Not specified',
     value: listing.paymentFrequency ?? copy.notSpecified,
     icon: Building2
   },
-    ...(buyerEligibilityLabel
+    ...(listing.transaction === 'Sale'
       ? [
           {
             label: copy.buyerEligibility,
-            value: buyerEligibilityLabel,
+            value: buyerEligibilityLabel || copy.eligibilityNotSpecified,
             icon: ShieldCheck
           }
         ]
@@ -410,11 +412,11 @@ notSpecified: 'Not specified',
               ) : null}
             </div>
 
-            {listing.transaction === 'Sale' && (buyerEligibilityLabel || listing.eligibilityNotes || listing.investorHighlights?.length) ? (
+            {listing.transaction === 'Sale' ? (
               <section className="investor-eligibility-panel" aria-labelledby="listing-investor-title">
                 <p className="eyebrow">lux.om investor note</p>
                 <h2 id="listing-investor-title">{copy.investorReadiness}</h2>
-                {buyerEligibilityLabel ? <strong>{buyerEligibilityLabel}</strong> : null}
+                <strong>{buyerEligibilityLabel || copy.eligibilityNotSpecified}</strong>
                 {listing.eligibilityNotes ? <p>{listing.eligibilityNotes}</p> : null}
                 {listing.investorHighlights?.length ? (
                   <ul>
@@ -554,9 +556,9 @@ notSpecified: 'Not specified',
             <span>{listing.type}</span>
             {listing.view ? <span>{listing.view}</span> : null}
             {listing.furnishing ? <span>{listing.furnishing}</span> : null}
-            {buyerEligibilityLabel ? (
+            {listing.transaction === 'Sale' ? (
               <span>
-                {copy.buyerEligibility}: {buyerEligibilityLabel}
+                {copy.buyerEligibility}: {buyerEligibilityLabel || copy.eligibilityNotSpecified}
               </span>
             ) : null}
             {listing.parkingSpaces ? <span>{copy.parking}</span> : null}
