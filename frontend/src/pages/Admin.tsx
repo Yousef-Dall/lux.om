@@ -1,8 +1,10 @@
 import {
   AlertCircle,
   Building2,
+  CalendarDays,
   CheckCircle2,
   Clock3,
+  CreditCard,
   Eye,
   Inbox,
   Mail,
@@ -10,6 +12,7 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  Users,
   XCircle
 } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
@@ -20,17 +23,21 @@ import {
   deleteAdminDeveloper,
   deleteAdminTravelAgency,
   getAdminActivities,
+  getAdminBookings,
   getAdminDevelopers,
   getAdminInquiries,
   getAdminListings,
   getAdminTravelAgencies,
   updateAdminActivityStatus,
+  updateAdminBookingPaymentStatus,
+  updateAdminBookingStatus,
   updateAdminDeveloper,
   updateAdminListingStatus,
   updateAdminTravelAgency,
   type UpdateDeveloperPayload,
   type UpdateTravelAgencyPayload
 } from '../api/admin';
+import type { ApiBooking, BookingStatus, PaymentStatus } from '../api/bookings';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
@@ -198,6 +205,116 @@ function matchesReviewStatus(status: string | undefined, filter: ReviewStatusFil
 }
 
 
+
+function getAdminBookingTitle(booking: ApiBooking, language: 'en' | 'ar') {
+  if (booking.activity) {
+    return language === 'ar'
+      ? booking.activity.titleAr || booking.activity.titleEn
+      : booking.activity.titleEn || booking.activity.titleAr || '';
+  }
+
+  if (booking.listing) {
+    return language === 'ar'
+      ? booking.listing.titleAr || booking.listing.titleEn || booking.listing.title
+      : booking.listing.titleEn || booking.listing.titleAr || booking.listing.title;
+  }
+
+  return language === 'ar' ? 'حجز' : 'Booking';
+}
+
+function getAdminBookingSubtitle(booking: ApiBooking, language: 'en' | 'ar') {
+  if (booking.activity) {
+    return language === 'ar'
+      ? booking.activity.locationAr || booking.activity.locationEn
+      : booking.activity.locationEn || booking.activity.locationAr || '';
+  }
+
+  if (booking.listing) {
+    return language === 'ar'
+      ? booking.listing.locationAr || booking.listing.locationEn || booking.listing.location
+      : booking.listing.locationEn || booking.listing.locationAr || booking.listing.location;
+  }
+
+  return '';
+}
+
+function getAdminBookingKind(booking: ApiBooking, language: 'en' | 'ar') {
+  if (booking.activity) {
+    if (booking.activity.travelRegion === 'OUTSIDE_OMAN') {
+      return language === 'ar' ? 'باقة سفر' : 'Travel package';
+    }
+
+    return language === 'ar' ? 'نشاط' : 'Activity';
+  }
+
+  if (booking.listing) {
+    return language === 'ar' ? 'عقار' : 'Listing';
+  }
+
+  return language === 'ar' ? 'حجز' : 'Booking';
+}
+
+function formatAdminBookingDate(value: string | null | undefined, language: 'en' | 'ar') {
+  if (!value) return '—';
+
+  return new Intl.DateTimeFormat(language === 'ar' ? 'ar-OM' : 'en-GB', {
+    dateStyle: 'medium'
+  }).format(new Date(value));
+}
+
+function getAdminPaymentAmount(booking: ApiBooking) {
+  const amount = Number(booking.payment?.amount ?? 0);
+
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function formatAdminPaymentAmount(booking: ApiBooking) {
+  const amount = getAdminPaymentAmount(booking);
+
+  if (amount <= 0) return '—';
+
+  const currency =
+    booking.activity?.priceCurrency ||
+    booking.listing?.priceCurrency ||
+    'OMR';
+
+  return `${currency} ${amount.toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2
+  })}`;
+}
+
+function getBookingTone(status?: string) {
+  if (status === 'OWNER_APPROVED' || status === 'ADMIN_CONFIRMED' || status === 'PAID') {
+    return 'approved';
+  }
+
+  if (
+    status === 'OWNER_REJECTED' ||
+    status === 'CANCELLED' ||
+    status === 'FAILED' ||
+    status === 'REFUNDED'
+  ) {
+    return 'rejected';
+  }
+
+  return 'pending';
+}
+
+function BookingToneIcon({ status }: { status?: string }) {
+  const tone = getBookingTone(status);
+
+  if (tone === 'approved') {
+    return <CheckCircle2 size={14} aria-hidden="true" />;
+  }
+
+  if (tone === 'rejected') {
+    return <XCircle size={14} aria-hidden="true" />;
+  }
+
+  return <Clock3 size={14} aria-hidden="true" />;
+}
+
 const initialAgencyForm = {
   nameEn: '',
   nameAr: '',
@@ -244,6 +361,7 @@ export default function Admin() {
   const [listings, setListings] = useState<ApiListing[]>([]);
   const [activities, setActivities] = useState<ApiActivity[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [bookings, setBookings] = useState<ApiBooking[]>([]);
 const [travelAgencies, setTravelAgencies] = useState<ApiTravelAgency[]>([]);
 const [developers, setDevelopers] = useState<ApiDeveloperCompany[]>([]);
 
@@ -453,6 +571,78 @@ verifiedDevelopers: 'Verified developers',
           createdAt: 'Created at'
         };
 
+
+  const bookingCopy =
+    language === 'ar'
+      ? {
+          bookingManagement: 'إدارة الحجوزات',
+          bookingManagementText:
+            'راجع طلبات الحجز، حالة الدفع، واعتماد الطلبات من لوحة الإدارة.',
+          booking: 'الحجز',
+          customer: 'العميل',
+          schedule: 'الموعد',
+          bookingStatus: 'حالة الحجز',
+          paymentStatus: 'حالة الدفع',
+          amount: 'المبلغ',
+          actions: 'الإجراءات',
+          approveOwner: 'موافقة المنظم',
+          rejectOwner: 'رفض المنظم',
+          confirmAdmin: 'تأكيد الإدارة',
+          cancelBooking: 'إلغاء',
+          markPaid: 'مدفوع',
+          markFailed: 'فشل الدفع',
+          markNotRequired: 'لا يحتاج دفع',
+          noBookings: 'لا توجد حجوزات حالياً.',
+          pending: 'قيد المراجعة',
+          ownerApproved: 'موافقة المنظم',
+          ownerRejected: 'رفض المنظم',
+          adminConfirmed: 'مؤكد من الإدارة',
+          cancelled: 'ملغي',
+          paymentPending: 'بانتظار الدفع',
+          paymentPaid: 'مدفوع',
+          paymentFailed: 'فشل الدفع',
+          paymentRefunded: 'مسترد',
+          paymentNotRequired: 'لا يحتاج دفع',
+          guests: 'ضيوف',
+          preferredTime: 'الوقت المفضل',
+          message: 'رسالة العميل',
+          anonymousCustomer: 'عميل'
+        }
+      : {
+          bookingManagement: 'Booking management',
+          bookingManagementText:
+            'Review booking requests, payment state, and admin/provider approval from one queue.',
+          booking: 'Booking',
+          customer: 'Customer',
+          schedule: 'Schedule',
+          bookingStatus: 'Booking status',
+          paymentStatus: 'Payment status',
+          amount: 'Amount',
+          actions: 'Actions',
+          approveOwner: 'Provider approved',
+          rejectOwner: 'Provider rejected',
+          confirmAdmin: 'Admin confirmed',
+          cancelBooking: 'Cancel',
+          markPaid: 'Mark paid',
+          markFailed: 'Mark failed',
+          markNotRequired: 'No payment',
+          noBookings: 'No bookings yet.',
+          pending: 'Pending',
+          ownerApproved: 'Provider approved',
+          ownerRejected: 'Provider rejected',
+          adminConfirmed: 'Admin confirmed',
+          cancelled: 'Cancelled',
+          paymentPending: 'Payment pending',
+          paymentPaid: 'Paid',
+          paymentFailed: 'Payment failed',
+          paymentRefunded: 'Refunded',
+          paymentNotRequired: 'No payment required',
+          guests: 'guests',
+          preferredTime: 'Preferred time',
+          message: 'Customer message',
+          anonymousCustomer: 'Customer'
+        };
+
   async function loadAdminData() {
     if (!token) return;
 
@@ -464,12 +654,14 @@ verifiedDevelopers: 'Verified developers',
   listingsResponse,
   activitiesResponse,
   inquiriesResponse,
+  bookingsResponse,
   agenciesResponse,
   developersResponse
 ] = await Promise.all([
   getAdminListings(token),
   getAdminActivities(token),
   getAdminInquiries(token),
+  getAdminBookings(token),
   getAdminTravelAgencies(token),
   getAdminDevelopers(token)
 ]);
@@ -477,6 +669,7 @@ verifiedDevelopers: 'Verified developers',
 setListings(listingsResponse.listings);
 setActivities(activitiesResponse.activities);
 setInquiries(inquiriesResponse.inquiries);
+setBookings(bookingsResponse.bookings);
 setTravelAgencies(agenciesResponse.travelAgencies);
 setDevelopers(developersResponse.developers);
     } catch (error) {
@@ -530,9 +723,10 @@ const metrics = useMemo(() => {
     featuredActivityCount,
     needsAttention: pendingListings + pendingActivities,
     verifiedAgencies: travelAgencies.filter((agency) => agency.verified).length,
-    verifiedDevelopers: developers.filter((developer) => developer.verified).length
+    verifiedDevelopers: developers.filter((developer) => developer.verified).length,
+    pendingBookings: bookings.filter((booking) => booking.status === 'PENDING').length
   };
-}, [activities, developers, listings, travelAgencies]);
+}, [activities, bookings, developers, listings, travelAgencies]);
 
   const filteredListings = useMemo(
     () =>
@@ -604,6 +798,82 @@ const metrics = useMemo(() => {
     } catch (error) {
       console.error(error);
       alert(error instanceof ApiError || error instanceof Error ? error.message : copy.error);
+    } finally {
+      setUpdatingId('');
+    }
+  }
+
+
+  async function updateBookingStatus(
+    bookingId: string,
+    status: BookingStatus
+  ) {
+    if (!token) return;
+
+    try {
+      setUpdatingId(bookingId);
+
+      const response = await updateAdminBookingStatus(
+        bookingId,
+        {
+          status
+        },
+        token
+      );
+
+      setBookings((current) =>
+        current.map((booking) =>
+          booking.id === bookingId ? response.booking : booking
+        )
+      );
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof ApiError || error instanceof Error
+          ? error.message
+          : copy.error
+      );
+    } finally {
+      setUpdatingId('');
+    }
+  }
+
+  async function updateBookingPaymentStatus(
+    paymentId: string,
+    status: PaymentStatus
+  ) {
+    if (!token) return;
+
+    try {
+      setUpdatingId(paymentId);
+
+      const response = await updateAdminBookingPaymentStatus(
+        paymentId,
+        {
+          status
+        },
+        token
+      );
+
+      setBookings((current) =>
+        current.map((booking) =>
+          booking.payment?.id === paymentId
+            ? {
+                ...booking,
+                payment: response.payment
+              }
+            : booking
+        )
+      );
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof ApiError || error instanceof Error
+          ? error.message
+          : copy.error
+      );
     } finally {
       setUpdatingId('');
     }
@@ -848,6 +1118,43 @@ async function deleteDeveloperCompany(developerId: string) {
     );
   }
 
+
+  function getBookingStatusLabel(status: BookingStatus) {
+    if (status === 'OWNER_APPROVED') return bookingCopy.ownerApproved;
+    if (status === 'OWNER_REJECTED') return bookingCopy.ownerRejected;
+    if (status === 'ADMIN_CONFIRMED') return bookingCopy.adminConfirmed;
+    if (status === 'CANCELLED') return bookingCopy.cancelled;
+
+    return bookingCopy.pending;
+  }
+
+  function getPaymentStatusLabel(status?: PaymentStatus) {
+    if (status === 'PAID') return bookingCopy.paymentPaid;
+    if (status === 'FAILED') return bookingCopy.paymentFailed;
+    if (status === 'REFUNDED') return bookingCopy.paymentRefunded;
+    if (status === 'NOT_REQUIRED') return bookingCopy.paymentNotRequired;
+
+    return bookingCopy.paymentPending;
+  }
+
+  function renderBookingStatus(status: BookingStatus) {
+    return (
+      <span className={`status-pill ${getBookingTone(status)}`}>
+        <BookingToneIcon status={status} />
+        {getBookingStatusLabel(status)}
+      </span>
+    );
+  }
+
+  function renderPaymentStatus(status?: PaymentStatus) {
+    return (
+      <span className={`status-pill ${getBookingTone(status)}`}>
+        <BookingToneIcon status={status} />
+        {getPaymentStatusLabel(status)}
+      </span>
+    );
+  }
+
   function getReviewStatusFilterLabel(filter: ReviewStatusFilter) {
     if (filter === 'ALL') return copy.allStatuses;
     if (filter === 'APPROVED') return copy.approvedOnly;
@@ -960,6 +1267,15 @@ async function deleteDeveloperCompany(developerId: string) {
 
             <article className="metric-card">
               <span>
+                <CreditCard size={18} aria-hidden="true" />
+                {bookingCopy.bookingManagement}
+              </span>
+              <strong>{bookings.length}</strong>
+              <small>{metrics.pendingBookings} {bookingCopy.pending}</small>
+            </article>
+
+            <article className="metric-card">
+              <span>
                 <Building2 size={18} aria-hidden="true" />
                 {copy.travelAgencies}
               </span>
@@ -984,6 +1300,186 @@ async function deleteDeveloperCompany(developerId: string) {
   <strong>{metrics.verifiedDevelopers}</strong>
   <small>{copy.verifiedDevelopers}</small>
 </article>
+          </div>
+
+
+          <div className="table-card table-card--premium admin-bookings-card">
+            <div className="table-card__header">
+              <div>
+                <p className="eyebrow">{bookingCopy.bookingManagement}</p>
+                <h2>{bookingCopy.bookingManagement}</h2>
+                <p>{bookingCopy.bookingManagementText}</p>
+              </div>
+            </div>
+
+            <div className="responsive-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{bookingCopy.booking}</th>
+                    <th>{bookingCopy.customer}</th>
+                    <th>{bookingCopy.schedule}</th>
+                    <th>{bookingCopy.bookingStatus}</th>
+                    <th>{bookingCopy.paymentStatus}</th>
+                    <th>{bookingCopy.amount}</th>
+                    <th>{bookingCopy.actions}</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {bookings.map((booking) => {
+                    const paymentId = booking.payment?.id;
+                    const isUpdatingBooking = updatingId === booking.id;
+                    const isUpdatingPayment = paymentId ? updatingId === paymentId : false;
+
+                    return (
+                      <tr key={booking.id}>
+                        <td>
+                          <strong>{getAdminBookingTitle(booking, language)}</strong>
+                          <span>
+                            {getAdminBookingKind(booking, language)}
+                            {getAdminBookingSubtitle(booking, language)
+                              ? ` · ${getAdminBookingSubtitle(booking, language)}`
+                              : ''}
+                          </span>
+
+                          {booking.message ? (
+                            <span className="admin-rejection-note">
+                              {bookingCopy.message}: {booking.message}
+                            </span>
+                          ) : null}
+                        </td>
+
+                        <td>
+                          <strong>{booking.contactName || bookingCopy.anonymousCustomer}</strong>
+
+                          {booking.contactEmail ? (
+                            <span className="inline-info">
+                              <Mail size={14} aria-hidden="true" />
+                              {booking.contactEmail}
+                            </span>
+                          ) : null}
+
+                          {booking.contactPhone ? (
+                            <span className="inline-info">
+                              <Phone size={14} aria-hidden="true" />
+                              {booking.contactPhone}
+                            </span>
+                          ) : null}
+                        </td>
+
+                        <td>
+                          <span className="inline-info">
+                            <CalendarDays size={14} aria-hidden="true" />
+                            {formatAdminBookingDate(booking.scheduledDate, language)}
+                          </span>
+
+                          {booking.preferredTime ? (
+                            <span className="inline-info">
+                              <Clock3 size={14} aria-hidden="true" />
+                              {bookingCopy.preferredTime}: {booking.preferredTime}
+                            </span>
+                          ) : null}
+
+                          <span className="inline-info">
+                            <Users size={14} aria-hidden="true" />
+                            {booking.guests} {bookingCopy.guests}
+                          </span>
+                        </td>
+
+                        <td>{renderBookingStatus(booking.status)}</td>
+
+                        <td>{renderPaymentStatus(booking.payment?.status)}</td>
+
+                        <td>
+                          <span className="inline-info">
+                            <CreditCard size={14} aria-hidden="true" />
+                            {formatAdminPaymentAmount(booking)}
+                          </span>
+                        </td>
+
+                        <td>
+                          <div className="admin-booking-actions">
+                            <button
+                              type="button"
+                              className="admin-booking-action admin-booking-action--approve"
+                              disabled={isUpdatingBooking}
+                              onClick={() => void updateBookingStatus(booking.id, 'OWNER_APPROVED')}
+                            >
+                              {bookingCopy.approveOwner}
+                            </button>
+
+                            <button
+                              type="button"
+                              className="admin-booking-action admin-booking-action--confirm"
+                              disabled={isUpdatingBooking}
+                              onClick={() => void updateBookingStatus(booking.id, 'ADMIN_CONFIRMED')}
+                            >
+                              {bookingCopy.confirmAdmin}
+                            </button>
+
+                            <button
+                              type="button"
+                              className="admin-booking-action admin-booking-action--reject"
+                              disabled={isUpdatingBooking}
+                              onClick={() => void updateBookingStatus(booking.id, 'OWNER_REJECTED')}
+                            >
+                              {bookingCopy.rejectOwner}
+                            </button>
+
+                            <button
+                              type="button"
+                              className="admin-booking-action admin-booking-action--muted"
+                              disabled={isUpdatingBooking}
+                              onClick={() => void updateBookingStatus(booking.id, 'CANCELLED')}
+                            >
+                              {bookingCopy.cancelBooking}
+                            </button>
+
+                            {paymentId ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="admin-booking-action admin-booking-action--approve"
+                                  disabled={isUpdatingPayment}
+                                  onClick={() => void updateBookingPaymentStatus(paymentId, 'PAID')}
+                                >
+                                  {bookingCopy.markPaid}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="admin-booking-action admin-booking-action--reject"
+                                  disabled={isUpdatingPayment}
+                                  onClick={() => void updateBookingPaymentStatus(paymentId, 'FAILED')}
+                                >
+                                  {bookingCopy.markFailed}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="admin-booking-action admin-booking-action--muted"
+                                  disabled={isUpdatingPayment}
+                                  onClick={() => void updateBookingPaymentStatus(paymentId, 'NOT_REQUIRED')}
+                                >
+                                  {bookingCopy.markNotRequired}
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {bookings.length === 0 ? (
+                    <tr>
+                      <td colSpan={7}>{bookingCopy.noBookings}</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="table-card table-card--premium">
