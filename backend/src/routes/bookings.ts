@@ -302,6 +302,59 @@ function assertBookingOwnerAccess(
   throw new AppError(403, 'You do not have owner access to this booking');
 }
 
+function isPaidBooking(booking: { payment?: { status: string } | null }) {
+  return booking.payment?.status === 'PAID';
+}
+
+function assertBookingCanStartPayment(booking: { status: string }) {
+  if (booking.status === 'OWNER_APPROVED' || booking.status === 'ADMIN_CONFIRMED') {
+    return;
+  }
+
+  throw new AppError(
+    400,
+    'Booking must be approved by the provider before payment can start'
+  );
+}
+
+function assertOwnerBookingTransition(
+  booking: {
+    status: string;
+    payment?: { status: string } | null;
+  },
+  nextStatus: 'OWNER_APPROVED' | 'OWNER_REJECTED'
+) {
+  if (nextStatus === 'OWNER_REJECTED' && isPaidBooking(booking)) {
+    throw new AppError(400, 'Paid bookings cannot be rejected by the provider');
+  }
+
+  if (booking.status !== 'PENDING') {
+    throw new AppError(
+      400,
+      'Only pending bookings can be approved or rejected by the provider'
+    );
+  }
+}
+
+function assertAdminBookingTransition(
+  booking: {
+    status: string;
+    payment?: { status: string } | null;
+  },
+  nextStatus: string
+) {
+  if (
+    isPaidBooking(booking) &&
+    (nextStatus === 'OWNER_REJECTED' || nextStatus === 'CANCELLED')
+  ) {
+    throw new AppError(400, 'Paid bookings cannot be rejected or cancelled');
+  }
+
+  if (booking.status === 'CANCELLED' && nextStatus !== 'CANCELLED') {
+    throw new AppError(400, 'Cancelled bookings cannot be reopened');
+  }
+}
+
 function getBookingPaymentTitle(booking: any) {
   const activityTitle =
     booking.activity?.titleEn || booking.activity?.titleAr || booking.activity?.title;
@@ -525,6 +578,7 @@ bookingsRouter.patch('/:id/owner-status', requireAuth(), async (req, res, next) 
     }
 
     assertBookingOwnerAccess(booking, req.user!);
+    assertOwnerBookingTransition(booking, status);
 
     const updatedBooking = await prisma.booking.update({
       where: {
@@ -564,6 +618,8 @@ bookingsRouter.post('/:id/payments/session', requireAuth(), async (req, res, nex
     if (!booking.payment || booking.payment.status === 'NOT_REQUIRED') {
       throw new AppError(400, 'Payment is not required for this booking');
     }
+
+    assertBookingCanStartPayment(booking);
 
     if (booking.payment.status === 'PAID') {
       res.json({
@@ -689,6 +745,19 @@ bookingsRouter.patch('/admin/:id/status', requireAuth(), requireRole('ADMIN'), a
   try {
     const { id } = paramsSchema.parse(req.params);
     const { status } = bookingStatusSchema.parse(req.body);
+
+    const existingBooking = await prisma.booking.findUnique({
+      where: {
+        id
+      },
+      include: bookingInclude
+    });
+
+    if (!existingBooking) {
+      throw new AppError(404, 'Booking not found');
+    }
+
+    assertAdminBookingTransition(existingBooking, status);
 
     const booking = await prisma.booking.update({
       where: {

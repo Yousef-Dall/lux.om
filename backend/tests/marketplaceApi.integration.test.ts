@@ -829,6 +829,96 @@ describe('POST /api/bookings', () => {
     expect(response.body.booking.payment.reference).toEqual(expect.any(String));
   });
 
+  it('returns received booking requests on the provider dashboard', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const bookingResponse = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-07-18',
+        guests: 2
+      })
+      .expect(201);
+
+    const response = await request(app)
+      .get('/api/dashboard')
+      .set('Authorization', `Bearer ${activityProviderToken}`)
+      .expect(200);
+
+    expect(
+      response.body.receivedBookings.map(
+        (booking: { id: string }) => booking.id
+      )
+    ).toContain(bookingResponse.body.booking.id);
+
+    expect(response.body.stats.receivedBookings).toBeGreaterThan(0);
+    expect(response.body.stats.receivedPendingBookings).toBeGreaterThan(0);
+  });
+
+  it('prevents checkout before provider approval', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const bookingResponse = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-07-19',
+        guests: 1
+      })
+      .expect(201);
+
+    const response = await request(app)
+      .post(`/api/bookings/${bookingResponse.body.booking.id}/payments/session`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      message: 'Booking must be approved by the provider before payment can start'
+    });
+  });
+
+  it('allows the provider to approve a pending booking request', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const bookingResponse = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-07-20',
+        guests: 1
+      })
+      .expect(201);
+
+    const response = await request(app)
+      .patch(`/api/bookings/${bookingResponse.body.booking.id}/owner-status`)
+      .set('Authorization', `Bearer ${activityProviderToken}`)
+      .send({
+        status: 'OWNER_APPROVED'
+      })
+      .expect(200);
+
+    expect(response.body.booking).toMatchObject({
+      id: bookingResponse.body.booking.id,
+      status: 'OWNER_APPROVED'
+    });
+  });
+
   it('creates a real Thawani checkout session for a payable activity booking', async () => {
     const previousFetch = globalThis.fetch;
     const previousSecret = process.env.THAWANI_SECRET_KEY;
@@ -868,6 +958,14 @@ describe('POST /api/bookings', () => {
         .expect(201);
 
       const bookingId = bookingResponse.body.booking.id;
+
+      await request(app)
+        .patch(`/api/bookings/${bookingId}/owner-status`)
+        .set('Authorization', `Bearer ${activityProviderToken}`)
+        .send({
+          status: 'OWNER_APPROVED'
+        })
+        .expect(200);
 
       const response = await request(app)
         .post(`/api/bookings/${bookingId}/payments/session`)
@@ -973,6 +1071,14 @@ describe('POST /api/bookings', () => {
       const bookingId = bookingResponse.body.booking.id;
 
       await request(app)
+        .patch(`/api/bookings/${bookingId}/owner-status`)
+        .set('Authorization', `Bearer ${activityProviderToken}`)
+        .send({
+          status: 'OWNER_APPROVED'
+        })
+        .expect(200);
+
+      await request(app)
         .post(`/api/bookings/${bookingId}/payments/session`)
         .set('Authorization', `Bearer ${customerToken}`)
         .expect(200);
@@ -999,6 +1105,18 @@ describe('POST /api/bookings', () => {
       expect(Number(response.body.payment.commission)).toBe(2);
       expect(response.body.payment.paidAt).toEqual(expect.any(String));
       expect(response.body.booking.payment.status).toBe('PAID');
+
+      const rejectionResponse = await request(app)
+        .patch(`/api/bookings/${bookingId}/owner-status`)
+        .set('Authorization', `Bearer ${activityProviderToken}`)
+        .send({
+          status: 'OWNER_REJECTED'
+        })
+        .expect(400);
+
+      expect(rejectionResponse.body).toMatchObject({
+        message: 'Paid bookings cannot be rejected by the provider'
+      });
     } finally {
       globalThis.fetch = previousFetch;
       process.env.THAWANI_SECRET_KEY = previousSecret;
