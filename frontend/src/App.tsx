@@ -25,6 +25,177 @@ import TravelAgencyDetails from './pages/TravelAgencyDetails';
 
 import { useLanguage } from './i18n/LanguageContext';
 
+
+const SITE_ORIGIN = 'https://lux.om';
+
+const seoCopy = {
+  en: {
+    home: {
+      title: 'lux.om | Premium homes, stays, developments, and experiences in Oman',
+      description:
+        'Discover premium villas, apartments, short-stay chalets, new developments, travel agencies, and curated experiences across Oman.'
+    },
+    listings: {
+      title: 'Premium properties in Oman | lux.om',
+      description:
+        'Explore villas, apartments, chalets, short stays, rentals, and properties for sale across Oman.'
+    },
+    activities: {
+      title: 'Curated activities and travel packages in Oman | lux.om',
+      description:
+        'Book premium Oman activities, local experiences, and selected outbound travel packages from trusted providers.'
+    },
+    developers: {
+      title: 'Oman real estate developers | lux.om',
+      description:
+        'Discover trusted real estate developers and premium residential or mixed-use projects across Oman.'
+    },
+    travelAgencies: {
+      title: 'Premium travel agencies in Oman | lux.om',
+      description:
+        'Find trusted travel agencies offering curated trips, experiences, and holiday packages from Oman.'
+    },
+    about: {
+      title: 'About lux.om | Premium Oman marketplace',
+      description:
+        'Learn about lux.om, a premium marketplace for Oman properties, stays, developments, travel agencies, and curated experiences.'
+    },
+    contact: {
+      title: 'Contact lux.om',
+      description:
+        'Contact lux.om for property, activity, development, partnership, and marketplace support.'
+    },
+    dashboard: {
+      title: 'Dashboard | lux.om',
+      description: 'Manage your lux.om bookings, listings, activities, notifications, and account.'
+    },
+    admin: {
+      title: 'Admin | lux.om',
+      description: 'Manage lux.om marketplace publishing, bookings, finance, partners, and inquiries.'
+    },
+    auth: {
+      title: 'Account access | lux.om',
+      description: 'Sign in or create your lux.om account.'
+    },
+    fallback: {
+      title: 'lux.om',
+      description:
+        'Premium Oman real estate, short-stay, development, travel agency, and curated activities marketplace.'
+    }
+  },
+  ar: {
+    home: {
+      title: 'lux.om | عقارات وإقامات وتجارب مختارة في عُمان',
+      description:
+        'اكتشف فلل وشقق وشاليهات ومشاريع عقارية ووكالات سفر وتجارب مختارة في عُمان.'
+    },
+    listings: {
+      title: 'عقارات مميزة في عُمان | lux.om',
+      description: 'استكشف فلل وشقق وشاليهات وإقامات قصيرة وعقارات للبيع والإيجار في عُمان.'
+    },
+    activities: {
+      title: 'أنشطة وباقات سفر مختارة في عُمان | lux.om',
+      description: 'احجز أنشطة وتجارب مميزة في عُمان وباقات سفر مختارة من مزودين موثوقين.'
+    },
+    developers: {
+      title: 'مطورو العقارات في عُمان | lux.om',
+      description: 'اكتشف مطورين عقاريين موثوقين ومشاريع سكنية ومتعددة الاستخدامات في عُمان.'
+    },
+    travelAgencies: {
+      title: 'وكالات سفر مميزة في عُمان | lux.om',
+      description: 'اعثر على وكالات سفر موثوقة تقدم رحلات وتجارب وباقات مختارة من عُمان.'
+    },
+    about: {
+      title: 'عن lux.om | منصة عُمان المميزة',
+      description: 'تعرّف على lux.om، منصة مميزة للعقارات والإقامات والمشاريع والأنشطة في عُمان.'
+    },
+    contact: {
+      title: 'تواصل مع lux.om',
+      description: 'تواصل مع lux.om لدعم العقارات والأنشطة والشراكات والخدمات.'
+    },
+    dashboard: {
+      title: 'لوحة التحكم | lux.om',
+      description: 'إدارة حجوزاتك وإعلاناتك وأنشطتك وإشعاراتك وحسابك في lux.om.'
+    },
+    admin: {
+      title: 'الإدارة | lux.om',
+      description: 'إدارة النشر والحجوزات والمالية والشركاء والاستفسارات في lux.om.'
+    },
+    auth: {
+      title: 'الدخول إلى الحساب | lux.om',
+      description: 'سجّل الدخول أو أنشئ حسابك في lux.om.'
+    },
+    fallback: {
+      title: 'lux.om',
+      description: 'منصة عُمان المميزة للعقارات والإقامات والمشاريع ووكالات السفر والأنشطة.'
+    }
+  }
+} as const;
+
+function getSeoKey(pathname: string) {
+  if (pathname === '/') return 'home';
+  if (pathname.startsWith('/listings')) return 'listings';
+  if (pathname.startsWith('/activities')) return 'activities';
+  if (pathname.startsWith('/developers')) return 'developers';
+  if (pathname.startsWith('/travel-agencies')) return 'travelAgencies';
+  if (pathname.startsWith('/about')) return 'about';
+  if (pathname.startsWith('/contact')) return 'contact';
+  if (pathname.startsWith('/dashboard')) return 'dashboard';
+  if (pathname.startsWith('/admin')) return 'admin';
+  if (pathname.startsWith('/login') || pathname.startsWith('/register')) return 'auth';
+
+  return 'fallback';
+}
+
+function setMetaTag(attribute: 'name' | 'property', key: string, content: string) {
+  let element = document.head.querySelector<HTMLMetaElement>(`meta[${attribute}="${key}"]`);
+
+  if (!element) {
+    element = document.createElement('meta');
+    element.setAttribute(attribute, key);
+    document.head.appendChild(element);
+  }
+
+  element.setAttribute('content', content);
+}
+
+function setCanonical(url: string) {
+  let element = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+
+  if (!element) {
+    element = document.createElement('link');
+    element.setAttribute('rel', 'canonical');
+    document.head.appendChild(element);
+  }
+
+  element.setAttribute('href', url);
+}
+
+function SeoManager() {
+  const { pathname } = useLocation();
+  const { language } = useLanguage();
+
+  useEffect(() => {
+    const key = getSeoKey(pathname);
+    const meta = seoCopy[language][key];
+    const canonicalUrl = `${SITE_ORIGIN}${pathname === '/' ? '/' : pathname}`;
+
+    document.documentElement.lang = language === 'ar' ? 'ar' : 'en';
+    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
+    document.title = meta.title;
+
+    setMetaTag('name', 'description', meta.description);
+    setMetaTag('property', 'og:title', meta.title);
+    setMetaTag('property', 'og:description', meta.description);
+    setMetaTag('property', 'og:url', canonicalUrl);
+    setMetaTag('name', 'twitter:title', meta.title);
+    setMetaTag('name', 'twitter:description', meta.description);
+    setCanonical(canonicalUrl);
+  }, [language, pathname]);
+
+  return null;
+}
+
 function LoadingPage() {
   return (
     <section className="page-section container not-found">
@@ -189,6 +360,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <ScrollToTop />
+      <SeoManager />
       <Navbar />
 
       <main id="main-content">

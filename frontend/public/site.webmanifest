@@ -1,0 +1,16 @@
+{
+  "name": "lux.om",
+  "short_name": "lux.om",
+  "description": "Premium Oman real estate, stays, developments, and curated experiences marketplace.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#062F35",
+  "theme_color": "#062F35",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml"
+    }
+  ]
+}
