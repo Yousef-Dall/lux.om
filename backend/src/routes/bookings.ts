@@ -83,6 +83,18 @@ const paymentStatusSchema = z
   })
   .strict();
 
+const bookingStatusSchema = z
+  .object({
+    status: z.enum([
+      'PENDING',
+      'OWNER_APPROVED',
+      'OWNER_REJECTED',
+      'ADMIN_CONFIRMED',
+      'CANCELLED'
+    ])
+  })
+  .strict();
+
 const paramsSchema = z.object({
   id: z.string().min(1)
 });
@@ -609,6 +621,29 @@ bookingsRouter.get('/admin/all', requireAuth(), requireRole('ADMIN'), async (req
         skip: query.skip,
         count: bookings.length
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bookingsRouter.patch('/admin/:id/status', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
+  try {
+    const { id } = paramsSchema.parse(req.params);
+    const { status } = bookingStatusSchema.parse(req.body);
+
+    const booking = await prisma.booking.update({
+      where: {
+        id
+      },
+      data: {
+        status
+      },
+      include: bookingInclude
+    });
+
+    res.json({
+      booking
     });
   } catch (error) {
     next(error);

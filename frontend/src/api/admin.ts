@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import type { ApiBooking, ApiPayment, BookingStatus, PaymentStatus } from './bookings';
 import type {
   ActivityStatus,
   ApiActivity,
@@ -19,6 +20,15 @@ export type AdminActivitiesResponse = {
 
 export type AdminInquiriesResponse = {
   inquiries: Inquiry[];
+};
+
+export type AdminBookingsResponse = {
+  bookings: ApiBooking[];
+  pagination: {
+    take: number;
+    skip: number;
+    count: number;
+  };
 };
 
 export type TravelAgenciesResponse = {
@@ -79,6 +89,14 @@ export type UpdateActivityStatusPayload = {
   rejectedReason?: string;
 };
 
+export type UpdateBookingStatusPayload = {
+  status: BookingStatus;
+};
+
+export type UpdateBookingPaymentStatusPayload = {
+  status: PaymentStatus;
+};
+
 export async function getAdminListings(token: string) {
   return apiClient.get<AdminListingsResponse>('/api/listings/admin/all', { token });
 }
@@ -89,6 +107,10 @@ export async function getAdminActivities(token: string) {
 
 export async function getAdminInquiries(token: string) {
   return apiClient.get<AdminInquiriesResponse>('/api/inquiries/admin/all', { token });
+}
+
+export async function getAdminBookings(token: string) {
+  return apiClient.get<AdminBookingsResponse>('/api/bookings/admin/all', { token });
 }
 
 export async function getAdminTravelAgencies(token: string) {
@@ -179,6 +201,30 @@ export async function updateAdminDeveloper(
 export async function deleteAdminDeveloper(developerId: string, token: string) {
   return apiClient.delete<{ ok: boolean; deletedId: string }>(
     `/api/developers/${developerId}`,
+    { token }
+  );
+}
+
+export async function updateAdminBookingStatus(
+  bookingId: string,
+  payload: UpdateBookingStatusPayload,
+  token: string
+) {
+  return apiClient.patch<{ booking: ApiBooking }>(
+    `/api/bookings/admin/${bookingId}/status`,
+    payload,
+    { token }
+  );
+}
+
+export async function updateAdminBookingPaymentStatus(
+  paymentId: string,
+  payload: UpdateBookingPaymentStatusPayload,
+  token: string
+) {
+  return apiClient.patch<{ payment: ApiPayment }>(
+    `/api/bookings/admin/payments/${paymentId}`,
+    payload,
     { token }
   );
 }
