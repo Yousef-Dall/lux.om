@@ -38,7 +38,7 @@ const imageUrlSchema = z
     }
   );
 
-  const dayNameSchema = z.enum([
+const dayNameSchema = z.enum([
   'Sunday',
   'Monday',
   'Tuesday',
@@ -83,62 +83,131 @@ const optionalPriceAmountSchema = z
   );
 
 const optionalCurrencySchema = z
-  .string()
-  .trim()
-  .regex(/^[A-Za-z]{3}$/)
-  .transform((value) => value.toUpperCase())
+  .preprocess(
+    (value) =>
+      value === '' ||
+      value === null ||
+      value === undefined
+        ? undefined
+        : value,
+    z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{3}$/)
+      .transform((value) => value.toUpperCase())
+      .optional()
+  )
   .optional();
+
+const optionalTrimmedString = (max: number) =>
+  z
+    .preprocess(
+      (value) =>
+        value === '' ||
+        value === null ||
+        value === undefined
+          ? undefined
+          : value,
+      z.string().trim().max(max).optional()
+    )
+    .optional();
+
+const optionalPositiveIntSchema = (max = 365) =>
+  z
+    .preprocess(
+      (value) =>
+        value === '' ||
+        value === null ||
+        value === undefined
+          ? undefined
+          : value,
+      z.union([
+        z.coerce.number().int().positive().max(max),
+        z.undefined()
+      ])
+    )
+    .optional();
 
 const activityCreateSchema = z
   .object({
     titleEn: z.string().trim().min(3).max(140),
-    titleAr: z.string().trim().min(3).max(140).optional(),
+    titleAr: optionalTrimmedString(140),
     descriptionEn: z.string().trim().min(20).max(4000),
-    descriptionAr: z.string().trim().min(20).max(4000).optional(),
+    descriptionAr: optionalTrimmedString(4000),
     locationEn: z.string().trim().min(2).max(160),
-    locationAr: z.string().trim().min(2).max(160).optional(),
+    locationAr: optionalTrimmedString(160),
     categoryEn: z.string().trim().min(2).max(80),
-    categoryAr: z.string().trim().min(2).max(80).optional(),
+    categoryAr: optionalTrimmedString(80),
 
-    travelAgencyId: z.string().min(1).optional(),
+    travelAgencyId: optionalTrimmedString(120),
 
-    providerEn: z.string().trim().max(120).optional(),
-    providerAr: z.string().trim().max(120).optional(),
+    providerEn: optionalTrimmedString(120),
+    providerAr: optionalTrimmedString(120),
 
-    price: z.string().trim().min(1).max(80).optional(),
+    price: optionalTrimmedString(80),
     priceAmount: optionalPriceAmountSchema,
     priceCurrency: optionalCurrencySchema,
     priceQualifier: z.enum(priceQualifierValues).optional(),
     priceUnit: z.enum(priceUnitValues).optional(),
+
     durationMinutes: z.coerce.number().int().positive().max(10080).optional(),
-    durationLabelEn: z.string().trim().max(80).optional(),
-durationLabelAr: z.string().trim().max(80).optional(),
-durationType: z.enum(['Short', 'Half day', 'Full day', 'Overnight']).optional(),
-groupSize: z.string().trim().max(80).optional(),
-    language: z.string().trim().max(80).optional(),
-    difficulty: z.string().trim().max(80).optional(),
-  activityType: z.string().trim().max(80).optional(),
-  travelRegion: z.enum(activityTravelRegionValues).default('INSIDE_OMAN'),
+    durationLabelEn: optionalTrimmedString(80),
+    durationLabelAr: optionalTrimmedString(80),
+    durationType: z.enum(['Short', 'Half day', 'Full day', 'Overnight']).optional(),
+    groupSize: optionalTrimmedString(80),
+    language: optionalTrimmedString(80),
+    difficulty: optionalTrimmedString(80),
+    activityType: optionalTrimmedString(80),
+    travelRegion: z.enum(activityTravelRegionValues).default('INSIDE_OMAN'),
 
-availabilityDays: z.array(dayNameSchema).max(7).default([]),
-availabilityStartTime: timeSchema.optional(),
-availabilityEndTime: timeSchema.optional(),
+    destinationCountry: optionalTrimmedString(120),
+    destinationCity: optionalTrimmedString(120),
+    departureCity: optionalTrimmedString(120),
 
-familyFriendly: z.coerce.boolean().default(false),
+    tripDurationDays: optionalPositiveIntSchema(365),
+    tripDurationNights: optionalPositiveIntSchema(365),
+
+    flightIncluded: z.coerce.boolean().default(false),
+    airline: optionalTrimmedString(120),
+    flightNotes: optionalTrimmedString(1000),
+
+    hotelIncluded: z.coerce.boolean().default(false),
+    hotelName: optionalTrimmedString(160),
+    hotelRating: optionalPositiveIntSchema(7),
+    roomType: optionalTrimmedString(120),
+    mealPlan: optionalTrimmedString(80),
+
+    visaSupportIncluded: z.coerce.boolean().default(false),
+    travelInsuranceIncluded: z.coerce.boolean().default(false),
+    airportTransferIncluded: z.coerce.boolean().default(false),
+
+    packageItinerary: optionalTrimmedString(4000),
+    requiredDocuments: optionalTrimmedString(2000),
+    cancellationPolicy: optionalTrimmedString(2000),
+    availableTravelDates: optionalTrimmedString(1000),
+    minimumGroupSize: optionalPositiveIntSchema(10000),
+    packageInclusions: optionalTrimmedString(2000),
+    packageExclusions: optionalTrimmedString(2000),
+
+    availabilityDays: z.array(dayNameSchema).max(7).default([]),
+    availabilityStartTime: timeSchema.optional(),
+    availabilityEndTime: timeSchema.optional(),
+
+    familyFriendly: z.coerce.boolean().default(false),
     includesTransfer: z.coerce.boolean().default(false),
     mealIncluded: z.coerce.boolean().default(false),
     outdoor: z.coerce.boolean().default(false),
 
-    nearestLandmarkId: z.string().min(1).optional(),
-    distanceFromLandmarkEn: z.string().trim().max(120).optional(),
-    distanceFromLandmarkAr: z.string().trim().max(120).optional(),
+    nearestLandmarkId: optionalTrimmedString(120),
+    distanceFromLandmarkEn: optionalTrimmedString(120),
+    distanceFromLandmarkAr: optionalTrimmedString(120),
 
     images: z
       .array(
         z.object({
           url: imageUrlSchema,
-          altEn: z.string().trim().max(160).optional(),
-          altAr: z.string().trim().max(160).optional(),
+          altEn: optionalTrimmedString(160),
+          altAr: optionalTrimmedString(160),
           sortOrder: z.coerce.number().int().min(0).default(0)
         })
       )
@@ -149,7 +218,7 @@ familyFriendly: z.coerce.boolean().default(false),
       .array(
         z.object({
           textEn: z.string().trim().min(1).max(160),
-          textAr: z.string().trim().max(160).optional()
+          textAr: optionalTrimmedString(160)
         })
       )
       .max(20)
@@ -162,6 +231,32 @@ familyFriendly: z.coerce.boolean().default(false),
       data.priceCurrency !== undefined ||
       data.priceQualifier !== undefined ||
       data.priceUnit !== undefined;
+
+    if (data.travelRegion === 'OUTSIDE_OMAN') {
+      if (!data.destinationCountry) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['destinationCountry'],
+          message: 'Destination country is required for outside-Oman packages'
+        });
+      }
+
+      if (!data.destinationCity) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['destinationCity'],
+          message: 'Destination city is required for outside-Oman packages'
+        });
+      }
+
+      if (data.tripDurationDays === undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['tripDurationDays'],
+          message: 'Trip duration is required for outside-Oman packages'
+        });
+      }
+    }
 
     if (!data.price && !hasStructuredPrice) {
       context.addIssue({
@@ -178,8 +273,7 @@ familyFriendly: z.coerce.boolean().default(false),
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['priceAmount'],
-        message:
-          'On-request pricing cannot include an amount'
+        message: 'On-request pricing cannot include an amount'
       });
     }
 
@@ -192,8 +286,7 @@ familyFriendly: z.coerce.boolean().default(false),
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['priceAmount'],
-        message:
-          'A numeric amount is required for this price type'
+        message: 'A numeric amount is required for this price type'
       });
     }
   });
@@ -207,54 +300,55 @@ const optionalBooleanQuerySchema = z
     return value === true || value === 'true';
   });
 
-const activitiesQuerySchema = z.object({
-  search: z.string().trim().optional(),
-  category: z.string().trim().optional(),
-  difficulty: z.string().trim().optional(),
-  location: z.string().trim().optional(),
-  nearestLandmarkId: z.string().trim().optional(),
-  travelAgencyId: z.string().trim().optional(),
+const activitiesQuerySchema = z
+  .object({
+    search: z.string().trim().optional(),
+    category: z.string().trim().optional(),
+    difficulty: z.string().trim().optional(),
+    location: z.string().trim().optional(),
+    nearestLandmarkId: z.string().trim().optional(),
+    travelAgencyId: z.string().trim().optional(),
 
-  availableDay: dayNameSchema.optional(),
-  availableFrom: timeSchema.optional(),
-  availableUntil: timeSchema.optional(),
+    availableDay: dayNameSchema.optional(),
+    availableFrom: timeSchema.optional(),
+    availableUntil: timeSchema.optional(),
 
-  durationType: z.enum(['Short', 'Half day', 'Full day', 'Overnight']).optional(),
-  activityType: z.enum(['Private', 'Group', 'Both']).optional(),
-  travelRegion: z.enum(activityTravelRegionValues).optional(),
+    durationType: z.enum(['Short', 'Half day', 'Full day', 'Overnight']).optional(),
+    activityType: z.enum(['Private', 'Group', 'Both']).optional(),
+    travelRegion: z.enum(activityTravelRegionValues).optional(),
 
-  familyFriendly: optionalBooleanQuerySchema,
-  includesTransfer: optionalBooleanQuerySchema,
-  mealIncluded: optionalBooleanQuerySchema,
-  outdoor: optionalBooleanQuerySchema,
-  featured: optionalBooleanQuerySchema,
+    familyFriendly: optionalBooleanQuerySchema,
+    includesTransfer: optionalBooleanQuerySchema,
+    mealIncluded: optionalBooleanQuerySchema,
+    outdoor: optionalBooleanQuerySchema,
+    featured: optionalBooleanQuerySchema,
 
-  price: z.string().trim().optional(),
-  minPrice: z.coerce.number().finite().min(0).optional(),
-  maxPrice: z.coerce.number().finite().min(0).optional(),
-  priceCurrency: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z]{3}$/)
-    .transform((value) => value.toUpperCase())
-    .optional(),
-  priceQualifier: z.enum(priceQualifierValues).optional(),
-  priceUnit: z.enum(priceUnitValues).optional(),
+    price: z.string().trim().optional(),
+    minPrice: z.coerce.number().finite().min(0).optional(),
+    maxPrice: z.coerce.number().finite().min(0).optional(),
+    priceCurrency: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{3}$/)
+      .transform((value) => value.toUpperCase())
+      .optional(),
+    priceQualifier: z.enum(priceQualifierValues).optional(),
+    priceUnit: z.enum(priceUnitValues).optional(),
 
-  sort: z
-    .enum([
-      'recommended',
-      'newest',
-      'price_asc',
-      'price_desc'
-    ])
-    .default('recommended'),
-  page: z.coerce.number().int().min(1).optional(),
-  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+    sort: z
+      .enum([
+        'recommended',
+        'newest',
+        'price_asc',
+        'price_desc'
+      ])
+      .default('recommended'),
+    page: z.coerce.number().int().min(1).optional(),
+    pageSize: z.coerce.number().int().min(1).max(100).optional(),
 
-  take: z.coerce.number().int().min(1).max(100).default(50),
-  skip: z.coerce.number().int().min(0).default(0)
-})
+    take: z.coerce.number().int().min(1).max(100).default(50),
+    skip: z.coerce.number().int().min(0).default(0)
+  })
   .superRefine((data, context) => {
     if (
       data.minPrice !== undefined &&
@@ -264,8 +358,7 @@ const activitiesQuerySchema = z.object({
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['maxPrice'],
-        message:
-          'Maximum price must be greater than or equal to minimum price'
+        message: 'Maximum price must be greater than or equal to minimum price'
       });
     }
   });
@@ -704,6 +797,84 @@ activitiesRouter.get('/', async (req, res, next) => {
             }
           },
           {
+            destinationCountry: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            destinationCity: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            departureCity: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            airline: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            hotelName: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            roomType: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            mealPlan: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            packageItinerary: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            requiredDocuments: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            cancellationPolicy: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            availableTravelDates: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            packageInclusions: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            packageExclusions: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
             travelAgency: {
               is: {
                 OR: [
@@ -850,6 +1021,25 @@ activitiesRouter.get('/', async (req, res, next) => {
           activityType: true,
           travelRegion: true,
 
+          destinationCountry: true,
+          destinationCity: true,
+          departureCity: true,
+          tripDurationDays: true,
+          tripDurationNights: true,
+          airline: true,
+          flightNotes: true,
+          hotelName: true,
+          hotelRating: true,
+          roomType: true,
+          mealPlan: true,
+          packageItinerary: true,
+          requiredDocuments: true,
+          cancellationPolicy: true,
+          availableTravelDates: true,
+          minimumGroupSize: true,
+          packageInclusions: true,
+          packageExclusions: true,
+
           availabilityDays: true,
           availabilityStartTime: true,
           availabilityEndTime: true,
@@ -905,6 +1095,23 @@ activitiesRouter.get('/', async (req, res, next) => {
             ])
           ];
 
+          const packageSearchValues = [
+            candidate.destinationCountry,
+            candidate.destinationCity,
+            candidate.departureCity,
+            candidate.airline,
+            candidate.flightNotes,
+            candidate.hotelName,
+            candidate.roomType,
+            candidate.mealPlan,
+            candidate.packageItinerary,
+            candidate.requiredDocuments,
+            candidate.cancellationPolicy,
+            candidate.availableTravelDates,
+            candidate.packageInclusions,
+            candidate.packageExclusions
+          ];
+
           const qualityScore =
             Math.min(candidate.images.length, 3) * 2 +
             Math.min(candidate.highlights.length, 5) +
@@ -922,6 +1129,23 @@ activitiesRouter.get('/', async (req, res, next) => {
             Number(Boolean(candidate.difficulty)) +
             Number(Boolean(candidate.activityType)) +
             Number(Boolean(candidate.travelRegion)) +
+            Number(Boolean(candidate.destinationCountry)) +
+            Number(Boolean(candidate.destinationCity)) +
+            Number(Boolean(candidate.departureCity)) +
+            Number(Boolean(candidate.tripDurationDays)) +
+            Number(Boolean(candidate.tripDurationNights)) +
+            Number(Boolean(candidate.airline)) +
+            Number(Boolean(candidate.hotelName)) +
+            Number(Boolean(candidate.hotelRating)) +
+            Number(Boolean(candidate.roomType)) +
+            Number(Boolean(candidate.mealPlan)) +
+            Number(Boolean(candidate.packageItinerary)) +
+            Number(Boolean(candidate.requiredDocuments)) +
+            Number(Boolean(candidate.cancellationPolicy)) +
+            Number(Boolean(candidate.availableTravelDates)) +
+            Number(Boolean(candidate.minimumGroupSize)) +
+            Number(Boolean(candidate.packageInclusions)) +
+            Number(Boolean(candidate.packageExclusions)) +
             Number(candidate.availabilityDays.length > 0) +
             Number(Boolean(candidate.availabilityStartTime)) +
             Number(Boolean(candidate.availabilityEndTime)) +
@@ -954,9 +1178,15 @@ activitiesRouter.get('/', async (req, res, next) => {
                 candidate.travelRegion,
                 candidate.groupSize,
                 candidate.difficulty,
-                candidate.language
+                candidate.language,
+                candidate.destinationCountry,
+                candidate.destinationCity,
+                candidate.departureCity
               ],
-              relatedSearchValues,
+              [
+                ...relatedSearchValues,
+                ...packageSearchValues
+              ],
               [
                 candidate.descriptionEn,
                 candidate.descriptionAr
@@ -1017,55 +1247,68 @@ activitiesRouter.get('/', async (req, res, next) => {
   }
 });
 
-activitiesRouter.get('/admin/all', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
-  try {
-    const query = activitiesQuerySchema.parse(req.query);
+activitiesRouter.get(
+  '/admin/all',
+  requireAuth(),
+  requireRole('ADMIN'),
+  async (req, res, next) => {
+    try {
+      const query = activitiesQuerySchema.parse(req.query);
 
-    const activities = await prisma.activity.findMany({
-      include: activityInclude,
-      orderBy: {
-        createdAt: 'desc'
-      },
-      take: query.take,
-      skip: query.skip
-    });
-
-    res.json({
-      activities,
-      pagination: {
+      const activities = await prisma.activity.findMany({
+        include: activityInclude,
+        orderBy: {
+          createdAt: 'desc'
+        },
         take: query.take,
-        skip: query.skip,
-        count: activities.length
-      }
-    });
-  } catch (error) {
-    next(error);
+        skip: query.skip
+      });
+
+      res.json({
+        activities,
+        pagination: {
+          take: query.take,
+          skip: query.skip,
+          count: activities.length
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
-activitiesRouter.patch('/admin/:id/status', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
-  try {
-    const { id } = idParamsSchema.parse(req.params);
-    const data = statusSchema.parse(req.body);
+activitiesRouter.patch(
+  '/admin/:id/status',
+  requireAuth(),
+  requireRole('ADMIN'),
+  async (req, res, next) => {
+    try {
+      const { id } = idParamsSchema.parse(req.params);
+      const data = statusSchema.parse(req.body);
 
-    const activity = await prisma.activity.update({
-      where: {
-        id
-      },
-      data: {
-        status: data.status,
-        rejectedReason: data.status === 'REJECTED' ? data.rejectedReason ?? null : null
-      },
-      include: activityInclude
-    });
+      const activity = await prisma.activity.update({
+        where: {
+          id
+        },
+        data: {
+          status: data.status,
+          rejectedReason:
+            data.status === 'REJECTED'
+              ? data.rejectedReason ?? null
+              : null
+        },
+        include: activityInclude
+      });
 
-    res.json({
-      activity
-    });
-  } catch (error) {
-    next(error);
+      res.json({
+        activity
+      });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
 activitiesRouter.get('/:slug', async (req, res, next) => {
   try {
@@ -1152,25 +1395,54 @@ activitiesRouter.post(
           priceCurrency: resolvedPrice.priceCurrency,
           priceQualifier: resolvedPrice.priceQualifier,
           priceUnit: resolvedPrice.priceUnit,
+
           durationMinutes: data.durationMinutes,
-durationLabelEn: data.durationLabelEn,
-durationLabelAr: data.durationLabelAr,
-durationType: data.durationType,
-groupSize: data.groupSize,
+          durationLabelEn: data.durationLabelEn,
+          durationLabelAr: data.durationLabelAr,
+          durationType: data.durationType,
+          groupSize: data.groupSize,
           language: data.language,
           difficulty: data.difficulty,
           activityType: data.activityType,
           travelRegion: data.travelRegion,
-availabilityDays: data.availabilityDays,
-availabilityStartTime: data.availabilityStartTime,
-availabilityEndTime: data.availabilityEndTime,
-familyFriendly: data.familyFriendly,
-includesTransfer: data.includesTransfer,
+
+          destinationCountry: data.destinationCountry,
+          destinationCity: data.destinationCity,
+          departureCity: data.departureCity,
+          tripDurationDays: data.tripDurationDays,
+          tripDurationNights: data.tripDurationNights,
+          flightIncluded: data.flightIncluded,
+          airline: data.airline,
+          flightNotes: data.flightNotes,
+          hotelIncluded: data.hotelIncluded,
+          hotelName: data.hotelName,
+          hotelRating: data.hotelRating,
+          roomType: data.roomType,
+          mealPlan: data.mealPlan,
+          visaSupportIncluded: data.visaSupportIncluded,
+          travelInsuranceIncluded: data.travelInsuranceIncluded,
+          airportTransferIncluded: data.airportTransferIncluded,
+          packageItinerary: data.packageItinerary,
+          requiredDocuments: data.requiredDocuments,
+          cancellationPolicy: data.cancellationPolicy,
+          availableTravelDates: data.availableTravelDates,
+          minimumGroupSize: data.minimumGroupSize,
+          packageInclusions: data.packageInclusions,
+          packageExclusions: data.packageExclusions,
+
+          availabilityDays: data.availabilityDays,
+          availabilityStartTime: data.availabilityStartTime,
+          availabilityEndTime: data.availabilityEndTime,
+
+          familyFriendly: data.familyFriendly,
+          includesTransfer: data.includesTransfer,
           mealIncluded: data.mealIncluded,
           outdoor: data.outdoor,
+
           nearestLandmarkId: data.nearestLandmarkId,
           distanceFromLandmarkEn: data.distanceFromLandmarkEn,
           distanceFromLandmarkAr: data.distanceFromLandmarkAr,
+
           status: req.user?.role === 'ADMIN' ? 'APPROVED' : 'PENDING',
           ownerId: req.user!.id,
           images: {

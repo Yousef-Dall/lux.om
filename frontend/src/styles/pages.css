@@ -6659,3 +6659,355 @@
     justify-content: flex-start;
   }
 }
+
+/* =========================================================
+Stage 7.1 — add activity travel-region selector + package UI
+========================================================= */
+
+.add-activity-page .region-selector-grid {
+display: grid;
+grid-template-columns: repeat(2, minmax(0, 1fr));
+gap: 14px;
+}
+
+.add-activity-page .region-selector-card {
+display: grid;
+grid-template-columns: auto minmax(0, 1fr);
+gap: 14px;
+align-items: flex-start;
+width: 100%;
+min-height: 132px;
+padding: 18px;
+border: 1px solid rgba(7, 56, 62, 0.11);
+border-radius: 24px;
+background:
+radial-gradient(circle at 0 0, rgba(194, 154, 82, 0.12), transparent 16rem),
+#ffffff;
+color: var(--color-primary);
+text-align: start;
+box-shadow: 0 14px 34px rgba(7, 56, 62, 0.055);
+cursor: pointer;
+transition:
+transform 180ms ease,
+border-color 180ms ease,
+background-color 180ms ease,
+box-shadow 180ms ease;
+}
+
+.add-activity-page .region-selector-card:hover {
+transform: translateY(-2px);
+border-color: rgba(194, 154, 82, 0.45);
+box-shadow: 0 18px 44px rgba(7, 56, 62, 0.08);
+}
+
+.add-activity-page .region-selector-card.is-selected {
+border-color: rgba(194, 154, 82, 0.8);
+background:
+radial-gradient(circle at 0 0, rgba(224, 187, 109, 0.24), transparent 18rem),
+linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(248, 242, 231, 0.92));
+box-shadow:
+0 20px 48px rgba(7, 56, 62, 0.1),
+inset 0 0 0 1px rgba(194, 154, 82, 0.16);
+}
+
+.add-activity-page .region-selector-icon {
+display: grid;
+place-items: center;
+width: 46px;
+height: 46px;
+border-radius: 16px;
+background: rgba(194, 154, 82, 0.14);
+color: var(--color-primary);
+}
+
+.add-activity-page .region-selector-card strong {
+display: block;
+margin-bottom: 7px;
+color: var(--color-primary);
+font-size: 1.02rem;
+line-height: 1.2;
+}
+
+.add-activity-page .region-selector-card small {
+display: block;
+color: var(--color-muted);
+font-size: 0.88rem;
+font-weight: 700;
+line-height: 1.55;
+}
+
+.add-activity-page .travel-package-section {
+border-color: rgba(194, 154, 82, 0.22);
+background:
+radial-gradient(circle at 0 0, rgba(194, 154, 82, 0.16), transparent 24rem),
+rgba(255, 253, 248, 0.95);
+}
+
+.add-activity-page .travel-package-grid {
+display: grid;
+gap: 16px;
+margin: 18px 0;
+}
+
+.add-activity-page .travel-package-card {
+padding: clamp(16px, 2vw, 22px);
+border: 1px solid rgba(7, 56, 62, 0.09);
+border-radius: 24px;
+background: rgba(255, 255, 255, 0.86);
+box-shadow: 0 14px 34px rgba(7, 56, 62, 0.055);
+}
+
+.add-activity-page .travel-package-card-heading {
+display: flex;
+align-items: center;
+gap: 10px;
+margin-bottom: 14px;
+}
+
+.add-activity-page .travel-package-card-heading svg {
+width: 38px;
+height: 38px;
+padding: 9px;
+border-radius: 14px;
+background: rgba(194, 154, 82, 0.14);
+color: var(--color-primary);
+}
+
+.add-activity-page .travel-package-card-heading h3 {
+margin: 0;
+color: var(--color-primary);
+font-size: 1.15rem;
+line-height: 1.2;
+letter-spacing: -0.035em;
+}
+
+.package-notice {
+display: flex;
+align-items: flex-start;
+gap: 9px;
+margin: 18px 0 0;
+padding: 13px 15px;
+border: 1px solid rgba(194, 154, 82, 0.24);
+border-radius: 18px;
+background: rgba(194, 154, 82, 0.1);
+color: var(--color-muted);
+font-size: 0.9rem;
+font-weight: 780;
+line-height: 1.6;
+}
+
+.package-notice svg {
+flex: 0 0 auto;
+margin-top: 2px;
+color: var(--color-gold);
+}
+
+/* =========================================================
+Stage 7.1 — outside-Oman package details page UI
+========================================================= */
+
+.details-page--activity-detail .travel-package-badge {
+display: inline-flex;
+align-items: center;
+gap: 8px;
+min-height: 38px;
+margin-top: 16px;
+padding: 0 14px;
+border: 1px solid rgba(224, 187, 109, 0.35);
+border-radius: 999px;
+background: rgba(224, 187, 109, 0.16);
+color: #ffffff;
+font-size: 0.86rem;
+font-weight: 900;
+backdrop-filter: blur(14px);
+}
+
+.details-page--activity-detail .travel-package-badge svg {
+color: #e0bb6d;
+}
+
+.details-page--activity-detail .activity-package-details {
+margin: 32px 0;
+padding: clamp(20px, 3vw, 28px);
+border: 1px solid rgba(194, 154, 82, 0.2);
+border-radius: 28px;
+background:
+radial-gradient(circle at 0 0, rgba(194, 154, 82, 0.14), transparent 22rem),
+rgba(255, 255, 255, 0.78);
+box-shadow:
+0 18px 48px rgba(7, 56, 62, 0.065),
+inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.details-page--activity-detail .package-summary-grid {
+display: grid;
+grid-template-columns: repeat(4, minmax(0, 1fr));
+gap: 12px;
+margin-top: 16px;
+}
+
+.details-page--activity-detail .package-info-card {
+display: grid;
+gap: 8px;
+min-height: 138px;
+padding: 17px;
+border: 1px solid rgba(7, 56, 62, 0.09);
+border-radius: 22px;
+background: #ffffff;
+box-shadow: 0 12px 30px rgba(7, 56, 62, 0.05);
+}
+
+.details-page--activity-detail .package-info-card svg {
+width: 38px;
+height: 38px;
+padding: 9px;
+border-radius: 14px;
+background: rgba(194, 154, 82, 0.14);
+color: var(--color-primary);
+}
+
+.details-page--activity-detail .package-info-card span {
+color: var(--color-muted);
+font-size: 0.74rem;
+font-weight: 850;
+letter-spacing: 0.03em;
+text-transform: uppercase;
+}
+
+.details-page--activity-detail .package-info-card strong {
+color: var(--color-primary);
+font-size: 0.98rem;
+line-height: 1.35;
+}
+
+.details-page--activity-detail .package-feature-list {
+display: flex;
+flex-wrap: wrap;
+gap: 9px;
+margin: 18px 0 0;
+}
+
+.details-page--activity-detail .package-feature-list span {
+display: inline-flex;
+align-items: center;
+gap: 7px;
+min-height: 36px;
+padding: 8px 12px;
+border-radius: 999px;
+background: rgba(7, 56, 62, 0.07);
+color: var(--color-primary);
+font-size: 0.82rem;
+font-weight: 900;
+}
+
+.details-page--activity-detail .package-feature-list svg {
+color: var(--color-gold);
+}
+
+.details-page--activity-detail .package-detail-grid {
+display: grid;
+grid-template-columns: repeat(2, minmax(0, 1fr));
+gap: 14px;
+margin-top: 20px;
+}
+
+.details-page--activity-detail .package-detail-card {
+padding: 18px;
+border: 1px solid rgba(7, 56, 62, 0.09);
+border-radius: 24px;
+background: #ffffff;
+box-shadow: 0 12px 30px rgba(7, 56, 62, 0.05);
+}
+
+.details-page--activity-detail .package-detail-card h3 {
+display: flex;
+align-items: center;
+gap: 9px;
+margin: 0 0 14px;
+color: var(--color-primary);
+font-size: 1.08rem;
+letter-spacing: -0.035em;
+}
+
+.details-page--activity-detail .package-detail-card h3 svg {
+color: var(--color-gold);
+}
+
+.details-page--activity-detail .package-detail-card dl {
+display: grid;
+gap: 10px;
+margin: 0;
+}
+
+.details-page--activity-detail .package-detail-card dt {
+color: var(--color-muted);
+font-size: 0.74rem;
+font-weight: 850;
+letter-spacing: 0.03em;
+text-transform: uppercase;
+}
+
+.details-page--activity-detail .package-detail-card dd {
+margin: -6px 0 0;
+color: var(--color-primary);
+font-weight: 820;
+line-height: 1.55;
+}
+
+.details-page--activity-detail .package-text-grid {
+display: grid;
+grid-template-columns: repeat(2, minmax(0, 1fr));
+gap: 14px;
+margin-top: 20px;
+}
+
+.details-page--activity-detail .package-text-grid section {
+padding: 18px;
+border: 1px solid rgba(7, 56, 62, 0.09);
+border-radius: 24px;
+background: rgba(255, 255, 255, 0.86);
+box-shadow: 0 12px 30px rgba(7, 56, 62, 0.045);
+}
+
+.details-page--activity-detail .package-text-grid h3 {
+margin: 0 0 8px;
+color: var(--color-primary);
+font-size: 1rem;
+line-height: 1.25;
+}
+
+.details-page--activity-detail .package-text-grid p {
+margin: 0;
+color: var(--color-muted);
+line-height: 1.75;
+white-space: pre-line;
+}
+
+@media (max-width: 1180px) {
+.details-page--activity-detail .package-summary-grid {
+grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+}
+
+@media (max-width: 760px) {
+.add-activity-page .region-selector-grid,
+.details-page--activity-detail .package-summary-grid,
+.details-page--activity-detail .package-detail-grid,
+.details-page--activity-detail .package-text-grid {
+grid-template-columns: 1fr;
+}
+
+.add-activity-page .region-selector-card {
+min-height: auto;
+}
+
+.details-page--activity-detail .activity-package-details {
+border-radius: 24px;
+}
+}
+
+@media (prefers-reduced-motion: reduce) {
+.add-activity-page .region-selector-card {
+transition: none;
+}
+}

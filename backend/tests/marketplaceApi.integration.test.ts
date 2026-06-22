@@ -58,49 +58,46 @@ async function seedMarketplaceFixtures() {
     }
   });
 
-    const customer = await prisma.user.create({
-      data: {
-        name: 'Integration Customer',
-        email: 'integration-customer@lux.test',
-        password: 'test-password',
-        role: 'USER',
-        phone: '+96890000000'
-      }
-    });
+  const customer = await prisma.user.create({
+    data: {
+      name: 'Integration Customer',
+      email: 'integration-customer@lux.test',
+      password: 'test-password',
+      role: 'USER',
+      phone: '+96890000000'
+    }
+  });
 
   ownerToken = signToken(owner);
   activityProviderToken = signToken(activityProvider);
-    customerToken = signToken(customer);
+  customerToken = signToken(customer);
 
-  const featuredDeveloper =
-    await prisma.developerCompany.create({
-      data: {
-        slug: 'featured-test-developer',
-        nameEn: 'Featured Test Developer',
-        verified: true,
-        featured: true
-      }
-    });
+  const featuredDeveloper = await prisma.developerCompany.create({
+    data: {
+      slug: 'featured-test-developer',
+      nameEn: 'Featured Test Developer',
+      verified: true,
+      featured: true
+    }
+  });
 
-  const featuredAgency =
-    await prisma.travelAgency.create({
-      data: {
-        slug: 'muscat-coast-test-agency',
-        nameEn: 'Muscat Coast Tours',
-        verified: true,
-        featured: true
-      }
-    });
+  const featuredAgency = await prisma.travelAgency.create({
+    data: {
+      slug: 'muscat-coast-test-agency',
+      nameEn: 'Muscat Coast Tours',
+      verified: true,
+      featured: true
+    }
+  });
 
-  const standardAgency =
-    await prisma.travelAgency.create({
-      data: {
-        slug: 'standard-test-agency',
-        nameEn: 'Standard Adventures',
-        verified: true,
-        featured: false
-      }
-    });
+  const standardAgency = await prisma.travelAgency.create({
+    data: {
+      slug: 'standard-test-agency',
+      nameEn: 'Standard Adventures',
+      verified: true,
+      featured: false
+    }
+  });
 
   const listingBase = {
     description:
@@ -159,10 +156,10 @@ async function seedMarketplaceFixtures() {
       ...listingBase,
       slug: 'integration-villa-heights',
       buyerEligibility: [
-          'FOREIGNERS_ALLOWED',
-          'FREEHOLD',
-          'COMPANY_PURCHASE_ALLOWED'
-        ],
+        'FOREIGNERS_ALLOWED',
+        'FREEHOLD',
+        'COMPANY_PURCHASE_ALLOWED'
+      ],
       title: 'Villa Heights',
       titleEn: 'Villa Heights',
       type: 'Residence',
@@ -281,6 +278,30 @@ async function seedMarketplaceFixtures() {
       priceQualifier: 'ON_REQUEST',
       partnerTier: 3,
       travelRegion: 'OUTSIDE_OMAN',
+      destinationCountry: 'United Arab Emirates',
+      destinationCity: 'Dubai',
+      departureCity: 'Muscat',
+      tripDurationDays: 4,
+      tripDurationNights: 3,
+      flightIncluded: true,
+      airline: 'Oman Air',
+      hotelIncluded: true,
+      hotelName: 'Downtown Dubai Hotel',
+      hotelRating: 5,
+      roomType: 'Double room',
+      mealPlan: 'Breakfast',
+      visaSupportIncluded: true,
+      travelInsuranceIncluded: true,
+      airportTransferIncluded: true,
+      packageItinerary:
+        'Day 1 arrival, Day 2 city tour, Day 3 free day, Day 4 return.',
+      requiredDocuments: 'Passport copy and residence card.',
+      cancellationPolicy:
+        'Cancellation terms depend on airline and hotel rules.',
+      availableTravelDates: 'Selected weekends and public holidays.',
+      minimumGroupSize: 2,
+      packageInclusions: 'Flights, hotel, breakfast, airport transfers.',
+      packageExclusions: 'Personal expenses and optional tours.',
       travelAgencyId: featuredAgency.id,
       createdAt: new Date('2026-04-01T00:00:00.000Z')
     }
@@ -668,6 +689,53 @@ describe('GET /api/activities', () => {
     ).toEqual(['integration-desert-escape']);
   });
 
+  it('returns outside-Oman package fields from the API', async () => {
+    const response = await request(app)
+      .get('/api/activities')
+      .query({
+        travelRegion: 'OUTSIDE_OMAN'
+      })
+      .expect(200);
+
+    expect(response.body.activities[0]).toMatchObject({
+      slug: 'integration-desert-escape',
+      travelRegion: 'OUTSIDE_OMAN',
+      destinationCountry: 'United Arab Emirates',
+      destinationCity: 'Dubai',
+      departureCity: 'Muscat',
+      tripDurationDays: 4,
+      tripDurationNights: 3,
+      flightIncluded: true,
+      airline: 'Oman Air',
+      hotelIncluded: true,
+      hotelName: 'Downtown Dubai Hotel',
+      hotelRating: 5,
+      roomType: 'Double room',
+      mealPlan: 'Breakfast',
+      visaSupportIncluded: true,
+      travelInsuranceIncluded: true,
+      airportTransferIncluded: true,
+      packageInclusions: 'Flights, hotel, breakfast, airport transfers.',
+      packageExclusions: 'Personal expenses and optional tours.'
+    });
+  });
+
+  it('matches outside-Oman package fields in activity search', async () => {
+    const response = await request(app)
+      .get('/api/activities')
+      .query({
+        search: 'dubai',
+        sort: 'recommended'
+      })
+      .expect(200);
+
+    expect(
+      response.body.activities.map(
+        (activity: { slug: string }) => activity.slug
+      )
+    ).toContain('integration-desert-escape');
+  });
+
   it('inherits featured status from featured travel agencies', async () => {
     const response = await request(app)
       .get('/api/activities')
@@ -1041,12 +1109,11 @@ describe('POST /api/listings pricing compatibility', () => {
       })
       .expect(201);
 
-    const createdListing =
-      await prisma.listing.findUniqueOrThrow({
-        where: {
-          id: response.body.listing.id
-        }
-      });
+    const createdListing = await prisma.listing.findUniqueOrThrow({
+      where: {
+        id: response.body.listing.id
+      }
+    });
 
     expect(createdListing.price).toBe('OMR 900 /mo');
     expect(createdListing.priceAmount?.toString()).toBe('900');
@@ -1069,12 +1136,11 @@ describe('POST /api/listings pricing compatibility', () => {
       })
       .expect(201);
 
-    const createdListing =
-      await prisma.listing.findUniqueOrThrow({
-        where: {
-          id: response.body.listing.id
-        }
-      });
+    const createdListing = await prisma.listing.findUniqueOrThrow({
+      where: {
+        id: response.body.listing.id
+      }
+    });
 
     expect(createdListing.price).toBe('OMR 2,800 /mo');
     expect(createdListing.priceAmount?.toString()).toBe('2800');
@@ -1099,12 +1165,11 @@ describe('POST /api/listings pricing compatibility', () => {
       })
       .expect(201);
 
-    const createdListing =
-      await prisma.listing.findUniqueOrThrow({
-        where: {
-          id: response.body.listing.id
-        }
-      });
+    const createdListing = await prisma.listing.findUniqueOrThrow({
+      where: {
+        id: response.body.listing.id
+      }
+    });
 
     expect(createdListing.buyerEligibility).toEqual([
       'FOREIGNERS_ALLOWED',
@@ -1168,12 +1233,11 @@ describe('POST /api/activities pricing compatibility', () => {
       })
       .expect(201);
 
-    const createdActivity =
-      await prisma.activity.findUniqueOrThrow({
-        where: {
-          id: response.body.activity.id
-        }
-      });
+    const createdActivity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        id: response.body.activity.id
+      }
+    });
 
     expect(createdActivity.price).toBe('From OMR 45');
     expect(createdActivity.priceAmount?.toString()).toBe('45');
@@ -1199,16 +1263,13 @@ describe('POST /api/activities pricing compatibility', () => {
       })
       .expect(201);
 
-    const createdActivity =
-      await prisma.activity.findUniqueOrThrow({
-        where: {
-          id: response.body.activity.id
-        }
-      });
+    const createdActivity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        id: response.body.activity.id
+      }
+    });
 
-    expect(createdActivity.price).toBe(
-      'From OMR 35 /person'
-    );
+    expect(createdActivity.price).toBe('From OMR 35 /person');
     expect(createdActivity.priceAmount?.toString()).toBe('35');
     expect(createdActivity.priceCurrency).toBe('OMR');
     expect(createdActivity.priceQualifier).toBe('FROM');
@@ -1216,7 +1277,7 @@ describe('POST /api/activities pricing compatibility', () => {
     expect(createdActivity.travelRegion).toBe('INSIDE_OMAN');
   });
 
-  it('stores the selected travel region', async () => {
+  it('creates an inside-Oman activity without travel package fields', async () => {
     const response = await request(app)
       .post('/api/activities')
       .set(
@@ -1225,20 +1286,120 @@ describe('POST /api/activities pricing compatibility', () => {
       )
       .send({
         ...activityPayload,
-        titleEn: 'Outside Oman Activity',
-        price: 'OMR 80',
-        travelRegion: 'OUTSIDE_OMAN'
+        titleEn: 'Inside Oman Stage Seven Activity',
+        price: 'OMR 40',
+        travelRegion: 'INSIDE_OMAN'
       })
       .expect(201);
 
-    const createdActivity =
-      await prisma.activity.findUniqueOrThrow({
-        where: {
-          id: response.body.activity.id
-        }
-      });
+    const createdActivity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        id: response.body.activity.id
+      }
+    });
+
+    expect(response.body.activity.travelRegion).toBe('INSIDE_OMAN');
+    expect(response.body.activity.destinationCountry).toBeNull();
+    expect(createdActivity.destinationCountry).toBeNull();
+    expect(createdActivity.destinationCity).toBeNull();
+    expect(createdActivity.tripDurationDays).toBeNull();
+  });
+
+  it('creates an outside-Oman travel package with package fields', async () => {
+    const response = await request(app)
+      .post('/api/activities')
+      .set(
+        'Authorization',
+        `Bearer ${activityProviderToken}`
+      )
+      .send({
+        ...activityPayload,
+        titleEn: 'Dubai Family Package',
+        priceAmount: '280',
+        priceCurrency: 'OMR',
+        priceQualifier: 'FROM',
+        priceUnit: 'PERSON',
+        travelRegion: 'OUTSIDE_OMAN',
+        destinationCountry: 'United Arab Emirates',
+        destinationCity: 'Dubai',
+        departureCity: 'Muscat',
+        tripDurationDays: 4,
+        tripDurationNights: 3,
+        flightIncluded: true,
+        airline: 'Oman Air',
+        hotelIncluded: true,
+        hotelName: 'Downtown Dubai Hotel',
+        hotelRating: 5,
+        roomType: 'Double room',
+        mealPlan: 'Breakfast',
+        visaSupportIncluded: true,
+        travelInsuranceIncluded: true,
+        airportTransferIncluded: true,
+        packageItinerary: 'Arrival, city tour, free day, return.',
+        requiredDocuments: 'Passport copy and residence card.',
+        cancellationPolicy: 'Subject to airline and hotel terms.',
+        availableTravelDates: 'Selected weekends.',
+        minimumGroupSize: 2,
+        packageInclusions: 'Flights, hotel, breakfast, transfers.',
+        packageExclusions: 'Personal expenses.'
+      })
+      .expect(201);
+
+    const createdActivity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        id: response.body.activity.id
+      }
+    });
+
+    expect(response.body.activity).toMatchObject({
+      travelRegion: 'OUTSIDE_OMAN',
+      destinationCountry: 'United Arab Emirates',
+      destinationCity: 'Dubai',
+      departureCity: 'Muscat',
+      tripDurationDays: 4,
+      tripDurationNights: 3,
+      flightIncluded: true,
+      airline: 'Oman Air',
+      hotelIncluded: true,
+      hotelName: 'Downtown Dubai Hotel',
+      visaSupportIncluded: true,
+      travelInsuranceIncluded: true,
+      airportTransferIncluded: true
+    });
 
     expect(createdActivity.travelRegion).toBe('OUTSIDE_OMAN');
+    expect(createdActivity.destinationCountry).toBe('United Arab Emirates');
+    expect(createdActivity.destinationCity).toBe('Dubai');
+    expect(createdActivity.tripDurationDays).toBe(4);
+    expect(createdActivity.hotelIncluded).toBe(true);
+  });
+
+  it('rejects outside-Oman packages without destination basics', async () => {
+    const response = await request(app)
+      .post('/api/activities')
+      .set(
+        'Authorization',
+        `Bearer ${activityProviderToken}`
+      )
+      .send({
+        ...activityPayload,
+        titleEn: 'Incomplete Outside Oman Package',
+        price: 'OMR 100',
+        travelRegion: 'OUTSIDE_OMAN'
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      message: 'Validation failed'
+    });
+
+    expect(response.body.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: 'destinationCountry' }),
+        expect.objectContaining({ path: 'destinationCity' }),
+        expect.objectContaining({ path: 'tripDurationDays' })
+      ])
+    );
   });
 
   it('rejects fixed structured pricing without an amount', async () => {

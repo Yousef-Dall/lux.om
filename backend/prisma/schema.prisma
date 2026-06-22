@@ -322,6 +322,35 @@ model Activity {
   activityType    String?
   travelRegion    ActivityTravelRegion @default(INSIDE_OMAN)
 
+  destinationCountry String?
+  destinationCity    String?
+  departureCity      String?
+
+  tripDurationDays   Int?
+  tripDurationNights Int?
+
+  flightIncluded Boolean @default(false)
+  airline        String?
+  flightNotes    String?
+
+  hotelIncluded Boolean @default(false)
+  hotelName     String?
+  hotelRating   Int?
+  roomType      String?
+  mealPlan      String?
+
+  visaSupportIncluded     Boolean @default(false)
+  travelInsuranceIncluded Boolean @default(false)
+  airportTransferIncluded Boolean @default(false)
+
+  packageItinerary     String?
+  requiredDocuments    String?
+  cancellationPolicy   String?
+  availableTravelDates String?
+  minimumGroupSize     Int?
+  packageInclusions    String?
+  packageExclusions    String?
+
   availabilityDays      String[] @default([])
   availabilityStartTime String?
   availabilityEndTime   String?
