@@ -74,6 +74,27 @@ enum InquiryType {
   GENERAL
 }
 
+enum NotificationType {
+  BOOKING_CREATED
+  BOOKING_OWNER_APPROVED
+  BOOKING_OWNER_REJECTED
+  BOOKING_ADMIN_CONFIRMED
+  BOOKING_CANCELLED
+  BOOKING_PAYMENT_PAID
+  BOOKING_PAYMENT_FAILED
+}
+
+enum BookingEventType {
+  BOOKING_CREATED
+  OWNER_APPROVED
+  OWNER_REJECTED
+  ADMIN_CONFIRMED
+  CANCELLED
+  PAYMENT_SESSION_CREATED
+  PAYMENT_PAID
+  PAYMENT_FAILED
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
@@ -84,10 +105,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  listings   Listing[]
-  activities Activity[]
-  bookings   Booking[]
-  inquiries  Inquiry[]
+  listings      Listing[]
+  activities    Activity[]
+  bookings      Booking[]
+  inquiries     Inquiry[]
+  notifications Notification[] @relation("UserNotifications")
+  bookingEvents BookingEvent[] @relation("BookingEventActor")
 
   @@index([role])
   @@index([createdAt])
@@ -441,7 +464,10 @@ model Booking {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  payment   Payment?
+  payment       Payment?
+  notifications Notification[]
+  events        BookingEvent[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -496,4 +522,45 @@ model Inquiry {
   @@index([listingId])
   @@index([activityId])
   @@index([createdAt])
+}
+
+model Notification {
+  id      String           @id @default(cuid())
+  type    NotificationType
+  title   String
+  message String
+  readAt  DateTime?
+
+  userId String
+  user   User   @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  bookingId String?
+  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@index([bookingId])
+  @@index([type])
+}
+
+model BookingEvent {
+  id         String           @id @default(cuid())
+  type       BookingEventType
+  message    String?
+  fromStatus BookingStatus?
+  toStatus   BookingStatus?
+
+  actorId String?
+  actor   User?   @relation("BookingEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  bookingId String
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([bookingId, createdAt])
+  @@index([actorId])
+  @@index([type])
 }

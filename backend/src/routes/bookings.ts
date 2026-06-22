@@ -2,6 +2,13 @@ import { randomUUID } from 'crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 
+import {
+  recordAdminBookingDecision,
+  recordBookingCreated,
+  recordOwnerBookingDecision,
+  recordPaymentSessionCreated,
+  recordPaymentSync
+} from '../lib/bookingNotifications';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
@@ -486,6 +493,8 @@ bookingsRouter.post('/', requireAuth(), async (req, res, next) => {
         include: bookingInclude
       });
 
+      await recordBookingCreated(prisma, booking, req.user!.id);
+
       res.status(201).json({
         booking
       });
@@ -553,6 +562,8 @@ bookingsRouter.post('/', requireAuth(), async (req, res, next) => {
       include: bookingInclude
     });
 
+    await recordBookingCreated(prisma, booking, req.user!.id);
+
     res.status(201).json({
       booking
     });
@@ -589,6 +600,14 @@ bookingsRouter.patch('/:id/owner-status', requireAuth(), async (req, res, next) 
       },
       include: bookingInclude
     });
+
+    await recordOwnerBookingDecision(
+      prisma,
+      updatedBooking,
+      req.user!.id,
+      booking.status,
+      status
+    );
 
     res.json({
       booking: updatedBooking
@@ -651,6 +670,8 @@ bookingsRouter.post('/:id/payments/session', requireAuth(), async (req, res, nex
       include: bookingInclude
     });
 
+    await recordPaymentSessionCreated(prisma, updatedBooking, req.user!.id);
+
     res.json({
       booking: updatedBooking,
       payment
@@ -705,6 +726,13 @@ bookingsRouter.post('/:id/payments/sync', requireAuth(), async (req, res, next) 
       },
       include: bookingInclude
     });
+
+    if (
+      status !== booking.payment.status &&
+      (status === 'PAID' || status === 'FAILED')
+    ) {
+      await recordPaymentSync(prisma, updatedBooking, status === 'PAID');
+    }
 
     res.json({
       booking: updatedBooking,
@@ -768,6 +796,14 @@ bookingsRouter.patch('/admin/:id/status', requireAuth(), requireRole('ADMIN'), a
       },
       include: bookingInclude
     });
+
+    await recordAdminBookingDecision(
+      prisma,
+      booking,
+      req.user!.id,
+      existingBooking.status,
+      status
+    );
 
     res.json({
       booking

@@ -4,6 +4,16 @@ import { mapActivity, mapListing } from './mappers';
 import type { Activity, ApiActivity, ApiListing, Language, Listing } from '../types';
 import type { ApiBooking } from './bookings';
 
+export type ApiNotification = {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  readAt: string | null;
+  bookingId: string | null;
+  createdAt: string;
+};
+
 export type DashboardStats = {
   totalListings: number;
   pendingListings: number;
@@ -27,6 +37,7 @@ type ApiDashboardResponse = {
   activities: ApiActivity[];
   bookings: ApiBooking[];
   receivedBookings: ApiBooking[];
+  notifications: ApiNotification[];
 };
 
 export type DashboardData = {
@@ -35,6 +46,7 @@ export type DashboardData = {
   activities: Activity[];
   bookings: ApiBooking[];
   receivedBookings: ApiBooking[];
+  notifications: ApiNotification[];
 };
 
 export async function getDashboardData(
@@ -50,6 +62,7 @@ export async function getDashboardData(
     listings: response.listings.map((listing) => mapListing(listing, language)),
     activities: response.activities.map((activity) => mapActivity(activity, language)),
     bookings: response.bookings ?? [],
-    receivedBookings: response.receivedBookings ?? []
+    receivedBookings: response.receivedBookings ?? [],
+    notifications: response.notifications ?? []
   };
 }

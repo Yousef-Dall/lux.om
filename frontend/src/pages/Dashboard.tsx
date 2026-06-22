@@ -1,6 +1,7 @@
 import {
   ArrowUpRight,
   BarChart3,
+  Bell,
   CalendarDays,
   CheckCircle2,
   Clock3,
@@ -226,6 +227,10 @@ export default function Dashboard() {
           approved: 'مقبول',
           pending: 'قيد المراجعة',
           rejected: 'مرفوض',
+          notifications: 'التنبيهات',
+          notificationsText: 'آخر تحديثات الحجز والدفع المرتبطة بحسابك.',
+          unreadNotifications: 'غير مقروء',
+          emptyNotifications: 'لا توجد تنبيهات جديدة حالياً.',
           nextActions: 'أفضل الخطوات التالية',
           improveDiscovery: 'حسّن الظهور في البحث',
           improveText:
@@ -299,6 +304,10 @@ export default function Dashboard() {
           approved: 'Approved',
           pending: 'Pending',
           rejected: 'Rejected',
+          notifications: 'Notifications',
+          notificationsText: 'Recent booking and payment updates connected to your account.',
+          unreadNotifications: 'unread',
+          emptyNotifications: 'No recent notifications yet.',
           nextActions: 'Next best actions',
           improveDiscovery: 'Improve discovery',
           improveText:
@@ -504,6 +513,8 @@ export default function Dashboard() {
   const activities = dashboardData?.activities ?? [];
   const bookings = dashboardData?.bookings ?? [];
   const receivedBookings = dashboardData?.receivedBookings ?? [];
+  const notifications = dashboardData?.notifications ?? [];
+  const unreadNotifications = notifications.filter((notification) => !notification.readAt).length;
 
   return (
     <section className="page-section container dashboard-page">
@@ -620,6 +631,17 @@ export default function Dashboard() {
               <strong>{stats?.pendingPayments ?? 0}</strong>
               <small>
                 {stats?.submittedBookings ?? 0} {copy.myBookings.toLowerCase()}
+              </small>
+            </article>
+
+            <article className="metric-card">
+              <span>
+                <Bell size={18} aria-hidden="true" />
+                {copy.notifications}
+              </span>
+              <strong>{notifications.length}</strong>
+              <small>
+                {unreadNotifications} {copy.unreadNotifications}
               </small>
             </article>
           </div>
@@ -999,6 +1021,39 @@ export default function Dashboard() {
                   </ButtonLink>
                 </div>
               )}
+
+
+              <div className="dashboard-notifications-card">
+                <div>
+                  <p className="eyebrow">{copy.notifications}</p>
+                  <h2>{copy.notifications}</h2>
+                  <p>{copy.notificationsText}</p>
+                </div>
+
+                {notifications.length > 0 ? (
+                  <div className="dashboard-notifications-list">
+                    {notifications.map((notification) => (
+                      <article
+                        className={`dashboard-notification-item ${
+                          notification.readAt ? '' : 'dashboard-notification-item--unread'
+                        }`}
+                        key={notification.id}
+                      >
+                        <span>
+                          <Bell size={15} aria-hidden="true" />
+                          {notification.title}
+                        </span>
+                        <p>{notification.message}</p>
+                        <small>{formatBookingDate(notification.createdAt, language)}</small>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="action-checklist">
+                    <span>{copy.emptyNotifications}</span>
+                  </div>
+                )}
+              </div>
 
               <div>
                 <p className="eyebrow">{copy.nextActions}</p>

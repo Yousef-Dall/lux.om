@@ -10,6 +10,7 @@ const app = createApp();
 let ownerToken = '';
 let activityProviderToken = '';
 let customerToken = '';
+let adminToken = '';
 
 async function clearTestDatabase() {
   const databaseUrl = new URL(process.env.DATABASE_URL ?? '');
@@ -22,6 +23,8 @@ async function clearTestDatabase() {
   }
 
   await prisma.inquiry.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.bookingEvent.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.booking.deleteMany();
 
@@ -68,9 +71,19 @@ async function seedMarketplaceFixtures() {
     }
   });
 
+  const admin = await prisma.user.create({
+    data: {
+      name: 'Integration Admin',
+      email: 'integration-admin@lux.test',
+      password: 'test-password',
+      role: 'ADMIN'
+    }
+  });
+
   ownerToken = signToken(owner);
   activityProviderToken = signToken(activityProvider);
   customerToken = signToken(customer);
+  adminToken = signToken(admin);
 
   const featuredDeveloper = await prisma.developerCompany.create({
     data: {
@@ -829,6 +842,47 @@ describe('POST /api/bookings', () => {
     expect(response.body.booking.payment.reference).toEqual(expect.any(String));
   });
 
+  it('creates notification and audit records for a new booking request', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const bookingResponse = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-07-21',
+        guests: 2
+      })
+      .expect(201);
+
+    const providerNotification = await prisma.notification.findFirst({
+      where: {
+        userId: activity.ownerId,
+        bookingId: bookingResponse.body.booking.id,
+        type: 'BOOKING_CREATED'
+      }
+    });
+
+    const bookingEvent = await prisma.bookingEvent.findFirst({
+      where: {
+        bookingId: bookingResponse.body.booking.id,
+        type: 'BOOKING_CREATED'
+      }
+    });
+
+    expect(providerNotification).toMatchObject({
+      title: 'New booking request'
+    });
+    expect(bookingEvent).toMatchObject({
+      actorId: expect.any(String),
+      toStatus: 'PENDING'
+    });
+  });
+
   it('returns received booking requests on the provider dashboard', async () => {
     const activity = await prisma.activity.findUniqueOrThrow({
       where: {
@@ -916,6 +970,70 @@ describe('POST /api/bookings', () => {
     expect(response.body.booking).toMatchObject({
       id: bookingResponse.body.booking.id,
       status: 'OWNER_APPROVED'
+    });
+  });
+
+  it('creates customer, admin, and audit records when the provider approves', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const bookingResponse = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-07-22',
+        guests: 1
+      })
+      .expect(201);
+
+    await request(app)
+      .patch(`/api/bookings/${bookingResponse.body.booking.id}/owner-status`)
+      .set('Authorization', `Bearer ${activityProviderToken}`)
+      .send({
+        status: 'OWNER_APPROVED'
+      })
+      .expect(200);
+
+    const customerNotification = await prisma.notification.findFirst({
+      where: {
+        bookingId: bookingResponse.body.booking.id,
+        type: 'BOOKING_OWNER_APPROVED',
+        user: {
+          email: 'integration-customer@lux.test'
+        }
+      }
+    });
+
+    const adminNotification = await prisma.notification.findFirst({
+      where: {
+        bookingId: bookingResponse.body.booking.id,
+        type: 'BOOKING_OWNER_APPROVED',
+        user: {
+          email: 'integration-admin@lux.test'
+        }
+      }
+    });
+
+    const approvalEvent = await prisma.bookingEvent.findFirst({
+      where: {
+        bookingId: bookingResponse.body.booking.id,
+        type: 'OWNER_APPROVED'
+      }
+    });
+
+    expect(customerNotification).toMatchObject({
+      title: 'Booking approved by provider'
+    });
+    expect(adminNotification).toMatchObject({
+      title: 'Booking needs admin follow-up'
+    });
+    expect(approvalEvent).toMatchObject({
+      fromStatus: 'PENDING',
+      toStatus: 'OWNER_APPROVED'
     });
   });
 
@@ -1105,6 +1223,56 @@ describe('POST /api/bookings', () => {
       expect(Number(response.body.payment.commission)).toBe(2);
       expect(response.body.payment.paidAt).toEqual(expect.any(String));
       expect(response.body.booking.payment.status).toBe('PAID');
+
+      const paymentEvent = await prisma.bookingEvent.findFirst({
+        where: {
+          bookingId,
+          type: 'PAYMENT_PAID'
+        }
+      });
+
+      const customerPaymentNotification = await prisma.notification.findFirst({
+        where: {
+          bookingId,
+          type: 'BOOKING_PAYMENT_PAID',
+          user: {
+            email: 'integration-customer@lux.test'
+          }
+        }
+      });
+
+      const providerPaymentNotification = await prisma.notification.findFirst({
+        where: {
+          bookingId,
+          type: 'BOOKING_PAYMENT_PAID',
+          user: {
+            email: 'integration-activities@lux.test'
+          }
+        }
+      });
+
+      const adminPaymentNotification = await prisma.notification.findFirst({
+        where: {
+          bookingId,
+          type: 'BOOKING_PAYMENT_PAID',
+          user: {
+            email: 'integration-admin@lux.test'
+          }
+        }
+      });
+
+      expect(paymentEvent).toMatchObject({
+        type: 'PAYMENT_PAID'
+      });
+      expect(customerPaymentNotification).toMatchObject({
+        title: 'Payment completed'
+      });
+      expect(providerPaymentNotification).toMatchObject({
+        title: 'Customer payment completed'
+      });
+      expect(adminPaymentNotification).toMatchObject({
+        title: 'Booking payment completed'
+      });
 
       const rejectionResponse = await request(app)
         .patch(`/api/bookings/${bookingId}/owner-status`)

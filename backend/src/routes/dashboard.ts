@@ -84,6 +84,7 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
       activities,
       bookings,
       receivedBookings,
+      notifications,
       totalListings,
       pendingListings,
       approvedListings,
@@ -136,6 +137,16 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
       prisma.booking.findMany({
         where: receivedBookingsWhere,
         include: bookingInclude,
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: 8
+      }),
+
+      prisma.notification.findMany({
+        where: {
+          userId
+        },
         orderBy: {
           createdAt: 'desc'
         },
@@ -265,7 +276,8 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
       listings,
       activities,
       bookings,
-      receivedBookings
+      receivedBookings,
+      notifications
     });
   } catch (error) {
     next(error);
