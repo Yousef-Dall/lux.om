@@ -55,6 +55,7 @@ enum BookingStatus {
   OWNER_APPROVED
   OWNER_REJECTED
   ADMIN_CONFIRMED
+  CANCELLATION_REQUESTED
   CANCELLED
 }
 
@@ -79,6 +80,7 @@ enum NotificationType {
   BOOKING_OWNER_APPROVED
   BOOKING_OWNER_REJECTED
   BOOKING_ADMIN_CONFIRMED
+  BOOKING_CANCELLATION_REQUESTED
   BOOKING_CANCELLED
   BOOKING_PAYMENT_PAID
   BOOKING_PAYMENT_FAILED
@@ -89,6 +91,7 @@ enum BookingEventType {
   OWNER_APPROVED
   OWNER_REJECTED
   ADMIN_CONFIRMED
+  CANCELLATION_REQUESTED
   CANCELLED
   PAYMENT_SESSION_CREATED
   PAYMENT_PAID
@@ -461,6 +464,9 @@ model Booking {
   contactName  String?
   contactEmail String?
   contactPhone String?
+
+  cancellationReason      String?
+  cancellationRequestedAt DateTime?
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

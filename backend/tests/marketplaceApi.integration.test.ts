@@ -1081,6 +1081,154 @@ describe('POST /api/bookings', () => {
     });
   });
 
+  it('lets customers request cancellation and records notifications and audit events', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const bookingResponse = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-08-04',
+        preferredTime: '10:00',
+        guests: 1
+      })
+      .expect(201);
+
+    const response = await request(app)
+      .patch(`/api/bookings/${bookingResponse.body.booking.id}/cancellation-request`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        reason: 'Plans changed and I cannot attend.'
+      })
+      .expect(200);
+
+    expect(response.body.booking).toMatchObject({
+      id: bookingResponse.body.booking.id,
+      status: 'CANCELLATION_REQUESTED',
+      cancellationReason: 'Plans changed and I cannot attend.',
+      cancellationRequestedAt: expect.any(String)
+    });
+
+    const event = await prisma.bookingEvent.findFirstOrThrow({
+      where: {
+        bookingId: bookingResponse.body.booking.id,
+        type: 'CANCELLATION_REQUESTED'
+      }
+    });
+
+    expect(event).toMatchObject({
+      fromStatus: 'PENDING',
+      toStatus: 'CANCELLATION_REQUESTED'
+    });
+
+    const notifications = await prisma.notification.findMany({
+      where: {
+        bookingId: bookingResponse.body.booking.id,
+        type: 'BOOKING_CANCELLATION_REQUESTED'
+      }
+    });
+
+    expect(notifications.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('blocks non-customers from requesting booking cancellation', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const bookingResponse = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-08-05',
+        preferredTime: '10:00',
+        guests: 1
+      })
+      .expect(201);
+
+    await request(app)
+      .patch(`/api/bookings/${bookingResponse.body.booking.id}/cancellation-request`)
+      .set('Authorization', `Bearer ${activityProviderToken}`)
+      .send({
+        reason: 'Provider should not be able to request this as the customer.'
+      })
+      .expect(403);
+  });
+
+  it('requires refunded payment before admin completes cancellation of a paid booking', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const bookingResponse = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-08-06',
+        preferredTime: '10:00',
+        guests: 1
+      })
+      .expect(201);
+
+    await request(app)
+      .patch(`/api/bookings/${bookingResponse.body.booking.id}/owner-status`)
+      .set('Authorization', `Bearer ${activityProviderToken}`)
+      .send({
+        status: 'OWNER_APPROVED'
+      })
+      .expect(200);
+
+    const payment = await prisma.payment.update({
+      where: {
+        bookingId: bookingResponse.body.booking.id
+      },
+      data: {
+        status: 'PAID',
+        paidAt: new Date()
+      }
+    });
+
+    await request(app)
+      .patch(`/api/bookings/admin/${bookingResponse.body.booking.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'CANCELLED'
+      })
+      .expect(400);
+
+    await request(app)
+      .patch(`/api/bookings/admin/payments/${payment.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'REFUNDED'
+      })
+      .expect(200);
+
+    const cancelledResponse = await request(app)
+      .patch(`/api/bookings/admin/${bookingResponse.body.booking.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'CANCELLED'
+      })
+      .expect(200);
+
+    expect(cancelledResponse.body.booking).toMatchObject({
+      id: bookingResponse.body.booking.id,
+      status: 'CANCELLED'
+    });
+  });
+
   it('returns live activity availability for a selected date and time', async () => {
     const activity = await prisma.activity.findUniqueOrThrow({
       where: {

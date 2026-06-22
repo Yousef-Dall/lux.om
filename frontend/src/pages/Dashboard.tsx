@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 
 import {
   createPaymentSession,
+  requestBookingCancellation,
   syncBookingPayment,
   updateOwnerBookingStatus,
   type ApiBooking
@@ -286,6 +287,11 @@ export default function Dashboard() {
           bookingApproved: 'تم قبول طلب الحجز.',
           bookingRejected: 'تم رفض طلب الحجز.',
           bookingActionError: 'تعذر تحديث حالة الحجز.',
+          requestCancellation: 'طلب إلغاء',
+          cancellationReasonPrompt: 'اكتب سبب طلب الإلغاء',
+          cancellationRequested: 'تم إرسال طلب الإلغاء للمراجعة.',
+          cancellationRequestedStatus: 'طلب الإلغاء قيد المراجعة.',
+          cancellationReason: 'سبب الإلغاء',
           customer: 'العميل',
           contact: 'التواصل',
           preferredTime: 'الوقت المفضل',
@@ -366,6 +372,11 @@ export default function Dashboard() {
           bookingApproved: 'Booking request approved.',
           bookingRejected: 'Booking request rejected.',
           bookingActionError: 'Could not update the booking status.',
+          requestCancellation: 'Request cancellation',
+          cancellationReasonPrompt: 'Enter the reason for cancellation',
+          cancellationRequested: 'Cancellation request sent for review.',
+          cancellationRequestedStatus: 'Cancellation request is under review.',
+          cancellationReason: 'Cancellation reason',
           customer: 'Customer',
           contact: 'Contact',
           preferredTime: 'Preferred time',
@@ -472,6 +483,59 @@ export default function Dashboard() {
       }
     } finally {
       setNotificationUpdatingId('');
+    }
+  }
+
+
+  async function runCustomerCancellationRequest(bookingId: string) {
+    if (!token) return;
+
+    const reason = window.prompt(copy.cancellationReasonPrompt);
+
+    if (reason === null) return;
+
+    const trimmedReason = reason.trim();
+
+    if (!trimmedReason) return;
+
+    try {
+      setBookingUpdatingId(`cancel-${bookingId}`);
+      setBookingActionError('');
+      setBookingActionSuccess('');
+
+      const response = await requestBookingCancellation(
+        bookingId,
+        {
+          reason: trimmedReason
+        },
+        token
+      );
+
+      setDashboardData((current) => {
+        if (!current) return current;
+
+        return {
+          ...current,
+          bookings: current.bookings.map((booking) =>
+            booking.id === bookingId ? response.booking : booking
+          ),
+          receivedBookings: current.receivedBookings.map((booking) =>
+            booking.id === bookingId ? response.booking : booking
+          )
+        };
+      });
+
+      setBookingActionSuccess(copy.cancellationRequested);
+    } catch (error) {
+      console.error(error);
+
+      if (error instanceof ApiError) {
+        setBookingActionError(error.message);
+      } else {
+        setBookingActionError(copy.bookingActionError);
+      }
+    } finally {
+      setBookingUpdatingId('');
     }
   }
 
@@ -941,6 +1005,18 @@ export default function Dashboard() {
                         </div>
 
                         <p className="dashboard-booking-note">{paymentMessage}</p>
+
+                        {booking.status === 'CANCELLATION_REQUESTED' ? (
+                          <p className="dashboard-booking-note">
+                            {copy.cancellationRequestedStatus}
+                          </p>
+                        ) : null}
+
+                        {booking.cancellationReason ? (
+                          <p className="dashboard-booking-note">
+                            {copy.cancellationReason}: {booking.cancellationReason}
+                          </p>
+                        ) : null}
                       </div>
 
                       <div className="dashboard-booking-payment">
@@ -973,6 +1049,19 @@ export default function Dashboard() {
                               </button>
                             ) : null}
                           </div>
+                        ) : null}
+
+                        {booking.status !== 'OWNER_REJECTED' &&
+                        booking.status !== 'CANCELLED' &&
+                        booking.status !== 'CANCELLATION_REQUESTED' ? (
+                          <button
+                            className="button-link button-link--secondary"
+                            type="button"
+                            disabled={bookingUpdatingId === `cancel-${booking.id}`}
+                            onClick={() => void runCustomerCancellationRequest(booking.id)}
+                          >
+                            {copy.requestCancellation}
+                          </button>
                         ) : null}
                       </div>
                     </article>

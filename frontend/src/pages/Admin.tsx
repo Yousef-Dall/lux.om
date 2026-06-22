@@ -649,7 +649,10 @@ verifiedDevelopers: 'Verified developers',
           ownerApproved: 'موافقة المنظم',
           ownerRejected: 'رفض المنظم',
           adminConfirmed: 'مؤكد من الإدارة',
+          cancellationRequested: 'طلب إلغاء',
           cancelled: 'ملغي',
+          cancellationReason: 'سبب طلب الإلغاء',
+          cancellationRequestedAt: 'تاريخ طلب الإلغاء',
           paymentPending: 'بانتظار الدفع',
           paymentPaid: 'مدفوع',
           paymentFailed: 'فشل الدفع',
@@ -686,7 +689,10 @@ verifiedDevelopers: 'Verified developers',
           ownerApproved: 'Provider approved',
           ownerRejected: 'Provider rejected',
           adminConfirmed: 'Admin confirmed',
+          cancellationRequested: 'Cancellation requested',
           cancelled: 'Cancelled',
+          cancellationReason: 'Cancellation reason',
+          cancellationRequestedAt: 'Cancellation requested at',
           paymentPending: 'Payment pending',
           paymentPaid: 'Paid',
           paymentFailed: 'Payment failed',
@@ -1181,6 +1187,7 @@ async function deleteDeveloperCompany(developerId: string) {
     if (status === 'OWNER_APPROVED') return bookingCopy.ownerApproved;
     if (status === 'OWNER_REJECTED') return bookingCopy.ownerRejected;
     if (status === 'ADMIN_CONFIRMED') return bookingCopy.adminConfirmed;
+    if (status === 'CANCELLATION_REQUESTED') return bookingCopy.cancellationRequested;
     if (status === 'CANCELLED') return bookingCopy.cancelled;
 
     return bookingCopy.pending;
@@ -1404,6 +1411,18 @@ async function deleteDeveloperCompany(developerId: string) {
                           {booking.message ? (
                             <span className="admin-rejection-note">
                               {bookingCopy.message}: {booking.message}
+                            </span>
+                          ) : null}
+
+                          {booking.cancellationReason ? (
+                            <span className="admin-rejection-note">
+                              {bookingCopy.cancellationReason}: {booking.cancellationReason}
+                              {booking.cancellationRequestedAt
+                                ? ` · ${bookingCopy.cancellationRequestedAt}: ${formatAdminBookingDateTime(
+                                    booking.cancellationRequestedAt,
+                                    language
+                                  )}`
+                                : ''}
                             </span>
                           ) : null}
 

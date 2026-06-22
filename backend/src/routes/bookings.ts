@@ -5,6 +5,7 @@ import { z } from 'zod';
 import {
   recordAdminBookingDecision,
   recordBookingCreated,
+  recordBookingCancellationRequested,
   recordOwnerBookingDecision,
   recordPaymentSessionCreated,
   recordPaymentSync
@@ -97,6 +98,7 @@ const bookingStatusSchema = z
       'OWNER_APPROVED',
       'OWNER_REJECTED',
       'ADMIN_CONFIRMED',
+      'CANCELLATION_REQUESTED',
       'CANCELLED'
     ])
   })
@@ -105,6 +107,12 @@ const bookingStatusSchema = z
 const ownerBookingStatusSchema = z
   .object({
     status: z.enum(['OWNER_APPROVED', 'OWNER_REJECTED'])
+  })
+  .strict();
+
+const cancellationRequestSchema = z
+  .object({
+    reason: z.string().trim().min(3).max(1000)
   })
   .strict();
 
@@ -231,7 +239,8 @@ function getThawaniConfig() {
 const ACTIVE_CAPACITY_BOOKING_STATUSES = [
   'PENDING',
   'OWNER_APPROVED',
-  'ADMIN_CONFIRMED'
+  'ADMIN_CONFIRMED',
+  'CANCELLATION_REQUESTED'
 ] as const;
 
 function getScheduledDayRange(scheduledDate: Date) {
@@ -434,11 +443,12 @@ function assertAdminBookingTransition(
   },
   nextStatus: string
 ) {
-  if (
-    isPaidBooking(booking) &&
-    (nextStatus === 'OWNER_REJECTED' || nextStatus === 'CANCELLED')
-  ) {
-    throw new AppError(400, 'Paid bookings cannot be rejected or cancelled');
+  if (isPaidBooking(booking) && nextStatus === 'OWNER_REJECTED') {
+    throw new AppError(400, 'Paid bookings cannot be rejected');
+  }
+
+  if (isPaidBooking(booking) && nextStatus === 'CANCELLED') {
+    throw new AppError(400, 'Paid bookings must be refunded before cancellation can be completed');
   }
 
   if (booking.status === 'CANCELLED' && nextStatus !== 'CANCELLED') {
@@ -698,6 +708,67 @@ bookingsRouter.patch('/:id/owner-status', requireAuth(), async (req, res, next) 
       req.user!.id,
       booking.status,
       status
+    );
+
+    res.json({
+      booking: updatedBooking
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+bookingsRouter.patch('/:id/cancellation-request', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = paramsSchema.parse(req.params);
+    const { reason } = cancellationRequestSchema.parse(req.body);
+
+    const booking = await prisma.booking.findUnique({
+      where: {
+        id
+      },
+      include: bookingInclude
+    });
+
+    if (!booking) {
+      throw new AppError(404, 'Booking not found');
+    }
+
+    if (booking.userId !== req.user!.id) {
+      throw new AppError(403, 'Only the customer can request cancellation for this booking');
+    }
+
+    if (booking.status === 'CANCELLED') {
+      throw new AppError(400, 'This booking is already cancelled');
+    }
+
+    if (booking.status === 'OWNER_REJECTED') {
+      throw new AppError(400, 'Rejected bookings cannot be cancelled');
+    }
+
+    if (booking.status === 'CANCELLATION_REQUESTED') {
+      throw new AppError(400, 'Cancellation has already been requested for this booking');
+    }
+
+    const updatedBooking = await prisma.booking.update({
+      where: {
+        id
+      },
+      data: {
+        status: 'CANCELLATION_REQUESTED',
+        cancellationReason: reason,
+        cancellationRequestedAt: new Date()
+      },
+      include: bookingInclude
+    });
+
+    await recordBookingCancellationRequested(
+      prisma,
+      updatedBooking,
+      req.user!.id,
+      booking.status,
+      reason
     );
 
     res.json({

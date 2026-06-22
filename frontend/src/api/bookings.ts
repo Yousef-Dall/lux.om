@@ -6,6 +6,7 @@ export type BookingStatus =
   | 'OWNER_APPROVED'
   | 'OWNER_REJECTED'
   | 'ADMIN_CONFIRMED'
+  | 'CANCELLATION_REQUESTED'
   | 'CANCELLED';
 
 export type PaymentStatus =
@@ -61,6 +62,8 @@ export type ApiBooking = {
   contactName?: string | null;
   contactEmail?: string | null;
   contactPhone?: string | null;
+  cancellationReason?: string | null;
+  cancellationRequestedAt?: string | null;
   userId: string;
   payment?: ApiPayment | null;
   createdAt: string;
@@ -84,6 +87,10 @@ export type CreateBookingPayload = {
 
 export type UpdateOwnerBookingStatusPayload = {
   status: Extract<BookingStatus, 'OWNER_APPROVED' | 'OWNER_REJECTED'>;
+};
+
+export type RequestBookingCancellationPayload = {
+  reason: string;
 };
 
 export async function createBooking(payload: CreateBookingPayload, token: string) {
@@ -113,6 +120,19 @@ export async function updateOwnerBookingStatus(
 ) {
   return apiClient.patch<{ booking: ApiBooking }>(
     `/api/bookings/${bookingId}/owner-status`,
+    payload,
+    { token }
+  );
+}
+
+
+export async function requestBookingCancellation(
+  bookingId: string,
+  payload: RequestBookingCancellationPayload,
+  token: string
+) {
+  return apiClient.patch<{ booking: ApiBooking }>(
+    `/api/bookings/${bookingId}/cancellation-request`,
     payload,
     { token }
   );

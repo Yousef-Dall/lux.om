@@ -247,6 +247,53 @@ export async function recordAdminBookingDecision(
   }
 }
 
+
+export async function recordBookingCancellationRequested(
+  prisma: PrismaClient,
+  booking: BookingWithAudience,
+  actorId: string,
+  fromStatus: BookingStatus,
+  reason: string
+) {
+  const itemTitle = getBookingItemTitle(booking);
+  const ownerId = getBookingOwnerId(booking);
+  const message = reason.trim();
+
+  await createBookingEvent(prisma, {
+    bookingId: booking.id,
+    type: 'CANCELLATION_REQUESTED',
+    actorId,
+    message: `Customer requested cancellation for ${itemTitle}. Reason: ${message}`,
+    fromStatus,
+    toStatus: 'CANCELLATION_REQUESTED'
+  });
+
+  await createNotification(prisma, {
+    userId: booking.userId,
+    type: 'BOOKING_CANCELLATION_REQUESTED',
+    title: 'Cancellation request received',
+    message: `Your cancellation request for ${itemTitle} has been received and is waiting for review.`,
+    bookingId: booking.id
+  });
+
+  if (ownerId) {
+    await createNotification(prisma, {
+      userId: ownerId,
+      type: 'BOOKING_CANCELLATION_REQUESTED',
+      title: 'Cancellation requested',
+      message: `A customer requested cancellation for ${itemTitle}.`,
+      bookingId: booking.id
+    });
+  }
+
+  await notifyAdmins(prisma, {
+    type: 'BOOKING_CANCELLATION_REQUESTED',
+    title: 'Cancellation request needs review',
+    message: `A customer requested cancellation for ${itemTitle}.`,
+    bookingId: booking.id
+  });
+}
+
 export async function recordPaymentSessionCreated(
   prisma: PrismaClient,
   booking: BookingWithAudience,
