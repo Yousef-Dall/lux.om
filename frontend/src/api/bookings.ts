@@ -15,6 +15,23 @@ export type PaymentStatus =
   | 'REFUNDED'
   | 'NOT_REQUIRED';
 
+export type ApiBookingEvent = {
+  id: string;
+  type: string;
+  message: string | null;
+  fromStatus: BookingStatus | null;
+  toStatus: BookingStatus | null;
+  actorId: string | null;
+  actor?: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+  } | null;
+  bookingId: string;
+  createdAt: string;
+};
+
 export type ApiPayment = {
   id: string;
   amount: string | number;
@@ -48,6 +65,7 @@ export type ApiBooking = {
   payment?: ApiPayment | null;
   createdAt: string;
   updatedAt: string;
+  events?: ApiBookingEvent[];
 };
 
 export type CreateBookingPayload = {

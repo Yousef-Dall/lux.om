@@ -1037,6 +1037,50 @@ describe('POST /api/bookings', () => {
     });
   });
 
+  it('returns booking audit events in admin booking management', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const bookingResponse = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-07-25',
+        guests: 1
+      })
+      .expect(201);
+
+    await request(app)
+      .patch(`/api/bookings/${bookingResponse.body.booking.id}/owner-status`)
+      .set('Authorization', `Bearer ${activityProviderToken}`)
+      .send({
+        status: 'OWNER_APPROVED'
+      })
+      .expect(200);
+
+    const response = await request(app)
+      .get('/api/bookings/admin/all')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    const booking = response.body.bookings.find(
+      (item: { id: string }) => item.id === bookingResponse.body.booking.id
+    );
+
+    expect(booking.events.map((event: { type: string }) => event.type)).toEqual(
+      expect.arrayContaining(['BOOKING_CREATED', 'OWNER_APPROVED'])
+    );
+
+    expect(booking.events[0].actor).toMatchObject({
+      name: expect.any(String),
+      email: expect.any(String)
+    });
+  });
+
   it('creates a real Thawani checkout session for a payable activity booking', async () => {
     const previousFetch = globalThis.fetch;
     const previousSecret = process.env.THAWANI_SECRET_KEY;

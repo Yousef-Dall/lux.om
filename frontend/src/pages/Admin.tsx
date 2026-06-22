@@ -262,6 +262,58 @@ function formatAdminBookingDate(value: string | null | undefined, language: 'en'
   }).format(new Date(value));
 }
 
+function formatAdminBookingDateTime(value: string | null | undefined, language: 'en' | 'ar') {
+  if (!value) return '—';
+
+  return new Intl.DateTimeFormat(language === 'ar' ? 'ar-OM' : 'en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(new Date(value));
+}
+
+function getAdminBookingEventLabel(type: string, language: 'en' | 'ar') {
+  const labels: Record<string, { en: string; ar: string }> = {
+    BOOKING_CREATED: {
+      en: 'Booking request created',
+      ar: 'تم إنشاء طلب الحجز'
+    },
+    OWNER_APPROVED: {
+      en: 'Provider approved',
+      ar: 'وافق المنظم'
+    },
+    OWNER_REJECTED: {
+      en: 'Provider rejected',
+      ar: 'رفض المنظم'
+    },
+    ADMIN_CONFIRMED: {
+      en: 'Admin confirmed',
+      ar: 'أكدت الإدارة'
+    },
+    CANCELLED: {
+      en: 'Booking cancelled',
+      ar: 'تم إلغاء الحجز'
+    },
+    PAYMENT_SESSION_CREATED: {
+      en: 'Payment session created',
+      ar: 'تم إنشاء جلسة الدفع'
+    },
+    PAYMENT_PAID: {
+      en: 'Payment completed',
+      ar: 'تم الدفع'
+    },
+    PAYMENT_FAILED: {
+      en: 'Payment failed',
+      ar: 'فشل الدفع'
+    }
+  };
+
+  const label = labels[type];
+
+  if (!label) return type.replaceAll('_', ' ').toLowerCase();
+
+  return language === 'ar' ? label.ar : label.en;
+}
+
 function getAdminPaymentAmount(booking: ApiBooking) {
   const amount = Number(booking.payment?.amount ?? 0);
 
@@ -606,7 +658,10 @@ verifiedDevelopers: 'Verified developers',
           guests: 'ضيوف',
           preferredTime: 'الوقت المفضل',
           message: 'رسالة العميل',
-          anonymousCustomer: 'عميل'
+          anonymousCustomer: 'عميل',
+          auditTimeline: 'سجل الحجز',
+          changedBy: 'بواسطة',
+          noAuditEvents: 'لا يوجد سجل بعد'
         }
       : {
           bookingManagement: 'Booking management',
@@ -640,7 +695,10 @@ verifiedDevelopers: 'Verified developers',
           guests: 'guests',
           preferredTime: 'Preferred time',
           message: 'Customer message',
-          anonymousCustomer: 'Customer'
+          anonymousCustomer: 'Customer',
+          auditTimeline: 'Audit timeline',
+          changedBy: 'by',
+          noAuditEvents: 'No audit events yet'
         };
 
   async function loadAdminData() {
@@ -1348,6 +1406,32 @@ async function deleteDeveloperCompany(developerId: string) {
                               {bookingCopy.message}: {booking.message}
                             </span>
                           ) : null}
+
+                          <div className="admin-booking-timeline">
+                            <strong>{bookingCopy.auditTimeline}</strong>
+
+                            {booking.events?.length ? (
+                              booking.events.map((event) => (
+                                <span className="admin-booking-timeline__event" key={event.id}>
+                                  <BookingToneIcon status={event.toStatus || undefined} />
+
+                                  <span>
+                                    {getAdminBookingEventLabel(event.type, language)}
+                                    {event.actor?.name
+                                      ? ` · ${bookingCopy.changedBy} ${event.actor.name}`
+                                      : ''}
+                                    <small>
+                                      {formatAdminBookingDateTime(event.createdAt, language)}
+                                    </small>
+                                  </span>
+                                </span>
+                              ))
+                            ) : (
+                              <span className="admin-booking-timeline__empty">
+                                {bookingCopy.noAuditEvents}
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         <td>

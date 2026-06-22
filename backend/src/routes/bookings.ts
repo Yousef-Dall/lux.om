@@ -123,7 +123,22 @@ const bookingInclude = {
   },
   listing: true,
   activity: true,
-  payment: true
+  payment: true,
+  events: {
+    include: {
+      actor: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true
+        }
+      }
+    },
+    orderBy: {
+      createdAt: 'asc' as const
+    }
+  }
 };
 
 function toScheduledDate(value?: string) {

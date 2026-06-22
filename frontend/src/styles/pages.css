@@ -7830,3 +7830,48 @@ transition: none;
     width: 100%;
   }
 }
+
+/* =========================================================
+   Stage 7.9 — booking audit timeline visibility
+   ========================================================= */
+
+.admin-booking-timeline {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 16px;
+  background: rgba(7, 56, 62, 0.035);
+}
+
+.admin-booking-timeline > strong {
+  color: var(--color-primary);
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+}
+
+.admin-booking-timeline__event {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.admin-booking-timeline__event > svg {
+  margin-top: 2px;
+}
+
+.admin-booking-timeline__event small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(53, 71, 75, 0.72);
+  font-weight: 760;
+}
+
+.admin-booking-timeline__empty {
+  color: var(--color-muted);
+  font-size: 0.82rem;
+}
