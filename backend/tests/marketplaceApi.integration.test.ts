@@ -28,6 +28,9 @@ async function clearTestDatabase() {
   await prisma.payment.deleteMany();
   await prisma.booking.deleteMany();
 
+  await prisma.rentPaymentDueItem.deleteMany();
+  await prisma.rentPaymentSchedule.deleteMany();
+
   await prisma.activityHighlight.deleteMany();
   await prisma.activityImage.deleteMany();
   await prisma.activity.deleteMany();
@@ -35,11 +38,6 @@ async function clearTestDatabase() {
   await prisma.listingImage.deleteMany();
   await prisma.amenity.deleteMany();
   await prisma.listing.deleteMany();
-
-  await prisma.travelAgency.deleteMany();
-  await prisma.developerCompany.deleteMany();
-  await prisma.landmark.deleteMany();
-  await prisma.user.deleteMany();
 }
 
 async function seedMarketplaceFixtures() {
@@ -1924,6 +1922,242 @@ describe('POST /api/bookings', () => {
         })
       ])
     );
+  });
+});
+
+
+describe('POST/PATCH /api/rent-payments', () => {
+  it('lets a listing owner create a rent schedule, add a due item, and mark it paid', async () => {
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        owner: {
+          email: 'integration-owner@lux.test'
+        }
+      }
+    });
+
+    const scheduleResponse = await request(app)
+      .post('/api/rent-payments/schedules')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        title: 'Integration rent schedule',
+        frequency: 'MONTHLY',
+        amount: 500,
+        currency: 'OMR',
+        startDate: '2026-08-01T00:00:00.000Z',
+        dueDayOfMonth: 1,
+        listingId: listing.id,
+        landlordUserId: listing.ownerId,
+        notes: 'Created by listing owner.'
+      })
+      .expect(201);
+
+    expect(scheduleResponse.body.schedule).toMatchObject({
+      title: 'Integration rent schedule',
+      frequency: 'MONTHLY',
+      currency: 'OMR',
+      listingId: listing.id,
+      landlordUserId: listing.ownerId
+    });
+    expect(Number(scheduleResponse.body.schedule.amount)).toBe(500);
+
+    const dueItemResponse = await request(app)
+      .post(`/api/rent-payments/schedules/${scheduleResponse.body.schedule.id}/due-items`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        dueDate: '2026-08-01T00:00:00.000Z',
+        periodStart: '2026-08-01T00:00:00.000Z',
+        periodEnd: '2026-08-31T00:00:00.000Z',
+        amount: 500,
+        currency: 'OMR',
+        notes: 'August rent.'
+      })
+      .expect(201);
+
+    expect(dueItemResponse.body.dueItem).toMatchObject({
+      scheduleId: scheduleResponse.body.schedule.id,
+      status: 'PENDING',
+      currency: 'OMR',
+      notes: 'August rent.'
+    });
+    expect(Number(dueItemResponse.body.dueItem.amount)).toBe(500);
+
+    const paidResponse = await request(app)
+      .patch(`/api/rent-payments/due-items/${dueItemResponse.body.dueItem.id}/paid`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        paymentProvider: 'BANK_TRANSFER',
+        paymentReference: 'RENT-STAGE9-OWNER-001',
+        receiptNumber: 'RECEIPT-STAGE9-OWNER-001',
+        notes: 'Confirmed by owner.'
+      })
+      .expect(200);
+
+    expect(paidResponse.body.dueItem).toMatchObject({
+      id: dueItemResponse.body.dueItem.id,
+      status: 'PAID',
+      paymentProvider: 'BANK_TRANSFER',
+      paymentReference: 'RENT-STAGE9-OWNER-001',
+      receiptNumber: 'RECEIPT-STAGE9-OWNER-001',
+      notes: 'Confirmed by owner.'
+    });
+    expect(paidResponse.body.dueItem.paidAt).toEqual(expect.any(String));
+  });
+
+  it('blocks a customer from creating a rent schedule for another owner listing', async () => {
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        owner: {
+          email: 'integration-owner@lux.test'
+        }
+      }
+    });
+
+    await request(app)
+      .post('/api/rent-payments/schedules')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        title: 'Unauthorized rent schedule',
+        frequency: 'MONTHLY',
+        amount: 500,
+        currency: 'OMR',
+        startDate: '2026-08-01T00:00:00.000Z',
+        listingId: listing.id,
+        landlordUserId: listing.ownerId
+      })
+      .expect(403);
+  });
+
+  it('blocks a customer from adding due items to another user rent schedule', async () => {
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        owner: {
+          email: 'integration-owner@lux.test'
+        }
+      }
+    });
+
+    const schedule = await prisma.rentPaymentSchedule.create({
+      data: {
+        title: 'Protected owner schedule',
+        frequency: 'MONTHLY',
+        amount: '700',
+        currency: 'OMR',
+        startDate: new Date('2026-09-01T00:00:00.000Z'),
+        dueDayOfMonth: 1,
+        listingId: listing.id,
+        createdById: listing.ownerId,
+        landlordUserId: listing.ownerId
+      }
+    });
+
+    await request(app)
+      .post(`/api/rent-payments/schedules/${schedule.id}/due-items`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        dueDate: '2026-09-01T00:00:00.000Z',
+        amount: 700,
+        currency: 'OMR'
+      })
+      .expect(403);
+  });
+
+  it('blocks a customer from marking another user rent due item as paid', async () => {
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        owner: {
+          email: 'integration-owner@lux.test'
+        }
+      }
+    });
+
+    const schedule = await prisma.rentPaymentSchedule.create({
+      data: {
+        title: 'Protected paid schedule',
+        frequency: 'MONTHLY',
+        amount: '800',
+        currency: 'OMR',
+        startDate: new Date('2026-10-01T00:00:00.000Z'),
+        dueDayOfMonth: 1,
+        listingId: listing.id,
+        createdById: listing.ownerId,
+        landlordUserId: listing.ownerId
+      }
+    });
+
+    const dueItem = await prisma.rentPaymentDueItem.create({
+      data: {
+        scheduleId: schedule.id,
+        dueDate: new Date('2026-10-01T00:00:00.000Z'),
+        amount: '800',
+        currency: 'OMR'
+      }
+    });
+
+    await request(app)
+      .patch(`/api/rent-payments/due-items/${dueItem.id}/paid`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        paymentProvider: 'BANK_TRANSFER',
+        paymentReference: 'RENT-STAGE9-CUSTOMER-BLOCKED',
+        receiptNumber: 'RECEIPT-STAGE9-CUSTOMER-BLOCKED'
+      })
+      .expect(403);
+
+    const unchangedDueItem = await prisma.rentPaymentDueItem.findUniqueOrThrow({
+      where: {
+        id: dueItem.id
+      }
+    });
+
+    expect(unchangedDueItem.status).toBe('PENDING');
+    expect(unchangedDueItem.paymentReference).toBeNull();
+    expect(unchangedDueItem.receiptNumber).toBeNull();
+  });
+
+  it('lets an admin manage any rent schedule and mark due items paid', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const scheduleResponse = await request(app)
+      .post('/api/rent-payments/schedules')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        title: 'Admin rent schedule',
+        frequency: 'ONE_TIME',
+        amount: 900,
+        currency: 'OMR',
+        startDate: '2026-11-01T00:00:00.000Z',
+        landlordUserId: owner.id
+      })
+      .expect(201);
+
+    const dueItemResponse = await request(app)
+      .post(`/api/rent-payments/schedules/${scheduleResponse.body.schedule.id}/due-items`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        dueDate: '2026-11-01T00:00:00.000Z',
+        amount: 900,
+        currency: 'OMR'
+      })
+      .expect(201);
+
+    await request(app)
+      .patch(`/api/rent-payments/due-items/${dueItemResponse.body.dueItem.id}/paid`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        paymentProvider: 'ADMIN_RECORDED',
+        paymentReference: 'RENT-STAGE9-ADMIN-001',
+        receiptNumber: 'RECEIPT-STAGE9-ADMIN-001'
+      })
+      .expect(200);
   });
 });
 
