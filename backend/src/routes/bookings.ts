@@ -95,6 +95,12 @@ const bookingStatusSchema = z
   })
   .strict();
 
+const ownerBookingStatusSchema = z
+  .object({
+    status: z.enum(['OWNER_APPROVED', 'OWNER_REJECTED'])
+  })
+  .strict();
+
 const paramsSchema = z.object({
   id: z.string().min(1)
 });
@@ -278,6 +284,22 @@ function assertBookingAccess(booking: { userId: string }, user: { id: string; ro
   if (booking.userId !== user.id && user.role !== 'ADMIN') {
     throw new AppError(403, 'You do not have access to this booking');
   }
+}
+
+function assertBookingOwnerAccess(
+  booking: {
+    listing?: { ownerId: string } | null;
+    activity?: { ownerId: string } | null;
+  },
+  user: { id: string; role: string }
+) {
+  if (user.role === 'ADMIN') return;
+
+  if (booking.listing?.ownerId === user.id || booking.activity?.ownerId === user.id) {
+    return;
+  }
+
+  throw new AppError(403, 'You do not have owner access to this booking');
 }
 
 function getBookingPaymentTitle(booking: any) {
@@ -480,6 +502,42 @@ bookingsRouter.post('/', requireAuth(), async (req, res, next) => {
 
     res.status(201).json({
       booking
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bookingsRouter.patch('/:id/owner-status', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = paramsSchema.parse(req.params);
+    const { status } = ownerBookingStatusSchema.parse(req.body);
+
+    const booking = await prisma.booking.findUnique({
+      where: {
+        id
+      },
+      include: bookingInclude
+    });
+
+    if (!booking) {
+      throw new AppError(404, 'Booking not found');
+    }
+
+    assertBookingOwnerAccess(booking, req.user!);
+
+    const updatedBooking = await prisma.booking.update({
+      where: {
+        id
+      },
+      data: {
+        status
+      },
+      include: bookingInclude
+    });
+
+    res.json({
+      booking: updatedBooking
     });
   } catch (error) {
     next(error);

@@ -64,6 +64,10 @@ export type CreateBookingPayload = {
   commission?: number;
 };
 
+export type UpdateOwnerBookingStatusPayload = {
+  status: Extract<BookingStatus, 'OWNER_APPROVED' | 'OWNER_REJECTED'>;
+};
+
 export async function createBooking(payload: CreateBookingPayload, token: string) {
   return apiClient.post<{ booking: ApiBooking }>('/api/bookings', payload, { token });
 }
@@ -80,6 +84,18 @@ export async function syncBookingPayment(bookingId: string, token: string) {
   return apiClient.post<{ booking: ApiBooking; payment: ApiPayment }>(
     `/api/bookings/${bookingId}/payments/sync`,
     {},
+    { token }
+  );
+}
+
+export async function updateOwnerBookingStatus(
+  bookingId: string,
+  payload: UpdateOwnerBookingStatusPayload,
+  token: string
+) {
+  return apiClient.patch<{ booking: ApiBooking }>(
+    `/api/bookings/${bookingId}/owner-status`,
+    payload,
     { token }
   );
 }

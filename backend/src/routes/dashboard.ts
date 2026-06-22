@@ -57,14 +57,33 @@ const bookingInclude = {
   payment: true
 };
 
+function getReceivedBookingsWhere(userId: string) {
+  return {
+    OR: [
+      {
+        listing: {
+          ownerId: userId
+        }
+      },
+      {
+        activity: {
+          ownerId: userId
+        }
+      }
+    ]
+  };
+}
+
 dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
   try {
     const userId = req.user!.id;
+    const receivedBookingsWhere = getReceivedBookingsWhere(userId);
 
     const [
       listings,
       activities,
       bookings,
+      receivedBookings,
       totalListings,
       pendingListings,
       approvedListings,
@@ -77,6 +96,8 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
       receivedListingInquiries,
       receivedActivityInquiries,
       submittedBookings,
+      receivedBookingsCount,
+      receivedPendingBookings,
       pendingPayments
     ] = await Promise.all([
       prisma.listing.findMany({
@@ -105,6 +126,15 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
         where: {
           userId
         },
+        include: bookingInclude,
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: 8
+      }),
+
+      prisma.booking.findMany({
+        where: receivedBookingsWhere,
         include: bookingInclude,
         orderBy: {
           createdAt: 'desc'
@@ -195,6 +225,17 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
       }),
 
       prisma.booking.count({
+        where: receivedBookingsWhere
+      }),
+
+      prisma.booking.count({
+        where: {
+          ...receivedBookingsWhere,
+          status: 'PENDING'
+        }
+      }),
+
+      prisma.booking.count({
         where: {
           userId,
           payment: {
@@ -217,11 +258,14 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
         submittedInquiries,
         receivedInquiries: receivedListingInquiries + receivedActivityInquiries,
         submittedBookings,
+        receivedBookings: receivedBookingsCount,
+        receivedPendingBookings,
         pendingPayments
       },
       listings,
       activities,
-      bookings
+      bookings,
+      receivedBookings
     });
   } catch (error) {
     next(error);

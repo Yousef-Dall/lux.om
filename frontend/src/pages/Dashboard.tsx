@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import {
   createPaymentSession,
   syncBookingPayment,
+  updateOwnerBookingStatus,
   type ApiBooking
 } from '../api/bookings';
 import { ApiError } from '../api/client';
@@ -31,17 +32,43 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { formatMarketplacePrice } from '../utils/format';
 
 function getStatusClass(status?: string) {
-  if (status === 'APPROVED' || status === 'PAID') return 'approved';
-  if (status === 'REJECTED' || status === 'FAILED' || status === 'OWNER_REJECTED') return 'rejected';
+  if (
+    status === 'APPROVED' ||
+    status === 'PAID' ||
+    status === 'OWNER_APPROVED' ||
+    status === 'ADMIN_CONFIRMED'
+  ) {
+    return 'approved';
+  }
+
+  if (
+    status === 'REJECTED' ||
+    status === 'FAILED' ||
+    status === 'OWNER_REJECTED' ||
+    status === 'CANCELLED'
+  ) {
+    return 'rejected';
+  }
+
   return 'pending';
 }
 
 function StatusIcon({ status }: { status?: string }) {
-  if (status === 'APPROVED' || status === 'PAID') {
+  if (
+    status === 'APPROVED' ||
+    status === 'PAID' ||
+    status === 'OWNER_APPROVED' ||
+    status === 'ADMIN_CONFIRMED'
+  ) {
     return <CheckCircle2 size={14} aria-hidden="true" />;
   }
 
-  if (status === 'REJECTED' || status === 'FAILED' || status === 'OWNER_REJECTED') {
+  if (
+    status === 'REJECTED' ||
+    status === 'FAILED' ||
+    status === 'OWNER_REJECTED' ||
+    status === 'CANCELLED'
+  ) {
     return <XCircle size={14} aria-hidden="true" />;
   }
 
@@ -98,6 +125,27 @@ function getBookingTypeLabel(booking: ApiBooking, language: 'en' | 'ar') {
   return language === 'ar' ? 'حجز' : 'Booking';
 }
 
+
+function getBookingStatusLabel(status: string | undefined, language: 'en' | 'ar') {
+  if (status === 'OWNER_APPROVED') {
+    return language === 'ar' ? 'موافقة المنظم' : 'Provider approved';
+  }
+
+  if (status === 'OWNER_REJECTED') {
+    return language === 'ar' ? 'رفض المنظم' : 'Provider rejected';
+  }
+
+  if (status === 'ADMIN_CONFIRMED') {
+    return language === 'ar' ? 'مؤكد من الإدارة' : 'Admin confirmed';
+  }
+
+  if (status === 'CANCELLED') {
+    return language === 'ar' ? 'ملغي' : 'Cancelled';
+  }
+
+  return language === 'ar' ? 'قيد المراجعة' : 'Pending';
+}
+
 function formatBookingDate(value: string | null | undefined, language: 'en' | 'ar') {
   if (!value) return '—';
 
@@ -151,6 +199,9 @@ export default function Dashboard() {
   const [paymentUpdatingId, setPaymentUpdatingId] = useState('');
   const [paymentError, setPaymentError] = useState('');
   const [paymentSuccess, setPaymentSuccess] = useState('');
+  const [bookingUpdatingId, setBookingUpdatingId] = useState('');
+  const [bookingActionError, setBookingActionError] = useState('');
+  const [bookingActionSuccess, setBookingActionSuccess] = useState('');
 
   const copy =
     language === 'ar'
@@ -192,6 +243,8 @@ export default function Dashboard() {
           approvedCount: 'مقبول',
           rejectedCount: 'مرفوض',
           myBookings: 'حجوزاتي',
+          receivedBookingsTitle: 'طلبات الحجز المستلمة',
+          receivedBookingsText: 'راجع طلبات الحجز القادمة لعقاراتك وأنشطتك ووافق عليها أو ارفضها.',
           bookingDate: 'تاريخ الحجز',
           guests: 'ضيوف',
           payment: 'الدفع',
@@ -214,7 +267,16 @@ export default function Dashboard() {
           paymentStarted: 'تم تجهيز الدفع. سيتم تحويلك إلى صفحة الدفع الآمنة من ثواني.',
           paymentSynced: 'تم تحديث حالة الدفع بنجاح.',
           paymentActionError: 'تعذر تنفيذ إجراء الدفع.',
-          emptyBookings: 'لا توجد حجوزات مرتبطة بحسابك بعد.'
+          approveBooking: 'قبول الطلب',
+          rejectBooking: 'رفض الطلب',
+          bookingApproved: 'تم قبول طلب الحجز.',
+          bookingRejected: 'تم رفض طلب الحجز.',
+          bookingActionError: 'تعذر تحديث حالة الحجز.',
+          customer: 'العميل',
+          contact: 'التواصل',
+          preferredTime: 'الوقت المفضل',
+          emptyBookings: 'لا توجد حجوزات مرتبطة بحسابك بعد.',
+          emptyReceivedBookings: 'لا توجد طلبات حجز مستلمة حالياً.'
         }
       : {
           ownerWorkspace: 'Owner and partner workspace',
@@ -254,6 +316,8 @@ export default function Dashboard() {
           approvedCount: 'Approved',
           rejectedCount: 'Rejected',
           myBookings: 'My bookings',
+          receivedBookingsTitle: 'Received booking requests',
+          receivedBookingsText: 'Review incoming booking requests for your listings and activities, then approve or reject them.',
           bookingDate: 'Booking date',
           guests: 'guests',
           payment: 'Payment',
@@ -276,7 +340,16 @@ export default function Dashboard() {
           paymentStarted: 'Checkout is ready. Redirecting you to Thawani secure payment page.',
           paymentSynced: 'Payment status refreshed successfully.',
           paymentActionError: 'Could not complete the payment action.',
-          emptyBookings: 'No bookings are connected to your account yet.'
+          approveBooking: 'Approve request',
+          rejectBooking: 'Reject request',
+          bookingApproved: 'Booking request approved.',
+          bookingRejected: 'Booking request rejected.',
+          bookingActionError: 'Could not update the booking status.',
+          customer: 'Customer',
+          contact: 'Contact',
+          preferredTime: 'Preferred time',
+          emptyBookings: 'No bookings are connected to your account yet.',
+          emptyReceivedBookings: 'No received booking requests yet.'
         };
 
   async function refreshDashboard() {
@@ -324,6 +397,56 @@ export default function Dashboard() {
       isMounted = false;
     };
   }, [token, language, copy.error]);
+
+
+  async function runOwnerBookingAction(
+    bookingId: string,
+    status: 'OWNER_APPROVED' | 'OWNER_REJECTED'
+  ) {
+    if (!token) return;
+
+    try {
+      setBookingUpdatingId(bookingId);
+      setBookingActionError('');
+      setBookingActionSuccess('');
+
+      const response = await updateOwnerBookingStatus(
+        bookingId,
+        {
+          status
+        },
+        token
+      );
+
+      setDashboardData((current) => {
+        if (!current) return current;
+
+        return {
+          ...current,
+          bookings: current.bookings.map((booking) =>
+            booking.id === bookingId ? response.booking : booking
+          ),
+          receivedBookings: current.receivedBookings.map((booking) =>
+            booking.id === bookingId ? response.booking : booking
+          )
+        };
+      });
+
+      setBookingActionSuccess(
+        status === 'OWNER_APPROVED' ? copy.bookingApproved : copy.bookingRejected
+      );
+    } catch (error) {
+      console.error(error);
+
+      if (error instanceof ApiError) {
+        setBookingActionError(error.message);
+      } else {
+        setBookingActionError(copy.bookingActionError);
+      }
+    } finally {
+      setBookingUpdatingId('');
+    }
+  }
 
   async function runPaymentAction(
     bookingId: string,
@@ -380,6 +503,7 @@ export default function Dashboard() {
   const listings = dashboardData?.listings ?? [];
   const activities = dashboardData?.activities ?? [];
   const bookings = dashboardData?.bookings ?? [];
+  const receivedBookings = dashboardData?.receivedBookings ?? [];
 
   return (
     <section className="page-section container dashboard-page">
@@ -498,6 +622,117 @@ export default function Dashboard() {
                 {stats?.submittedBookings ?? 0} {copy.myBookings.toLowerCase()}
               </small>
             </article>
+          </div>
+
+
+          <div className="table-card table-card--premium dashboard-received-bookings-card">
+            <div className="table-card__header">
+              <div>
+                <p className="eyebrow">{copy.receivedBookingsTitle}</p>
+                <h2>{copy.receivedBookingsTitle}</h2>
+                <p>{copy.receivedBookingsText}</p>
+              </div>
+            </div>
+
+            {bookingActionError ? (
+              <p className="form-error" role="alert">
+                {bookingActionError}
+              </p>
+            ) : null}
+
+            {bookingActionSuccess ? (
+              <p className="form-success" role="status">
+                {bookingActionSuccess}
+              </p>
+            ) : null}
+
+            {receivedBookings.length > 0 ? (
+              <div className="dashboard-received-bookings-list">
+                {receivedBookings.map((booking) => (
+                  <article className="dashboard-received-booking-item" key={booking.id}>
+                    <div>
+                      <div className="dashboard-booking-kicker">
+                        <span>{getBookingTypeLabel(booking, language)}</span>
+
+                        <span className={`status-pill ${getStatusClass(booking.status)}`}>
+                          <StatusIcon status={booking.status} />
+                          {getBookingStatusLabel(booking.status, language)}
+                        </span>
+                      </div>
+
+                      <strong>{getBookingTitle(booking, language)}</strong>
+                      <span>{getBookingSubtitle(booking, language)}</span>
+
+                      <div className="dashboard-booking-meta">
+                        <span>
+                          <CalendarDays size={15} aria-hidden="true" />
+                          {copy.bookingDate}: {formatBookingDate(booking.scheduledDate, language)}
+                        </span>
+
+                        {booking.preferredTime ? (
+                          <span>
+                            <Clock3 size={15} aria-hidden="true" />
+                            {copy.preferredTime}: {booking.preferredTime}
+                          </span>
+                        ) : null}
+
+                        <span>
+                          <Users size={15} aria-hidden="true" />
+                          {booking.guests} {copy.guests}
+                        </span>
+
+                        <span>
+                          <CreditCard size={15} aria-hidden="true" />
+                          {copy.amount}: {formatPaymentAmount(booking, copy.paymentNotRequired)}
+                        </span>
+                      </div>
+
+                      <div className="dashboard-received-booking-contact">
+                        <span>
+                          <strong>{copy.customer}:</strong>{' '}
+                          {booking.contactName || '—'}
+                        </span>
+
+                        <span>
+                          <strong>{copy.contact}:</strong>{' '}
+                          {booking.contactEmail || booking.contactPhone || '—'}
+                        </span>
+                      </div>
+
+                      {booking.message ? (
+                        <p className="dashboard-booking-note">{booking.message}</p>
+                      ) : null}
+                    </div>
+
+                    <div className="dashboard-received-booking-actions">
+                      <button
+                        className="button-link button-link--primary"
+                        type="button"
+                        disabled={bookingUpdatingId === booking.id}
+                        onClick={() => void runOwnerBookingAction(booking.id, 'OWNER_APPROVED')}
+                      >
+                        <CheckCircle2 size={16} aria-hidden="true" />
+                        {copy.approveBooking}
+                      </button>
+
+                      <button
+                        className="button-link button-link--secondary"
+                        type="button"
+                        disabled={bookingUpdatingId === booking.id}
+                        onClick={() => void runOwnerBookingAction(booking.id, 'OWNER_REJECTED')}
+                      >
+                        <XCircle size={16} aria-hidden="true" />
+                        {copy.rejectBooking}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p>{copy.emptyReceivedBookings}</p>
+              </div>
+            )}
           </div>
 
           <div className="table-card table-card--premium dashboard-bookings-card dashboard-bookings-card--enhanced">

@@ -16,6 +16,8 @@ export type DashboardStats = {
   submittedInquiries: number;
   receivedInquiries: number;
   submittedBookings: number;
+  receivedBookings: number;
+  receivedPendingBookings: number;
   pendingPayments: number;
 };
 
@@ -24,6 +26,7 @@ type ApiDashboardResponse = {
   listings: ApiListing[];
   activities: ApiActivity[];
   bookings: ApiBooking[];
+  receivedBookings: ApiBooking[];
 };
 
 export type DashboardData = {
@@ -31,6 +34,7 @@ export type DashboardData = {
   listings: Listing[];
   activities: Activity[];
   bookings: ApiBooking[];
+  receivedBookings: ApiBooking[];
 };
 
 export async function getDashboardData(
@@ -45,6 +49,7 @@ export async function getDashboardData(
     stats: response.stats,
     listings: response.listings.map((listing) => mapListing(listing, language)),
     activities: response.activities.map((activity) => mapActivity(activity, language)),
-    bookings: response.bookings ?? []
+    bookings: response.bookings ?? [],
+    receivedBookings: response.receivedBookings ?? []
   };
 }
