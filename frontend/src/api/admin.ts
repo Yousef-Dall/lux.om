@@ -11,6 +11,43 @@ import type {
 } from '../types';
 
 
+
+export type AdminReportFilters = {
+  status?: BookingStatus | 'ALL';
+  paymentStatus?: PaymentStatus | 'ALL';
+  payout?: 'ALL' | 'READY' | 'BLOCKED';
+  from?: string;
+  to?: string;
+};
+
+function buildAdminReportQuery(filters?: AdminReportFilters) {
+  const searchParams = new URLSearchParams();
+
+  if (filters?.status && filters.status !== 'ALL') {
+    searchParams.set('status', filters.status);
+  }
+
+  if (filters?.paymentStatus && filters.paymentStatus !== 'ALL') {
+    searchParams.set('paymentStatus', filters.paymentStatus);
+  }
+
+  if (filters?.payout && filters.payout !== 'ALL') {
+    searchParams.set('payout', filters.payout);
+  }
+
+  if (filters?.from) {
+    searchParams.set('from', filters.from);
+  }
+
+  if (filters?.to) {
+    searchParams.set('to', filters.to);
+  }
+
+  const query = searchParams.toString();
+
+  return query ? `?${query}` : '';
+}
+
 export type AdminFinanceLedgerItem = {
   id: string;
   bookingId: string;
@@ -159,12 +196,50 @@ export async function getAdminInquiries(token: string) {
   return apiClient.get<AdminInquiriesResponse>('/api/inquiries/admin/all', { token });
 }
 
-export async function getAdminBookings(token: string) {
-  return apiClient.get<AdminBookingsResponse>('/api/bookings/admin/all', { token });
+export async function getAdminBookings(token: string, filters?: AdminReportFilters) {
+  return apiClient.get<AdminBookingsResponse>(
+    `/api/bookings/admin/all${buildAdminReportQuery(filters)}`,
+    { token }
+  );
 }
 
-export async function getAdminFinance(token: string) {
-  return apiClient.get<AdminFinanceResponse>('/api/bookings/admin/finance', { token });
+export async function getAdminFinance(token: string, filters?: AdminReportFilters) {
+  return apiClient.get<AdminFinanceResponse>(
+    `/api/bookings/admin/finance${buildAdminReportQuery(filters)}`,
+    { token }
+  );
+}
+
+export function getAdminBookingsExportPath(filters?: AdminReportFilters) {
+  return `/api/bookings/admin/export.csv${buildAdminReportQuery(filters)}`;
+}
+
+export function getAdminFinanceExportPath(filters?: AdminReportFilters) {
+  return `/api/bookings/admin/finance/export.csv${buildAdminReportQuery(filters)}`;
+}
+
+export async function exportAdminBookingsCsv(
+  token: string,
+  filters?: AdminReportFilters
+) {
+  return apiClient.get<string>(getAdminBookingsExportPath(filters), {
+    token,
+    headers: {
+      Accept: 'text/csv'
+    }
+  });
+}
+
+export async function exportAdminFinanceCsv(
+  token: string,
+  filters?: AdminReportFilters
+) {
+  return apiClient.get<string>(getAdminFinanceExportPath(filters), {
+    token,
+    headers: {
+      Accept: 'text/csv'
+    }
+  });
 }
 
 export async function getAdminTravelAgencies(token: string) {

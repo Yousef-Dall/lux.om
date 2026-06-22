@@ -22,6 +22,8 @@ import {
   createAdminTravelAgency,
   deleteAdminDeveloper,
   deleteAdminTravelAgency,
+  exportAdminBookingsCsv,
+  exportAdminFinanceCsv,
   getAdminActivities,
   getAdminBookings,
   getAdminDevelopers,
@@ -36,6 +38,7 @@ import {
   updateAdminListingStatus,
   updateAdminTravelAgency,
   type AdminFinance,
+  type AdminReportFilters,
   type UpdateDeveloperPayload,
   type UpdateTravelAgencyPayload
 } from '../api/admin';
@@ -441,6 +444,12 @@ const [loading, setLoading] = useState(true);
 const [loadError, setLoadError] = useState('');
 const [updatingId, setUpdatingId] = useState('');
 const [reviewStatusFilter, setReviewStatusFilter] = useState<ReviewStatusFilter>('ALL');
+const [adminBookingStatusFilter, setAdminBookingStatusFilter] = useState<BookingStatus | 'ALL'>('ALL');
+const [adminPaymentStatusFilter, setAdminPaymentStatusFilter] = useState<PaymentStatus | 'ALL'>('ALL');
+const [adminPayoutFilter, setAdminPayoutFilter] = useState<'ALL' | 'READY' | 'BLOCKED'>('ALL');
+const [adminReportFrom, setAdminReportFrom] = useState('');
+const [adminReportTo, setAdminReportTo] = useState('');
+const [exportingReport, setExportingReport] = useState<'bookings' | 'finance' | ''>('');
 
 const [creatingAgency, setCreatingAgency] = useState(false);
 const [agencyFormError, setAgencyFormError] = useState('');
@@ -662,7 +671,18 @@ verifiedDevelopers: 'Verified developers',
           amount: 'المبلغ',
           commission: 'العمولة',
           payout: 'مستحق المنظم',
-          noFinance: 'لا توجد مدفوعات بعد.'
+          noFinance: 'لا توجد مدفوعات بعد.',
+          filters: 'فلاتر التقارير',
+          allBookingStatuses: 'كل حالات الحجز',
+          allPaymentStatuses: 'كل حالات الدفع',
+          allPayouts: 'كل حالات الصرف',
+          payoutReadyOnly: 'جاهز للصرف فقط',
+          payoutBlockedOnly: 'محجوز للمراجعة فقط',
+          fromDate: 'من تاريخ',
+          toDate: 'إلى تاريخ',
+          exportBookings: 'تصدير الحجوزات CSV',
+          exportFinance: 'تصدير المالية CSV',
+          exporting: 'جاري التصدير...'
         }
       : {
           title: 'Finance ledger',
@@ -683,7 +703,18 @@ verifiedDevelopers: 'Verified developers',
           amount: 'Amount',
           commission: 'Commission',
           payout: 'Provider payout',
-          noFinance: 'No payments yet.'
+          noFinance: 'No payments yet.',
+          filters: 'Report filters',
+          allBookingStatuses: 'All booking statuses',
+          allPaymentStatuses: 'All payment statuses',
+          allPayouts: 'All payout states',
+          payoutReadyOnly: 'Payout ready only',
+          payoutBlockedOnly: 'Blocked only',
+          fromDate: 'From date',
+          toDate: 'To date',
+          exportBookings: 'Export bookings CSV',
+          exportFinance: 'Export finance CSV',
+          exporting: 'Exporting...'
         };
 
   const bookingCopy =
@@ -769,6 +800,61 @@ verifiedDevelopers: 'Verified developers',
           noAuditEvents: 'No audit events yet'
         };
 
+
+  const adminReportFilters = useMemo<AdminReportFilters>(
+    () => ({
+      status: adminBookingStatusFilter,
+      paymentStatus: adminPaymentStatusFilter,
+      payout: adminPayoutFilter,
+      from: adminReportFrom,
+      to: adminReportTo
+    }),
+    [
+      adminBookingStatusFilter,
+      adminPaymentStatusFilter,
+      adminPayoutFilter,
+      adminReportFrom,
+      adminReportTo
+    ]
+  );
+
+  function downloadAdminCsv(filename: string, csv: string) {
+    const blob = new Blob([csv], {
+      type: 'text/csv;charset=utf-8'
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = filename;
+    link.click();
+
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportAdminReport(type: 'bookings' | 'finance') {
+    if (!token) return;
+
+    try {
+      setExportingReport(type);
+
+      const csv =
+        type === 'bookings'
+          ? await exportAdminBookingsCsv(token, adminReportFilters)
+          : await exportAdminFinanceCsv(token, adminReportFilters);
+
+      downloadAdminCsv(
+        type === 'bookings' ? 'lux-om-bookings.csv' : 'lux-om-finance-ledger.csv',
+        csv
+      );
+    } catch (error) {
+      console.error(error);
+      alert(error instanceof ApiError || error instanceof Error ? error.message : copy.error);
+    } finally {
+      setExportingReport('');
+    }
+  }
+
   async function loadAdminData() {
     if (!token) return;
 
@@ -788,8 +874,8 @@ verifiedDevelopers: 'Verified developers',
   getAdminListings(token),
   getAdminActivities(token),
   getAdminInquiries(token),
-  getAdminBookings(token),
-  getAdminFinance(token),
+  getAdminBookings(token, adminReportFilters),
+  getAdminFinance(token, adminReportFilters),
   getAdminTravelAgencies(token),
   getAdminDevelopers(token)
 ]);
@@ -817,7 +903,15 @@ setDevelopers(developersResponse.developers);
   useEffect(() => {
     void loadAdminData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, language]);
+  }, [
+    token,
+    language,
+    adminBookingStatusFilter,
+    adminPaymentStatusFilter,
+    adminPayoutFilter,
+    adminReportFrom,
+    adminReportTo
+  ]);
 
 const metrics = useMemo(() => {
   const approvedListings = listings.filter((listing) =>
@@ -1430,6 +1524,109 @@ async function deleteDeveloperCompany(developerId: string) {
   <strong>{metrics.verifiedDevelopers}</strong>
   <small>{copy.verifiedDevelopers}</small>
 </article>
+          </div>
+
+
+          <div className="table-card table-card--premium admin-report-filters-card">
+            <div className="table-card__header">
+              <div>
+                <p className="eyebrow">{adminFinanceCopy.filters}</p>
+                <h2>{adminFinanceCopy.filters}</h2>
+              </div>
+
+              <div className="admin-report-export-actions">
+                <button
+                  type="button"
+                  className="button-link button-link--secondary"
+                  disabled={exportingReport !== ''}
+                  onClick={() => void exportAdminReport('bookings')}
+                >
+                  {exportingReport === 'bookings'
+                    ? adminFinanceCopy.exporting
+                    : adminFinanceCopy.exportBookings}
+                </button>
+
+                <button
+                  type="button"
+                  className="button-link button-link--primary"
+                  disabled={exportingReport !== ''}
+                  onClick={() => void exportAdminReport('finance')}
+                >
+                  {exportingReport === 'finance'
+                    ? adminFinanceCopy.exporting
+                    : adminFinanceCopy.exportFinance}
+                </button>
+              </div>
+            </div>
+
+            <div className="admin-report-filters-grid">
+              <label>
+                <span>{bookingCopy.bookingStatus}</span>
+                <select
+                  value={adminBookingStatusFilter}
+                  onChange={(event) =>
+                    setAdminBookingStatusFilter(event.target.value as BookingStatus | 'ALL')
+                  }
+                >
+                  <option value="ALL">{adminFinanceCopy.allBookingStatuses}</option>
+                  <option value="PENDING">{bookingCopy.pending}</option>
+                  <option value="OWNER_APPROVED">{bookingCopy.ownerApproved}</option>
+                  <option value="OWNER_REJECTED">{bookingCopy.ownerRejected}</option>
+                  <option value="ADMIN_CONFIRMED">{bookingCopy.adminConfirmed}</option>
+                  <option value="CANCELLATION_REQUESTED">{bookingCopy.cancellationRequested}</option>
+                  <option value="CANCELLED">{bookingCopy.cancelled}</option>
+                </select>
+              </label>
+
+              <label>
+                <span>{bookingCopy.paymentStatus}</span>
+                <select
+                  value={adminPaymentStatusFilter}
+                  onChange={(event) =>
+                    setAdminPaymentStatusFilter(event.target.value as PaymentStatus | 'ALL')
+                  }
+                >
+                  <option value="ALL">{adminFinanceCopy.allPaymentStatuses}</option>
+                  <option value="PENDING">{bookingCopy.paymentPending}</option>
+                  <option value="PAID">{bookingCopy.paymentPaid}</option>
+                  <option value="FAILED">{bookingCopy.paymentFailed}</option>
+                  <option value="REFUNDED">{bookingCopy.paymentRefunded}</option>
+                  <option value="NOT_REQUIRED">{bookingCopy.paymentNotRequired}</option>
+                </select>
+              </label>
+
+              <label>
+                <span>{adminFinanceCopy.payout}</span>
+                <select
+                  value={adminPayoutFilter}
+                  onChange={(event) =>
+                    setAdminPayoutFilter(event.target.value as 'ALL' | 'READY' | 'BLOCKED')
+                  }
+                >
+                  <option value="ALL">{adminFinanceCopy.allPayouts}</option>
+                  <option value="READY">{adminFinanceCopy.payoutReadyOnly}</option>
+                  <option value="BLOCKED">{adminFinanceCopy.payoutBlockedOnly}</option>
+                </select>
+              </label>
+
+              <label>
+                <span>{adminFinanceCopy.fromDate}</span>
+                <input
+                  type="date"
+                  value={adminReportFrom}
+                  onChange={(event) => setAdminReportFrom(event.target.value)}
+                />
+              </label>
+
+              <label>
+                <span>{adminFinanceCopy.toDate}</span>
+                <input
+                  type="date"
+                  value={adminReportTo}
+                  onChange={(event) => setAdminReportTo(event.target.value)}
+                />
+              </label>
+            </div>
           </div>
 
 

@@ -81,9 +81,156 @@ const bookingSchema = z
   });
 
 const adminBookingsQuerySchema = z.object({
-  take: z.coerce.number().int().min(1).max(100).default(100),
-  skip: z.coerce.number().int().min(0).default(0)
+  take: z.coerce.number().int().min(1).max(250).default(100),
+  skip: z.coerce.number().int().min(0).default(0),
+  status: z
+    .enum([
+      'PENDING',
+      'OWNER_APPROVED',
+      'OWNER_REJECTED',
+      'ADMIN_CONFIRMED',
+      'CANCELLATION_REQUESTED',
+      'CANCELLED'
+    ])
+    .optional(),
+  paymentStatus: z
+    .enum(['PENDING', 'PAID', 'FAILED', 'REFUNDED', 'NOT_REQUIRED'])
+    .optional(),
+  from: z.string().optional(),
+  to: z.string().optional()
 });
+
+const adminFinanceQuerySchema = z.object({
+  paymentStatus: z
+    .enum(['PENDING', 'PAID', 'FAILED', 'REFUNDED', 'NOT_REQUIRED'])
+    .optional(),
+  payout: z.enum(['ALL', 'READY', 'BLOCKED']).default('ALL'),
+  from: z.string().optional(),
+  to: z.string().optional()
+});
+
+
+function parseAdminReportDate(value?: string) {
+  if (!value) return undefined;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    throw new AppError(400, 'Invalid report date filter');
+  }
+
+  return date;
+}
+
+function getAdminReportDateRange(query: { from?: string; to?: string }) {
+  const from = parseAdminReportDate(query.from);
+  const to = parseAdminReportDate(query.to);
+
+  if (to) {
+    to.setHours(23, 59, 59, 999);
+  }
+
+  return {
+    from,
+    to
+  };
+}
+
+function createAdminBookingWhere(query: {
+  status?: string;
+  paymentStatus?: string;
+  from?: string;
+  to?: string;
+}) {
+  const where: any = {};
+  const dateRange = getAdminReportDateRange(query);
+
+  if (query.status) {
+    where.status = query.status;
+  }
+
+  if (query.paymentStatus) {
+    where.payment = {
+      status: query.paymentStatus
+    };
+  }
+
+  if (dateRange.from || dateRange.to) {
+    where.createdAt = {};
+
+    if (dateRange.from) {
+      where.createdAt.gte = dateRange.from;
+    }
+
+    if (dateRange.to) {
+      where.createdAt.lte = dateRange.to;
+    }
+  }
+
+  return where;
+}
+
+function createAdminFinanceWhere(query: {
+  paymentStatus?: string;
+  from?: string;
+  to?: string;
+}) {
+  const where: any = {};
+  const dateRange = getAdminReportDateRange(query);
+
+  if (query.paymentStatus) {
+    where.status = query.paymentStatus;
+  }
+
+  if (dateRange.from || dateRange.to) {
+    where.createdAt = {};
+
+    if (dateRange.from) {
+      where.createdAt.gte = dateRange.from;
+    }
+
+    if (dateRange.to) {
+      where.createdAt.lte = dateRange.to;
+    }
+  }
+
+  return where;
+}
+
+function filterFinanceLedgerByPayout(ledger: any[], payout: 'ALL' | 'READY' | 'BLOCKED') {
+  if (payout === 'READY') {
+    return ledger.filter((item) => item.payoutReady);
+  }
+
+  if (payout === 'BLOCKED') {
+    return ledger.filter((item) => item.payoutBlocked);
+  }
+
+  return ledger;
+}
+
+function escapeCsvCell(value: unknown) {
+  const text = value === null || value === undefined ? '' : String(value);
+
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+
+  return text;
+}
+
+function toCsv(headers: string[], rows: Array<Array<unknown>>) {
+  return [
+    headers.map(escapeCsvCell).join(','),
+    ...rows.map((row) => row.map(escapeCsvCell).join(','))
+  ].join('\n');
+}
+
+function sendCsv(res: any, filename: string, csv: string) {
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(`\uFEFF${csv}`);
+}
 
 const paymentStatusSchema = z
   .object({
@@ -1070,9 +1217,70 @@ bookingsRouter.post('/:id/payments/sync', requireAuth(), async (req, res, next) 
 });
 
 
-bookingsRouter.get('/admin/finance', requireAuth(), requireRole('ADMIN'), async (_req, res, next) => {
+
+bookingsRouter.get('/admin/finance/export.csv', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
   try {
+    const query = adminFinanceQuerySchema.parse(req.query);
+
     const payments = await prisma.payment.findMany({
+      where: createAdminFinanceWhere(query),
+      include: financePaymentInclude,
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: 1000
+    });
+
+    const finance = createFinanceLedger(payments);
+    const ledger = filterFinanceLedgerByPayout(finance.ledger, query.payout);
+
+    const csv = toCsv(
+      [
+        'payment_id',
+        'booking_id',
+        'booking_title',
+        'booking_status',
+        'payment_status',
+        'customer',
+        'provider',
+        'amount',
+        'commission',
+        'provider_payout',
+        'payout_ready',
+        'payout_blocked',
+        'paid_at',
+        'created_at'
+      ],
+      ledger.map((item) => [
+        item.id,
+        item.bookingId,
+        item.bookingTitle,
+        item.bookingStatus,
+        item.status,
+        item.customerName,
+        item.providerName,
+        item.amount,
+        item.commission,
+        item.providerPayoutAmount,
+        item.payoutReady,
+        item.payoutBlocked,
+        item.paidAt,
+        item.createdAt
+      ])
+    );
+
+    sendCsv(res, 'lux-om-finance-ledger.csv', csv);
+  } catch (error) {
+    next(error);
+  }
+});
+
+bookingsRouter.get('/admin/finance', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
+  try {
+    const query = adminFinanceQuerySchema.parse(req.query);
+
+    const payments = await prisma.payment.findMany({
+      where: createAdminFinanceWhere(query),
       include: financePaymentInclude,
       orderBy: {
         createdAt: 'desc'
@@ -1080,9 +1288,67 @@ bookingsRouter.get('/admin/finance', requireAuth(), requireRole('ADMIN'), async 
       take: 250
     });
 
+    const finance = createFinanceLedger(payments);
+
     res.json({
-      finance: createFinanceLedger(payments)
+      finance: {
+        ...finance,
+        ledger: filterFinanceLedgerByPayout(finance.ledger, query.payout)
+      }
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+bookingsRouter.get('/admin/export.csv', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
+  try {
+    const query = adminBookingsQuerySchema.parse(req.query);
+
+    const bookings = await prisma.booking.findMany({
+      where: createAdminBookingWhere(query),
+      include: bookingInclude,
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: 1000
+    });
+
+    const csv = toCsv(
+      [
+        'booking_id',
+        'booking_status',
+        'payment_status',
+        'booking_title',
+        'customer_name',
+        'customer_email',
+        'customer_phone',
+        'scheduled_date',
+        'preferred_time',
+        'guests',
+        'amount',
+        'commission',
+        'created_at'
+      ],
+      bookings.map((booking) => [
+        booking.id,
+        booking.status,
+        booking.payment?.status,
+        getBookingPaymentTitle(booking),
+        booking.contactName,
+        booking.contactEmail,
+        booking.contactPhone,
+        booking.scheduledDate?.toISOString(),
+        booking.preferredTime,
+        booking.guests,
+        booking.payment ? decimalToNumber(booking.payment.amount) : '',
+        booking.payment ? decimalToNumber(booking.payment.commission) : '',
+        booking.createdAt.toISOString()
+      ])
+    );
+
+    sendCsv(res, 'lux-om-bookings.csv', csv);
   } catch (error) {
     next(error);
   }
@@ -1093,6 +1359,7 @@ bookingsRouter.get('/admin/all', requireAuth(), requireRole('ADMIN'), async (req
     const query = adminBookingsQuerySchema.parse(req.query);
 
     const bookings = await prisma.booking.findMany({
+      where: createAdminBookingWhere(query),
       include: bookingInclude,
       orderBy: {
         createdAt: 'desc'

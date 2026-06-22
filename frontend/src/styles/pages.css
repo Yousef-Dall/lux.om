@@ -8040,3 +8040,45 @@ transition: none;
   color: #a4492f;
   font-weight: 900;
 }
+
+/* =========================================================
+   Stage 7.15 — admin report filters and exports
+   ========================================================= */
+
+.admin-report-filters-card {
+  margin-top: 1.25rem;
+}
+
+.admin-report-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: flex-end;
+}
+
+.admin-report-filters-grid {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.admin-report-filters-grid label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.admin-report-filters-grid span {
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.admin-report-filters-grid input,
+.admin-report-filters-grid select {
+  border: 1px solid rgba(7, 56, 62, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--color-primary);
+  font: inherit;
+  padding: 0.72rem 0.8rem;
+}
