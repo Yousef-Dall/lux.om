@@ -75,6 +75,10 @@ export function requireAuth(required = true) {
         throw new AppError(401, 'Unauthorized');
       }
 
+      if (payload.role !== user.role) {
+        throw new AppError(401, 'Unauthorized');
+      }
+
       req.user = user;
       return next();
     } catch (error) {

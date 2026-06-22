@@ -23,8 +23,24 @@ import {
 } from './storage/imageStorage';
 import { prisma } from './lib/prisma';
 
+
+const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: isProduction ? 25 : 500,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false
+});
+
+const uploadRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: isProduction ? 60 : 500,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false
+});
+
 export function createApp() {
   const app = express();
+  app.disable('x-powered-by');
   app.set('trust proxy', 1);
 
   app.use(
@@ -104,7 +120,7 @@ export function createApp() {
   }
 });
 
-  app.use('/api/auth', authRouter);
+  app.use('/api/auth', authRateLimiter, authRouter);
   app.use('/api/dashboard', dashboardRouter);
   app.use('/api/listings', listingsRouter);
   app.use('/api/activities', activitiesRouter);
@@ -114,7 +130,7 @@ export function createApp() {
   app.use('/api/inquiries', inquiriesRouter);
   app.use('/api/bookings', bookingsRouter);
   app.use('/api/notifications', notificationsRouter);
-  app.use('/api/uploads', uploadsRouter);
+  app.use('/api/uploads', uploadRateLimiter, uploadsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

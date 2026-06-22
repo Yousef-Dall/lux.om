@@ -342,6 +342,70 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+describe('security hardening', () => {
+  it('rejects stale JWTs when the stored user role changes', async () => {
+    const ownerUser = await prisma.user.findFirstOrThrow({
+      where: {
+        role: 'OWNER'
+      }
+    });
+
+    const staleOwnerToken = signToken(ownerUser);
+
+    try {
+      await prisma.user.update({
+        where: {
+          id: ownerUser.id
+        },
+        data: {
+          role: 'USER'
+        }
+      });
+
+      await request(app)
+        .post('/api/listings')
+        .set('Authorization', `Bearer ${staleOwnerToken}`)
+        .send({
+          title: 'Stale role listing',
+          titleEn: 'Stale role listing',
+          titleAr: 'إعلان بدور قديم',
+          description: 'This should not be created because the token role is stale.',
+          price: 'OMR 100',
+          city: 'Muscat',
+          location: 'Muscat',
+          propertyType: 'APARTMENT',
+          listingType: 'SALE',
+          bedrooms: 1,
+          bathrooms: 1,
+          areaSqm: 80
+        })
+        .expect(401);
+    } finally {
+      await prisma.user.update({
+        where: {
+          id: ownerUser.id
+        },
+        data: {
+          role: 'OWNER'
+        }
+      });
+    }
+  });
+
+  it('blocks non-admin users from admin booking finance reports', async () => {
+    await request(app)
+      .get('/api/bookings/admin/finance')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(403);
+
+    await request(app)
+      .get('/api/bookings/admin/finance/export.csv')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(403);
+  });
+
+});
+
 describe('GET /api/listings', () => {
   it('returns approved listings with full pagination metadata', async () => {
     const response = await request(app)
