@@ -65,9 +65,7 @@ const bookingSchema = z
     contactName: z.string().trim().min(2).max(100).optional(),
     contactEmail: z.string().trim().email().max(160).optional(),
     contactPhone: z.string().trim().max(40).optional(),
-    message: z.string().trim().max(1000).optional(),
-    amount: z.coerce.number().min(0).default(0),
-    commission: z.coerce.number().min(0).default(0)
+    message: z.string().trim().max(1000).optional()
   })
   .strict()
   .superRefine((data, context) => {
@@ -667,19 +665,7 @@ function calculateActivityPayment(activity: {
   };
 }
 
-function createManualPayment(amount: number, commission: number) {
-  const normalizedAmount = toMoney(amount);
-  const normalizedCommission = toMoney(commission);
-  const paymentRequired = normalizedAmount > 0;
 
-  return {
-    amount: normalizedAmount,
-    commission: normalizedCommission,
-    status: paymentRequired ? ('PENDING' as const) : ('NOT_REQUIRED' as const),
-    provider: paymentRequired ? CHECKOUT_PROVIDER : null,
-    reference: paymentRequired ? createPaymentReference() : null
-  };
-}
 
 function assertBookingAccess(booking: { userId: string }, user: { id: string; role: string }) {
   if (booking.userId !== user.id && user.role !== 'ADMIN') {
@@ -868,7 +854,13 @@ bookingsRouter.post('/', requireAuth(), async (req, res, next) => {
         throw new AppError(400, 'You cannot create a booking request for your own listing');
       }
 
-      const payment = createManualPayment(data.amount, data.commission);
+       const payment = {
+  amount: 0,
+  commission: 0,
+  status: 'NOT_REQUIRED' as const,
+  provider: null,
+  reference: null
+};
 
       const booking = await prisma.booking.create({
         data: {

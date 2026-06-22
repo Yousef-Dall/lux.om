@@ -906,6 +906,106 @@ describe('POST /api/bookings', () => {
     expect(response.body.booking.payment.reference).toEqual(expect.any(String));
   });
 
+    it('creates a listing booking request with payment not required', async () => {
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        ownerId: {
+          not: customer.id
+        }
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        listingId: listing.id,
+        scheduledDate: '2026-07-16',
+        preferredTime: '11:00',
+        guests: 1,
+        contactName: 'Integration Customer',
+        contactEmail: 'customer@lux.test',
+        contactPhone: '+96890000000',
+        message: 'I would like to arrange a viewing.'
+      })
+      .expect(201);
+
+    expect(response.body.booking).toMatchObject({
+      listingId: listing.id,
+      activityId: null,
+      status: 'PENDING',
+      guests: 1,
+      preferredTime: '11:00',
+      contactName: 'Integration Customer',
+      contactEmail: 'customer@lux.test',
+      contactPhone: '+96890000000',
+      message: 'I would like to arrange a viewing.'
+    });
+
+    expect(response.body.booking.payment).toMatchObject({
+      status: 'NOT_REQUIRED',
+      provider: null,
+      reference: null
+    });
+    expect(Number(response.body.booking.payment.amount)).toBe(0);
+    expect(Number(response.body.booking.payment.commission)).toBe(0);
+  });
+
+  it('rejects listing booking payloads with client-controlled payment amounts', async () => {
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        ownerId: {
+          not: customer.id
+        }
+      }
+    });
+
+    await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        listingId: listing.id,
+        guests: 1,
+        amount: 999,
+        commission: 99
+      })
+      .expect(400);
+  });
+
+  it('rejects activity booking payloads with client-controlled payment amounts', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-07-17',
+        guests: 1,
+        amount: 1,
+        commission: 0
+      })
+      .expect(400);
+  });
+
   it('creates notification and audit records for a new booking request', async () => {
     const activity = await prisma.activity.findUniqueOrThrow({
       where: {

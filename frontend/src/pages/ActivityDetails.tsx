@@ -355,20 +355,18 @@ try {
   setBookingSuccess('');
 
   await createBooking(
-    {
-      activityId: activity.id,
-      scheduledDate: bookingDate,
-      preferredTime: bookingTime || undefined,
-      guests: Number(bookingGuests) || 1,
-      contactName: bookingName.trim(),
-      contactEmail: bookingEmail.trim(),
-      contactPhone: bookingPhone.trim() || undefined,
-      message: bookingMessage.trim() || undefined,
-      amount: 0,
-      commission: 0
-    },
-    token
-  );
+  {
+    activityId: activity.id,
+    scheduledDate: bookingDate,
+    preferredTime: bookingTime || undefined,
+    guests: Number(bookingGuests) || 1,
+    contactName: bookingName.trim(),
+    contactEmail: bookingEmail.trim(),
+    contactPhone: bookingPhone.trim() || undefined,
+    message: bookingMessage.trim() || undefined
+  },
+  token
+);
 
   setBookingSuccess(copy.bookingSuccess);
   setBookingMessage('');
