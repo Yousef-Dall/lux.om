@@ -7875,3 +7875,24 @@ transition: none;
   color: var(--color-muted);
   font-size: 0.82rem;
 }
+
+/* =========================================================
+   Stage 7.11 — live activity availability UX
+   ========================================================= */
+
+.activity-availability-note {
+  grid-column: 1 / -1;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid rgba(7, 56, 62, 0.12);
+  border-radius: 16px;
+  background: rgba(7, 56, 62, 0.045);
+  color: var(--color-primary);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.activity-availability-note--warning {
+  border-color: rgba(176, 70, 45, 0.24);
+  background: rgba(176, 70, 45, 0.08);
+  color: #9f3f28;
+}

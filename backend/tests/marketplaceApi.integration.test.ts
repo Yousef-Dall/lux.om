@@ -1081,6 +1081,77 @@ describe('POST /api/bookings', () => {
     });
   });
 
+  it('returns live activity availability for a selected date and time', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    try {
+      await prisma.activity.update({
+        where: {
+          id: activity.id
+        },
+        data: {
+          capacity: 3
+        }
+      });
+
+      await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          activityId: activity.id,
+          scheduledDate: '2026-08-03',
+          preferredTime: '10:00',
+          guests: 2
+        })
+        .expect(201);
+
+      const availableResponse = await request(app)
+        .get(`/api/activities/${activity.id}/availability`)
+        .query({
+          date: '2026-08-03',
+          time: '10:00',
+          guests: 1
+        })
+        .expect(200);
+
+      expect(availableResponse.body.availability).toMatchObject({
+        activityId: activity.id,
+        capacity: 3,
+        reservedGuests: 2,
+        availableGuests: 1,
+        requestedGuests: 1,
+        available: true
+      });
+
+      const unavailableResponse = await request(app)
+        .get(`/api/activities/${activity.id}/availability`)
+        .query({
+          date: '2026-08-03',
+          time: '10:00',
+          guests: 2
+        })
+        .expect(200);
+
+      expect(unavailableResponse.body.availability).toMatchObject({
+        available: false,
+        unavailableReason: 'Not enough availability for the selected date and time'
+      });
+    } finally {
+      await prisma.activity.update({
+        where: {
+          id: activity.id
+        },
+        data: {
+          capacity: null
+        }
+      });
+    }
+  });
+
   it('prevents overbooking an activity date and time when capacity is full', async () => {
     const activity = await prisma.activity.findUniqueOrThrow({
       where: {

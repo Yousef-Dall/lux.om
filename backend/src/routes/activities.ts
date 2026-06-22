@@ -398,6 +398,180 @@ const activityInclude = {
   highlights: true
 };
 
+
+const activeAvailabilityBookingStatuses = [
+  'PENDING',
+  'OWNER_APPROVED',
+  'ADMIN_CONFIRMED'
+] as const;
+
+const activityAvailabilityQuerySchema = z.object({
+  date: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, {
+      message: 'Date must use YYYY-MM-DD format'
+    }),
+  time: timeSchema.optional(),
+  guests: z.coerce.number().int().min(1).max(100).default(1)
+});
+
+const availabilityDayNames = [
+  'SUNDAY',
+  'MONDAY',
+  'TUESDAY',
+  'WEDNESDAY',
+  'THURSDAY',
+  'FRIDAY',
+  'SATURDAY'
+] as const;
+
+function toAvailabilityDate(value: string) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+
+  if (Number.isNaN(date.getTime())) {
+    throw new AppError(400, 'Invalid availability date');
+  }
+
+  return date;
+}
+
+function getAvailabilityDayName(date: Date) {
+  return availabilityDayNames[date.getUTCDay()];
+}
+
+function getAvailabilityDayRange(date: Date) {
+  const start = new Date(date);
+  start.setUTCHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+
+  return {
+    start,
+    end
+  };
+}
+
+function availabilityTimeToMinutes(value: string) {
+  const [hours = '0', minutes = '0'] = value.split(':');
+
+  return Number(hours) * 60 + Number(minutes);
+}
+
+function getActivityScheduleUnavailableReason(
+  activity: {
+    availabilityDays: string[];
+    availabilityStartTime: string | null;
+    availabilityEndTime: string | null;
+  },
+  date: Date,
+  time?: string
+) {
+  if (activity.availabilityDays.length > 0) {
+    const requestedDay = getAvailabilityDayName(date);
+
+    if (!activity.availabilityDays.includes(requestedDay)) {
+      return 'Activity is not available on the selected date';
+    }
+  }
+
+  if (time && activity.availabilityStartTime && activity.availabilityEndTime) {
+    const requestedTime = availabilityTimeToMinutes(time);
+    const startTime = availabilityTimeToMinutes(activity.availabilityStartTime);
+    const endTime = availabilityTimeToMinutes(activity.availabilityEndTime);
+
+    if (requestedTime < startTime || requestedTime > endTime) {
+      return 'Preferred time is outside the activity availability window';
+    }
+  }
+
+  return '';
+}
+
+
+activitiesRouter.get('/:id/availability', async (req, res, next) => {
+  try {
+    const { id } = idParamsSchema.parse(req.params);
+    const query = activityAvailabilityQuerySchema.parse(req.query);
+    const scheduledDate = toAvailabilityDate(query.date);
+
+    const activity = await prisma.activity.findUnique({
+      where: {
+        id
+      },
+      select: {
+        id: true,
+        status: true,
+        capacity: true,
+        availabilityDays: true,
+        availabilityStartTime: true,
+        availabilityEndTime: true
+      }
+    });
+
+    if (!activity || activity.status !== 'APPROVED') {
+      throw new AppError(404, 'Activity not found');
+    }
+
+    const scheduleUnavailableReason = getActivityScheduleUnavailableReason(
+      activity,
+      scheduledDate,
+      query.time
+    );
+
+    const { start, end } = getAvailabilityDayRange(scheduledDate);
+
+    const existingBookings = activity.capacity
+      ? await prisma.booking.findMany({
+          where: {
+            activityId: activity.id,
+            status: {
+              in: [...activeAvailabilityBookingStatuses]
+            },
+            scheduledDate: {
+              gte: start,
+              lt: end
+            },
+            preferredTime: query.time ?? null
+          },
+          select: {
+            guests: true
+          }
+        })
+      : [];
+
+    const reservedGuests = existingBookings.reduce(
+      (total, booking) => total + booking.guests,
+      0
+    );
+
+    const availableGuests =
+      activity.capacity === null ? null : Math.max(activity.capacity - reservedGuests, 0);
+
+    const capacityUnavailableReason =
+      availableGuests !== null && query.guests > availableGuests
+        ? 'Not enough availability for the selected date and time'
+        : '';
+
+    res.json({
+      availability: {
+        activityId: activity.id,
+        date: query.date,
+        time: query.time ?? null,
+        requestedGuests: query.guests,
+        capacity: activity.capacity,
+        reservedGuests,
+        availableGuests,
+        available: !scheduleUnavailableReason && !capacityUnavailableReason,
+        unavailableReason: scheduleUnavailableReason || capacityUnavailableReason || null
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 activitiesRouter.get('/', async (req, res, next) => {
   try {
     const query = activitiesQuerySchema.parse(req.query);

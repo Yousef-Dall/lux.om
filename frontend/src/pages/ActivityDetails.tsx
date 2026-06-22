@@ -20,6 +20,10 @@ Utensils
 import { type FormEvent, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+import {
+getActivityAvailability,
+type ActivityAvailability
+} from '../api/activities';
 import { createBooking } from '../api/bookings';
 import { ApiError } from '../api/client';
 import { getActivityBySlug } from '../api/marketplace';
@@ -52,6 +56,9 @@ const [bookingMessage, setBookingMessage] = useState('');
 const [bookingSubmitting, setBookingSubmitting] = useState(false);
 const [bookingError, setBookingError] = useState('');
 const [bookingSuccess, setBookingSuccess] = useState('');
+const [availability, setAvailability] = useState<ActivityAvailability | null>(null);
+const [availabilityLoading, setAvailabilityLoading] = useState(false);
+const [availabilityError, setAvailabilityError] = useState('');
 
 useDocumentTitle(activity ? activity.title : 'Activity details');
 
@@ -122,6 +129,11 @@ loginToBook: 'سجلي الدخول لإرسال طلب حجز مباشر.',
 goToLogin: 'تسجيل الدخول',
 bookingSuccess: 'تم إرسال طلب الحجز بنجاح. يمكنك متابعة الطلب من لوحة التحكم.',
 bookingError: 'تعذر إرسال طلب الحجز. حاولي مرة أخرى.',
+checkingAvailability: 'جاري فحص التوفر...',
+availableSeats: 'مقاعد متاحة',
+unlimitedAvailability: 'التوفر مفتوح لهذا النشاط.',
+availabilityUnavailable: 'لا يوجد توفر كافٍ لهذا التاريخ والوقت.',
+availabilityError: 'تعذر فحص التوفر حالياً.',
 requiredBookingFields: 'يرجى تعبئة تاريخ الحجز واسم التواصل والبريد الإلكتروني.',
 loading: 'جاري تحميل النشاط...',
 error: 'تعذر تحميل تفاصيل النشاط. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
@@ -190,6 +202,11 @@ goToLogin: 'Log in',
 bookingSuccess:
 'Booking request sent successfully. You can follow it from your dashboard.',
 bookingError: 'Could not send the booking request. Please try again.',
+checkingAvailability: 'Checking availability...',
+availableSeats: 'seats available',
+unlimitedAvailability: 'Availability is open for this activity.',
+availabilityUnavailable: 'Not enough availability for this date and time.',
+availabilityError: 'Could not check availability right now.',
 requiredBookingFields: 'Please fill booking date, contact name, and contact email.',
 loading: 'Loading activity...',
 error: 'Could not load activity details. Make sure the backend is running and try again.'
@@ -248,6 +265,60 @@ setBookingPhone((current) => current || user.phone || '');
 
 }, [user]);
 
+
+useEffect(() => {
+if (!activity?.id || !bookingDate) {
+  setAvailability(null);
+  setAvailabilityError('');
+  return;
+}
+
+let isActive = true;
+
+async function loadAvailability() {
+  try {
+    setAvailabilityLoading(true);
+    setAvailabilityError('');
+
+    const response = await getActivityAvailability(activity!.id, {
+      date: bookingDate,
+      time: bookingTime || undefined,
+      guests: Number(bookingGuests) || 1
+    });
+
+    if (!isActive) return;
+
+    setAvailability(response.availability);
+  } catch (error) {
+    console.error(error);
+
+    if (!isActive) return;
+
+    setAvailability(null);
+
+    if (error instanceof ApiError) {
+      setAvailabilityError(error.message);
+    } else {
+      setAvailabilityError(copy.availabilityError);
+    }
+  } finally {
+    if (isActive) {
+      setAvailabilityLoading(false);
+    }
+  }
+}
+
+void loadAvailability();
+
+return () => {
+  isActive = false;
+};
+}, [activity?.id, bookingDate, bookingTime, bookingGuests, language]);
+
+const isBookingAvailabilityBlocked = Boolean(
+availability && !availability.available
+);
+
 async function handleBookingSubmit(event: FormEvent<HTMLFormElement>) {
 event.preventDefault();
 
@@ -261,6 +332,11 @@ if (!token) {
 
 if (!bookingDate || !bookingName.trim() || !bookingEmail.trim()) {
   setBookingError(copy.requiredBookingFields);
+  return;
+}
+
+if (isBookingAvailabilityBlocked) {
+  setBookingError(availability?.unavailableReason || copy.availabilityUnavailable);
   return;
 }
 
@@ -895,6 +971,31 @@ return ( <article className="details-page details-page--activity-detail"> <secti
               />
             </label>
 
+            {bookingDate ? (
+              <div
+                className={`activity-availability-note ${
+                  isBookingAvailabilityBlocked
+                    ? 'activity-availability-note--warning'
+                    : ''
+                }`}
+                role={isBookingAvailabilityBlocked ? 'alert' : 'status'}
+              >
+                {availabilityLoading ? copy.checkingAvailability : null}
+
+                {!availabilityLoading && availabilityError ? availabilityError : null}
+
+                {!availabilityLoading && !availabilityError && availability ? (
+                  availability.availableGuests === null ? (
+                    copy.unlimitedAvailability
+                  ) : availability.available ? (
+                    `${availability.availableGuests} ${copy.availableSeats}`
+                  ) : (
+                    availability.unavailableReason || copy.availabilityUnavailable
+                  )
+                ) : null}
+              </div>
+            ) : null}
+
             <label>
               {copy.contactName}
               <input
@@ -947,7 +1048,7 @@ return ( <article className="details-page details-page--activity-detail"> <secti
             <button
               className="button-link button-link--primary"
               type="submit"
-              disabled={bookingSubmitting}
+              disabled={bookingSubmitting || availabilityLoading || isBookingAvailabilityBlocked}
             >
               {bookingSubmitting ? copy.submittingBooking : copy.submitBooking}
               <Send size={16} aria-hidden="true" />

@@ -101,3 +101,42 @@ textAr?: string;
 export async function createActivity(payload: CreateActivityPayload, token: string) {
 return apiClient.post<{ activity: ApiActivity }>('/api/activities', payload, { token });
 }
+
+
+export type ActivityAvailability = {
+activityId: string;
+date: string;
+time: string | null;
+requestedGuests: number;
+capacity: number | null;
+reservedGuests: number;
+availableGuests: number | null;
+available: boolean;
+unavailableReason: string | null;
+};
+
+export type ActivityAvailabilityResponse = {
+availability: ActivityAvailability;
+};
+
+export async function getActivityAvailability(
+activityId: string,
+params: {
+date: string;
+time?: string;
+guests?: number;
+}
+) {
+const searchParams = new URLSearchParams({
+date: params.date,
+guests: String(params.guests ?? 1)
+});
+
+if (params.time) {
+searchParams.set('time', params.time);
+}
+
+return apiClient.get<ActivityAvailabilityResponse>(
+`/api/activities/${activityId}/availability?${searchParams.toString()}`
+);
+}
