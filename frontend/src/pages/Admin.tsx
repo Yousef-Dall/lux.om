@@ -25,6 +25,7 @@ import {
   getAdminActivities,
   getAdminBookings,
   getAdminDevelopers,
+  getAdminFinance,
   getAdminInquiries,
   getAdminListings,
   getAdminTravelAgencies,
@@ -34,6 +35,7 @@ import {
   updateAdminDeveloper,
   updateAdminListingStatus,
   updateAdminTravelAgency,
+  type AdminFinance,
   type UpdateDeveloperPayload,
   type UpdateTravelAgencyPayload
 } from '../api/admin';
@@ -320,6 +322,20 @@ function getAdminPaymentAmount(booking: ApiBooking) {
   return Number.isFinite(amount) ? amount : 0;
 }
 
+
+function formatAdminFinanceAmount(
+  value: number | string | null | undefined,
+  language: 'en' | 'ar'
+) {
+  const amount = Number(value ?? 0);
+
+  return new Intl.NumberFormat(language === 'ar' ? 'ar-OM' : 'en-OM', {
+    style: 'currency',
+    currency: 'OMR',
+    maximumFractionDigits: 3
+  }).format(Number.isFinite(amount) ? amount : 0);
+}
+
 function formatAdminPaymentAmount(booking: ApiBooking) {
   const amount = getAdminPaymentAmount(booking);
 
@@ -414,6 +430,7 @@ export default function Admin() {
   const [activities, setActivities] = useState<ApiActivity[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [bookings, setBookings] = useState<ApiBooking[]>([]);
+  const [finance, setFinance] = useState<AdminFinance | null>(null);
 const [travelAgencies, setTravelAgencies] = useState<ApiTravelAgency[]>([]);
 const [developers, setDevelopers] = useState<ApiDeveloperCompany[]>([]);
 
@@ -624,6 +641,51 @@ verifiedDevelopers: 'Verified developers',
         };
 
 
+  const adminFinanceCopy =
+    language === 'ar'
+      ? {
+          title: 'دفتر المالية',
+          subtitle: 'تابع المدفوعات، العمولات، المبالغ المستردة، وجاهزية مستحقات المنظمين.',
+          totalPaid: 'إجمالي المدفوع',
+          pendingAmount: 'بانتظار الدفع',
+          refundedAmount: 'مسترد',
+          failedAmount: 'فشل الدفع',
+          platformCommission: 'عمولة المنصة',
+          paidCommission: 'عمولة مدفوعة',
+          payoutReady: 'جاهز للصرف',
+          payoutBlocked: 'محجوز للمراجعة',
+          ledger: 'سجل المدفوعات',
+          booking: 'الحجز',
+          provider: 'المنظم',
+          customer: 'العميل',
+          status: 'الحالة',
+          amount: 'المبلغ',
+          commission: 'العمولة',
+          payout: 'مستحق المنظم',
+          noFinance: 'لا توجد مدفوعات بعد.'
+        }
+      : {
+          title: 'Finance ledger',
+          subtitle: 'Track payments, commissions, refunds, and provider payout readiness.',
+          totalPaid: 'Total paid',
+          pendingAmount: 'Pending payment',
+          refundedAmount: 'Refunded',
+          failedAmount: 'Failed',
+          platformCommission: 'Platform commission',
+          paidCommission: 'Paid commission',
+          payoutReady: 'Payout ready',
+          payoutBlocked: 'Blocked for review',
+          ledger: 'Payment ledger',
+          booking: 'Booking',
+          provider: 'Provider',
+          customer: 'Customer',
+          status: 'Status',
+          amount: 'Amount',
+          commission: 'Commission',
+          payout: 'Provider payout',
+          noFinance: 'No payments yet.'
+        };
+
   const bookingCopy =
     language === 'ar'
       ? {
@@ -719,6 +781,7 @@ verifiedDevelopers: 'Verified developers',
   activitiesResponse,
   inquiriesResponse,
   bookingsResponse,
+  financeResponse,
   agenciesResponse,
   developersResponse
 ] = await Promise.all([
@@ -726,6 +789,7 @@ verifiedDevelopers: 'Verified developers',
   getAdminActivities(token),
   getAdminInquiries(token),
   getAdminBookings(token),
+  getAdminFinance(token),
   getAdminTravelAgencies(token),
   getAdminDevelopers(token)
 ]);
@@ -734,6 +798,7 @@ setListings(listingsResponse.listings);
 setActivities(activitiesResponse.activities);
 setInquiries(inquiriesResponse.inquiries);
 setBookings(bookingsResponse.bookings);
+setFinance(financeResponse.finance);
 setTravelAgencies(agenciesResponse.travelAgencies);
 setDevelopers(developersResponse.developers);
     } catch (error) {
@@ -1366,6 +1431,108 @@ async function deleteDeveloperCompany(developerId: string) {
   <small>{copy.verifiedDevelopers}</small>
 </article>
           </div>
+
+
+          {finance ? (
+            <div className="table-card table-card--premium admin-finance-card">
+              <div className="table-card__header">
+                <div>
+                  <p className="eyebrow">{adminFinanceCopy.title}</p>
+                  <h2>{adminFinanceCopy.title}</h2>
+                  <p>{adminFinanceCopy.subtitle}</p>
+                </div>
+              </div>
+
+              <div className="admin-finance-summary">
+                <article>
+                  <span>{adminFinanceCopy.totalPaid}</span>
+                  <strong>{formatAdminFinanceAmount(finance.summary.paidAmount, language)}</strong>
+                </article>
+
+                <article>
+                  <span>{adminFinanceCopy.pendingAmount}</span>
+                  <strong>{formatAdminFinanceAmount(finance.summary.pendingAmount, language)}</strong>
+                </article>
+
+                <article>
+                  <span>{adminFinanceCopy.refundedAmount}</span>
+                  <strong>{formatAdminFinanceAmount(finance.summary.refundedAmount, language)}</strong>
+                </article>
+
+                <article>
+                  <span>{adminFinanceCopy.platformCommission}</span>
+                  <strong>{formatAdminFinanceAmount(finance.summary.totalCommission, language)}</strong>
+                </article>
+
+                <article>
+                  <span>{adminFinanceCopy.payoutReady}</span>
+                  <strong>{formatAdminFinanceAmount(finance.summary.payoutReadyAmount, language)}</strong>
+                  <small>{finance.summary.payoutReadyCount}</small>
+                </article>
+
+                <article>
+                  <span>{adminFinanceCopy.payoutBlocked}</span>
+                  <strong>{formatAdminFinanceAmount(finance.summary.payoutBlockedAmount, language)}</strong>
+                  <small>{finance.summary.payoutBlockedCount}</small>
+                </article>
+              </div>
+
+              <div className="responsive-table admin-finance-ledger">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{adminFinanceCopy.booking}</th>
+                      <th>{adminFinanceCopy.provider}</th>
+                      <th>{adminFinanceCopy.customer}</th>
+                      <th>{adminFinanceCopy.status}</th>
+                      <th>{adminFinanceCopy.amount}</th>
+                      <th>{adminFinanceCopy.commission}</th>
+                      <th>{adminFinanceCopy.payout}</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {finance.ledger.length > 0 ? (
+                      finance.ledger.slice(0, 12).map((item) => (
+                        <tr key={item.id}>
+                          <td>
+                            <strong>{item.bookingTitle}</strong>
+                            <span>{item.bookingStatus ? renderBookingStatus(item.bookingStatus) : '—'}</span>
+                          </td>
+
+                          <td>
+                            <strong>{item.providerName || '—'}</strong>
+                            {item.providerEmail ? <span>{item.providerEmail}</span> : null}
+                          </td>
+
+                          <td>
+                            <strong>{item.customerName || '—'}</strong>
+                            {item.customerEmail ? <span>{item.customerEmail}</span> : null}
+                          </td>
+
+                          <td>{renderPaymentStatus(item.status)}</td>
+
+                          <td>{formatAdminFinanceAmount(item.amount, language)}</td>
+
+                          <td>{formatAdminFinanceAmount(item.commission, language)}</td>
+
+                          <td>
+                            <span className={item.payoutReady ? 'admin-finance-ready' : item.payoutBlocked ? 'admin-finance-blocked' : ''}>
+                              {formatAdminFinanceAmount(item.providerPayoutAmount, language)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7}>{adminFinanceCopy.noFinance}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
 
 
           <div className="table-card table-card--premium admin-bookings-card">

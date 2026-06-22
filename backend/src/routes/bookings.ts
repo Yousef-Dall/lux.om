@@ -120,6 +120,160 @@ const paramsSchema = z.object({
   id: z.string().min(1)
 });
 
+
+const financePaymentInclude = {
+  booking: {
+    select: {
+      id: true,
+      status: true,
+      scheduledDate: true,
+      preferredTime: true,
+      guests: true,
+      contactName: true,
+      contactEmail: true,
+      listing: {
+        select: {
+          id: true,
+          title: true,
+          titleEn: true,
+          titleAr: true,
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
+      },
+      activity: {
+        select: {
+          id: true,
+          titleEn: true,
+          titleAr: true,
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+function getFinanceBookingTitle(payment: any) {
+  return (
+    payment.booking?.activity?.titleEn ||
+    payment.booking?.activity?.titleAr ||
+    payment.booking?.listing?.titleEn ||
+    payment.booking?.listing?.titleAr ||
+    payment.booking?.listing?.title ||
+    'Booking'
+  );
+}
+
+function getFinanceProvider(payment: any) {
+  return payment.booking?.activity?.owner ?? payment.booking?.listing?.owner ?? null;
+}
+
+function createFinanceLedger(payments: any[]) {
+  const ledger = payments.map((payment) => {
+    const amount = decimalToNumber(payment.amount);
+    const commission = decimalToNumber(payment.commission);
+    const providerPayoutAmount = Math.max(amount - commission, 0);
+    const provider = getFinanceProvider(payment);
+    const payoutReady =
+      payment.status === 'PAID' && payment.booking?.status === 'ADMIN_CONFIRMED';
+    const payoutBlocked =
+      payment.status === 'PAID' &&
+      (payment.booking?.status === 'CANCELLATION_REQUESTED' ||
+        payment.booking?.status === 'CANCELLED');
+
+    return {
+      id: payment.id,
+      bookingId: payment.bookingId,
+      bookingStatus: payment.booking?.status ?? null,
+      bookingTitle: getFinanceBookingTitle(payment),
+      customerName: payment.booking?.contactName ?? null,
+      customerEmail: payment.booking?.contactEmail ?? null,
+      providerId: provider?.id ?? null,
+      providerName: provider?.name ?? null,
+      providerEmail: provider?.email ?? null,
+      status: payment.status,
+      amount,
+      commission,
+      providerPayoutAmount,
+      payoutReady,
+      payoutBlocked,
+      provider: payment.provider,
+      reference: payment.reference,
+      providerSessionId: payment.providerSessionId,
+      checkoutUrl: payment.checkoutUrl,
+      paidAt: payment.paidAt,
+      createdAt: payment.createdAt,
+      updatedAt: payment.updatedAt
+    };
+  });
+
+  const summary = ledger.reduce(
+    (totals, item) => {
+      totals.totalAmount += item.amount;
+      totals.totalCommission += item.commission;
+
+      if (item.status === 'PAID') {
+        totals.paidAmount += item.amount;
+        totals.paidCommission += item.commission;
+      }
+
+      if (item.status === 'PENDING') {
+        totals.pendingAmount += item.amount;
+      }
+
+      if (item.status === 'REFUNDED') {
+        totals.refundedAmount += item.amount;
+      }
+
+      if (item.status === 'FAILED') {
+        totals.failedAmount += item.amount;
+      }
+
+      if (item.payoutReady) {
+        totals.payoutReadyAmount += item.providerPayoutAmount;
+        totals.payoutReadyCount += 1;
+      }
+
+      if (item.payoutBlocked) {
+        totals.payoutBlockedAmount += item.providerPayoutAmount;
+        totals.payoutBlockedCount += 1;
+      }
+
+      return totals;
+    },
+    {
+      totalPayments: ledger.length,
+      totalAmount: 0,
+      paidAmount: 0,
+      pendingAmount: 0,
+      refundedAmount: 0,
+      failedAmount: 0,
+      totalCommission: 0,
+      paidCommission: 0,
+      payoutReadyAmount: 0,
+      payoutReadyCount: 0,
+      payoutBlockedAmount: 0,
+      payoutBlockedCount: 0
+    }
+  );
+
+  return {
+    summary,
+    ledger
+  };
+}
+
 const bookingInclude = {
   user: {
     select: {
@@ -909,6 +1063,25 @@ bookingsRouter.post('/:id/payments/sync', requireAuth(), async (req, res, next) 
     res.json({
       booking: updatedBooking,
       payment
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+bookingsRouter.get('/admin/finance', requireAuth(), requireRole('ADMIN'), async (_req, res, next) => {
+  try {
+    const payments = await prisma.payment.findMany({
+      include: financePaymentInclude,
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: 250
+    });
+
+    res.json({
+      finance: createFinanceLedger(payments)
     });
   } catch (error) {
     next(error);

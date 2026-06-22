@@ -7990,3 +7990,53 @@ transition: none;
   font-weight: 800;
   padding: 0.45rem 0.7rem;
 }
+
+/* =========================================================
+   Stage 7.14 — admin finance ledger
+   ========================================================= */
+
+.admin-finance-card {
+  margin-top: 1.25rem;
+}
+
+.admin-finance-summary {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  margin-bottom: 1rem;
+}
+
+.admin-finance-summary article {
+  border: 1px solid rgba(7, 56, 62, 0.1);
+  border-radius: 18px;
+  background: rgba(250, 247, 240, 0.72);
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.95rem;
+}
+
+.admin-finance-summary span,
+.admin-finance-ledger td span {
+  color: var(--color-muted);
+  font-size: 0.83rem;
+}
+
+.admin-finance-summary strong {
+  color: var(--color-primary);
+  font-size: 1.08rem;
+}
+
+.admin-finance-ledger strong,
+.admin-finance-ledger span {
+  display: block;
+}
+
+.admin-finance-ready {
+  color: #237a57;
+  font-weight: 900;
+}
+
+.admin-finance-blocked {
+  color: #a4492f;
+  font-weight: 900;
+}

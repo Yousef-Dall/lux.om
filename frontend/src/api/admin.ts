@@ -10,6 +10,56 @@ import type {
   ListingStatus
 } from '../types';
 
+
+export type AdminFinanceLedgerItem = {
+  id: string;
+  bookingId: string;
+  bookingStatus: BookingStatus | null;
+  bookingTitle: string;
+  customerName: string | null;
+  customerEmail: string | null;
+  providerId: string | null;
+  providerName: string | null;
+  providerEmail: string | null;
+  status: PaymentStatus;
+  amount: number;
+  commission: number;
+  providerPayoutAmount: number;
+  payoutReady: boolean;
+  payoutBlocked: boolean;
+  provider?: string | null;
+  reference?: string | null;
+  providerSessionId?: string | null;
+  checkoutUrl?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminFinanceSummary = {
+  totalPayments: number;
+  totalAmount: number;
+  paidAmount: number;
+  pendingAmount: number;
+  refundedAmount: number;
+  failedAmount: number;
+  totalCommission: number;
+  paidCommission: number;
+  payoutReadyAmount: number;
+  payoutReadyCount: number;
+  payoutBlockedAmount: number;
+  payoutBlockedCount: number;
+};
+
+export type AdminFinance = {
+  summary: AdminFinanceSummary;
+  ledger: AdminFinanceLedgerItem[];
+};
+
+export type AdminFinanceResponse = {
+  finance: AdminFinance;
+};
+
 export type AdminListingsResponse = {
   listings: ApiListing[];
 };
@@ -111,6 +161,10 @@ export async function getAdminInquiries(token: string) {
 
 export async function getAdminBookings(token: string) {
   return apiClient.get<AdminBookingsResponse>('/api/bookings/admin/all', { token });
+}
+
+export async function getAdminFinance(token: string) {
+  return apiClient.get<AdminFinanceResponse>('/api/bookings/admin/finance', { token });
 }
 
 export async function getAdminTravelAgencies(token: string) {
