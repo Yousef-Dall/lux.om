@@ -3,6 +3,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
+import { createMediaQualityUpdate } from '../services/mediaQuality';
+import { getMediaProvider, isSafeMediaUrl } from '../services/mediaEmbeds';
 import {
   createPaginationMetadata,
   resolvePagination
@@ -50,6 +52,13 @@ const optionalTextSchema = z
   .optional()
   .transform((value) => value || undefined);
 
+const optionalLongTextSchema = z
+  .string()
+  .trim()
+  .max(3000)
+  .optional()
+  .transform((value) => value || undefined);
+
 const optionalNumberSchema = z
   .union([z.coerce.number().int(), z.undefined(), z.null()])
   .optional()
@@ -84,6 +93,26 @@ const optionalCurrencySchema = z
   .transform((value) => value.toUpperCase())
   .optional();
 
+const optionalSafeMediaUrlSchema = z
+  .preprocess(
+    (value) =>
+      value === '' ||
+      value === null ||
+      value === undefined
+        ? undefined
+        : value,
+    z
+      .string()
+      .trim()
+      .max(1000)
+      .refine((value) => isSafeMediaUrl(value), {
+        message:
+          'Media URL must be an uploaded file path or a supported media URL'
+      })
+      .optional()
+  )
+  .optional();
+
 const listingBuyerEligibilityValues = [
   'OMANI_ONLY',
   'GCC_NATIONALS',
@@ -91,7 +120,56 @@ const listingBuyerEligibilityValues = [
   'FOREIGNERS_ALLOWED',
   'COMPANY_PURCHASE_ALLOWED',
   'FREEHOLD',
-  'USUFRUCT'
+  'USUFRUCT',
+  'EXPAT_BUYABLE',
+  'ITC',
+  'GOLDEN_VISA_ELIGIBLE',
+  'OMR_250K_RESIDENCY_ELIGIBLE',
+  'OMR_500K_RESIDENCY_ELIGIBLE'
+] as const;
+
+const mediaAssetTypeValues = [
+  'IMAGE',
+  'VIDEO_WALKTHROUGH',
+  'TOUR_360',
+  'VIRTUAL_TOUR',
+  'FLOOR_PLAN',
+  'DOCUMENT',
+  'OTHER'
+] as const;
+
+const mediaQualityStatusValues = [
+  'NOT_CHECKED',
+  'NEEDS_REVIEW',
+  'ACCEPTABLE',
+  'EXCELLENT',
+  'BLOCKED'
+] as const;
+
+const enhancementStatusValues = [
+  'NOT_REQUESTED',
+  'NOT_CONFIGURED',
+  'QUEUED',
+  'PROCESSING',
+  'COMPLETED',
+  'FAILED'
+] as const;
+
+const verificationStatusValues = [
+  'UNVERIFIED',
+  'SUBMITTED',
+  'ADMIN_VERIFIED',
+  'EXTERNALLY_VERIFIED',
+  'REJECTED',
+  'EXPIRED'
+] as const;
+
+const verificationSourceValues = [
+  'LUX_OM_ADMIN_REVIEW',
+  'OWNER_DOCUMENT_SUBMISSION',
+  'FUTURE_MOLUP_API',
+  'FUTURE_MUNICIPALITY_REGISTRATION',
+  'FUTURE_THIRD_PARTY_PROVIDER'
 ] as const;
 
 function normalizeBuyerEligibilitySearch(value: string) {
@@ -111,6 +189,27 @@ function getBuyerEligibilitySearchMatches(search: string) {
   });
 }
 
+const premiumMediaInputSchema = z
+  .object({
+    type: z.enum(mediaAssetTypeValues),
+    url: z
+      .string()
+      .trim()
+      .max(1000)
+      .refine((value) => isSafeMediaUrl(value), {
+        message:
+          'Premium media URL must be an uploaded file path or supported media URL'
+      }),
+    provider: optionalTextSchema,
+    titleEn: z.string().trim().max(160).optional(),
+    titleAr: z.string().trim().max(160).optional(),
+    altEn: z.string().trim().max(160).optional(),
+    altAr: z.string().trim().max(160).optional(),
+    sortOrder: z.coerce.number().int().min(0).default(0),
+    isPrimary: z.coerce.boolean().default(false)
+  })
+  .strict();
+
 const listingSchema = z
   .object({
     title: z.string().trim().min(3).max(120),
@@ -120,6 +219,12 @@ const listingSchema = z
     buyerEligibility: z
       .array(z.enum(listingBuyerEligibilityValues))
       .max(listingBuyerEligibilityValues.length)
+      .default([]),
+    eligibilityNotes: optionalLongTextSchema,
+    eligibilityDisclaimer: optionalLongTextSchema,
+    investorHighlights: z
+      .array(z.string().trim().min(1).max(120))
+      .max(12)
       .default([]),
     location: z.string().trim().min(2).max(120),
     price: z.string().trim().min(1).max(80).optional(),
@@ -142,6 +247,12 @@ const listingSchema = z
       )
       .max(20)
       .optional(),
+
+    videoWalkthroughUrl: optionalSafeMediaUrlSchema,
+    tour360Url: optionalSafeMediaUrlSchema,
+    virtualTourUrl: optionalSafeMediaUrlSchema,
+    floorPlanUrl: optionalSafeMediaUrlSchema,
+    premiumMedia: z.array(premiumMediaInputSchema).max(20).default([]),
 
     amenities: z.array(z.string().trim().min(1).max(50)).max(30).default([]),
 
@@ -203,6 +314,14 @@ const listingSchema = z
           'A numeric amount is required for this price type'
       });
     }
+
+    if (data.transaction !== 'Sale' && data.buyerEligibility.length > 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['buyerEligibility'],
+        message: 'Buyer eligibility is only available for sale listings'
+      });
+    }
   });
 
 const listQuerySchema = z.object({
@@ -232,6 +351,12 @@ const listQuerySchema = z.object({
   furnishing: z.string().trim().optional(),
   view: z.string().trim().optional(),
   amenities: z.string().trim().optional(),
+
+  hasVideo: z.coerce.boolean().optional(),
+  hasVirtualTour: z.coerce.boolean().optional(),
+  hasFloorPlan: z.coerce.boolean().optional(),
+  verificationStatus: z.enum(verificationStatusValues).optional(),
+  mediaQualityStatus: z.enum(mediaQualityStatusValues).optional(),
 
   sort: z
     .enum([
@@ -270,6 +395,41 @@ const statusSchema = z
   })
   .strict();
 
+const adminStage8ListingSchema = z
+  .object({
+    buyerEligibility: z
+      .array(z.enum(listingBuyerEligibilityValues))
+      .max(listingBuyerEligibilityValues.length)
+      .optional(),
+    eligibilityNotes: z.string().trim().max(3000).nullable().optional(),
+    eligibilityDisclaimer: z.string().trim().max(3000).nullable().optional(),
+    adminVerificationNotes: z.string().trim().max(3000).nullable().optional(),
+    investorHighlights: z
+      .array(z.string().trim().min(1).max(120))
+      .max(12)
+      .optional(),
+
+    videoWalkthroughUrl: optionalSafeMediaUrlSchema.nullable(),
+    tour360Url: optionalSafeMediaUrlSchema.nullable(),
+    virtualTourUrl: optionalSafeMediaUrlSchema.nullable(),
+    floorPlanUrl: optionalSafeMediaUrlSchema.nullable(),
+    premiumMedia: z.array(premiumMediaInputSchema).max(20).optional(),
+
+    mediaQualityStatus: z.enum(mediaQualityStatusValues).optional(),
+    mediaQualityNotes: z.string().trim().max(3000).nullable().optional(),
+    enhancedImageUrl: optionalSafeMediaUrlSchema.nullable(),
+    enhancementStatus: z.enum(enhancementStatusValues).optional(),
+    enhancementProvider: z.string().trim().max(120).nullable().optional(),
+    enhancementNotes: z.string().trim().max(3000).nullable().optional(),
+
+    verificationStatus: z.enum(verificationStatusValues).optional(),
+    verificationSource: z.enum(verificationSourceValues).nullable().optional(),
+    verificationNotes: z.string().trim().max(3000).nullable().optional(),
+    verificationDate: z.coerce.date().nullable().optional(),
+    verificationExpiryDate: z.coerce.date().nullable().optional()
+  })
+  .strict();
+
 const idParamsSchema = z.object({
   id: z.string().min(1)
 });
@@ -285,6 +445,27 @@ const listingInclude = {
       sortOrder: 'asc' as const
     }
   },
+  premiumMedia: {
+    orderBy: {
+      sortOrder: 'asc' as const
+    }
+  },
+  eligibilityMarkedBy: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true
+    }
+  },
+  verificationReviewedBy: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true
+    }
+  },
   developer: true,
   nearestLandmark: true,
   owner: {
@@ -296,6 +477,69 @@ const listingInclude = {
     }
   }
 };
+
+function hasOwnProperty<T extends object, K extends PropertyKey>(
+  object: T,
+  key: K
+): object is T & Record<K, unknown> {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function createPremiumMediaData(
+  premiumMedia: z.infer<typeof premiumMediaInputSchema>[]
+) {
+  return premiumMedia.map((media) => ({
+    type: media.type,
+    url: media.url,
+    provider: media.provider ?? getMediaProvider(media.url) ?? null,
+    titleEn: media.titleEn,
+    titleAr: media.titleAr,
+    altEn: media.altEn,
+    altAr: media.altAr,
+    sortOrder: media.sortOrder,
+    isPrimary: media.isPrimary
+  }));
+}
+
+function shouldMarkEligibility(data: {
+  transaction?: string;
+  buyerEligibility?: readonly string[];
+  eligibilityNotes?: string | null;
+  eligibilityDisclaimer?: string | null;
+  investorHighlights?: readonly string[];
+}) {
+  return (
+    data.transaction === 'Sale' &&
+    Boolean(
+      data.buyerEligibility?.length ||
+        data.eligibilityNotes ||
+        data.eligibilityDisclaimer ||
+        data.investorHighlights?.length
+    )
+  );
+}
+
+function createMediaQualityInput(data: {
+  image?: string | null;
+  images?: Array<{ url?: string | null }>;
+  videoWalkthroughUrl?: string | null;
+  tour360Url?: string | null;
+  virtualTourUrl?: string | null;
+  floorPlanUrl?: string | null;
+  type?: string | null;
+  transaction?: string | null;
+}) {
+  return {
+    mainImage: data.image,
+    images: data.images,
+    videoWalkthroughUrl: data.videoWalkthroughUrl,
+    tour360Url: data.tour360Url,
+    virtualTourUrl: data.virtualTourUrl,
+    floorPlanUrl: data.floorPlanUrl,
+    listingType: data.type,
+    transaction: data.transaction
+  };
+}
 
 listingsRouter.get('/', async (req, res, next) => {
   try {
@@ -483,6 +727,82 @@ listingsRouter.get('/', async (req, res, next) => {
       });
     }
 
+    if (query.hasVideo) {
+      listingFilters.push({
+        OR: [
+          {
+            videoWalkthroughUrl: {
+              not: null
+            }
+          },
+          {
+            premiumMedia: {
+              some: {
+                type: 'VIDEO_WALKTHROUGH'
+              }
+            }
+          }
+        ]
+      });
+    }
+
+    if (query.hasVirtualTour) {
+      listingFilters.push({
+        OR: [
+          {
+            tour360Url: {
+              not: null
+            }
+          },
+          {
+            virtualTourUrl: {
+              not: null
+            }
+          },
+          {
+            premiumMedia: {
+              some: {
+                type: {
+                  in: ['TOUR_360', 'VIRTUAL_TOUR']
+                }
+              }
+            }
+          }
+        ]
+      });
+    }
+
+    if (query.hasFloorPlan) {
+      listingFilters.push({
+        OR: [
+          {
+            floorPlanUrl: {
+              not: null
+            }
+          },
+          {
+            premiumMedia: {
+              some: {
+                type: 'FLOOR_PLAN'
+              }
+            }
+          }
+        ]
+      });
+    }
+
+    if (query.verificationStatus) {
+      listingFilters.push({
+        verificationStatus: query.verificationStatus
+      });
+    }
+
+    if (query.mediaQualityStatus) {
+      listingFilters.push({
+        mediaQualityStatus: query.mediaQualityStatus
+      });
+    }
+
     for (const amenity of selectedAmenities) {
       listingFilters.push({
         amenities: {
@@ -605,6 +925,17 @@ listingsRouter.get('/', async (req, res, next) => {
               ]
             : []),
           {
+            eligibilityNotes: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            investorHighlights: {
+              has: search
+            }
+          },
+          {
             developerNameEn: {
               contains: search,
               mode: 'insensitive'
@@ -686,7 +1017,6 @@ listingsRouter.get('/', async (req, res, next) => {
       });
     }
 
-
     const listingWhere: Prisma.ListingWhereInput = {
       status: 'APPROVED',
       AND: listingFilters
@@ -764,6 +1094,13 @@ listingsRouter.get('/', async (req, res, next) => {
           typeAr: true,
           price: true,
           buyerEligibility: true,
+          eligibilityNotes: true,
+          investorHighlights: true,
+          videoWalkthroughUrl: true,
+          tour360Url: true,
+          virtualTourUrl: true,
+          floorPlanUrl: true,
+          verificationStatus: true,
 
           developerId: true,
           developerNameEn: true,
@@ -807,6 +1144,12 @@ listingsRouter.get('/', async (req, res, next) => {
             select: {
               id: true
             }
+          },
+          premiumMedia: {
+            select: {
+              id: true,
+              type: true
+            }
           }
         }
       });
@@ -820,6 +1163,9 @@ listingsRouter.get('/', async (req, res, next) => {
             candidate.developer?.nameAr,
             candidate.nearestLandmark?.nameEn,
             candidate.nearestLandmark?.nameAr,
+            candidate.eligibilityNotes,
+            candidate.verificationStatus,
+            ...candidate.investorHighlights,
             ...candidate.amenities.flatMap((amenity) => [
               amenity.name,
               amenity.nameEn,
@@ -827,9 +1173,16 @@ listingsRouter.get('/', async (req, res, next) => {
             ])
           ];
 
+          const hasVirtualTour =
+            Boolean(candidate.tour360Url || candidate.virtualTourUrl) ||
+            candidate.premiumMedia.some((media) =>
+              media.type === 'TOUR_360' || media.type === 'VIRTUAL_TOUR'
+            );
+
           const qualityScore =
             Math.min(candidate.images.length, 3) * 2 +
             Math.min(candidate.amenities.length, 5) +
+            Math.min(candidate.premiumMedia.length, 3) * 2 +
             Number((candidate.descriptionEn ?? '').trim().length >= 80) +
             Number(Boolean(candidate.titleAr)) +
             Number(Boolean(candidate.descriptionAr)) +
@@ -846,6 +1199,10 @@ listingsRouter.get('/', async (req, res, next) => {
             Number(Boolean(candidate.view)) +
             Number(Boolean(candidate.paymentFrequency)) +
             Number(candidate.buyerEligibility.length > 0) +
+            Number(hasVirtualTour) * 2 +
+            Number(Boolean(candidate.floorPlanUrl)) +
+            Number(candidate.verificationStatus === 'ADMIN_VERIFIED') * 2 +
+            Number(candidate.verificationStatus === 'EXTERNALLY_VERIFIED') * 3 +
             Number(Boolean(candidate.nearestLandmarkId)) +
             Number(
               Boolean(
@@ -871,7 +1228,8 @@ listingsRouter.get('/', async (req, res, next) => {
                 candidate.locationEn,
                 candidate.locationAr,
                 candidate.price,
-                ...candidate.buyerEligibility
+                ...candidate.buyerEligibility,
+                ...candidate.investorHighlights
               ],
               relatedSearchValues,
               [
@@ -987,6 +1345,198 @@ listingsRouter.patch(
   }
 );
 
+listingsRouter.patch(
+  '/admin/:id/stage8',
+  requireAuth(),
+  requireRole('ADMIN'),
+  async (req, res, next) => {
+    try {
+      const { id } = idParamsSchema.parse(req.params);
+      const data = adminStage8ListingSchema.parse(req.body);
+
+      const existingListing = await prisma.listing.findUnique({
+        where: {
+          id
+        },
+        include: {
+          images: true
+        }
+      });
+
+      if (!existingListing) {
+        throw new AppError(404, 'Listing not found');
+      }
+
+      const updateData: Prisma.ListingUpdateInput = {};
+
+      if (hasOwnProperty(data, 'buyerEligibility')) {
+        updateData.buyerEligibility =
+          existingListing.transaction === 'Sale'
+            ? {
+                set: data.buyerEligibility ?? []
+              }
+            : {
+                set: []
+              };
+        updateData.eligibilityMarkedBy = {
+          connect: {
+            id: req.user!.id
+          }
+        };
+      }
+
+      if (hasOwnProperty(data, 'eligibilityNotes')) {
+        updateData.eligibilityNotes = data.eligibilityNotes ?? null;
+        updateData.eligibilityMarkedBy = {
+          connect: {
+            id: req.user!.id
+          }
+        };
+      }
+
+      if (hasOwnProperty(data, 'eligibilityDisclaimer')) {
+        updateData.eligibilityDisclaimer = data.eligibilityDisclaimer ?? null;
+      }
+
+      if (hasOwnProperty(data, 'adminVerificationNotes')) {
+        updateData.adminVerificationNotes = data.adminVerificationNotes ?? null;
+      }
+
+      if (hasOwnProperty(data, 'investorHighlights')) {
+        updateData.investorHighlights = {
+          set: data.investorHighlights ?? []
+        };
+      }
+
+      if (hasOwnProperty(data, 'videoWalkthroughUrl')) {
+        updateData.videoWalkthroughUrl = data.videoWalkthroughUrl ?? null;
+      }
+
+      if (hasOwnProperty(data, 'tour360Url')) {
+        updateData.tour360Url = data.tour360Url ?? null;
+      }
+
+      if (hasOwnProperty(data, 'virtualTourUrl')) {
+        updateData.virtualTourUrl = data.virtualTourUrl ?? null;
+      }
+
+      if (hasOwnProperty(data, 'floorPlanUrl')) {
+        updateData.floorPlanUrl = data.floorPlanUrl ?? null;
+      }
+
+      if (hasOwnProperty(data, 'mediaQualityStatus')) {
+        updateData.mediaQualityStatus = data.mediaQualityStatus;
+      }
+
+      if (hasOwnProperty(data, 'mediaQualityNotes')) {
+        updateData.mediaQualityNotes = data.mediaQualityNotes ?? null;
+      }
+
+      if (hasOwnProperty(data, 'enhancedImageUrl')) {
+        updateData.enhancedImageUrl = data.enhancedImageUrl ?? null;
+      }
+
+      if (hasOwnProperty(data, 'enhancementStatus')) {
+        updateData.enhancementStatus = data.enhancementStatus;
+      }
+
+      if (hasOwnProperty(data, 'enhancementProvider')) {
+        updateData.enhancementProvider = data.enhancementProvider ?? null;
+      }
+
+      if (hasOwnProperty(data, 'enhancementNotes')) {
+        updateData.enhancementNotes = data.enhancementNotes ?? null;
+      }
+
+      if (hasOwnProperty(data, 'verificationStatus')) {
+        updateData.verificationStatus = data.verificationStatus;
+        updateData.verificationReviewedBy = {
+          connect: {
+            id: req.user!.id
+          }
+        };
+
+        if (
+          data.verificationStatus === 'ADMIN_VERIFIED' ||
+          data.verificationStatus === 'EXTERNALLY_VERIFIED'
+        ) {
+          updateData.verificationDate = new Date();
+        }
+      }
+
+      if (hasOwnProperty(data, 'verificationSource')) {
+        updateData.verificationSource = data.verificationSource ?? null;
+      }
+
+      if (hasOwnProperty(data, 'verificationNotes')) {
+        updateData.verificationNotes = data.verificationNotes ?? null;
+      }
+
+      if (hasOwnProperty(data, 'verificationDate')) {
+        updateData.verificationDate = data.verificationDate ?? null;
+      }
+
+      if (hasOwnProperty(data, 'verificationExpiryDate')) {
+        updateData.verificationExpiryDate = data.verificationExpiryDate ?? null;
+      }
+
+      if (
+        hasOwnProperty(data, 'videoWalkthroughUrl') ||
+        hasOwnProperty(data, 'tour360Url') ||
+        hasOwnProperty(data, 'virtualTourUrl') ||
+        hasOwnProperty(data, 'floorPlanUrl')
+      ) {
+        const qualityUpdate = createMediaQualityUpdate(
+          createMediaQualityInput({
+            image: existingListing.image,
+            images: existingListing.images,
+            videoWalkthroughUrl:
+              data.videoWalkthroughUrl ?? existingListing.videoWalkthroughUrl,
+            tour360Url: data.tour360Url ?? existingListing.tour360Url,
+            virtualTourUrl: data.virtualTourUrl ?? existingListing.virtualTourUrl,
+            floorPlanUrl: data.floorPlanUrl ?? existingListing.floorPlanUrl,
+            type: existingListing.type,
+            transaction: existingListing.transaction
+          })
+        );
+
+        if (!hasOwnProperty(data, 'mediaQualityStatus')) {
+          updateData.mediaQualityStatus = qualityUpdate.mediaQualityStatus;
+        }
+
+        if (!hasOwnProperty(data, 'mediaQualityNotes')) {
+          updateData.mediaQualityNotes = qualityUpdate.mediaQualityNotes;
+        }
+
+        if (!hasOwnProperty(data, 'enhancementStatus')) {
+          updateData.enhancementStatus = qualityUpdate.enhancementStatus;
+        }
+      }
+
+      if (hasOwnProperty(data, 'premiumMedia')) {
+        updateData.premiumMedia = {
+          deleteMany: {},
+          create: createPremiumMediaData(data.premiumMedia ?? [])
+        };
+      }
+
+      const listing = await prisma.listing.update({
+        where: {
+          id
+        },
+        data: updateData,
+        include: listingInclude
+      });
+
+      res.json({
+        listing
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 listingsRouter.get('/:slug', async (req, res, next) => {
   try {
     const { slug } = slugParamsSchema.parse(req.params);
@@ -1074,6 +1624,19 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
             }
           ];
 
+    const qualityUpdate = createMediaQualityUpdate(
+      createMediaQualityInput({
+        image: data.image,
+        images: listingImages,
+        videoWalkthroughUrl: data.videoWalkthroughUrl,
+        tour360Url: data.tour360Url,
+        virtualTourUrl: data.virtualTourUrl,
+        floorPlanUrl: data.floorPlanUrl,
+        type: data.type,
+        transaction: data.transaction
+      })
+    );
+
     const listing = await prisma.listing.create({
       data: {
         title: data.title,
@@ -1082,6 +1645,18 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
         transaction: data.transaction,
         buyerEligibility:
           data.transaction === 'Sale' ? data.buyerEligibility : [],
+        eligibilityMarkedById: shouldMarkEligibility(data)
+          ? req.user!.id
+          : undefined,
+        eligibilityNotes:
+          data.transaction === 'Sale' ? data.eligibilityNotes : undefined,
+        eligibilityDisclaimer:
+          data.transaction === 'Sale'
+            ? data.eligibilityDisclaimer ??
+              'Eligibility should be verified before purchase. Subject to applicable Omani regulations.'
+            : undefined,
+        investorHighlights:
+          data.transaction === 'Sale' ? data.investorHighlights : [],
         location: data.location,
         price: resolvedPrice.price,
         priceAmount: resolvedPrice.priceAmount,
@@ -1098,6 +1673,15 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
         descriptionEn: data.description,
         locationEn: data.location,
         typeEn: data.type,
+
+        videoWalkthroughUrl: data.videoWalkthroughUrl,
+        tour360Url: data.tour360Url,
+        virtualTourUrl: data.virtualTourUrl,
+        floorPlanUrl: data.floorPlanUrl,
+
+        mediaQualityStatus: qualityUpdate.mediaQualityStatus,
+        mediaQualityNotes: qualityUpdate.mediaQualityNotes,
+        enhancementStatus: qualityUpdate.enhancementStatus,
 
         status: req.user?.role === 'ADMIN' ? 'APPROVED' : 'PENDING',
         ownerId: req.user!.id,
@@ -1127,7 +1711,13 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
 
         images: {
           create: listingImages
-        }
+        },
+
+        premiumMedia: data.premiumMedia.length
+          ? {
+              create: createPremiumMediaData(data.premiumMedia)
+            }
+          : undefined
       },
       include: listingInclude
     });

@@ -5,6 +5,7 @@ import { Link, useParams } from 'react-router-dom';
 import { getActivities, getTravelAgencyBySlug } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
 import { ActivityCard } from '../components/Cards';
+import WhatsAppActions from '../components/WhatsAppActions';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { Activity, TravelAgency } from '../types';
@@ -34,7 +35,8 @@ export default function TravelAgencyDetails() {
           contact: 'بيانات التواصل',
           activities: 'أنشطة هذه الوكالة',
           noActivities: 'لا توجد أنشطة منشورة لهذه الوكالة حالياً.',
-          viewActivities: 'عرض كل الأنشطة'
+          viewActivities: 'عرض كل الأنشطة',
+          whatsapp: 'تواصل عبر واتساب'
         }
       : {
           back: 'Back to travel agencies',
@@ -48,7 +50,8 @@ export default function TravelAgencyDetails() {
           contact: 'Contact details',
           activities: 'Activities by this agency',
           noActivities: 'No published activities from this agency yet.',
-          viewActivities: 'View all activities'
+          viewActivities: 'View all activities',
+          whatsapp: 'Chat on WhatsApp'
         };
 
   useEffect(() => {
@@ -194,6 +197,17 @@ export default function TravelAgencyDetails() {
                 </div>
               ) : null}
 
+              {agency.phone ? (
+                <div className="activity-spec-card activity-spec-card--action">
+                  <WhatsAppActions
+                    phone={agency.phone}
+                    title={agency.name}
+                    location={agency.location || agency.headquarters}
+                    label={copy.whatsapp}
+                  />
+                </div>
+              ) : null}
+
               {agency.email ? (
                 <div className="activity-spec-card">
                   <Mail size={20} aria-hidden="true" />
@@ -253,6 +267,15 @@ export default function TravelAgencyDetails() {
               <Mail size={18} aria-hidden="true" />
               {agency.email}
             </p>
+          ) : null}
+
+          {agency.phone ? (
+            <WhatsAppActions
+              phone={agency.phone}
+              title={agency.name}
+              location={agency.location || agency.headquarters}
+              label={copy.whatsapp}
+            />
           ) : null}
 
           {agency.website ? (

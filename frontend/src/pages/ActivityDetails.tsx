@@ -29,6 +29,10 @@ import { ApiError } from '../api/client';
 import { getActivityBySlug } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
+import ReviewSection from '../components/ReviewSection';
+import SavedButton from '../components/SavedButton';
+import TrustBadges from '../components/TrustBadges';
+import WhatsAppActions from '../components/WhatsAppActions';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { Activity } from '../types';
@@ -37,6 +41,7 @@ formatDayList,
 formatMarketplacePrice,
 formatTimeRange
 } from '../utils/format';
+import { getSafeEmbedUrl } from '../utils/mediaEmbeds';
 
 export default function ActivityDetails() {
 const { t, language } = useLanguage();
@@ -112,6 +117,8 @@ packageInclusions: 'المشمول في الباقة',
 packageExclusions: 'غير المشمول في الباقة',
 packageDisclaimer:
 'تفاصيل الباقة مقدمة من المنظم ويجب تأكيد الطيران والفندق والتأشيرة والتوفر قبل الحجز.',
+premiumMedia: 'الوسائط المميزة',
+report: 'الإبلاغ عن هذا النشاط',
 bookingTitle: 'اطلبي الحجز مباشرة',
 bookingText:
 'اختاري التاريخ والوقت وعدد الضيوف، وسيراجع فريق lux.om الطلب مع منظم النشاط.',
@@ -184,6 +191,8 @@ packageInclusions: 'Package inclusions',
 packageExclusions: 'Package exclusions',
 packageDisclaimer:
 'Package details are provided by the organizer and should be confirmed before booking, including flight, hotel, visa, and availability details.',
+premiumMedia: 'Premium media',
+report: 'Report this activity',
 bookingTitle: 'Book this activity directly',
 bookingText:
 'Choose your date, preferred time, and guest count. lux.om will route the request to the activity provider.',
@@ -464,6 +473,27 @@ url: activity.image,
 alt: activity.title
 };
 
+const premiumMediaLinks = [
+activity.videoWalkthroughUrl
+  ? { type: 'VIDEO_WALKTHROUGH', url: activity.videoWalkthroughUrl, title: 'Video walkthrough' }
+  : null,
+activity.tour360Url
+  ? { type: 'TOUR_360', url: activity.tour360Url, title: '360 tour' }
+  : null,
+activity.virtualTourUrl
+  ? { type: 'VIRTUAL_TOUR', url: activity.virtualTourUrl, title: 'Virtual tour' }
+  : null,
+...(activity.premiumMedia ?? []).map((media) => ({
+  type: media.type,
+  url: media.url,
+  title: media.titleEn || media.titleAr || media.type.replace(/_/g, ' ')
+}))
+].filter((media): media is { type: string; url: string; title: string } => Boolean(media?.url));
+
+const embeddableMedia = premiumMediaLinks
+.map((media) => ({ ...media, embedUrl: getSafeEmbedUrl(media.url) }))
+.filter((media) => Boolean(media.embedUrl));
+
 const specItems = [
 {
 label: activityCopy.durationType,
@@ -565,6 +595,28 @@ return ( <article className="details-page details-page--activity-detail"> <secti
         ) : null}
       </div>
 
+      {embeddableMedia.length > 0 ? (
+        <section className="premium-media-section" aria-labelledby="activity-premium-media-title">
+          <div className="details-section-heading">
+            <p className="eyebrow">lux.om media</p>
+            <h2 id="activity-premium-media-title">{copy.premiumMedia}</h2>
+          </div>
+
+          <div className="premium-media-grid">
+            {embeddableMedia.map((media) => (
+              <iframe
+                key={`${media.type}-${media.url}`}
+                src={media.embedUrl}
+                title={media.title}
+                loading="lazy"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <div className="details-content">
         <div className="details-section-heading">
           <p className="eyebrow">{activity.category}</p>
@@ -572,6 +624,24 @@ return ( <article className="details-page details-page--activity-detail"> <secti
         </div>
 
         <p>{activity.description}</p>
+
+        <TrustBadges
+          verificationStatus={activity.verificationStatus}
+          mediaQualityStatus={activity.mediaQualityStatus}
+        />
+
+        <div className="stage8-detail-actions">
+          <SavedButton targetId={activity.id} targetType="activity" />
+          <WhatsAppActions
+            phone={activity.travelAgency?.phone || activity.owner?.phone}
+            title={activity.title}
+            location={activity.location}
+            label={language === 'ar' ? 'استفسار واتساب' : 'WhatsApp inquiry'}
+          />
+          <ButtonLink to="/contact" variant="secondary">
+            {copy.report}
+          </ButtonLink>
+        </div>
 
         <div className="details-highlight-strip">
           <span>
@@ -1067,6 +1137,10 @@ return ( <article className="details-page details-page--activity-detail"> <secti
 
       <p>{activityCopy.finalConfirmation}</p>
     </aside>
+  </section>
+
+  <section className="container stage8-review-wrap">
+    <ReviewSection targetType="ACTIVITY" targetId={activity.id} />
   </section>
 </article>
 

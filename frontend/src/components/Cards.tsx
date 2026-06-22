@@ -18,6 +18,9 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+import SavedButton from './SavedButton';
+import TrustBadges from './TrustBadges';
+import WhatsAppActions from './WhatsAppActions';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { Activity, Listing, ListingTransaction } from '../types';
 import {
@@ -240,7 +243,11 @@ function getCardCopy(language: 'en' | 'ar') {
         airportTransfer: 'مواصلات المطار',
         sqm: 'م²',
         viewDeveloperProfile: 'عرض ملف المطور',
-        viewAgencyProfile: 'عرض وكالة السفر'
+        viewAgencyProfile: 'عرض وكالة السفر',
+        virtualTour: 'جولة افتراضية',
+        floorPlan: 'مخطط',
+        verified: 'موثق',
+        whatsapp: 'واتساب'
       }
     : {
         featured: 'Featured',
@@ -271,7 +278,11 @@ function getCardCopy(language: 'en' | 'ar') {
         airportTransfer: 'Airport transfer',
         sqm: 'sqm',
         viewDeveloperProfile: 'View developer profile',
-        viewAgencyProfile: 'View travel agency'
+        viewAgencyProfile: 'View travel agency',
+        virtualTour: 'Virtual tour',
+        floorPlan: 'Floor plan',
+        verified: 'Verified',
+        whatsapp: 'WhatsApp'
       };
 }
 
@@ -303,6 +314,18 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
 
   const listingPrimaryImage = listing.images?.[0]?.url || listing.image;
   const listingImageCount = listing.images?.length ?? 0;
+  const hasListingVirtualTour = Boolean(
+    listing.tour360Url ||
+      listing.virtualTourUrl ||
+      listing.premiumMedia?.some((media) => media.type === 'TOUR_360' || media.type === 'VIRTUAL_TOUR')
+  );
+  const hasListingVideo = Boolean(
+    listing.videoWalkthroughUrl ||
+      listing.premiumMedia?.some((media) => media.type === 'VIDEO_WALKTHROUGH')
+  );
+  const hasListingFloorPlan = Boolean(
+    listing.floorPlanUrl || listing.premiumMedia?.some((media) => media.type === 'FLOOR_PLAN')
+  );
 
   return (
     <article className={`listing-card lux-market-card lux-market-card--${variant}`}>
@@ -316,6 +339,12 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
         {listingImageCount > 1 ? (
           <span className="lux-card-image-count">{listingImageCount} photos</span>
         ) : null}
+
+        <div className="lux-card-media-flags">
+          {hasListingVirtualTour ? <span>{copy.virtualTour}</span> : null}
+          {hasListingVideo ? <span>Video</span> : null}
+          {hasListingFloorPlan ? <span>{copy.floorPlan}</span> : null}
+        </div>
 
         <span className="lux-card-badge lux-card-badge--top">{transactionLabel}</span>
 
@@ -344,6 +373,12 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
             </span>
           ) : null}
         </div>
+
+        <TrustBadges
+          verificationStatus={listing.verificationStatus}
+          mediaQualityStatus={listing.mediaQualityStatus}
+          buyerEligibility={listing.buyerEligibility}
+        />
 
         <h3>
           <Link to={`/listings/${listing.slug}`}>{listing.title}</Link>
@@ -415,6 +450,13 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
         </div>
 
         <div className="lux-card-footer">
+          <SavedButton targetId={listing.id} targetType="listing" />
+          <WhatsAppActions
+            phone={listing.owner?.phone}
+            title={listing.title}
+            location={listing.location}
+            label={copy.whatsapp}
+          />
           <span>{copy.curatedProperty}</span>
 
           <Link to={`/listings/${listing.slug}`} className="lux-card-link">
@@ -460,6 +502,15 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
 
   const activityPrimaryImage = activity.images?.[0]?.url || activity.image;
   const activityImageCount = activity.images?.length ?? 0;
+  const hasActivityVirtualTour = Boolean(
+    activity.tour360Url ||
+      activity.virtualTourUrl ||
+      activity.premiumMedia?.some((media) => media.type === 'TOUR_360' || media.type === 'VIRTUAL_TOUR')
+  );
+  const hasActivityVideo = Boolean(
+    activity.videoWalkthroughUrl ||
+      activity.premiumMedia?.some((media) => media.type === 'VIDEO_WALKTHROUGH')
+  );
 
   const destinationLabel = [
     activity.destinationCity,
@@ -529,6 +580,11 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
           <span className="lux-card-image-count">{activityImageCount} photos</span>
         ) : null}
 
+        <div className="lux-card-media-flags">
+          {hasActivityVirtualTour ? <span>{copy.virtualTour}</span> : null}
+          {hasActivityVideo ? <span>Video</span> : null}
+        </div>
+
         <span
           className={`lux-card-badge lux-card-badge--top ${
             isOutsideOmanPackage ? 'lux-card-badge--package' : ''
@@ -581,6 +637,11 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
             </span>
           ) : null}
         </div>
+
+        <TrustBadges
+          verificationStatus={activity.verificationStatus}
+          mediaQualityStatus={activity.mediaQualityStatus}
+        />
 
         <h3>
           <Link to={`/activities/${activity.slug}`}>{activity.title}</Link>
@@ -712,6 +773,13 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
         </div>
 
         <div className="lux-card-footer">
+          <SavedButton targetId={activity.id} targetType="activity" />
+          <WhatsAppActions
+            phone={activity.owner?.phone || activity.travelAgency?.phone}
+            title={activity.title}
+            location={activity.location}
+            label={copy.whatsapp}
+          />
           <span>{cardModeLabel}</span>
 
           <Link to={`/activities/${activity.slug}`} className="lux-card-link">

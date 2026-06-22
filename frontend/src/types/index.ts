@@ -20,7 +20,12 @@ export type ListingBuyerEligibility =
 | 'FOREIGNERS_ALLOWED'
 | 'COMPANY_PURCHASE_ALLOWED'
 | 'FREEHOLD'
-| 'USUFRUCT';
+| 'USUFRUCT'
+| 'EXPAT_BUYABLE'
+| 'ITC'
+| 'GOLDEN_VISA_ELIGIBLE'
+| 'OMR_250K_RESIDENCY_ELIGIBLE'
+| 'OMR_500K_RESIDENCY_ELIGIBLE';
 
 export type ListingStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
@@ -141,6 +146,9 @@ slug: string;
 name: string;
 logo: string;
 verified: boolean;
+phone?: string | null;
+email?: string | null;
+verificationStatus?: VerificationStatus | null;
 shortDescription: string;
 };
 
@@ -150,6 +158,9 @@ slug: string;
 name: string;
 logo: string;
 verified: boolean;
+phone?: string | null;
+email?: string | null;
+verificationStatus?: VerificationStatus | null;
 shortDescription: string;
 };
 
@@ -172,6 +183,23 @@ baths: number;
 sqm: number;
 image: string;
 images?: ApiListingImage[];
+premiumMedia?: PremiumMediaAsset[];
+videoWalkthroughUrl?: string;
+tour360Url?: string;
+virtualTourUrl?: string;
+floorPlanUrl?: string;
+mediaQualityStatus?: MediaQualityStatus;
+mediaQualityNotes?: string;
+enhancedImageUrl?: string;
+enhancementStatus?: EnhancementStatus;
+enhancementNotes?: string;
+verificationStatus?: VerificationStatus;
+verificationSource?: string;
+verificationNotes?: string;
+eligibilityNotes?: string;
+eligibilityDisclaimer?: string;
+investorHighlights?: string[];
+owner?: PublicUser;
 status?: ListingStatus;
 amenities: string[];
 featured?: boolean;
@@ -229,6 +257,19 @@ priceQualifier?: PriceQualifier;
 priceUnit?: PriceUnit;
 image: string;
 images?: ApiActivityImage[];
+premiumMedia?: PremiumMediaAsset[];
+videoWalkthroughUrl?: string;
+tour360Url?: string;
+virtualTourUrl?: string;
+mediaQualityStatus?: MediaQualityStatus;
+mediaQualityNotes?: string;
+enhancedImageUrl?: string;
+enhancementStatus?: EnhancementStatus;
+enhancementNotes?: string;
+verificationStatus?: VerificationStatus;
+verificationSource?: string;
+verificationNotes?: string;
+owner?: PublicUser;
 category: string;
 highlights: string[];
 availability: ActivityAvailability;
@@ -333,6 +374,9 @@ website?: string | null;
 establishedYear?: number | null;
 verified: boolean;
 featured: boolean;
+verificationStatus?: VerificationStatus | null;
+verificationSource?: string | null;
+verificationNotes?: string | null;
 _count?: {
 listings: number;
 };
@@ -356,6 +400,9 @@ website?: string | null;
 establishedYear?: number | null;
 verified: boolean;
 featured: boolean;
+verificationStatus?: VerificationStatus | null;
+verificationSource?: string | null;
+verificationNotes?: string | null;
 _count?: {
 activities: number;
 };
@@ -427,6 +474,26 @@ distanceFromLandmarkAr?: string | null;
 
 amenities?: ApiListingAmenity[];
 images?: ApiListingImage[];
+premiumMedia?: PremiumMediaAsset[];
+videoWalkthroughUrl?: string | null;
+tour360Url?: string | null;
+virtualTourUrl?: string | null;
+floorPlanUrl?: string | null;
+mediaQualityStatus?: MediaQualityStatus | null;
+mediaQualityNotes?: string | null;
+enhancedImageUrl?: string | null;
+enhancementStatus?: EnhancementStatus | null;
+enhancementProvider?: string | null;
+enhancementNotes?: string | null;
+verificationStatus?: VerificationStatus | null;
+verificationSource?: string | null;
+verificationNotes?: string | null;
+eligibilityNotes?: string | null;
+eligibilityDisclaimer?: string | null;
+adminVerificationNotes?: string | null;
+investorHighlights?: string[] | null;
+eligibilityMarkedBy?: PublicUser | null;
+verificationReviewedBy?: PublicUser | null;
 
 maxGuests?: number | null;
 minStayNights?: number | null;
@@ -527,6 +594,21 @@ includesTransfer: boolean;
 mealIncluded: boolean;
 outdoor: boolean;
 
+videoWalkthroughUrl?: string | null;
+tour360Url?: string | null;
+virtualTourUrl?: string | null;
+premiumMedia?: PremiumMediaAsset[];
+mediaQualityStatus?: MediaQualityStatus | null;
+mediaQualityNotes?: string | null;
+enhancedImageUrl?: string | null;
+enhancementStatus?: EnhancementStatus | null;
+enhancementProvider?: string | null;
+enhancementNotes?: string | null;
+verificationStatus?: VerificationStatus | null;
+verificationSource?: string | null;
+verificationNotes?: string | null;
+verificationReviewedBy?: PublicUser | null;
+
 status?: ActivityStatus;
 rejectedReason?: string | null;
 
@@ -593,4 +675,66 @@ name: string;
 email: string;
 phone: string;
 message: string;
+};
+
+
+export type MediaAssetType =
+| 'IMAGE'
+| 'VIDEO_WALKTHROUGH'
+| 'TOUR_360'
+| 'VIRTUAL_TOUR'
+| 'FLOOR_PLAN'
+| 'DOCUMENT'
+| 'OTHER';
+
+export type MediaQualityStatus =
+| 'NOT_CHECKED'
+| 'NEEDS_REVIEW'
+| 'ACCEPTABLE'
+| 'EXCELLENT'
+| 'BLOCKED';
+
+export type EnhancementStatus =
+| 'NOT_REQUESTED'
+| 'NOT_CONFIGURED'
+| 'QUEUED'
+| 'PROCESSING'
+| 'COMPLETED'
+| 'FAILED';
+
+export type VerificationStatus =
+| 'UNVERIFIED'
+| 'SUBMITTED'
+| 'ADMIN_VERIFIED'
+| 'EXTERNALLY_VERIFIED'
+| 'REJECTED'
+| 'EXPIRED';
+
+export type PremiumMediaAsset = {
+id: string;
+type: MediaAssetType;
+url: string;
+provider?: string | null;
+titleEn?: string | null;
+titleAr?: string | null;
+altEn?: string | null;
+altAr?: string | null;
+sortOrder: number;
+isPrimary: boolean;
+};
+
+export type MarketInsight = {
+id?: string;
+location: string;
+locationKey: string;
+propertyType?: string | null;
+sampleSizeSale: number;
+sampleSizeRent: number;
+avgAskingPrice?: string | number | null;
+avgRent?: string | number | null;
+avgPricePerSqm?: string | number | null;
+estimatedRentalYield?: string | number | null;
+notEnoughData: boolean;
+notes: string;
+generatedAt?: string;
 };

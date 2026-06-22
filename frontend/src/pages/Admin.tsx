@@ -47,6 +47,7 @@ import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
 import SectionHeader from '../components/SectionHeader';
+import Stage8AdminCommandCenter from '../components/Stage8AdminCommandCenter';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type {
@@ -1430,6 +1431,8 @@ async function deleteDeveloperCompany(developerId: string) {
           <span>{copy.qualityGate}</span>
         </div>
       </div>
+
+      <Stage8AdminCommandCenter token={token} />
 
       {loading ? (
         <div className="empty-state empty-state--premium">

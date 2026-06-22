@@ -16,11 +16,16 @@ import { Link, useParams } from 'react-router-dom';
 
 import { getListingBySlug } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
+import ReviewSection from '../components/ReviewSection';
+import SavedButton from '../components/SavedButton';
+import TrustBadges from '../components/TrustBadges';
+import WhatsAppActions from '../components/WhatsAppActions';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { Listing } from '../types';
 import { formatMarketplacePrice } from '../utils/format';
 import { formatListingBuyerEligibilityList } from '../utils/listingEligibility';
+import { getSafeEmbedUrl } from '../utils/mediaEmbeds';
 
 export default function ListingDetails() {
   const { t, language } = useLanguage();
@@ -54,6 +59,11 @@ notSpecified: 'غير محدد',
           viewCompanyProfile: 'عرض ملف الشركة',
           viewDeveloperListings: 'عرض عقارات هذا المطور',
           buyerEligibility: 'أهلية الشراء',
+          investorReadiness: 'جاهزية المستثمر',
+          eligibilityDisclaimer: 'يجب التحقق من الأهلية قبل الشراء وتخضع للوائح عُمان المعمول بها.',
+          premiumMedia: 'الوسائط المميزة',
+          floorPlan: 'مخطط العقار',
+          report: 'الإبلاغ عن هذا العقار',
           loading: 'جاري تحميل العقار...',
           error: 'تعذر تحميل تفاصيل العقار. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
@@ -77,6 +87,11 @@ notSpecified: 'Not specified',
           viewCompanyProfile: 'View company profile',
           viewDeveloperListings: 'View properties by this developer',
           buyerEligibility: 'Buyer eligibility',
+          investorReadiness: 'Investor readiness',
+          eligibilityDisclaimer: 'Eligibility should be verified before purchase and is subject to applicable Omani regulations.',
+          premiumMedia: 'Premium media',
+          floorPlan: 'Floor plan',
+          report: 'Report this listing',
           loading: 'Loading listing...',
           error: 'Could not load listing details. Make sure the backend is running and try again.'
         };
@@ -162,6 +177,31 @@ notSpecified: 'Not specified',
     url: listing.image,
     alt: listing.title
   };
+
+  const premiumMediaLinks = [
+    listing.videoWalkthroughUrl
+      ? { type: 'VIDEO_WALKTHROUGH', url: listing.videoWalkthroughUrl, title: 'Video walkthrough' }
+      : null,
+    listing.tour360Url
+      ? { type: 'TOUR_360', url: listing.tour360Url, title: '360 tour' }
+      : null,
+    listing.virtualTourUrl
+      ? { type: 'VIRTUAL_TOUR', url: listing.virtualTourUrl, title: 'Virtual tour' }
+      : null,
+    ...(listing.premiumMedia ?? []).map((media) => ({
+      type: media.type,
+      url: media.url,
+      title: media.titleEn || media.titleAr || media.type.replace(/_/g, ' ')
+    }))
+  ].filter((media): media is { type: string; url: string; title: string } => Boolean(media?.url));
+
+  const embeddableMedia = premiumMediaLinks
+    .map((media) => ({ ...media, embedUrl: getSafeEmbedUrl(media.url) }))
+    .filter((media) => Boolean(media.embedUrl));
+
+  const floorPlanUrl =
+    listing.floorPlanUrl ||
+    listing.premiumMedia?.find((media) => media.type === 'FLOOR_PLAN')?.url;
 
   const specItems = [
   {
@@ -283,6 +323,35 @@ notSpecified: 'Not specified',
               ) : null}
             </div>
 
+          {embeddableMedia.length > 0 || floorPlanUrl ? (
+            <section className="premium-media-section" aria-labelledby="listing-premium-media-title">
+              <div className="details-section-heading">
+                <p className="eyebrow">lux.om media</p>
+                <h2 id="listing-premium-media-title">{copy.premiumMedia}</h2>
+              </div>
+
+              <div className="premium-media-grid">
+                {embeddableMedia.map((media) => (
+                  <iframe
+                    key={`${media.type}-${media.url}`}
+                    src={media.embedUrl}
+                    title={media.title}
+                    loading="lazy"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                ))}
+
+                {floorPlanUrl ? (
+                  <a className="premium-media-link" href={floorPlanUrl} target="_blank" rel="noreferrer">
+                    {copy.floorPlan}
+                    <MoveRight size={16} aria-hidden="true" />
+                  </a>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
           <div className="details-content">
             <div className="details-section-heading">
               <p className="eyebrow">{listing.type}</p>
@@ -290,6 +359,25 @@ notSpecified: 'Not specified',
             </div>
 
             <p>{listing.description}</p>
+
+            <TrustBadges
+              verificationStatus={listing.verificationStatus}
+              mediaQualityStatus={listing.mediaQualityStatus}
+              buyerEligibility={listing.buyerEligibility}
+            />
+
+            <div className="stage8-detail-actions">
+              <SavedButton targetId={listing.id} targetType="listing" />
+              <WhatsAppActions
+                phone={listing.owner?.phone}
+                title={listing.title}
+                location={listing.location}
+                label={language === 'ar' ? 'استفسار واتساب' : 'WhatsApp inquiry'}
+              />
+              <ButtonLink to="/contact" variant="secondary">
+                {copy.report}
+              </ButtonLink>
+            </div>
 
             <div className="details-highlight-strip">
               <span>
@@ -321,6 +409,25 @@ notSpecified: 'Not specified',
                 </span>
               ) : null}
             </div>
+
+            {listing.transaction === 'Sale' && (buyerEligibilityLabel || listing.eligibilityNotes || listing.investorHighlights?.length) ? (
+              <section className="investor-eligibility-panel" aria-labelledby="listing-investor-title">
+                <p className="eyebrow">lux.om investor note</p>
+                <h2 id="listing-investor-title">{copy.investorReadiness}</h2>
+                {buyerEligibilityLabel ? <strong>{buyerEligibilityLabel}</strong> : null}
+                {listing.eligibilityNotes ? <p>{listing.eligibilityNotes}</p> : null}
+                {listing.investorHighlights?.length ? (
+                  <ul>
+                    {listing.investorHighlights.map((highlight) => (
+                      <li key={highlight}>{highlight}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                <p className="trust-note">
+                  {listing.eligibilityDisclaimer || copy.eligibilityDisclaimer}
+                </p>
+              </section>
+            ) : null}
 
             {listing.developer ? (
               <section className="developer-detail-card" aria-labelledby="listing-developer-title">
@@ -509,6 +616,10 @@ notSpecified: 'Not specified',
 
           <p>{t.listings.contactHint}</p>
         </aside>
+      </section>
+
+      <section className="container stage8-review-wrap">
+        <ReviewSection targetType="LISTING" targetId={listing.id} />
       </section>
     </article>
   );

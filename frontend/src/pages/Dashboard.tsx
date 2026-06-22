@@ -33,6 +33,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
 import SectionHeader from '../components/SectionHeader';
+import Stage8DashboardPanel from '../components/Stage8DashboardPanel';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import { formatMarketplacePrice } from '../utils/format';
@@ -1434,6 +1435,8 @@ export default function Dashboard() {
               </div>
             </aside>
           </div>
+
+          <Stage8DashboardPanel token={token} />
         </>
       ) : null}
     </section>

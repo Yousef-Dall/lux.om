@@ -42,7 +42,27 @@ const buyerEligibilityLabels: Record<
     en: 'Usufruct',
     ar: 'حق انتفاع'
   }
-};
+,
+  EXPAT_BUYABLE: {
+    en: 'Expat-buyable',
+    ar: 'مناسب للوافدين'
+  },
+  ITC: {
+    en: 'ITC project',
+    ar: 'مشروع مجمع سياحي متكامل'
+  },
+  GOLDEN_VISA_ELIGIBLE: {
+    en: 'Golden Visa eligible',
+    ar: 'مؤهل للإقامة الذهبية'
+  },
+  OMR_250K_RESIDENCY_ELIGIBLE: {
+    en: 'OMR 250k+ residency eligible',
+    ar: 'مؤهل للإقامة باستثمار ٢٥٠ ألف ريال عماني+'
+  },
+  OMR_500K_RESIDENCY_ELIGIBLE: {
+    en: 'OMR 500k+ residency eligible',
+    ar: 'مؤهل للإقامة باستثمار ٥٠٠ ألف ريال عماني+'
+  },};
 
 export function formatListingBuyerEligibility(
   value: ListingBuyerEligibility,

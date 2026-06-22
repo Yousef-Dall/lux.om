@@ -3,6 +3,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
+import { createMediaQualityUpdate } from '../services/mediaQuality';
+import { getMediaProvider, isSafeMediaUrl } from '../services/mediaEmbeds';
 import {
   createPaginationMetadata,
   resolvePagination
@@ -112,6 +114,53 @@ const optionalTrimmedString = (max: number) =>
     )
     .optional();
 
+const optionalSafeMediaUrlSchema = z
+  .preprocess(
+    (value) =>
+      value === '' || value === null || value === undefined
+        ? undefined
+        : value,
+    z
+      .string()
+      .trim()
+      .max(1000)
+      .refine((value) => isSafeMediaUrl(value), {
+        message: 'Media URL must be an uploaded file path or a supported media URL'
+      })
+      .optional()
+  )
+  .optional();
+
+const mediaAssetTypeValues = [
+  'IMAGE',
+  'VIDEO_WALKTHROUGH',
+  'TOUR_360',
+  'VIRTUAL_TOUR',
+  'FLOOR_PLAN',
+  'DOCUMENT',
+  'OTHER'
+] as const;
+
+const premiumMediaInputSchema = z
+  .object({
+    type: z.enum(mediaAssetTypeValues),
+    url: z
+      .string()
+      .trim()
+      .max(1000)
+      .refine((value) => isSafeMediaUrl(value), {
+        message: 'Premium media URL must be an uploaded file path or supported media URL'
+      }),
+    provider: optionalTrimmedString(120),
+    titleEn: optionalTrimmedString(160),
+    titleAr: optionalTrimmedString(160),
+    altEn: optionalTrimmedString(160),
+    altAr: optionalTrimmedString(160),
+    sortOrder: z.coerce.number().int().min(0).default(0),
+    isPrimary: z.coerce.boolean().default(false)
+  })
+  .strict();
+
 const optionalPositiveIntSchema = (max = 365) =>
   z
     .preprocess(
@@ -198,6 +247,11 @@ const activityCreateSchema = z
     includesTransfer: z.coerce.boolean().default(false),
     mealIncluded: z.coerce.boolean().default(false),
     outdoor: z.coerce.boolean().default(false),
+
+    videoWalkthroughUrl: optionalSafeMediaUrlSchema,
+    tour360Url: optionalSafeMediaUrlSchema,
+    virtualTourUrl: optionalSafeMediaUrlSchema,
+    premiumMedia: z.array(premiumMediaInputSchema).max(20).default([]),
 
     nearestLandmarkId: optionalTrimmedString(120),
     distanceFromLandmarkEn: optionalTrimmedString(120),
@@ -395,8 +449,55 @@ const activityInclude = {
       sortOrder: 'asc' as const
     }
   },
+  premiumMedia: {
+    orderBy: {
+      sortOrder: 'asc' as const
+    }
+  },
+  verificationReviewedBy: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true
+    }
+  },
   highlights: true
 };
+
+function createPremiumMediaData(
+  premiumMedia: z.infer<typeof premiumMediaInputSchema>[]
+) {
+  return premiumMedia.map((media) => ({
+    type: media.type,
+    url: media.url,
+    provider: media.provider ?? getMediaProvider(media.url) ?? null,
+    titleEn: media.titleEn,
+    titleAr: media.titleAr,
+    altEn: media.altEn,
+    altAr: media.altAr,
+    sortOrder: media.sortOrder,
+    isPrimary: media.isPrimary
+  }));
+}
+
+function createActivityMediaQualityInput(data: {
+  image?: string | null;
+  images?: Array<{ url?: string | null }>;
+  videoWalkthroughUrl?: string | null;
+  tour360Url?: string | null;
+  virtualTourUrl?: string | null;
+  category?: string | null;
+}) {
+  return {
+    mainImage: data.image,
+    images: data.images,
+    videoWalkthroughUrl: data.videoWalkthroughUrl,
+    tour360Url: data.tour360Url,
+    virtualTourUrl: data.virtualTourUrl,
+    activityType: data.category
+  };
+}
 
 
 const activeAvailabilityBookingStatuses = [
@@ -1549,7 +1650,18 @@ activitiesRouter.post(
         priceUnit: data.priceUnit
       });
 
-      const activity = await prisma.activity.create({
+      const qualityUpdate = createMediaQualityUpdate(
+      createActivityMediaQualityInput({
+        image: data.images[0]?.url,
+        images: data.images,
+        videoWalkthroughUrl: data.videoWalkthroughUrl,
+        tour360Url: data.tour360Url,
+        virtualTourUrl: data.virtualTourUrl,
+        category: data.categoryEn
+      })
+    );
+
+    const activity = await prisma.activity.create({
         data: {
           slug,
           titleEn: data.titleEn,
@@ -1616,6 +1728,13 @@ activitiesRouter.post(
           mealIncluded: data.mealIncluded,
           outdoor: data.outdoor,
 
+          videoWalkthroughUrl: data.videoWalkthroughUrl,
+          tour360Url: data.tour360Url,
+          virtualTourUrl: data.virtualTourUrl,
+          mediaQualityStatus: qualityUpdate.mediaQualityStatus,
+          mediaQualityNotes: qualityUpdate.mediaQualityNotes,
+          enhancementStatus: qualityUpdate.enhancementStatus,
+
           nearestLandmarkId: data.nearestLandmarkId,
           distanceFromLandmarkEn: data.distanceFromLandmarkEn,
           distanceFromLandmarkAr: data.distanceFromLandmarkAr,
@@ -1625,6 +1744,11 @@ activitiesRouter.post(
           images: {
             create: data.images
           },
+          premiumMedia: data.premiumMedia.length
+            ? {
+                create: createPremiumMediaData(data.premiumMedia)
+              }
+            : undefined,
           highlights: {
             create: data.highlights
           }

@@ -17,6 +17,7 @@ import DeveloperDetails from './pages/DeveloperDetails';
 import Developers from './pages/Developers';
 import Home from './pages/Home';
 import ListingDetails from './pages/ListingDetails';
+import MarketInsights from './pages/MarketInsights';
 import Listings from './pages/Listings';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -44,6 +45,10 @@ const seoCopy = {
       title: 'Curated activities and travel packages in Oman | lux.om',
       description:
         'Book premium Oman activities, local experiences, and selected outbound travel packages from trusted providers.'
+    },
+    marketInsights: {
+      title: 'Oman market insights | lux.om',
+      description: 'Explore Oman real estate market signals based on approved lux.om listings and conservative comparable data.'
     },
     developers: {
       title: 'Oman real estate developers | lux.om',
@@ -125,6 +130,11 @@ const seoCopy = {
       title: 'الدخول إلى الحساب | lux.om',
       description: 'سجّل الدخول أو أنشئ حسابك في lux.om.'
     },
+    marketInsights: {
+      title: 'lux.om | مؤشرات سوق العقار في عُمان',
+      description:
+        'استكشف مؤشرات سوق العقار في عُمان بناءً على بيانات lux.om المتاحة، أسعار العرض، اتجاهات الإيجار، وإشارات المستثمرين.'
+    },
     fallback: {
       title: 'lux.om',
       description: 'منصة عُمان المميزة للعقارات والإقامات والمشاريع ووكالات السفر والأنشطة.'
@@ -136,6 +146,7 @@ function getSeoKey(pathname: string) {
   if (pathname === '/') return 'home';
   if (pathname.startsWith('/listings')) return 'listings';
   if (pathname.startsWith('/activities')) return 'activities';
+  if (pathname.startsWith('/market-insights')) return 'marketInsights';
   if (pathname.startsWith('/developers')) return 'developers';
   if (pathname.startsWith('/travel-agencies')) return 'travelAgencies';
   if (pathname.startsWith('/about')) return 'about';
@@ -388,6 +399,8 @@ export default function App() {
               </RequireActivityProvider>
             }
           />
+
+          <Route path="/market-insights" element={<MarketInsights />} />
 
           <Route path="/developers" element={<Developers />} />
           <Route path="/developers/:slug" element={<DeveloperDetails />} />

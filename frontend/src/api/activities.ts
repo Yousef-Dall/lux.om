@@ -81,6 +81,21 @@ includesTransfer: boolean;
 mealIncluded: boolean;
 outdoor: boolean;
 
+videoWalkthroughUrl?: string;
+tour360Url?: string;
+virtualTourUrl?: string;
+premiumMedia?: Array<{
+  type: string;
+  url: string;
+  provider?: string;
+  titleEn?: string;
+  titleAr?: string;
+  altEn?: string;
+  altAr?: string;
+  sortOrder?: number;
+  isPrimary?: boolean;
+}>;
+
 nearestLandmarkId?: string;
 distanceFromLandmarkEn?: string;
 distanceFromLandmarkAr?: string;

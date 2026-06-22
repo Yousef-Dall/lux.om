@@ -201,6 +201,9 @@ slug: apiListing.developer.slug,
 name: pickLocalized(language, apiListing.developer.nameEn, apiListing.developer.nameAr),
 logo: resolveAssetUrl(apiListing.developer.logo),
 verified: apiListing.developer.verified,
+phone: apiListing.developer.phone,
+email: apiListing.developer.email,
+verificationStatus: apiListing.developer.verificationStatus,
 shortDescription: pickLocalized(
 language,
 apiListing.developer.descriptionEn,
@@ -226,6 +229,14 @@ apiListing.images
 url: resolveAssetUrl(image.url)
 }))
 .filter((image) => image.url) ?? [];
+
+const listingPremiumMedia =
+apiListing.premiumMedia
+?.map((media) => ({
+...media,
+url: resolveAssetUrl(media.url)
+}))
+.filter((media) => media.url) ?? [];
 
 const firstImage = listingImages[0]?.url || apiListing.image;
 
@@ -258,6 +269,23 @@ baths: apiListing.baths,
 sqm: apiListing.sqm,
 image: resolveAssetUrl(firstImage || apiListing.image),
 images: listingImages,
+premiumMedia: listingPremiumMedia,
+videoWalkthroughUrl: apiListing.videoWalkthroughUrl ?? undefined,
+tour360Url: apiListing.tour360Url ?? undefined,
+virtualTourUrl: apiListing.virtualTourUrl ?? undefined,
+floorPlanUrl: apiListing.floorPlanUrl ? resolveAssetUrl(apiListing.floorPlanUrl) : undefined,
+mediaQualityStatus: apiListing.mediaQualityStatus ?? undefined,
+mediaQualityNotes: apiListing.mediaQualityNotes ?? undefined,
+enhancedImageUrl: apiListing.enhancedImageUrl ? resolveAssetUrl(apiListing.enhancedImageUrl) : undefined,
+enhancementStatus: apiListing.enhancementStatus ?? undefined,
+enhancementNotes: apiListing.enhancementNotes ?? undefined,
+verificationStatus: apiListing.verificationStatus ?? undefined,
+verificationSource: apiListing.verificationSource ?? undefined,
+verificationNotes: apiListing.verificationNotes ?? undefined,
+eligibilityNotes: apiListing.eligibilityNotes ?? undefined,
+eligibilityDisclaimer: apiListing.eligibilityDisclaimer ?? undefined,
+investorHighlights: apiListing.investorHighlights ?? [],
+owner: apiListing.owner,
 status: apiListing.status,
 amenities:
 apiListing.amenities?.map((amenity) =>
@@ -300,6 +328,9 @@ apiActivity.travelAgency.nameAr
 ),
 logo: resolveAssetUrl(apiActivity.travelAgency.logo),
 verified: apiActivity.travelAgency.verified,
+phone: apiActivity.travelAgency.phone,
+email: apiActivity.travelAgency.email,
+verificationStatus: apiActivity.travelAgency.verificationStatus,
 shortDescription: pickLocalized(
 language,
 apiActivity.travelAgency.descriptionEn,
@@ -315,6 +346,14 @@ apiActivity.images
 url: resolveAssetUrl(image.url)
 }))
 .filter((image) => image.url) ?? [];
+
+const activityPremiumMedia =
+apiActivity.premiumMedia
+?.map((media) => ({
+...media,
+url: resolveAssetUrl(media.url)
+}))
+.filter((media) => media.url) ?? [];
 
 const firstImage = activityImages[0]?.url || '';
 
@@ -340,6 +379,19 @@ priceQualifier: apiActivity.priceQualifier ?? undefined,
 priceUnit: apiActivity.priceUnit ?? undefined,
 image: resolveAssetUrl(firstImage),
 images: activityImages,
+premiumMedia: activityPremiumMedia,
+videoWalkthroughUrl: apiActivity.videoWalkthroughUrl ?? undefined,
+tour360Url: apiActivity.tour360Url ?? undefined,
+virtualTourUrl: apiActivity.virtualTourUrl ?? undefined,
+mediaQualityStatus: apiActivity.mediaQualityStatus ?? undefined,
+mediaQualityNotes: apiActivity.mediaQualityNotes ?? undefined,
+enhancedImageUrl: apiActivity.enhancedImageUrl ? resolveAssetUrl(apiActivity.enhancedImageUrl) : undefined,
+enhancementStatus: apiActivity.enhancementStatus ?? undefined,
+enhancementNotes: apiActivity.enhancementNotes ?? undefined,
+verificationStatus: apiActivity.verificationStatus ?? undefined,
+verificationSource: apiActivity.verificationSource ?? undefined,
+verificationNotes: apiActivity.verificationNotes ?? undefined,
+owner: apiActivity.owner,
 category: pickLocalized(language, apiActivity.categoryEn, apiActivity.categoryAr),
 highlights:
 apiActivity.highlights?.map((highlight) =>

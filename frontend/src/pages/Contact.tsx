@@ -11,6 +11,7 @@ import {
 import { FormEvent, useMemo, useState } from 'react';
 
 import { ApiError } from '../api/client';
+import { createWhatsAppUrl } from '../utils/whatsapp';
 import { createInquiry } from '../api/inquiries';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -23,6 +24,8 @@ const initialState: ContactFormState = {
   phone: '',
   message: ''
 };
+
+const LUX_WHATSAPP_PHONE = '+96890000000';
 
 type InquiryOption = {
   type: InquiryType;
@@ -66,6 +69,9 @@ export default function Contact() {
             email: 'البريد الإلكتروني',
             phone: 'الهاتف',
             location: 'الموقع',
+            chatWhatsapp: 'تحدث معنا على واتساب',
+            orWhatsapp: 'أو تحدثي معنا مباشرة على واتساب',
+            whatsappMessage: 'مرحباً، أود التواصل مع فريق lux.om.',
             sending: 'جاري الإرسال...',
             fallbackError: 'تعذر إرسال الاستفسار. حاولي مرة أخرى.'
           }
@@ -91,11 +97,16 @@ export default function Contact() {
             email: 'Email',
             phone: 'Phone',
             location: 'Location',
+            chatWhatsapp: 'Chat on WhatsApp',
+            orWhatsapp: 'or chat with us directly on WhatsApp',
+            whatsappMessage: 'Hello, I would like to contact the lux.om team.',
             sending: 'Sending...',
             fallbackError: 'Could not send your inquiry. Please try again.'
           },
     [language]
   );
+
+  const whatsappUrl = createWhatsAppUrl(LUX_WHATSAPP_PHONE, copy.whatsappMessage);
 
   const inquiryTypes = useMemo<InquiryOption[]>(
     () => [
@@ -276,6 +287,13 @@ export default function Contact() {
             {submitting ? copy.sending : t.common.sendInquiry}
           </button>
 
+          {whatsappUrl ? (
+            <a className="contact-form-whatsapp-hint" href={whatsappUrl} target="_blank" rel="noreferrer">
+              <MessageCircle size={15} aria-hidden="true" />
+              {copy.orWhatsapp}
+            </a>
+          ) : null}
+
           {submitError ? (
             <p className="form-error" role="alert">
               {submitError}
@@ -313,6 +331,16 @@ export default function Contact() {
                 +968 9000 0000
               </span>
             </a>
+
+            {whatsappUrl ? (
+              <a className="contact-whatsapp-action" href={whatsappUrl} target="_blank" rel="noreferrer">
+                <MessageCircle size={18} aria-hidden="true" />
+                <span>
+                  <small>WhatsApp</small>
+                  {copy.chatWhatsapp}
+                </span>
+              </a>
+            ) : null}
 
             <span>
               <MapPin size={18} aria-hidden="true" />

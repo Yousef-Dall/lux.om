@@ -15,6 +15,7 @@ import { getDeveloperBySlug, getListings } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
 import { ListingCard } from '../components/Cards';
 import SectionHeader from '../components/SectionHeader';
+import WhatsAppActions from '../components/WhatsAppActions';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { DevelopmentCompany, Listing } from '../types';
@@ -54,6 +55,7 @@ export default function DeveloperDetails() {
           email: 'البريد الإلكتروني',
           website: 'الموقع الإلكتروني',
           partner: 'كن شريكاً مع lux.om',
+          whatsapp: 'تواصل عبر واتساب',
           loading: 'جاري تحميل ملف المطور...',
           error: 'تعذر تحميل ملف المطور. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
@@ -79,6 +81,7 @@ export default function DeveloperDetails() {
           email: 'Email',
           website: 'Website',
           partner: 'Partner with lux.om',
+          whatsapp: 'Chat on WhatsApp',
           loading: 'Loading developer profile...',
           error: 'Could not load developer profile. Make sure the backend is running and try again.'
         };
@@ -269,6 +272,15 @@ export default function DeveloperDetails() {
                   <Mail size={17} aria-hidden="true" />
                   <strong>{copy.email}:</strong> {developer.email}
                 </a>
+              ) : null}
+
+              {developer.phone ? (
+                <WhatsAppActions
+                  phone={developer.phone}
+                  title={developer.name}
+                  location={developer.location || developer.headquarters}
+                  label={copy.whatsapp}
+                />
               ) : null}
 
               {developer.website ? (

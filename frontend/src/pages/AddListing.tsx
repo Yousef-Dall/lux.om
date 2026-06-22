@@ -132,7 +132,14 @@ const initialForm = {
   parkingSpaces: '',
   floorNumber: '',
   furnishing: 'Not specified',
-  view: 'Not specified'
+  view: 'Not specified',
+  videoWalkthroughUrl: '',
+  tour360Url: '',
+  virtualTourUrl: '',
+  floorPlanUrl: '',
+  eligibilityNotes: '',
+  eligibilityDisclaimer: '',
+  investorHighlights: ''
 };
 
 type ImageMode = 'upload' | 'url';
@@ -536,7 +543,22 @@ export default function AddListing() {
     view:
       form.view === 'Not specified'
         ? undefined
-        : (optionalText(form.view) as CreateListingPayload['view'])
+        : (optionalText(form.view) as CreateListingPayload['view']),
+    videoWalkthroughUrl: optionalText(form.videoWalkthroughUrl),
+    tour360Url: optionalText(form.tour360Url),
+    virtualTourUrl: optionalText(form.virtualTourUrl),
+    floorPlanUrl: optionalText(form.floorPlanUrl),
+    eligibilityNotes:
+      form.transaction === 'Sale' ? optionalText(form.eligibilityNotes) : undefined,
+    eligibilityDisclaimer:
+      form.transaction === 'Sale' ? optionalText(form.eligibilityDisclaimer) : undefined,
+    investorHighlights:
+      form.transaction === 'Sale'
+        ? form.investorHighlights
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : undefined
   },
   token
 );
@@ -1096,6 +1118,91 @@ export default function AddListing() {
               </div>
             ) : null}
           </fieldset>
+        </section>
+
+        <section className="form-section-card">
+          <div className="form-group-heading">
+            <span className="form-section-icon">
+              <LinkIcon size={18} aria-hidden="true" />
+            </span>
+            <div>
+              <p className="eyebrow">Stage 8 media</p>
+              <h2>Premium media and investor notes</h2>
+            </div>
+          </div>
+
+          <div className="form-grid">
+            <label>
+              Video walkthrough URL
+              <input
+                type="url"
+                placeholder="https://youtube.com/watch?v=..."
+                value={form.videoWalkthroughUrl}
+                onChange={(event) => updateForm('videoWalkthroughUrl', event.target.value)}
+              />
+            </label>
+
+            <label>
+              360 tour URL
+              <input
+                type="url"
+                placeholder="https://my.matterport.com/show/?m=..."
+                value={form.tour360Url}
+                onChange={(event) => updateForm('tour360Url', event.target.value)}
+              />
+            </label>
+
+            <label>
+              Virtual tour URL
+              <input
+                type="url"
+                placeholder="https://vimeo.com/..."
+                value={form.virtualTourUrl}
+                onChange={(event) => updateForm('virtualTourUrl', event.target.value)}
+              />
+            </label>
+
+            <label>
+              Floor plan URL
+              <input
+                type="url"
+                placeholder="/uploads/floor-plan.pdf or https://..."
+                value={form.floorPlanUrl}
+                onChange={(event) => updateForm('floorPlanUrl', event.target.value)}
+              />
+            </label>
+          </div>
+
+          {form.transaction === 'Sale' ? (
+            <div className="form-grid">
+              <label>
+                Eligibility notes
+                <textarea
+                  rows={3}
+                  value={form.eligibilityNotes}
+                  onChange={(event) => updateForm('eligibilityNotes', event.target.value)}
+                />
+              </label>
+
+              <label>
+                Eligibility disclaimer
+                <textarea
+                  rows={3}
+                  value={form.eligibilityDisclaimer}
+                  onChange={(event) => updateForm('eligibilityDisclaimer', event.target.value)}
+                />
+              </label>
+
+              <label>
+                Investor highlights
+                <input
+                  placeholder="ITC, Golden Visa review, freehold title..."
+                  value={form.investorHighlights}
+                  onChange={(event) => updateForm('investorHighlights', event.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
         </section>
 
         <section className="form-section-card">

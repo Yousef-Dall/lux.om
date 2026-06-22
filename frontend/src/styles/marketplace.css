@@ -1256,3 +1256,51 @@ html[dir='rtl'] .footer-contact a:hover {
   position: absolute;
   z-index: 3;
 }
+
+/* Stage 8 trust, save, and premium media card polish */
+.lux-card-media-flags {
+  position: absolute;
+  z-index: 3;
+  top: 54px;
+  inset-inline-start: 15px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: calc(100% - 30px);
+}
+
+.lux-card-media-flags span,
+.trust-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  box-shadow: 0 10px 24px rgba(7, 56, 62, 0.12);
+}
+
+.trust-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 8px 0 10px;
+}
+
+.trust-badge {
+  border-color: rgba(194, 154, 82, 0.25);
+  background: rgba(255, 250, 239, 0.94);
+  color: var(--color-primary);
+  box-shadow: none;
+}
+
+.lux-card-footer .button-link {
+  min-height: 34px;
+  padding: 0 11px;
+  font-size: 0.76rem;
+}

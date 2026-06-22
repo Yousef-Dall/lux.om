@@ -177,7 +177,10 @@ cancellationPolicy: '',
 availableTravelDates: '',
 minimumGroupSize: '',
 packageInclusions: '',
-packageExclusions: ''
+packageExclusions: '',
+videoWalkthroughUrl: '',
+tour360Url: '',
+virtualTourUrl: ''
 };
 
 function optionalText(value: string) {
@@ -828,6 +831,9 @@ try {
       includesTransfer: form.includesTransfer,
       mealIncluded: form.mealIncluded,
       outdoor: form.outdoor,
+      videoWalkthroughUrl: optionalText(form.videoWalkthroughUrl),
+      tour360Url: optionalText(form.tour360Url),
+      virtualTourUrl: optionalText(form.virtualTourUrl),
       nearestLandmarkId: isInsideOman
         ? optionalText(form.nearestLandmarkId)
         : undefined,
@@ -1789,6 +1795,50 @@ description={addActivityCopy.description ?? copy.addActivityDescription}
           </div>
         ) : null}
       </fieldset>
+    </section>
+
+    <section className="form-section-card">
+      <div className="form-group-heading">
+        <span className="form-section-icon">
+          <LinkIcon size={18} aria-hidden="true" />
+        </span>
+        <div>
+          <p className="eyebrow">Stage 8 media</p>
+          <h2>Premium activity media</h2>
+        </div>
+      </div>
+
+      <div className="form-grid">
+        <label>
+          Video walkthrough URL
+          <input
+            type="url"
+            placeholder="https://youtube.com/watch?v=..."
+            value={form.videoWalkthroughUrl}
+            onChange={(event) => updateForm('videoWalkthroughUrl', event.target.value)}
+          />
+        </label>
+
+        <label>
+          360 tour URL
+          <input
+            type="url"
+            placeholder="https://kuula.co/share/..."
+            value={form.tour360Url}
+            onChange={(event) => updateForm('tour360Url', event.target.value)}
+          />
+        </label>
+
+        <label>
+          Virtual tour URL
+          <input
+            type="url"
+            placeholder="https://vimeo.com/..."
+            value={form.virtualTourUrl}
+            onChange={(event) => updateForm('virtualTourUrl', event.target.value)}
+          />
+        </label>
+      </div>
     </section>
 
     <section className="form-section-card">
