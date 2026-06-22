@@ -7896,3 +7896,97 @@ transition: none;
   background: rgba(176, 70, 45, 0.08);
   color: #9f3f28;
 }
+
+/* =========================================================
+   Stage 7.13 — provider booking operations calendar
+   ========================================================= */
+
+.dashboard-operations-card {
+  margin-top: 1.25rem;
+}
+
+.dashboard-booking-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.dashboard-booking-filter {
+  border: 1px solid rgba(7, 56, 62, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--color-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0.55rem 0.85rem;
+}
+
+.dashboard-booking-filter--active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.dashboard-operation-days {
+  display: grid;
+  gap: 1rem;
+}
+
+.dashboard-operation-day {
+  border: 1px solid rgba(7, 56, 62, 0.1);
+  border-radius: 22px;
+  background: rgba(250, 247, 240, 0.7);
+  padding: 1rem;
+}
+
+.dashboard-operation-day__header,
+.dashboard-operation-day__metrics,
+.dashboard-operation-day__bookings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.dashboard-operation-day__header {
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.85rem;
+}
+
+.dashboard-operation-day__header span,
+.dashboard-operation-day__bookings span {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.dashboard-operation-day__metrics span {
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--color-muted);
+  display: grid;
+  gap: 0.2rem;
+  min-width: 7rem;
+  padding: 0.7rem 0.85rem;
+}
+
+.dashboard-operation-day__metrics strong {
+  color: var(--color-primary);
+  font-size: 1rem;
+}
+
+.dashboard-operation-day__bookings {
+  margin-top: 0.85rem;
+}
+
+.dashboard-operation-day__bookings span {
+  border-radius: 999px;
+  background: rgba(7, 56, 62, 0.06);
+  color: var(--color-primary);
+  font-size: 0.83rem;
+  font-weight: 800;
+  padding: 0.45rem 0.7rem;
+}

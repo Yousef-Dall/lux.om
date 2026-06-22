@@ -189,6 +189,12 @@ type TimelineStep = {
   state: 'done' | 'active' | 'pending' | 'rejected';
 };
 
+type ReceivedBookingStatusFilter =
+  | 'ALL'
+  | 'PENDING'
+  | 'CANCELLATION_REQUESTED'
+  | 'APPROVED';
+
 function getTimelineStepClass(step: TimelineStep) {
   return `dashboard-booking-step dashboard-booking-step--${step.state}`;
 }
@@ -208,6 +214,8 @@ export default function Dashboard() {
   const [bookingUpdatingId, setBookingUpdatingId] = useState('');
   const [bookingActionError, setBookingActionError] = useState('');
   const [bookingActionSuccess, setBookingActionSuccess] = useState('');
+  const [receivedBookingStatusFilter, setReceivedBookingStatusFilter] =
+    useState<ReceivedBookingStatusFilter>('ALL');
   const [notificationUpdatingId, setNotificationUpdatingId] = useState('');
   const [notificationActionError, setNotificationActionError] = useState('');
 
@@ -345,6 +353,22 @@ export default function Dashboard() {
           myBookings: 'My bookings',
           receivedBookingsTitle: 'Received booking requests',
           receivedBookingsText: 'Review incoming booking requests for your listings and activities, then approve or reject them.',
+          providerOperationsTitle: 'Booking operations calendar',
+          providerOperationsText: 'Track booking pressure by day, guests, capacity, and cancellation requests.',
+          operationsDay: 'Day',
+          totalGuests: 'Total guests',
+          capacity: 'Capacity',
+          availableCapacity: 'Available',
+          pendingReview: 'Pending review',
+          approvedBookings: 'Approved',
+          cancellationRequests: 'Cancellation requests',
+          paidBookings: 'Paid',
+          unscheduled: 'Unscheduled',
+          noOperations: 'No booking operations yet.',
+          allStatuses: 'All statuses',
+          showPending: 'Pending',
+          showCancellations: 'Cancellations',
+          showApproved: 'Approved',
           bookingDate: 'Booking date',
           guests: 'guests',
           payment: 'Payment',
@@ -644,7 +668,42 @@ export default function Dashboard() {
   const activities = dashboardData?.activities ?? [];
   const bookings = dashboardData?.bookings ?? [];
   const receivedBookings = dashboardData?.receivedBookings ?? [];
+  const receivedBookingOperations = dashboardData?.receivedBookingOperations ?? [];
   const notifications = dashboardData?.notifications ?? [];
+
+  const receivedBookingStatusFilters: Array<{
+    value: ReceivedBookingStatusFilter;
+    label: string;
+  }> = [
+    {
+      value: 'ALL',
+      label: copy.allStatuses ?? 'All statuses'
+    },
+    {
+      value: 'PENDING',
+      label: copy.showPending ?? 'Pending'
+    },
+    {
+      value: 'CANCELLATION_REQUESTED',
+      label: copy.showCancellations ?? 'Cancellations'
+    },
+    {
+      value: 'APPROVED',
+      label: copy.showApproved ?? 'Approved'
+    }
+  ];
+
+  const matchesReceivedBookingStatusFilter = (booking: ApiBooking) => {
+    if (receivedBookingStatusFilter === 'ALL') return true;
+
+    if (receivedBookingStatusFilter === 'APPROVED') {
+      return booking.status === 'OWNER_APPROVED' || booking.status === 'ADMIN_CONFIRMED';
+    }
+
+    return booking.status === receivedBookingStatusFilter;
+  };
+
+  const filteredReceivedBookings = receivedBookings.filter(matchesReceivedBookingStatusFilter);
   const unreadNotifications = notifications.filter((notification) => !notification.readAt).length;
 
   return (
@@ -778,6 +837,105 @@ export default function Dashboard() {
           </div>
 
 
+          <div className="table-card table-card--premium dashboard-operations-card">
+            <div className="table-card__header">
+              <div>
+                <p className="eyebrow">{copy.providerOperationsTitle}</p>
+                <h2>{copy.providerOperationsTitle}</h2>
+                <p>{copy.providerOperationsText}</p>
+              </div>
+
+              <div className="dashboard-booking-filter-group" aria-label={copy.receivedBookingsTitle}>
+                {receivedBookingStatusFilters.map((filter) => (
+                  <button
+                    className={`dashboard-booking-filter ${
+                      receivedBookingStatusFilter === filter.value
+                        ? 'dashboard-booking-filter--active'
+                        : ''
+                    }`}
+                    key={filter.value}
+                    type="button"
+                    onClick={() => setReceivedBookingStatusFilter(filter.value)}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {receivedBookingOperations.length > 0 ? (
+              <div className="dashboard-operation-days">
+                {receivedBookingOperations.map((day) => (
+                  <article className="dashboard-operation-day" key={day.date}>
+                    <div className="dashboard-operation-day__header">
+                      <span>
+                        <CalendarDays size={16} aria-hidden="true" />
+                        {day.date === 'unscheduled'
+                          ? copy.unscheduled
+                          : formatBookingDate(day.date, language)}
+                      </span>
+
+                      <strong>
+                        {day.totalBookings} {copy.receivedBookingsTitle.toLowerCase()}
+                      </strong>
+                    </div>
+
+                    <div className="dashboard-operation-day__metrics">
+                      <span>
+                        {copy.totalGuests}
+                        <strong>{day.totalGuests}</strong>
+                      </span>
+
+                      <span>
+                        {copy.pendingReview}
+                        <strong>{day.pendingBookings}</strong>
+                      </span>
+
+                      <span>
+                        {copy.approvedBookings}
+                        <strong>{day.approvedBookings}</strong>
+                      </span>
+
+                      <span>
+                        {copy.cancellationRequests}
+                        <strong>{day.cancellationRequests}</strong>
+                      </span>
+
+                      <span>
+                        {copy.paidBookings}
+                        <strong>{day.paidBookings}</strong>
+                      </span>
+
+                      <span>
+                        {copy.capacity}
+                        <strong>{day.capacityGuests ?? '—'}</strong>
+                      </span>
+
+                      <span>
+                        {copy.availableCapacity}
+                        <strong>{day.availableGuests ?? '—'}</strong>
+                      </span>
+                    </div>
+
+                    <div className="dashboard-operation-day__bookings">
+                      {day.bookings.slice(0, 4).map((booking) => (
+                        <span key={booking.id}>
+                          <StatusIcon status={booking.status} />
+                          {getBookingTitle(booking, language)}
+                        </span>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p>{copy.noOperations}</p>
+              </div>
+            )}
+          </div>
+
+
           <div className="table-card table-card--premium dashboard-received-bookings-card">
             <div className="table-card__header">
               <div>
@@ -799,9 +957,9 @@ export default function Dashboard() {
               </p>
             ) : null}
 
-            {receivedBookings.length > 0 ? (
+            {filteredReceivedBookings.length > 0 ? (
               <div className="dashboard-received-bookings-list">
-                {receivedBookings.map((booking) => (
+                {filteredReceivedBookings.map((booking) => (
                   <article className="dashboard-received-booking-item" key={booking.id}>
                     <div>
                       <div className="dashboard-booking-kicker">
@@ -855,29 +1013,37 @@ export default function Dashboard() {
                       {booking.message ? (
                         <p className="dashboard-booking-note">{booking.message}</p>
                       ) : null}
+
+                      {booking.cancellationReason ? (
+                        <p className="dashboard-booking-note">
+                          {copy.cancellationReason}: {booking.cancellationReason}
+                        </p>
+                      ) : null}
                     </div>
 
-                    <div className="dashboard-received-booking-actions">
-                      <button
-                        className="button-link button-link--primary"
-                        type="button"
-                        disabled={bookingUpdatingId === booking.id}
-                        onClick={() => void runOwnerBookingAction(booking.id, 'OWNER_APPROVED')}
-                      >
-                        <CheckCircle2 size={16} aria-hidden="true" />
-                        {copy.approveBooking}
-                      </button>
+                    {booking.status === 'PENDING' ? (
+                      <div className="dashboard-received-booking-actions">
+                        <button
+                          className="button-link button-link--primary"
+                          type="button"
+                          disabled={bookingUpdatingId === booking.id}
+                          onClick={() => void runOwnerBookingAction(booking.id, 'OWNER_APPROVED')}
+                        >
+                          <CheckCircle2 size={16} aria-hidden="true" />
+                          {copy.approveBooking}
+                        </button>
 
-                      <button
-                        className="button-link button-link--secondary"
-                        type="button"
-                        disabled={bookingUpdatingId === booking.id}
-                        onClick={() => void runOwnerBookingAction(booking.id, 'OWNER_REJECTED')}
-                      >
-                        <XCircle size={16} aria-hidden="true" />
-                        {copy.rejectBooking}
-                      </button>
-                    </div>
+                        <button
+                          className="button-link button-link--secondary"
+                          type="button"
+                          disabled={bookingUpdatingId === booking.id}
+                          onClick={() => void runOwnerBookingAction(booking.id, 'OWNER_REJECTED')}
+                        >
+                          <XCircle size={16} aria-hidden="true" />
+                          {copy.rejectBooking}
+                        </button>
+                      </div>
+                    ) : null}
                   </article>
                 ))}
               </div>

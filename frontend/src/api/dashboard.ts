@@ -14,6 +14,21 @@ export type ApiNotification = {
   createdAt: string;
 };
 
+
+export type DashboardBookingOperationDay = {
+  date: string;
+  totalBookings: number;
+  totalGuests: number;
+  pendingBookings: number;
+  approvedBookings: number;
+  cancellationRequests: number;
+  paidBookings: number;
+  capacityGuests: number | null;
+  availableGuests: number | null;
+  bookingIds: string[];
+  bookings: ApiBooking[];
+};
+
 export type DashboardStats = {
   totalListings: number;
   pendingListings: number;
@@ -37,6 +52,7 @@ type ApiDashboardResponse = {
   activities: ApiActivity[];
   bookings: ApiBooking[];
   receivedBookings: ApiBooking[];
+  receivedBookingOperations: DashboardBookingOperationDay[];
   notifications: ApiNotification[];
 };
 
@@ -46,6 +62,7 @@ export type DashboardData = {
   activities: Activity[];
   bookings: ApiBooking[];
   receivedBookings: ApiBooking[];
+  receivedBookingOperations: DashboardBookingOperationDay[];
   notifications: ApiNotification[];
 };
 
@@ -63,6 +80,7 @@ export async function getDashboardData(
     activities: response.activities.map((activity) => mapActivity(activity, language)),
     bookings: response.bookings ?? [],
     receivedBookings: response.receivedBookings ?? [],
+    receivedBookingOperations: response.receivedBookingOperations ?? [],
     notifications: response.notifications ?? []
   };
 }
