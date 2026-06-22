@@ -7011,3 +7011,347 @@ border-radius: 24px;
 transition: none;
 }
 }
+
+
+/* =========================================================
+   Stage 7.2 — advanced activity discovery + package cards
+   ========================================================= */
+
+.activities-page .activity-region-switcher {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.activities-page .activity-region-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: flex-start;
+  min-height: 112px;
+  padding: 16px;
+  border: 1px solid rgba(7, 56, 62, 0.1);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--color-primary);
+  text-align: start;
+  cursor: pointer;
+  box-shadow: 0 12px 30px rgba(7, 56, 62, 0.045);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.activities-page .activity-region-option:hover {
+  transform: translateY(-2px);
+  border-color: rgba(194, 154, 82, 0.38);
+  box-shadow: 0 18px 42px rgba(7, 56, 62, 0.075);
+}
+
+.activities-page .activity-region-option.is-active {
+  border-color: rgba(194, 154, 82, 0.72);
+  background:
+    radial-gradient(circle at 0 0, rgba(224, 187, 109, 0.22), transparent 18rem),
+    #ffffff;
+  box-shadow:
+    0 20px 46px rgba(7, 56, 62, 0.09),
+    inset 0 0 0 1px rgba(194, 154, 82, 0.14);
+}
+
+.activities-page .activity-region-option > svg {
+  width: 42px;
+  height: 42px;
+  padding: 10px;
+  border-radius: 15px;
+  background: rgba(194, 154, 82, 0.14);
+  color: var(--color-primary);
+}
+
+.activities-page .activity-region-option strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--color-primary);
+  font-size: 0.98rem;
+  line-height: 1.2;
+}
+
+.activities-page .activity-region-option small {
+  display: block;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-weight: 720;
+  line-height: 1.5;
+}
+
+.activities-page .activity-discovery-context,
+.activities-page .activity-result-context {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(7, 56, 62, 0.09);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 0 0, rgba(194, 154, 82, 0.14), transparent 18rem),
+    rgba(255, 255, 255, 0.78);
+  color: var(--color-muted);
+  box-shadow: 0 12px 30px rgba(7, 56, 62, 0.045);
+}
+
+.activities-page .activity-discovery-context > svg,
+.activities-page .activity-result-context svg {
+  flex: 0 0 auto;
+  color: var(--color-gold);
+}
+
+.activities-page .activity-discovery-context strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--color-primary);
+  font-weight: 950;
+}
+
+.activities-page .activity-discovery-context p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.activities-page .activity-result-context {
+  justify-content: flex-end;
+  margin-top: -12px;
+  margin-bottom: 16px;
+  background: rgba(255, 253, 248, 0.78);
+}
+
+.activities-page .activity-result-context > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.activities-page .activity-result-context span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: rgba(7, 56, 62, 0.07);
+  color: var(--color-primary);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.activities-page .normal-filters--activities-enhanced {
+  grid-template-columns: minmax(280px, 1.25fr) repeat(4, minmax(145px, 0.75fr));
+}
+
+.activities-page .activity-active-chip-row {
+  margin-top: 16px;
+}
+
+.lux-activity-card--package {
+  border-color: rgba(194, 154, 82, 0.22);
+}
+
+.lux-activity-card--package .lux-market-card__media {
+  background:
+    radial-gradient(circle at 0 0, rgba(194, 154, 82, 0.18), transparent 18rem),
+    rgba(7, 56, 62, 0.08);
+}
+
+.lux-card-badge--package {
+  background: rgba(194, 154, 82, 0.9);
+  color: #ffffff;
+}
+
+.lux-card-route {
+  color: var(--color-primary);
+  font-weight: 900;
+}
+
+.lux-card-package-summary {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.lux-card-package-summary span {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 11px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--color-primary);
+  font-size: 0.84rem;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.lux-card-package-summary svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--color-gold);
+}
+
+.lux-card-package-service-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.lux-card-package-service-list span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(194, 154, 82, 0.13);
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.lux-card-package-service-list svg {
+  color: var(--color-gold);
+}
+
+@media (max-width: 1180px) {
+  .activities-page .activity-region-switcher {
+    grid-template-columns: 1fr;
+  }
+
+  .activities-page .normal-filters--activities-enhanced {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .activities-page .normal-filters--activities-enhanced .search-input {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .activities-page .activity-region-option {
+    min-height: auto;
+  }
+
+  .activities-page .normal-filters--activities-enhanced {
+    grid-template-columns: 1fr;
+  }
+
+  .activities-page .normal-filters--activities-enhanced .search-input {
+    grid-column: auto;
+  }
+
+  .activities-page .activity-result-context {
+    justify-content: flex-start;
+    margin-top: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activities-page .activity-region-option {
+    transition: none;
+  }
+}
+/* Stage 7.2 fix — prevent activity region chip from inheriting featured chip style */
+.lux-market-card.lux-activity-card .lux-card-meta .lux-card-meta-chip,
+.lux-market-card.lux-activity-card .lux-card-meta .lux-card-meta-chip--region {
+  border-color: rgba(7, 56, 62, 0.08);
+  background: rgba(7, 56, 62, 0.06);
+  color: var(--color-primary);
+}
+
+.lux-market-card.lux-activity-card .lux-card-meta .lux-card-meta-chip--destination {
+  border-color: rgba(7, 56, 62, 0.1);
+  background: rgba(7, 56, 62, 0.07);
+  color: var(--color-primary);
+}
+
+.lux-market-card.lux-activity-card .lux-card-meta .lux-card-meta-chip--featured {
+  border-color: rgba(194, 154, 82, 0.34);
+  background: rgba(194, 154, 82, 0.14);
+  color: #9a6a1f;
+}
+
+/* Stage 7.2 fix — fixed activity card chip slots */
+.lux-market-card.lux-activity-card .lux-card-meta--fixed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.lux-market-card.lux-activity-card .lux-card-meta-main-slot,
+.lux-market-card.lux-activity-card .lux-card-meta-featured-slot {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lux-market-card.lux-activity-card .lux-card-meta-featured-slot {
+  justify-content: flex-end;
+  min-width: 112px;
+}
+
+.lux-market-card.lux-activity-card .lux-card-region-slot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 34px;
+  margin: 0 0 12px;
+}
+
+.lux-market-card.lux-activity-card .lux-card-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 7px 11px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 999px;
+  background: rgba(7, 56, 62, 0.06);
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.lux-market-card.lux-activity-card .lux-card-meta-chip--region {
+  background: rgba(7, 56, 62, 0.06);
+  color: var(--color-primary);
+}
+
+.lux-market-card.lux-activity-card .lux-card-meta-chip--destination {
+  max-width: 100%;
+  background: rgba(7, 56, 62, 0.07);
+  color: var(--color-primary);
+}
+
+.lux-market-card.lux-activity-card .lux-card-meta-chip--featured {
+  border-color: rgba(194, 154, 82, 0.34);
+  background: rgba(194, 154, 82, 0.14);
+  color: #9a6a1f;
+}
+
+@media (max-width: 760px) {
+  .lux-market-card.lux-activity-card .lux-card-meta--fixed {
+    grid-template-columns: 1fr;
+  }
+
+  .lux-market-card.lux-activity-card .lux-card-meta-featured-slot {
+    justify-content: flex-start;
+    min-width: 0;
+  }
+}

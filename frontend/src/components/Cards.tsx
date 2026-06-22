@@ -5,9 +5,12 @@ import {
   Building2,
   CalendarDays,
   Clock,
+  Globe2,
   Heart,
+  Hotel,
   MapPin,
   MoveRight,
+  Plane,
   Ruler,
   ShieldCheck,
   Sparkles,
@@ -192,7 +195,12 @@ function getHighlightLabel(highlight: string, language: 'en' | 'ar') {
       'Hotel pickup': 'استلام من الفندق',
       'Private boat': 'قارب خاص',
       'Souq walk': 'جولة في السوق',
-      'Fort visit': 'زيارة الحصن'
+      'Fort visit': 'زيارة الحصن',
+      'Flight included': 'الطيران مشمول',
+      'Hotel included': 'الفندق مشمول',
+      'Visa support': 'دعم التأشيرة',
+      'Travel insurance': 'تأمين السفر',
+      'Airport transfer': 'مواصلات المطار'
     };
 
     return labels[highlight] ?? highlight;
@@ -212,10 +220,24 @@ function getCardCopy(language: 'en' | 'ar') {
         travelAgency: 'وكالة السفر',
         curatedProperty: 'عقار مختار',
         curatedActivity: 'نشاط مختار',
+        insideOmanActivity: 'نشاط داخل عُمان',
+        outsideOmanPackage: 'باقة سفر خارج عُمان',
         listingDetails: 'تفاصيل العقار',
         amenities: 'المرافق',
         activityDetails: 'تفاصيل النشاط',
         activityHighlights: 'مميزات النشاط',
+        packageDetails: 'تفاصيل الباقة',
+        destination: 'الوجهة',
+        departureFrom: 'المغادرة من',
+        tripLength: 'مدة الرحلة',
+        days: 'أيام',
+        nights: 'ليالٍ',
+        servicesIncluded: 'خدمات مشمولة',
+        flightIncluded: 'الطيران',
+        hotelIncluded: 'الفندق',
+        visaSupport: 'دعم التأشيرة',
+        travelInsurance: 'تأمين السفر',
+        airportTransfer: 'مواصلات المطار',
         sqm: 'م²',
         viewDeveloperProfile: 'عرض ملف المطور',
         viewAgencyProfile: 'عرض وكالة السفر'
@@ -229,10 +251,24 @@ function getCardCopy(language: 'en' | 'ar') {
         travelAgency: 'Travel agency',
         curatedProperty: 'Curated property',
         curatedActivity: 'Curated activity',
+        insideOmanActivity: 'Inside-Oman activity',
+        outsideOmanPackage: 'Outside-Oman package',
         listingDetails: 'Listing details',
         amenities: 'Amenities',
         activityDetails: 'Activity details',
         activityHighlights: 'Activity highlights',
+        packageDetails: 'Package details',
+        destination: 'Destination',
+        departureFrom: 'Departure from',
+        tripLength: 'Trip length',
+        days: 'days',
+        nights: 'nights',
+        servicesIncluded: 'Included services',
+        flightIncluded: 'Flight',
+        hotelIncluded: 'Hotel',
+        visaSupport: 'Visa support',
+        travelInsurance: 'Travel insurance',
+        airportTransfer: 'Airport transfer',
         sqm: 'sqm',
         viewDeveloperProfile: 'View developer profile',
         viewAgencyProfile: 'View travel agency'
@@ -400,6 +436,7 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
   const { t, language } = useLanguage();
   const copy = getCardCopy(language);
 
+  const isOutsideOmanPackage = activity.travelRegion === 'OUTSIDE_OMAN';
   const previewHighlights = activity.highlights.slice(0, 3);
 
   const activityTypeLabel = getActivityTypeLabel(activity.specs.experienceType, language);
@@ -424,8 +461,63 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
   const activityPrimaryImage = activity.images?.[0]?.url || activity.image;
   const activityImageCount = activity.images?.length ?? 0;
 
+  const destinationLabel = [
+    activity.destinationCity,
+    activity.destinationCountry
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  const tripLengthLabel = [
+    activity.tripDurationDays
+      ? `${activity.tripDurationDays} ${copy.days}`
+      : null,
+    activity.tripDurationNights
+      ? `${activity.tripDurationNights} ${copy.nights}`
+      : null
+  ]
+    .filter(Boolean)
+    .join(' / ');
+
+  const packageServices = [
+    activity.flightIncluded ? copy.flightIncluded : null,
+    activity.hotelIncluded ? copy.hotelIncluded : null,
+    activity.visaSupportIncluded ? copy.visaSupport : null,
+    activity.travelInsuranceIncluded ? copy.travelInsurance : null,
+    activity.airportTransferIncluded ? copy.airportTransfer : null
+  ].filter((item): item is string => Boolean(item));
+
+  const packageFacts = [
+    destinationLabel
+      ? {
+          icon: Globe2,
+          value: destinationLabel
+        }
+      : null,
+    activity.departureCity
+      ? {
+          icon: Plane,
+          value: `${copy.departureFrom}: ${activity.departureCity}`
+        }
+      : null,
+    tripLengthLabel
+      ? {
+          icon: Clock,
+          value: tripLengthLabel
+        }
+      : null
+  ].filter((item): item is { icon: typeof Globe2; value: string } => Boolean(item));
+
+  const cardModeLabel = isOutsideOmanPackage
+    ? copy.outsideOmanPackage
+    : copy.insideOmanActivity;
+
   return (
-    <article className={`activity-card lux-market-card lux-activity-card lux-market-card--${variant}`}>
+    <article
+      className={`activity-card lux-market-card lux-activity-card ${
+        isOutsideOmanPackage ? 'lux-activity-card--package' : 'lux-activity-card--local'
+      } lux-market-card--${variant}`}
+    >
       <Link
         className="activity-card__media lux-market-card__media"
         to={`/activities/${activity.slug}`}
@@ -437,7 +529,13 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
           <span className="lux-card-image-count">{activityImageCount} photos</span>
         ) : null}
 
-        <span className="lux-card-badge lux-card-badge--top">{categoryLabel}</span>
+        <span
+          className={`lux-card-badge lux-card-badge--top ${
+            isOutsideOmanPackage ? 'lux-card-badge--package' : ''
+          }`}
+        >
+          {isOutsideOmanPackage ? copy.outsideOmanPackage : categoryLabel}
+        </span>
 
         <span className="lux-card-save" aria-hidden="true">
           <Heart size={16} />
@@ -446,21 +544,40 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
         <div className="lux-card-gradient" aria-hidden="true" />
 
         <div className="lux-card-price">
-          <span>{durationLabel}</span>
+          <span>{isOutsideOmanPackage && tripLengthLabel ? tripLengthLabel : durationLabel}</span>
           <strong>{formattedPrice}</strong>
         </div>
       </Link>
 
       <div className="activity-card__body lux-market-card__body">
-        <div className="lux-card-meta">
-          <span>{activityTypeLabel}</span>
+        <div className="lux-card-meta lux-card-meta--fixed">
+          <div className="lux-card-meta-main-slot">
+            <span className="lux-card-meta-chip lux-card-meta-chip--type">
+              {activityTypeLabel}
+            </span>
+          </div>
 
-          {travelRegionLabel ? <span>{travelRegionLabel}</span> : null}
+          <div className="lux-card-meta-featured-slot">
+            {activity.featured ? (
+              <span className="lux-card-meta-chip lux-card-meta-chip--featured">
+                <Sparkles size={14} aria-hidden="true" />
+                {copy.featured}
+              </span>
+            ) : null}
+          </div>
+        </div>
 
-          {activity.featured ? (
-            <span>
-              <Sparkles size={14} aria-hidden="true" />
-              {copy.featured}
+        <div className="lux-card-region-slot">
+          {travelRegionLabel ? (
+            <span className="lux-card-meta-chip lux-card-meta-chip--region">
+              {travelRegionLabel}
+            </span>
+          ) : null}
+
+          {isOutsideOmanPackage && destinationLabel ? (
+            <span className="lux-card-meta-chip lux-card-meta-chip--destination">
+              <Plane size={14} aria-hidden="true" />
+              {destinationLabel}
             </span>
           ) : null}
         </div>
@@ -469,10 +586,24 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
           <Link to={`/activities/${activity.slug}`}>{activity.title}</Link>
         </h3>
 
-        <p className="lux-card-location">
-          <MapPin size={16} aria-hidden="true" />
-          {activity.location}
-        </p>
+        {isOutsideOmanPackage && destinationLabel ? (
+          <p className="lux-card-location lux-card-route">
+            <Globe2 size={16} aria-hidden="true" />
+            {copy.destination}: {destinationLabel}
+          </p>
+        ) : (
+          <p className="lux-card-location">
+            <MapPin size={16} aria-hidden="true" />
+            {activity.location}
+          </p>
+        )}
+
+        {isOutsideOmanPackage && activity.departureCity ? (
+          <p className="lux-card-nearby">
+            <Plane size={15} aria-hidden="true" />
+            {copy.departureFrom} {activity.departureCity}
+          </p>
+        ) : null}
 
         {agency ? (
           <Link
@@ -503,7 +634,7 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
           </p>
         ) : null}
 
-        {activity.nearestLandmarkName ? (
+        {!isOutsideOmanPackage && activity.nearestLandmarkName ? (
           <p className="lux-card-nearby">
             <MapPin size={15} aria-hidden="true" />
             {copy.near} {activity.nearestLandmarkName}
@@ -512,22 +643,54 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
 
         <p className="lux-card-description">{activity.description}</p>
 
-        <div className="lux-card-facts" aria-label={copy.activityDetails}>
-          <span>
-            <Clock size={16} aria-hidden="true" />
-            {durationLabel}
-          </span>
+        {isOutsideOmanPackage && packageFacts.length > 0 ? (
+          <div className="lux-card-package-summary" aria-label={copy.packageDetails}>
+            {packageFacts.map((fact) => {
+              const Icon = fact.icon;
 
-          <span>
-            <Users size={16} aria-hidden="true" />
-            {activity.groupSize ?? activityTypeLabel}
-          </span>
+              return (
+                <span key={fact.value}>
+                  <Icon size={16} aria-hidden="true" />
+                  {fact.value}
+                </span>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="lux-card-facts" aria-label={copy.activityDetails}>
+            <span>
+              <Clock size={16} aria-hidden="true" />
+              {durationLabel}
+            </span>
 
-          <span>
-            <CalendarDays size={16} aria-hidden="true" />
-            {formatDayList(activity.availability.days, language === 'ar' ? 'و' : '&')}
-          </span>
-        </div>
+            <span>
+              <Users size={16} aria-hidden="true" />
+              {activity.groupSize ?? activityTypeLabel}
+            </span>
+
+            <span>
+              <CalendarDays size={16} aria-hidden="true" />
+              {formatDayList(activity.availability.days, language === 'ar' ? 'و' : '&')}
+            </span>
+          </div>
+        )}
+
+        {isOutsideOmanPackage && packageServices.length > 0 ? (
+          <div className="lux-card-package-service-list" aria-label={copy.servicesIncluded}>
+            {packageServices.map((service) => (
+              <span key={service}>
+                {service === copy.hotelIncluded ? (
+                  <Hotel size={14} aria-hidden="true" />
+                ) : service === copy.flightIncluded ? (
+                  <Plane size={14} aria-hidden="true" />
+                ) : (
+                  <ShieldCheck size={14} aria-hidden="true" />
+                )}
+                {service}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         <div className="lux-chip-list" aria-label={copy.activityHighlights}>
           {activity.difficulty ? (
@@ -549,7 +712,7 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
         </div>
 
         <div className="lux-card-footer">
-          <span>{copy.curatedActivity}</span>
+          <span>{cardModeLabel}</span>
 
           <Link to={`/activities/${activity.slug}`} className="lux-card-link">
             {t.common.view}
@@ -565,3 +728,4 @@ export function ActivityCard({ activity, variant = 'default' }: ActivityCardProp
  * Temporary alias while old page imports are migrated.
  * New code should use ActivityCard.
  */
+export const ExperienceCard = ActivityCard;
