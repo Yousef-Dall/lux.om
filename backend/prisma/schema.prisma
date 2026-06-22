@@ -340,6 +340,7 @@ model Activity {
   durationLabelAr String?
   durationType    String?
   groupSize       String?
+  capacity        Int?
   language        String?
   difficulty      String?
   activityType    String?

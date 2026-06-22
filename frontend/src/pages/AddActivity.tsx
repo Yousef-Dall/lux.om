@@ -130,6 +130,7 @@ organizerMode: 'none' as OrganizerMode,
 travelAgencyId: '',
 provider: '',
 groupSize: '',
+capacity: '',
 difficulty: 'Easy',
 language: 'Arabic / English',
 priceAmount: '',
@@ -354,6 +355,8 @@ providerName: 'اسم المنظم',
 providerPlaceholder: 'مثال: Muscat Coast Activities',
 groupSize: 'حجم المجموعة',
 groupSizePlaceholder: 'مثال: 2-8 ضيوف',
+capacity: 'السعة القصوى',
+capacityPlaceholder: 'مثال: 12',
 difficulty: 'الصعوبة',
 language: 'اللغة',
 nearestLandmark: 'أقرب معلم أو منطقة',
@@ -452,6 +455,8 @@ providerName: 'Organizer name',
 providerPlaceholder: 'Example: Muscat Coast Activities',
 groupSize: 'Group size',
 groupSizePlaceholder: 'Example: 2-8 guests',
+capacity: 'Capacity',
+capacityPlaceholder: 'Example: 12',
 difficulty: 'Difficulty',
 language: 'Language',
 nearestLandmark: 'Nearest landmark or area',
@@ -740,6 +745,7 @@ try {
       durationLabelEn: form.duration,
       durationType: optionalText(form.durationType),
       groupSize: optionalText(form.groupSize),
+      capacity: optionalNumber(form.capacity),
       language: optionalText(form.language),
       difficulty: optionalText(form.difficulty),
       activityType: optionalText(form.activityType),
@@ -1492,6 +1498,17 @@ description={addActivityCopy.description ?? copy.addActivityDescription}
             value={form.groupSize}
             onChange={(event) => updateForm('groupSize', event.target.value)}
             placeholder={copy.groupSizePlaceholder}
+          />
+        </label>
+
+        <label className="form-field">
+          {copy.capacity}
+          <input
+            type="number"
+            min="1"
+            value={form.capacity}
+            onChange={(event) => updateForm('capacity', event.target.value)}
+            placeholder={copy.capacityPlaceholder}
           />
         </label>
 

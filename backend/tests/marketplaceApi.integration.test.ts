@@ -1081,6 +1081,136 @@ describe('POST /api/bookings', () => {
     });
   });
 
+  it('prevents overbooking an activity date and time when capacity is full', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    try {
+      await prisma.activity.update({
+        where: {
+          id: activity.id
+        },
+        data: {
+          capacity: 2
+        }
+      });
+
+      await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          activityId: activity.id,
+          scheduledDate: '2026-08-01',
+          preferredTime: '10:00',
+          guests: 2
+        })
+        .expect(201);
+
+      await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          activityId: activity.id,
+          scheduledDate: '2026-08-01',
+          preferredTime: '10:00',
+          guests: 1
+        })
+        .expect(409);
+    } finally {
+      await prisma.activity.update({
+        where: {
+          id: activity.id
+        },
+        data: {
+          capacity: null
+        }
+      });
+    }
+  });
+
+  it('blocks checkout when capacity is no longer available', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    try {
+      await prisma.activity.update({
+        where: {
+          id: activity.id
+        },
+        data: {
+          capacity: 2
+        }
+      });
+
+      const firstBookingResponse = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          activityId: activity.id,
+          scheduledDate: '2026-08-02',
+          preferredTime: '10:00',
+          guests: 1
+        })
+        .expect(201);
+
+      await request(app)
+        .patch(`/api/bookings/${firstBookingResponse.body.booking.id}/owner-status`)
+        .set('Authorization', `Bearer ${activityProviderToken}`)
+        .send({
+          status: 'OWNER_APPROVED'
+        })
+        .expect(200);
+
+      const secondBookingResponse = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          activityId: activity.id,
+          scheduledDate: '2026-08-02',
+          preferredTime: '10:00',
+          guests: 1
+        })
+        .expect(201);
+
+      await request(app)
+        .patch(`/api/bookings/${secondBookingResponse.body.booking.id}/owner-status`)
+        .set('Authorization', `Bearer ${activityProviderToken}`)
+        .send({
+          status: 'OWNER_APPROVED'
+        })
+        .expect(200);
+
+      await prisma.activity.update({
+        where: {
+          id: activity.id
+        },
+        data: {
+          capacity: 1
+        }
+      });
+
+      await request(app)
+        .post(`/api/bookings/${secondBookingResponse.body.booking.id}/payments/session`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .expect(409);
+    } finally {
+      await prisma.activity.update({
+        where: {
+          id: activity.id
+        },
+        data: {
+          capacity: null
+        }
+      });
+    }
+  });
+
   it('creates a real Thawani checkout session for a payable activity booking', async () => {
     const previousFetch = globalThis.fetch;
     const previousSecret = process.env.THAWANI_SECRET_KEY;

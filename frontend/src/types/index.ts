@@ -272,6 +272,7 @@ travelAgencyId?: string;
 travelAgency?: ActivityTravelAgencySummary;
 
 groupSize?: string;
+capacity?: number;
 difficulty?: ActivityDifficulty;
 language?: string;
 nearestLandmarkId?: string;
@@ -482,6 +483,7 @@ durationLabelEn?: string | null;
 durationLabelAr?: string | null;
 durationType?: ActivityDurationType | string | null;
 groupSize?: string | null;
+capacity?: number | null;
 language?: string | null;
 difficulty?: ActivityDifficulty | string | null;
 activityType?: ActivityType | string | null;

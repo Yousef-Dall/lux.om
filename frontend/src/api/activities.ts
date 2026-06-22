@@ -37,6 +37,7 @@ durationLabelEn?: string;
 durationLabelAr?: string;
 durationType?: string;
 groupSize?: string;
+capacity?: number;
 language?: string;
 difficulty?: string;
 activityType?: string;

@@ -227,6 +227,75 @@ function getThawaniConfig() {
   };
 }
 
+
+const ACTIVE_CAPACITY_BOOKING_STATUSES = [
+  'PENDING',
+  'OWNER_APPROVED',
+  'ADMIN_CONFIRMED'
+] as const;
+
+function getScheduledDayRange(scheduledDate: Date) {
+  const start = new Date(scheduledDate);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  return {
+    start,
+    end
+  };
+}
+
+async function assertActivityCapacityAvailable(
+  activity: { id: string; capacity: number | null },
+  scheduledDate: Date,
+  preferredTime: string | undefined,
+  requestedGuests: number,
+  excludeBookingId?: string
+) {
+  if (!activity.capacity) return;
+
+  if (requestedGuests > activity.capacity) {
+    throw new AppError(400, 'Guest count exceeds this activity capacity');
+  }
+
+  const { start, end } = getScheduledDayRange(scheduledDate);
+
+  const existingBookings = await prisma.booking.findMany({
+    where: {
+      activityId: activity.id,
+      status: {
+        in: [...ACTIVE_CAPACITY_BOOKING_STATUSES]
+      },
+      scheduledDate: {
+        gte: start,
+        lt: end
+      },
+      preferredTime: preferredTime ?? null,
+      ...(excludeBookingId
+        ? {
+            id: {
+              not: excludeBookingId
+            }
+          }
+        : {})
+    },
+    select: {
+      guests: true
+    }
+  });
+
+  const reservedGuests = existingBookings.reduce(
+    (total, booking) => total + booking.guests,
+    0
+  );
+
+  if (reservedGuests + requestedGuests > activity.capacity) {
+    throw new AppError(409, 'Not enough availability for the selected date and time');
+  }
+}
+
 function createReturnUrl(bookingId: string, reference: string, result: 'success' | 'cancel') {
   const url = new URL('/dashboard', getFrontendBaseUrl());
   url.searchParams.set('booking', bookingId);
@@ -557,6 +626,13 @@ bookingsRouter.post('/', requireAuth(), async (req, res, next) => {
       }
     }
 
+    await assertActivityCapacityAvailable(
+      activity,
+      scheduledDate,
+      data.preferredTime,
+      data.guests
+    );
+
     const payment = calculateActivityPayment(activity, data.guests);
 
     const booking = await prisma.booking.create({
@@ -654,6 +730,16 @@ bookingsRouter.post('/:id/payments/session', requireAuth(), async (req, res, nex
     }
 
     assertBookingCanStartPayment(booking);
+
+    if (booking.activityId && booking.activity && booking.scheduledDate) {
+      await assertActivityCapacityAvailable(
+        booking.activity,
+        booking.scheduledDate,
+        booking.preferredTime ?? undefined,
+        booking.guests,
+        booking.id
+      );
+    }
 
     if (booking.payment.status === 'PAID') {
       res.json({
