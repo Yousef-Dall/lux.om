@@ -43,6 +43,20 @@ const activityInclude = {
   highlights: true
 };
 
+const bookingInclude = {
+  user: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true
+    }
+  },
+  listing: true,
+  activity: true,
+  payment: true
+};
+
 dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
   try {
     const userId = req.user!.id;
@@ -50,6 +64,7 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
     const [
       listings,
       activities,
+      bookings,
       totalListings,
       pendingListings,
       approvedListings,
@@ -60,7 +75,9 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
       rejectedActivities,
       submittedInquiries,
       receivedListingInquiries,
-      receivedActivityInquiries
+      receivedActivityInquiries,
+      submittedBookings,
+      pendingPayments
     ] = await Promise.all([
       prisma.listing.findMany({
         where: {
@@ -82,6 +99,17 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
           createdAt: 'desc'
         },
         take: 6
+      }),
+
+      prisma.booking.findMany({
+        where: {
+          userId
+        },
+        include: bookingInclude,
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: 8
       }),
 
       prisma.listing.count({
@@ -158,6 +186,21 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
             ownerId: userId
           }
         }
+      }),
+
+      prisma.booking.count({
+        where: {
+          userId
+        }
+      }),
+
+      prisma.booking.count({
+        where: {
+          userId,
+          payment: {
+            status: 'PENDING'
+          }
+        }
       })
     ]);
 
@@ -172,10 +215,13 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
         approvedActivities,
         rejectedActivities,
         submittedInquiries,
-        receivedInquiries: receivedListingInquiries + receivedActivityInquiries
+        receivedInquiries: receivedListingInquiries + receivedActivityInquiries,
+        submittedBookings,
+        pendingPayments
       },
       listings,
-      activities
+      activities,
+      bookings
     });
   } catch (error) {
     next(error);

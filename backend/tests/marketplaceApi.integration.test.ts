@@ -1,10 +1,4 @@
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  it
-} from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
 import { createApp } from '../src/app';
@@ -759,8 +753,189 @@ describe('POST /api/bookings', () => {
     expect(response.body.booking.scheduledDate).toContain('2026-07-15');
     expect(response.body.booking.activity.slug).toBe('integration-city-walk');
     expect(response.body.booking.payment).toMatchObject({
-      status: 'NOT_REQUIRED'
+      status: 'PENDING',
+      provider: 'THAWANI'
     });
+    expect(Number(response.body.booking.payment.amount)).toBe(60);
+    expect(Number(response.body.booking.payment.commission)).toBe(6);
+    expect(response.body.booking.payment.reference).toEqual(expect.any(String));
+  });
+
+  it('creates a real Thawani checkout session for a payable activity booking', async () => {
+    const previousFetch = globalThis.fetch;
+    const previousSecret = process.env.THAWANI_SECRET_KEY;
+    const previousPublishable = process.env.THAWANI_PUBLISHABLE_KEY;
+
+    process.env.THAWANI_SECRET_KEY = 'test_secret';
+    process.env.THAWANI_PUBLISHABLE_KEY = 'test_publishable';
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: {
+          session_id: 'checkout_test_session',
+          payment_status: 'unpaid'
+        }
+      })
+    }));
+
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const activity = await prisma.activity.findUniqueOrThrow({
+        where: {
+          slug: 'integration-city-walk'
+        }
+      });
+
+      const bookingResponse = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          activityId: activity.id,
+          scheduledDate: '2026-07-16',
+          guests: 2
+        })
+        .expect(201);
+
+      const bookingId = bookingResponse.body.booking.id;
+
+      const response = await request(app)
+        .post(`/api/bookings/${bookingId}/payments/session`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .expect(200);
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://uatcheckout.thawani.om/api/v1/checkout/session',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'thawani-api-key': 'test_secret'
+          })
+        })
+      );
+
+      const firstFetchCall = fetchMock.mock.calls[0] as unknown as [
+        string,
+        RequestInit
+      ];
+      const payload = JSON.parse(String(firstFetchCall[1]?.body));
+
+      expect(payload).toMatchObject({
+        mode: 'payment',
+        products: [
+          {
+            name: expect.any(String),
+            quantity: 1,
+            unit_amount: 40000
+          }
+        ]
+      });
+
+      expect(payload.success_url).toContain(bookingId);
+      expect(payload.cancel_url).toContain(bookingId);
+      expect(response.body.payment).toMatchObject({
+        status: 'PENDING',
+        provider: 'THAWANI',
+        providerSessionId: 'checkout_test_session'
+      });
+      expect(Number(response.body.payment.amount)).toBe(40);
+      expect(Number(response.body.payment.commission)).toBe(4);
+      expect(response.body.payment.checkoutUrl).toBe(
+        'https://uatcheckout.thawani.om/pay/checkout_test_session?key=test_publishable'
+      );
+    } finally {
+      globalThis.fetch = previousFetch;
+      process.env.THAWANI_SECRET_KEY = previousSecret;
+      process.env.THAWANI_PUBLISHABLE_KEY = previousPublishable;
+    }
+  });
+
+  it('syncs a paid Thawani checkout session before marking the booking payment paid', async () => {
+    const previousFetch = globalThis.fetch;
+    const previousSecret = process.env.THAWANI_SECRET_KEY;
+    const previousPublishable = process.env.THAWANI_PUBLISHABLE_KEY;
+
+    process.env.THAWANI_SECRET_KEY = 'test_secret';
+    process.env.THAWANI_PUBLISHABLE_KEY = 'test_publishable';
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            session_id: 'checkout_paid_session',
+            payment_status: 'unpaid'
+          }
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            session_id: 'checkout_paid_session',
+            payment_status: 'paid'
+          }
+        })
+      });
+
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const activity = await prisma.activity.findUniqueOrThrow({
+        where: {
+          slug: 'integration-city-walk'
+        }
+      });
+
+      const bookingResponse = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          activityId: activity.id,
+          scheduledDate: '2026-07-17',
+          guests: 1
+        })
+        .expect(201);
+
+      const bookingId = bookingResponse.body.booking.id;
+
+      await request(app)
+        .post(`/api/bookings/${bookingId}/payments/session`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .expect(200);
+
+      const response = await request(app)
+        .post(`/api/bookings/${bookingId}/payments/sync`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .expect(200);
+
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        'https://uatcheckout.thawani.om/api/v1/checkout/session/checkout_paid_session',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'thawani-api-key': 'test_secret'
+          })
+        })
+      );
+      expect(response.body.payment).toMatchObject({
+        status: 'PAID',
+        provider: 'THAWANI',
+        providerSessionId: 'checkout_paid_session'
+      });
+      expect(Number(response.body.payment.amount)).toBe(20);
+      expect(Number(response.body.payment.commission)).toBe(2);
+      expect(response.body.payment.paidAt).toEqual(expect.any(String));
+      expect(response.body.booking.payment.status).toBe('PAID');
+    } finally {
+      globalThis.fetch = previousFetch;
+      process.env.THAWANI_SECRET_KEY = previousSecret;
+      process.env.THAWANI_PUBLISHABLE_KEY = previousPublishable;
+    }
   });
 
   it('requires a scheduled date for activity booking requests', async () => {

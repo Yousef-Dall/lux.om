@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -6,6 +7,32 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
 
 export const bookingsRouter = Router();
+
+const CHECKOUT_PROVIDER = 'THAWANI';
+const DEFAULT_COMMISSION_RATE = 0.1;
+const DEFAULT_THAWANI_API_BASE_URL = 'https://uatcheckout.thawani.om/api/v1';
+const DEFAULT_THAWANI_CHECKOUT_BASE_URL = 'https://uatcheckout.thawani.om';
+
+type BookingWithPayment = NonNullable<
+  Awaited<ReturnType<typeof prisma.booking.findUnique>>
+>;
+
+type ThawaniApiResponse<T> = {
+  success?: boolean;
+  code?: number;
+  description?: string;
+  data?: T;
+};
+
+type ThawaniCreateSessionData = {
+  session_id: string;
+  payment_status?: 'paid' | 'unpaid' | 'cancelled';
+};
+
+type ThawaniRetrieveSessionData = {
+  session_id: string;
+  payment_status: 'paid' | 'unpaid' | 'cancelled';
+};
 
 const timeSchema = z
   .string()
@@ -93,6 +120,245 @@ function timeToMinutes(time: string) {
   return hours * 60 + minutes;
 }
 
+function toMoney(value: number) {
+  return Number(value.toFixed(2));
+}
+
+function toBaisa(amount: number) {
+  return Math.round(amount * 1000);
+}
+
+function getCommissionRate() {
+  const envValue = Number(process.env.PLATFORM_COMMISSION_RATE);
+
+  if (Number.isFinite(envValue) && envValue >= 0 && envValue <= 1) {
+    return envValue;
+  }
+
+  return DEFAULT_COMMISSION_RATE;
+}
+
+function calculateCommission(amount: number) {
+  return toMoney(amount * getCommissionRate());
+}
+
+function decimalToNumber(value: unknown) {
+  if (!value) return 0;
+
+  const numberValue = Number(value.toString());
+
+  return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+function createPaymentReference() {
+  return `lux_${randomUUID().replace(/-/g, '')}`;
+}
+
+function getFrontendBaseUrl() {
+  return (process.env.FRONTEND_URL ?? 'http://localhost:5173').replace(/\/+$/, '');
+}
+
+function getThawaniApiBaseUrl() {
+  return (process.env.THAWANI_API_BASE_URL ?? DEFAULT_THAWANI_API_BASE_URL).replace(/\/+$/, '');
+}
+
+function getThawaniCheckoutBaseUrl() {
+  return (
+    process.env.THAWANI_CHECKOUT_BASE_URL ?? DEFAULT_THAWANI_CHECKOUT_BASE_URL
+  ).replace(/\/+$/, '');
+}
+
+function getThawaniConfig() {
+  const secretKey = process.env.THAWANI_SECRET_KEY?.trim();
+  const publishableKey = process.env.THAWANI_PUBLISHABLE_KEY?.trim();
+
+  if (!secretKey || !publishableKey) {
+    throw new AppError(
+      503,
+      'Thawani payment gateway is not configured. Set THAWANI_SECRET_KEY and THAWANI_PUBLISHABLE_KEY.'
+    );
+  }
+
+  return {
+    secretKey,
+    publishableKey,
+    apiBaseUrl: getThawaniApiBaseUrl(),
+    checkoutBaseUrl: getThawaniCheckoutBaseUrl()
+  };
+}
+
+function createReturnUrl(bookingId: string, reference: string, result: 'success' | 'cancel') {
+  const url = new URL('/dashboard', getFrontendBaseUrl());
+  url.searchParams.set('booking', bookingId);
+  url.searchParams.set('payment', reference);
+  url.searchParams.set('paymentResult', result);
+
+  return url.toString();
+}
+
+function createCheckoutUrl(sessionId: string) {
+  const { publishableKey, checkoutBaseUrl } = getThawaniConfig();
+
+  return `${checkoutBaseUrl}/pay/${sessionId}?key=${encodeURIComponent(publishableKey)}`;
+}
+
+function calculateActivityPayment(activity: {
+  priceAmount: unknown;
+  priceCurrency: string | null;
+  priceQualifier: string | null;
+  priceUnit: string | null;
+}, guests: number) {
+  if (activity.priceQualifier === 'ON_REQUEST') {
+    return {
+      amount: 0,
+      commission: 0,
+      status: 'NOT_REQUIRED' as const,
+      provider: null,
+      reference: null
+    };
+  }
+
+  const baseAmount = decimalToNumber(activity.priceAmount);
+
+  if (baseAmount <= 0) {
+    return {
+      amount: 0,
+      commission: 0,
+      status: 'NOT_REQUIRED' as const,
+      provider: null,
+      reference: null
+    };
+  }
+
+  const currency = activity.priceCurrency ?? 'OMR';
+
+  if (currency !== 'OMR') {
+    throw new AppError(400, 'Online activity payments currently support OMR only');
+  }
+
+  const quantity = activity.priceUnit === 'PERSON' ? guests : 1;
+  const amount = toMoney(baseAmount * quantity);
+
+  return {
+    amount,
+    commission: calculateCommission(amount),
+    status: 'PENDING' as const,
+    provider: CHECKOUT_PROVIDER,
+    reference: createPaymentReference()
+  };
+}
+
+function createManualPayment(amount: number, commission: number) {
+  const normalizedAmount = toMoney(amount);
+  const normalizedCommission = toMoney(commission);
+  const paymentRequired = normalizedAmount > 0;
+
+  return {
+    amount: normalizedAmount,
+    commission: normalizedCommission,
+    status: paymentRequired ? ('PENDING' as const) : ('NOT_REQUIRED' as const),
+    provider: paymentRequired ? CHECKOUT_PROVIDER : null,
+    reference: paymentRequired ? createPaymentReference() : null
+  };
+}
+
+function assertBookingAccess(booking: { userId: string }, user: { id: string; role: string }) {
+  if (booking.userId !== user.id && user.role !== 'ADMIN') {
+    throw new AppError(403, 'You do not have access to this booking');
+  }
+}
+
+function getBookingPaymentTitle(booking: any) {
+  const activityTitle =
+    booking.activity?.titleEn || booking.activity?.titleAr || booking.activity?.title;
+  const listingTitle =
+    booking.listing?.titleEn || booking.listing?.titleAr || booking.listing?.title;
+
+  return String(activityTitle || listingTitle || 'lux.om booking').slice(0, 40);
+}
+
+async function callThawani<T>(path: string, init?: RequestInit) {
+  const { secretKey, apiBaseUrl } = getThawaniConfig();
+
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      'thawani-api-key': secretKey,
+      ...(init?.headers ?? {})
+    }
+  });
+
+  const body = (await response.json().catch(() => null)) as ThawaniApiResponse<T> | null;
+
+  if (!response.ok || !body?.success || !body.data) {
+    throw new AppError(
+      502,
+      body?.description || 'Thawani payment gateway request failed'
+    );
+  }
+
+  return body.data;
+}
+
+async function createThawaniCheckoutSession(booking: any) {
+  if (!booking.payment) {
+    throw new AppError(400, 'Payment is not available for this booking');
+  }
+
+  const amount = decimalToNumber(booking.payment.amount);
+  const reference = booking.payment.reference ?? createPaymentReference();
+
+  if (amount <= 0 || toBaisa(amount) < 100) {
+    throw new AppError(400, 'Payment amount is below the minimum Thawani amount');
+  }
+
+  const session = await callThawani<ThawaniCreateSessionData>('/checkout/session', {
+    method: 'POST',
+    body: JSON.stringify({
+      client_reference_id: reference,
+      mode: 'payment',
+      products: [
+        {
+          name: getBookingPaymentTitle(booking),
+          quantity: 1,
+          unit_amount: toBaisa(amount)
+        }
+      ],
+      success_url: createReturnUrl(booking.id, reference, 'success'),
+      cancel_url: createReturnUrl(booking.id, reference, 'cancel'),
+      metadata: {
+        booking_id: booking.id,
+        payment_id: booking.payment.id,
+        customer_name: booking.contactName || booking.user?.name || '',
+        customer_email: booking.contactEmail || booking.user?.email || '',
+        customer_phone: booking.contactPhone || booking.user?.phone || ''
+      }
+    })
+  });
+
+  if (!session.session_id) {
+    throw new AppError(502, 'Thawani did not return a checkout session id');
+  }
+
+  return {
+    reference,
+    sessionId: session.session_id,
+    checkoutUrl: createCheckoutUrl(session.session_id)
+  };
+}
+
+async function retrieveThawaniSession(sessionId: string) {
+  return callThawani<ThawaniRetrieveSessionData>(`/checkout/session/${sessionId}`);
+}
+
+function mapThawaniPaymentStatus(status: string) {
+  if (status === 'paid') return 'PAID' as const;
+  if (status === 'cancelled') return 'FAILED' as const;
+
+  return 'PENDING' as const;
+}
+
 bookingsRouter.post('/', requireAuth(), async (req, res, next) => {
   try {
     const data = bookingSchema.parse(req.body);
@@ -113,6 +379,8 @@ bookingsRouter.post('/', requireAuth(), async (req, res, next) => {
         throw new AppError(400, 'You cannot create a booking request for your own listing');
       }
 
+      const payment = createManualPayment(data.amount, data.commission);
+
       const booking = await prisma.booking.create({
         data: {
           listingId: data.listingId,
@@ -125,11 +393,7 @@ bookingsRouter.post('/', requireAuth(), async (req, res, next) => {
           contactEmail: data.contactEmail?.trim() || req.user!.email,
           contactPhone: data.contactPhone?.trim() || req.user!.phone,
           payment: {
-            create: {
-              amount: data.amount,
-              commission: data.commission,
-              status: data.amount > 0 ? 'PENDING' : 'NOT_REQUIRED'
-            }
+            create: payment
           }
         },
         include: bookingInclude
@@ -140,6 +404,10 @@ bookingsRouter.post('/', requireAuth(), async (req, res, next) => {
       });
 
       return;
+    }
+
+    if (!data.activityId) {
+      throw new AppError(400, 'Activity is required');
     }
 
     const activity = await prisma.activity.findUnique({
@@ -178,6 +446,8 @@ bookingsRouter.post('/', requireAuth(), async (req, res, next) => {
       }
     }
 
+    const payment = calculateActivityPayment(activity, data.guests);
+
     const booking = await prisma.booking.create({
       data: {
         activityId: data.activityId,
@@ -190,11 +460,7 @@ bookingsRouter.post('/', requireAuth(), async (req, res, next) => {
         contactEmail: data.contactEmail?.trim() || req.user!.email,
         contactPhone: data.contactPhone?.trim() || req.user!.phone,
         payment: {
-          create: {
-            amount: data.amount,
-            commission: data.commission,
-            status: data.amount > 0 ? 'PENDING' : 'NOT_REQUIRED'
-          }
+          create: payment
         }
       },
       include: bookingInclude
@@ -202,6 +468,121 @@ bookingsRouter.post('/', requireAuth(), async (req, res, next) => {
 
     res.status(201).json({
       booking
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bookingsRouter.post('/:id/payments/session', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = paramsSchema.parse(req.params);
+
+    const booking = await prisma.booking.findUnique({
+      where: {
+        id
+      },
+      include: bookingInclude
+    });
+
+    if (!booking) {
+      throw new AppError(404, 'Booking not found');
+    }
+
+    assertBookingAccess(booking, req.user!);
+
+    if (!booking.payment || booking.payment.status === 'NOT_REQUIRED') {
+      throw new AppError(400, 'Payment is not required for this booking');
+    }
+
+    if (booking.payment.status === 'PAID') {
+      res.json({
+        booking,
+        payment: booking.payment
+      });
+      return;
+    }
+
+    const session = await createThawaniCheckoutSession(booking);
+
+    const payment = await prisma.payment.update({
+      where: {
+        id: booking.payment.id
+      },
+      data: {
+        provider: CHECKOUT_PROVIDER,
+        reference: session.reference,
+        providerSessionId: session.sessionId,
+        checkoutUrl: session.checkoutUrl,
+        status: 'PENDING'
+      }
+    });
+
+    const updatedBooking = await prisma.booking.findUniqueOrThrow({
+      where: {
+        id: booking.id
+      },
+      include: bookingInclude
+    });
+
+    res.json({
+      booking: updatedBooking,
+      payment
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bookingsRouter.post('/:id/payments/sync', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = paramsSchema.parse(req.params);
+
+    const booking = await prisma.booking.findUnique({
+      where: {
+        id
+      },
+      include: bookingInclude
+    });
+
+    if (!booking) {
+      throw new AppError(404, 'Booking not found');
+    }
+
+    assertBookingAccess(booking, req.user!);
+
+    if (!booking.payment || booking.payment.status === 'NOT_REQUIRED') {
+      throw new AppError(400, 'Payment is not required for this booking');
+    }
+
+    if (!booking.payment.providerSessionId) {
+      throw new AppError(400, 'Payment session has not been created yet');
+    }
+
+    const thawaniSession = await retrieveThawaniSession(booking.payment.providerSessionId);
+    const status = mapThawaniPaymentStatus(thawaniSession.payment_status);
+
+    const payment = await prisma.payment.update({
+      where: {
+        id: booking.payment.id
+      },
+      data: {
+        provider: CHECKOUT_PROVIDER,
+        status,
+        paidAt: status === 'PAID' ? (booking.payment.paidAt ?? new Date()) : null
+      }
+    });
+
+    const updatedBooking = await prisma.booking.findUniqueOrThrow({
+      where: {
+        id: booking.id
+      },
+      include: bookingInclude
+    });
+
+    res.json({
+      booking: updatedBooking,
+      payment
     });
   } catch (error) {
     next(error);
@@ -244,7 +625,8 @@ bookingsRouter.patch('/admin/payments/:id', requireAuth(), requireRole('ADMIN'),
         id
       },
       data: {
-        status
+        status,
+        paidAt: status === 'PAID' ? new Date() : null
       }
     });
 

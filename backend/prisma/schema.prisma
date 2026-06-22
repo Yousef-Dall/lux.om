@@ -429,6 +429,12 @@ model Payment {
   commission Decimal       @db.Decimal(10, 2)
   status     PaymentStatus @default(PENDING)
 
+  provider          String?
+  reference         String?   @unique
+  providerSessionId String?   @unique
+  checkoutUrl       String?
+  paidAt            DateTime?
+
   bookingId String  @unique
   booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 

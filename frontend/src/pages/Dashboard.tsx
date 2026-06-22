@@ -3,6 +3,7 @@ import {
   BarChart3,
   CheckCircle2,
   Clock3,
+  CreditCard,
   Eye,
   Home,
   MessageCircle,
@@ -13,6 +14,11 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import {
+  createPaymentSession,
+  syncBookingPayment,
+  type ApiBooking
+} from '../api/bookings';
 import { ApiError } from '../api/client';
 import { getDashboardData, type DashboardData } from '../api/dashboard';
 import { useAuth } from '../auth/AuthContext';
@@ -23,21 +29,79 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { formatMarketplacePrice } from '../utils/format';
 
 function getStatusClass(status?: string) {
-  if (status === 'APPROVED') return 'approved';
-  if (status === 'REJECTED') return 'rejected';
+  if (status === 'APPROVED' || status === 'PAID') return 'approved';
+  if (status === 'REJECTED' || status === 'FAILED' || status === 'OWNER_REJECTED') return 'rejected';
   return 'pending';
 }
 
 function StatusIcon({ status }: { status?: string }) {
-  if (status === 'APPROVED') {
+  if (status === 'APPROVED' || status === 'PAID') {
     return <CheckCircle2 size={14} aria-hidden="true" />;
   }
 
-  if (status === 'REJECTED') {
+  if (status === 'REJECTED' || status === 'FAILED' || status === 'OWNER_REJECTED') {
     return <XCircle size={14} aria-hidden="true" />;
   }
 
   return <Clock3 size={14} aria-hidden="true" />;
+}
+
+function getBookingTitle(booking: ApiBooking, language: 'en' | 'ar') {
+  if (booking.activity) {
+    return language === 'ar'
+      ? booking.activity.titleAr || booking.activity.titleEn
+      : booking.activity.titleEn || booking.activity.titleAr || '';
+  }
+
+  if (booking.listing) {
+    return language === 'ar'
+      ? booking.listing.titleAr || booking.listing.titleEn || booking.listing.title
+      : booking.listing.titleEn || booking.listing.titleAr || booking.listing.title;
+  }
+
+  return language === 'ar' ? 'حجز' : 'Booking';
+}
+
+function getBookingSubtitle(booking: ApiBooking, language: 'en' | 'ar') {
+  if (booking.activity) {
+    return language === 'ar'
+      ? booking.activity.locationAr || booking.activity.locationEn
+      : booking.activity.locationEn || booking.activity.locationAr || '';
+  }
+
+  if (booking.listing) {
+    return language === 'ar'
+      ? booking.listing.locationAr || booking.listing.locationEn || booking.listing.location
+      : booking.listing.locationEn || booking.listing.locationAr || booking.listing.location;
+  }
+
+  return '';
+}
+
+function formatBookingDate(value?: string | null) {
+  if (!value) return '—';
+
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium'
+  }).format(new Date(value));
+}
+
+function formatPaymentAmount(booking: ApiBooking) {
+  const amount = Number(booking.payment?.amount ?? 0);
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return 'No payment required';
+  }
+
+  const currency =
+    booking.activity?.priceCurrency ||
+    booking.listing?.priceCurrency ||
+    'OMR';
+
+  return `${currency} ${amount.toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2
+  })}`;
 }
 
 export default function Dashboard() {
@@ -49,6 +113,9 @@ export default function Dashboard() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [paymentUpdatingId, setPaymentUpdatingId] = useState('');
+  const [paymentError, setPaymentError] = useState('');
+  const [paymentSuccess, setPaymentSuccess] = useState('');
 
   const copy =
     language === 'ar'
@@ -88,7 +155,20 @@ export default function Dashboard() {
           addFirstActivity: 'أضف أول نشاط',
           total: 'الإجمالي',
           approvedCount: 'مقبول',
-          rejectedCount: 'مرفوض'
+          rejectedCount: 'مرفوض',
+          myBookings: 'حجوزاتي',
+          bookingDate: 'تاريخ الحجز',
+          guests: 'ضيوف',
+          payment: 'الدفع',
+          paymentPending: 'بانتظار الدفع',
+          paymentPaid: 'مدفوع',
+          paymentNotRequired: 'لا يحتاج دفع',
+          startPayment: 'بدء الدفع',
+          refreshPayment: 'تحديث حالة الدفع',
+          paymentStarted: 'تم تجهيز الدفع. سيتم تحويلك إلى صفحة الدفع الآمنة من ثواني.',
+          paymentSynced: 'تم تحديث حالة الدفع بنجاح.',
+          paymentActionError: 'تعذر تنفيذ إجراء الدفع.',
+          emptyBookings: 'لا توجد حجوزات مرتبطة بحسابك بعد.'
         }
       : {
           ownerWorkspace: 'Owner and partner workspace',
@@ -126,8 +206,28 @@ export default function Dashboard() {
           addFirstActivity: 'Add your first activity',
           total: 'Total',
           approvedCount: 'Approved',
-          rejectedCount: 'Rejected'
+          rejectedCount: 'Rejected',
+          myBookings: 'My bookings',
+          bookingDate: 'Booking date',
+          guests: 'guests',
+          payment: 'Payment',
+          paymentPending: 'Payment pending',
+          paymentPaid: 'Paid',
+          paymentNotRequired: 'No payment required',
+          startPayment: 'Start payment',
+          refreshPayment: 'Refresh payment status',
+          paymentStarted: 'Checkout is ready. Redirecting you to Thawani secure payment page.',
+          paymentSynced: 'Payment status refreshed successfully.',
+          paymentActionError: 'Could not complete the payment action.',
+          emptyBookings: 'No bookings are connected to your account yet.'
         };
+
+  async function refreshDashboard() {
+    if (!token) return;
+
+    const data = await getDashboardData(token, language);
+    setDashboardData(data);
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -168,14 +268,64 @@ export default function Dashboard() {
     };
   }, [token, language, copy.error]);
 
-  
+  async function runPaymentAction(
+    bookingId: string,
+    action: 'session' | 'sync'
+  ) {
+    if (!token) return;
 
-const stats = dashboardData?.stats;
-const listings = dashboardData?.listings ?? [];
-const activities = dashboardData?.activities ?? [];
+    try {
+      setPaymentUpdatingId(bookingId);
+      setPaymentError('');
+      setPaymentSuccess('');
+
+      if (action === 'session') {
+        const response = await createPaymentSession(bookingId, token);
+        setPaymentSuccess(copy.paymentStarted);
+
+        if (response.payment.checkoutUrl) {
+          window.location.assign(response.payment.checkoutUrl);
+          return;
+        }
+      } else {
+        await syncBookingPayment(bookingId, token);
+        setPaymentSuccess(copy.paymentSynced);
+      }
+
+      await refreshDashboard();
+    } catch (error) {
+      console.error(error);
+
+      if (error instanceof ApiError) {
+        setPaymentError(error.message);
+      } else {
+        setPaymentError(copy.paymentActionError);
+      }
+    } finally {
+      setPaymentUpdatingId('');
+    }
+  }
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const bookingId = params.get('booking');
+    const paymentReference = params.get('payment');
+
+    if (!token || !bookingId || !paymentReference) return;
+
+    void runPaymentAction(bookingId, 'sync').finally(() => {
+      const cleanUrl = `${window.location.pathname}${window.location.hash}`;
+      window.history.replaceState({}, '', cleanUrl);
+    });
+  }, [token]);
+
+  const stats = dashboardData?.stats;
+  const listings = dashboardData?.listings ?? [];
+  const activities = dashboardData?.activities ?? [];
+  const bookings = dashboardData?.bookings ?? [];
 
   return (
-   <section className="page-section container dashboard-page">
+    <section className="page-section container dashboard-page">
       <SectionHeader
         eyebrow={t.dashboard.eyebrow}
         title={t.dashboard.title}
@@ -280,6 +430,100 @@ const activities = dashboardData?.activities ?? [];
                 {stats?.pendingActivities ?? 0} {copy.pending}
               </small>
             </article>
+
+            <article className="metric-card">
+              <span>
+                <CreditCard size={18} aria-hidden="true" />
+                {copy.payment}
+              </span>
+              <strong>{stats?.pendingPayments ?? 0}</strong>
+              <small>
+                {stats?.submittedBookings ?? 0} {copy.myBookings.toLowerCase()}
+              </small>
+            </article>
+          </div>
+
+          <div className="table-card table-card--premium dashboard-bookings-card">
+            <div className="table-card__header">
+              <div>
+                <p className="eyebrow">{copy.payment}</p>
+                <h2>{copy.myBookings}</h2>
+              </div>
+            </div>
+
+            {paymentError ? (
+              <p className="form-error" role="alert">{paymentError}</p>
+            ) : null}
+
+            {paymentSuccess ? (
+              <p className="form-success" role="status">{paymentSuccess}</p>
+            ) : null}
+
+            {bookings.length > 0 ? (
+              <div className="dashboard-bookings-list">
+                {bookings.map((booking) => {
+                  const paymentStatus = booking.payment?.status ?? 'NOT_REQUIRED';
+                  const paymentPending = paymentStatus === 'PENDING';
+                  const paymentPaid = paymentStatus === 'PAID';
+
+                  return (
+                    <article className="dashboard-booking-item" key={booking.id}>
+                      <div>
+                        <strong>{getBookingTitle(booking, language)}</strong>
+                        <span>{getBookingSubtitle(booking, language)}</span>
+                        <small>
+                          {copy.bookingDate}: {formatBookingDate(booking.scheduledDate)} ·{' '}
+                          {booking.guests} {copy.guests}
+                        </small>
+                      </div>
+
+                      <div className="dashboard-booking-payment">
+                        <span className={`status-pill ${getStatusClass(paymentStatus)}`}>
+                          <StatusIcon status={paymentStatus} />
+                          {paymentPaid
+                            ? copy.paymentPaid
+                            : paymentPending
+                              ? copy.paymentPending
+                              : copy.paymentNotRequired}
+                        </span>
+                        <strong>{formatPaymentAmount(booking)}</strong>
+
+                        {paymentPending ? (
+                          <div className="dashboard-booking-actions">
+                            <button
+                              className="button-link button-link--secondary"
+                              type="button"
+                              disabled={paymentUpdatingId === booking.id}
+                              onClick={() => void runPaymentAction(booking.id, 'session')}
+                            >
+                              {booking.payment?.checkoutUrl ? copy.startPayment : copy.startPayment}
+                            </button>
+                            {booking.payment?.providerSessionId ? (
+                              <button
+                                className="button-link button-link--primary"
+                                type="button"
+                                disabled={paymentUpdatingId === booking.id}
+                                onClick={() => void runPaymentAction(booking.id, 'sync')}
+                              >
+                                {copy.refreshPayment}
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p>{copy.emptyBookings}</p>
+                <ButtonLink to="/activities">
+                  <Sparkles size={16} aria-hidden="true" />
+                  {copy.viewMarketplace}
+                </ButtonLink>
+              </div>
+            )}
           </div>
 
           <div className="dashboard-split">
@@ -320,15 +564,15 @@ const activities = dashboardData?.activities ?? [];
                           <td>{listing.location}</td>
                           <td>{listing.type}</td>
                           <td>
-                              {formatMarketplacePrice({
-                                price: listing.price,
-                                priceAmount: listing.priceAmount,
-                                priceCurrency: listing.priceCurrency,
-                                priceQualifier: listing.priceQualifier,
-                                priceUnit: listing.priceUnit,
-                                language
-                              })}
-                            </td>
+                            {formatMarketplacePrice({
+                              price: listing.price,
+                              priceAmount: listing.priceAmount,
+                              priceCurrency: listing.priceCurrency,
+                              priceQualifier: listing.priceQualifier,
+                              priceUnit: listing.priceUnit,
+                              language
+                            })}
+                          </td>
 
                           <td>
                             <span className={`status-pill ${getStatusClass(listing.status)}`}>

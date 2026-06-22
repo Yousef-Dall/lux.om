@@ -6591,3 +6591,71 @@
   margin: 0;
   padding: 0.75rem 0.85rem;
 }
+
+
+.dashboard-bookings-card {
+  margin: 1.5rem 0;
+}
+
+.dashboard-bookings-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.dashboard-booking-item {
+  align-items: flex-start;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 1.1rem;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1rem;
+}
+
+.dashboard-booking-item > div:first-child {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.dashboard-booking-item span,
+.dashboard-booking-item small {
+  color: var(--color-muted);
+}
+
+.dashboard-booking-payment {
+  align-items: flex-end;
+  display: grid;
+  gap: 0.55rem;
+  justify-items: end;
+  min-width: 15rem;
+}
+
+.dashboard-booking-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.dashboard-booking-actions .button-link {
+  border: 0;
+  min-height: auto;
+  padding: 0.65rem 0.85rem;
+}
+
+@media (max-width: 720px) {
+  .dashboard-booking-item {
+    display: grid;
+  }
+
+  .dashboard-booking-payment {
+    align-items: start;
+    justify-items: start;
+    min-width: 0;
+  }
+
+  .dashboard-booking-actions {
+    justify-content: flex-start;
+  }
+}
