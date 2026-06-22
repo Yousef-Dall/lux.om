@@ -7355,3 +7355,201 @@ transition: none;
     min-width: 0;
   }
 }
+
+/* =========================================================
+   Stage 7.3 — booking request dashboard polish
+   ========================================================= */
+
+.dashboard-bookings-card--enhanced {
+  overflow: hidden;
+}
+
+.dashboard-bookings-list--enhanced {
+  display: grid;
+  gap: 16px;
+}
+
+.dashboard-booking-item--enhanced {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: 18px;
+  align-items: start;
+  padding: clamp(16px, 2.2vw, 22px);
+  border: 1px solid rgba(7, 56, 62, 0.09);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 0 0, rgba(194, 154, 82, 0.12), transparent 18rem),
+    rgba(255, 255, 255, 0.88);
+  box-shadow: 0 14px 34px rgba(7, 56, 62, 0.055);
+}
+
+.dashboard-booking-item--approved {
+  border-color: rgba(42, 130, 93, 0.18);
+}
+
+.dashboard-booking-item--pending {
+  border-color: rgba(194, 154, 82, 0.24);
+}
+
+.dashboard-booking-item--rejected {
+  border-color: rgba(180, 49, 49, 0.18);
+}
+
+.dashboard-booking-main {
+  min-width: 0;
+}
+
+.dashboard-booking-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.dashboard-booking-kicker > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(7, 56, 62, 0.07);
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.dashboard-booking-main > strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--color-primary);
+  font-size: clamp(1.08rem, 1.8vw, 1.32rem);
+  line-height: 1.2;
+}
+
+.dashboard-booking-main > span {
+  display: block;
+  color: var(--color-muted);
+  font-weight: 780;
+  line-height: 1.5;
+}
+
+.dashboard-booking-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 14px 0 0;
+}
+
+.dashboard-booking-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 8px 11px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--color-primary);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.dashboard-booking-meta svg {
+  color: var(--color-gold);
+}
+
+.dashboard-booking-timeline {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.dashboard-booking-step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(7, 56, 62, 0.06);
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.dashboard-booking-step--done {
+  background: rgba(42, 130, 93, 0.1);
+  color: #247a58;
+}
+
+.dashboard-booking-step--active {
+  background: rgba(194, 154, 82, 0.14);
+  color: #9a6a1f;
+}
+
+.dashboard-booking-step--pending {
+  color: var(--color-muted);
+}
+
+.dashboard-booking-step--rejected {
+  background: rgba(180, 49, 49, 0.1);
+  color: var(--color-danger);
+}
+
+.dashboard-booking-note {
+  margin: 14px 0 0;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+.dashboard-booking-payment {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  padding: 14px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 20px;
+  background: rgba(255, 253, 248, 0.84);
+}
+
+.dashboard-booking-payment > strong {
+  color: var(--color-primary);
+  font-size: 1.18rem;
+  line-height: 1.2;
+}
+
+.dashboard-booking-actions {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.dashboard-booking-actions .button-link {
+  justify-content: center;
+  width: 100%;
+  min-height: 40px;
+}
+
+@media (max-width: 980px) {
+  .dashboard-booking-item--enhanced {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-booking-payment {
+    width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-booking-timeline {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-booking-meta span {
+    width: 100%;
+  }
+}

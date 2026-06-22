@@ -1,6 +1,7 @@
 import {
   ArrowUpRight,
   BarChart3,
+  CalendarDays,
   CheckCircle2,
   Clock3,
   CreditCard,
@@ -10,6 +11,7 @@ import {
   Plus,
   ShieldCheck,
   Sparkles,
+  Users,
   XCircle
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -78,19 +80,43 @@ function getBookingSubtitle(booking: ApiBooking, language: 'en' | 'ar') {
   return '';
 }
 
-function formatBookingDate(value?: string | null) {
+function getBookingTypeLabel(booking: ApiBooking, language: 'en' | 'ar') {
+  if (booking.activity) {
+    const activityWithRegion = booking.activity as { travelRegion?: string };
+
+    if (activityWithRegion.travelRegion === 'OUTSIDE_OMAN') {
+      return language === 'ar' ? 'باقة سفر' : 'Travel package';
+    }
+
+    return language === 'ar' ? 'نشاط' : 'Activity';
+  }
+
+  if (booking.listing) {
+    return language === 'ar' ? 'عقار' : 'Listing';
+  }
+
+  return language === 'ar' ? 'حجز' : 'Booking';
+}
+
+function formatBookingDate(value: string | null | undefined, language: 'en' | 'ar') {
   if (!value) return '—';
 
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat(language === 'ar' ? 'ar-OM' : 'en-GB', {
     dateStyle: 'medium'
   }).format(new Date(value));
 }
 
-function formatPaymentAmount(booking: ApiBooking) {
+function getPaymentAmountValue(booking: ApiBooking) {
   const amount = Number(booking.payment?.amount ?? 0);
 
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return 'No payment required';
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function formatPaymentAmount(booking: ApiBooking, noPaymentText: string) {
+  const amount = getPaymentAmountValue(booking);
+
+  if (amount <= 0) {
+    return noPaymentText;
   }
 
   const currency =
@@ -102,6 +128,15 @@ function formatPaymentAmount(booking: ApiBooking) {
     maximumFractionDigits: 2,
     minimumFractionDigits: 2
   })}`;
+}
+
+type TimelineStep = {
+  label: string;
+  state: 'done' | 'active' | 'pending' | 'rejected';
+};
+
+function getTimelineStepClass(step: TimelineStep) {
+  return `dashboard-booking-step dashboard-booking-step--${step.state}`;
 }
 
 export default function Dashboard() {
@@ -160,9 +195,20 @@ export default function Dashboard() {
           bookingDate: 'تاريخ الحجز',
           guests: 'ضيوف',
           payment: 'الدفع',
+          amount: 'المبلغ',
+          bookingFlow: 'مسار الحجز',
+          requestReceived: 'تم إرسال الطلب',
+          providerReview: 'مراجعة المنظم',
+          paymentStep: 'الدفع',
+          confirmedStep: 'التأكيد',
           paymentPending: 'بانتظار الدفع',
           paymentPaid: 'مدفوع',
+          paymentFailed: 'فشل الدفع',
           paymentNotRequired: 'لا يحتاج دفع',
+          paymentReadyText: 'الطلب جاهز للدفع الآمن عبر ثواني.',
+          paymentPaidText: 'تم الدفع بنجاح. سيتم تأكيد تفاصيل الحجز مع المنظم.',
+          paymentFailedText: 'تعذر تأكيد الدفع. يمكنك تحديث الحالة أو إعادة المحاولة.',
+          paymentNotRequiredText: 'لا يوجد مبلغ دفع مطلوب حالياً. انتظر تحديث المنظم أو الإدارة.',
           startPayment: 'بدء الدفع',
           refreshPayment: 'تحديث حالة الدفع',
           paymentStarted: 'تم تجهيز الدفع. سيتم تحويلك إلى صفحة الدفع الآمنة من ثواني.',
@@ -211,9 +257,20 @@ export default function Dashboard() {
           bookingDate: 'Booking date',
           guests: 'guests',
           payment: 'Payment',
+          amount: 'Amount',
+          bookingFlow: 'Booking flow',
+          requestReceived: 'Request sent',
+          providerReview: 'Provider review',
+          paymentStep: 'Payment',
+          confirmedStep: 'Confirmed',
           paymentPending: 'Payment pending',
           paymentPaid: 'Paid',
+          paymentFailed: 'Payment failed',
           paymentNotRequired: 'No payment required',
+          paymentReadyText: 'This request is ready for secure payment through Thawani.',
+          paymentPaidText: 'Payment is complete. The booking details can now be confirmed with the provider.',
+          paymentFailedText: 'Payment could not be confirmed. Refresh the status or try again.',
+          paymentNotRequiredText: 'No payment amount is required yet. Wait for the provider or admin update.',
           startPayment: 'Start payment',
           refreshPayment: 'Refresh payment status',
           paymentStarted: 'Checkout is ready. Redirecting you to Thawani secure payment page.',
@@ -443,7 +500,7 @@ export default function Dashboard() {
             </article>
           </div>
 
-          <div className="table-card table-card--premium dashboard-bookings-card">
+          <div className="table-card table-card--premium dashboard-bookings-card dashboard-bookings-card--enhanced">
             <div className="table-card__header">
               <div>
                 <p className="eyebrow">{copy.payment}</p>
@@ -452,43 +509,125 @@ export default function Dashboard() {
             </div>
 
             {paymentError ? (
-              <p className="form-error" role="alert">{paymentError}</p>
+              <p className="form-error" role="alert">
+                {paymentError}
+              </p>
             ) : null}
 
             {paymentSuccess ? (
-              <p className="form-success" role="status">{paymentSuccess}</p>
+              <p className="form-success" role="status">
+                {paymentSuccess}
+              </p>
             ) : null}
 
             {bookings.length > 0 ? (
-              <div className="dashboard-bookings-list">
+              <div className="dashboard-bookings-list dashboard-bookings-list--enhanced">
                 {bookings.map((booking) => {
                   const paymentStatus = booking.payment?.status ?? 'NOT_REQUIRED';
+                  const paymentAmount = getPaymentAmountValue(booking);
                   const paymentPending = paymentStatus === 'PENDING';
                   const paymentPaid = paymentStatus === 'PAID';
+                  const paymentFailed = paymentStatus === 'FAILED';
+                  const paymentRequired =
+                    paymentPending || paymentPaid || paymentFailed || paymentAmount > 0;
+
+                  const paymentLabel = paymentPaid
+                    ? copy.paymentPaid
+                    : paymentPending
+                      ? copy.paymentPending
+                      : paymentFailed
+                        ? copy.paymentFailed
+                        : copy.paymentNotRequired;
+
+                  const paymentMessage = paymentPaid
+                    ? copy.paymentPaidText
+                    : paymentPending
+                      ? copy.paymentReadyText
+                      : paymentFailed
+                        ? copy.paymentFailedText
+                        : copy.paymentNotRequiredText;
+
+                  const timelineSteps: TimelineStep[] = [
+                    {
+                      label: copy.requestReceived,
+                      state: 'done'
+                    },
+                    {
+                      label: copy.providerReview,
+                      state: paymentPending || paymentPaid ? 'done' : 'active'
+                    },
+                    {
+                      label: paymentRequired ? copy.paymentStep : copy.paymentNotRequired,
+                      state: paymentPaid
+                        ? 'done'
+                        : paymentFailed
+                          ? 'rejected'
+                          : paymentPending
+                            ? 'active'
+                            : 'pending'
+                    },
+                    {
+                      label: copy.confirmedStep,
+                      state: paymentPaid ? 'done' : 'pending'
+                    }
+                  ];
 
                   return (
-                    <article className="dashboard-booking-item" key={booking.id}>
-                      <div>
+                    <article
+                      className={`dashboard-booking-item dashboard-booking-item--enhanced dashboard-booking-item--${getStatusClass(paymentStatus)}`}
+                      key={booking.id}
+                    >
+                      <div className="dashboard-booking-main">
+                        <div className="dashboard-booking-kicker">
+                          <span>{getBookingTypeLabel(booking, language)}</span>
+
+                          <span className={`status-pill ${getStatusClass(paymentStatus)}`}>
+                            <StatusIcon status={paymentStatus} />
+                            {paymentLabel}
+                          </span>
+                        </div>
+
                         <strong>{getBookingTitle(booking, language)}</strong>
                         <span>{getBookingSubtitle(booking, language)}</span>
-                        <small>
-                          {copy.bookingDate}: {formatBookingDate(booking.scheduledDate)} ·{' '}
-                          {booking.guests} {copy.guests}
-                        </small>
+
+                        <div className="dashboard-booking-meta">
+                          <span>
+                            <CalendarDays size={15} aria-hidden="true" />
+                            {copy.bookingDate}: {formatBookingDate(booking.scheduledDate, language)}
+                          </span>
+
+                          <span>
+                            <Users size={15} aria-hidden="true" />
+                            {booking.guests} {copy.guests}
+                          </span>
+
+                          <span>
+                            <CreditCard size={15} aria-hidden="true" />
+                            {copy.amount}: {formatPaymentAmount(booking, copy.paymentNotRequired)}
+                          </span>
+                        </div>
+
+                        <div className="dashboard-booking-timeline" aria-label={copy.bookingFlow}>
+                          {timelineSteps.map((step) => (
+                            <span className={getTimelineStepClass(step)} key={step.label}>
+                              <StatusIcon status={step.state === 'rejected' ? 'FAILED' : step.state === 'done' ? 'PAID' : undefined} />
+                              {step.label}
+                            </span>
+                          ))}
+                        </div>
+
+                        <p className="dashboard-booking-note">{paymentMessage}</p>
                       </div>
 
                       <div className="dashboard-booking-payment">
                         <span className={`status-pill ${getStatusClass(paymentStatus)}`}>
                           <StatusIcon status={paymentStatus} />
-                          {paymentPaid
-                            ? copy.paymentPaid
-                            : paymentPending
-                              ? copy.paymentPending
-                              : copy.paymentNotRequired}
+                          {paymentLabel}
                         </span>
-                        <strong>{formatPaymentAmount(booking)}</strong>
 
-                        {paymentPending ? (
+                        <strong>{formatPaymentAmount(booking, copy.paymentNotRequired)}</strong>
+
+                        {paymentPending || paymentFailed ? (
                           <div className="dashboard-booking-actions">
                             <button
                               className="button-link button-link--secondary"
@@ -496,8 +635,9 @@ export default function Dashboard() {
                               disabled={paymentUpdatingId === booking.id}
                               onClick={() => void runPaymentAction(booking.id, 'session')}
                             >
-                              {booking.payment?.checkoutUrl ? copy.startPayment : copy.startPayment}
+                              {copy.startPayment}
                             </button>
+
                             {booking.payment?.providerSessionId ? (
                               <button
                                 className="button-link button-link--primary"
