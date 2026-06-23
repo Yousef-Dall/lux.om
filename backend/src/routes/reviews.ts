@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { AppError } from '../utils/http';
 
 export const reviewsRouter = Router();
 
@@ -37,6 +38,65 @@ function relationData(targetType: string, targetId: string) {
   return {};
 }
 
+async function assertReviewTargetIsPublic(targetType: string, targetId: string) {
+  if (targetType === 'LISTING') {
+    const listing = await prisma.listing.findFirst({
+      where: {
+        id: targetId,
+        status: 'APPROVED'
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!listing) throw new AppError(404, 'Review target not found');
+    return;
+  }
+
+  if (targetType === 'ACTIVITY') {
+    const activity = await prisma.activity.findFirst({
+      where: {
+        id: targetId,
+        status: 'APPROVED'
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!activity) throw new AppError(404, 'Review target not found');
+    return;
+  }
+
+  if (targetType === 'TRAVEL_AGENCY') {
+    const travelAgency = await prisma.travelAgency.findUnique({
+      where: {
+        id: targetId
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!travelAgency) throw new AppError(404, 'Review target not found');
+    return;
+  }
+
+  if (targetType === 'DEVELOPER') {
+    const developer = await prisma.developerCompany.findUnique({
+      where: {
+        id: targetId
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!developer) throw new AppError(404, 'Review target not found');
+  }
+}
+
 reviewsRouter.get('/', async (req, res, next) => {
   try {
     const query = listQuerySchema.parse(req.query);
@@ -63,6 +123,27 @@ reviewsRouter.get('/', async (req, res, next) => {
 reviewsRouter.post('/', requireAuth(), async (req, res, next) => {
   try {
     const data = createReviewSchema.parse(req.body);
+
+    await assertReviewTargetIsPublic(data.targetType, data.targetId);
+
+    const existingReview = await prisma.review.findFirst({
+      where: {
+        targetType: data.targetType,
+        targetId: data.targetId,
+        reviewerId: req.user!.id,
+        status: {
+          not: 'ARCHIVED'
+        }
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (existingReview) {
+      throw new AppError(409, 'You have already submitted a review for this target');
+    }
+
     const review = await prisma.review.create({
       data: {
         targetType: data.targetType,

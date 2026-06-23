@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { AppError } from '../utils/http';
 
 export const reportsRouter = Router();
 
@@ -32,9 +33,99 @@ const adminStatusSchema = z.object({
 
 const idParamsSchema = z.object({ id: z.string().trim().min(1) });
 
+async function assertReportTargetExists(targetType: string, targetId: string) {
+  if (targetType === 'OTHER') return;
+
+  if (targetType === 'LISTING') {
+    const listing = await prisma.listing.findUnique({
+      where: {
+        id: targetId
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!listing) throw new AppError(404, 'Report target not found');
+    return;
+  }
+
+  if (targetType === 'ACTIVITY') {
+    const activity = await prisma.activity.findUnique({
+      where: {
+        id: targetId
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!activity) throw new AppError(404, 'Report target not found');
+    return;
+  }
+
+  if (targetType === 'TRAVEL_AGENCY') {
+    const travelAgency = await prisma.travelAgency.findUnique({
+      where: {
+        id: targetId
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!travelAgency) throw new AppError(404, 'Report target not found');
+    return;
+  }
+
+  if (targetType === 'DEVELOPER') {
+    const developer = await prisma.developerCompany.findUnique({
+      where: {
+        id: targetId
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!developer) throw new AppError(404, 'Report target not found');
+    return;
+  }
+
+  if (targetType === 'REVIEW') {
+    const review = await prisma.review.findUnique({
+      where: {
+        id: targetId
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!review) throw new AppError(404, 'Report target not found');
+    return;
+  }
+
+  if (targetType === 'USER') {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: targetId
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!user) throw new AppError(404, 'Report target not found');
+  }
+}
+
 reportsRouter.post('/', requireAuth(false), async (req, res, next) => {
   try {
     const data = reportSchema.parse(req.body);
+
+    await assertReportTargetExists(data.targetType, data.targetId);
+
     const report = await prisma.trustReport.create({
       data: {
         ...data,

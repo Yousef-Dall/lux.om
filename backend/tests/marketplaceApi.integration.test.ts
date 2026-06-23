@@ -39,6 +39,14 @@ async function clearTestDatabase() {
   await prisma.verificationRecord.deleteMany();
   await prisma.rentalContractDraft.deleteMany();
 
+  await prisma.investorWatchlistItem.deleteMany();
+  await prisma.savedSearch.deleteMany();
+  await prisma.savedActivity.deleteMany();
+  await prisma.savedListing.deleteMany();
+
+  await prisma.trustReport.deleteMany();
+  await prisma.review.deleteMany();
+
   await prisma.activityHighlight.deleteMany();
   await prisma.activityImage.deleteMany();
   await prisma.activity.deleteMany();
@@ -149,7 +157,11 @@ async function seedMarketplaceFixtures() {
       priceCurrency: 'OMR',
       priceQualifier: 'FIXED',
       priceUnit: 'MONTH',
+      beds: 1,
+      baths: 1,
       sqm: 80,
+      status: 'APPROVED',
+      ownerId: owner.id,
       partnerTier: 0,
       createdAt: new Date('2026-01-01T00:00:00.000Z')
     }
@@ -351,6 +363,226 @@ beforeAll(async () => {
 afterAll(async () => {
   await clearTestDatabase();
   await prisma.$disconnect();
+});
+
+describe('saved, reviews, and reports hardening', () => {
+  it('only lets users save approved public listings and activities', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const approvedListing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        ownerId: owner.id
+      }
+    });
+
+    const draftListing = await prisma.listing.create({
+      data: {
+        title: 'Draft listing not public',
+        titleEn: 'Draft listing not public',
+        slug: 'draft-listing-not-public',
+        description: 'Draft listing used to verify saved item access control.',
+        transaction: 'Sale',
+        type: 'Apartment',
+        typeEn: 'Apartment',
+        location: 'Muscat, Oman',
+        price: 'OMR 100',
+        priceAmount: '100',
+        priceCurrency: 'OMR',
+        priceQualifier: 'FIXED',
+        priceUnit: 'MONTH',
+        beds: 1,
+        baths: 1,
+        sqm: 80,
+        image: 'https://example.com/draft.jpg',
+        status: 'PENDING',
+        ownerId: owner.id
+      }
+    });
+
+    const approvedActivity = await prisma.activity.findFirstOrThrow({
+      where: {
+        status: 'APPROVED'
+      }
+    });
+
+const draftActivity = await prisma.activity.create({
+  data: {
+    titleEn: 'Draft activity not public',
+    slug: 'draft-activity-not-public',
+    descriptionEn: 'Draft activity used to verify saved item access control.',
+    locationEn: 'Muscat, Oman',
+    categoryEn: 'Tour',
+    price: 'OMR 20',
+    priceAmount: '20',
+    priceCurrency: 'OMR',
+    priceQualifier: 'FIXED',
+    priceUnit: 'PERSON',
+    status: 'PENDING',
+    ownerId: owner.id
+  }
+});
+
+    await request(app)
+      .post(`/api/saved/listings/${approvedListing.id}`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(201);
+
+    await request(app)
+      .post(`/api/saved/listings/${draftListing.id}`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(404);
+
+    await request(app)
+      .post(`/api/saved/activities/${approvedActivity.id}`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(201);
+
+    await request(app)
+      .post(`/api/saved/activities/${draftActivity.id}`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(404);
+  });
+
+  it('validates watchlist listing and valuation ownership targets', async () => {
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const approvedListing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        ownerId: owner.id
+      }
+    });
+
+    const valuation = await prisma.valuationRequest.create({
+      data: {
+        location: 'Muscat',
+        requestedById: customer.id,
+        disclaimer: 'Integration test valuation request.'
+      }
+    });
+
+    await request(app)
+      .post('/api/saved/watchlist')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        listingId: approvedListing.id,
+        targetPrice: 900,
+        notes: 'Watch approved listing.'
+      })
+      .expect(201);
+
+    await request(app)
+      .post('/api/saved/watchlist')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        valuationRequestId: valuation.id,
+        notes: 'Watch own valuation.'
+      })
+      .expect(201);
+
+    await request(app)
+      .post('/api/saved/watchlist')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        valuationRequestId: valuation.id,
+        notes: 'Trying to watch another user valuation.'
+      })
+      .expect(404);
+  });
+
+  it('validates review targets and blocks duplicate active reviews by the same user', async () => {
+    const activity = await prisma.activity.findFirstOrThrow({
+      where: {
+        status: 'APPROVED'
+      }
+    });
+
+    await request(app)
+      .post('/api/reviews')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        targetType: 'ACTIVITY',
+        targetId: activity.id,
+        rating: 5,
+        title: 'Great experience',
+        body: 'A moderated review pending approval.'
+      })
+      .expect(201);
+
+    await request(app)
+      .post('/api/reviews')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        targetType: 'ACTIVITY',
+        targetId: activity.id,
+        rating: 4,
+        title: 'Duplicate review'
+      })
+      .expect(409);
+
+    await request(app)
+      .post('/api/reviews')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        targetType: 'ACTIVITY',
+        targetId: 'missing-activity-id',
+        rating: 5
+      })
+      .expect(404);
+  });
+
+  it('validates report targets while still allowing OTHER reports', async () => {
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED'
+      }
+    });
+
+    await request(app)
+      .post('/api/reports')
+      .send({
+        targetType: 'LISTING',
+        targetId: listing.id,
+        reason: 'MISLEADING_INFO',
+        message: 'Anonymous report for a real listing.',
+        reporterEmail: 'reporter@lux.test'
+      })
+      .expect(201);
+
+    await request(app)
+      .post('/api/reports')
+      .send({
+        targetType: 'LISTING',
+        targetId: 'missing-listing-id',
+        reason: 'MISLEADING_INFO'
+      })
+      .expect(404);
+
+    await request(app)
+      .post('/api/reports')
+      .send({
+        targetType: 'OTHER',
+        targetId: 'general-platform-report',
+        reason: 'OTHER',
+        message: 'General platform safety feedback.'
+      })
+      .expect(201);
+  });
 });
 
 describe('security hardening', () => {

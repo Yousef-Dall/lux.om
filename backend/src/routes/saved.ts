@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/auth';
+import { AppError } from '../utils/http';
 
 export const savedRouter = Router();
 
@@ -35,16 +36,83 @@ const watchlistSchema = z.object({
   }
 });
 
+async function assertPublicListingExists(listingId: string) {
+  const listing = await prisma.listing.findFirst({
+    where: {
+      id: listingId,
+      status: 'APPROVED'
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (!listing) {
+    throw new AppError(404, 'Listing not found');
+  }
+}
+
+async function assertPublicActivityExists(activityId: string) {
+  const activity = await prisma.activity.findFirst({
+    where: {
+      id: activityId,
+      status: 'APPROVED'
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (!activity) {
+    throw new AppError(404, 'Activity not found');
+  }
+}
+
+async function assertWatchlistTargetsAreAllowed(
+  data: z.infer<typeof watchlistSchema>,
+  userId: string
+) {
+  if (data.listingId) {
+    await assertPublicListingExists(data.listingId);
+  }
+
+  if (data.valuationRequestId) {
+    const valuationRequest = await prisma.valuationRequest.findFirst({
+      where: {
+        id: data.valuationRequestId,
+        requestedById: userId
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!valuationRequest) {
+      throw new AppError(404, 'Valuation request not found');
+    }
+  }
+}
+
 savedRouter.get('/', requireAuth(), async (req, res, next) => {
   try {
     const [listings, activities, searches, watchlist] = await Promise.all([
       prisma.savedListing.findMany({
-        where: { userId: req.user!.id },
+        where: {
+          userId: req.user!.id,
+          listing: {
+            status: 'APPROVED'
+          }
+        },
         include: { listing: { include: { images: true, developer: true, nearestLandmark: true } } },
         orderBy: { createdAt: 'desc' }
       }),
       prisma.savedActivity.findMany({
-        where: { userId: req.user!.id },
+        where: {
+          userId: req.user!.id,
+          activity: {
+            status: 'APPROVED'
+          }
+        },
         include: { activity: { include: { images: true, highlights: true, travelAgency: true } } },
         orderBy: { createdAt: 'desc' }
       }),
@@ -68,6 +136,9 @@ savedRouter.get('/', requireAuth(), async (req, res, next) => {
 savedRouter.post('/listings/:id', requireAuth(), async (req, res, next) => {
   try {
     const { id } = idParamsSchema.parse(req.params);
+
+    await assertPublicListingExists(id);
+
     const saved = await prisma.savedListing.upsert({
       where: { userId_listingId: { userId: req.user!.id, listingId: id } },
       update: {},
@@ -93,6 +164,9 @@ savedRouter.delete('/listings/:id', requireAuth(), async (req, res, next) => {
 savedRouter.post('/activities/:id', requireAuth(), async (req, res, next) => {
   try {
     const { id } = idParamsSchema.parse(req.params);
+
+    await assertPublicActivityExists(id);
+
     const saved = await prisma.savedActivity.upsert({
       where: { userId_activityId: { userId: req.user!.id, activityId: id } },
       update: {},
@@ -139,10 +213,17 @@ savedRouter.post('/searches', requireAuth(), async (req, res, next) => {
 savedRouter.post('/watchlist', requireAuth(), async (req, res, next) => {
   try {
     const data = watchlistSchema.parse(req.body);
+
+    await assertWatchlistTargetsAreAllowed(data, req.user!.id);
+
     const item = await prisma.investorWatchlistItem.create({
       data: {
-        ...data,
+        listingId: data.listingId,
+        valuationRequestId: data.valuationRequestId,
+        notes: data.notes,
         targetPrice: data.targetPrice === undefined ? undefined : data.targetPrice.toString(),
+        alertOnPriceChange: data.alertOnPriceChange,
+        alertOnNewComparables: data.alertOnNewComparables,
         userId: req.user!.id
       }
     });
