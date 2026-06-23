@@ -36,7 +36,8 @@ async function clearTestDatabase() {
   await prisma.marketplacePaymentLedger.deleteMany();
   await prisma.marketplaceTransaction.deleteMany();
 
-    await prisma.rentalContractDraft.deleteMany();
+  await prisma.verificationRecord.deleteMany();
+  await prisma.rentalContractDraft.deleteMany();
 
   await prisma.activityHighlight.deleteMany();
   await prisma.activityImage.deleteMany();
@@ -414,6 +415,179 @@ describe('security hardening', () => {
       .expect(403);
   });
 
+});
+
+
+describe('POST /api/verification', () => {
+  it('lets a listing owner submit owner document verification for their listing', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        ownerId: owner.id
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/verification')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        targetType: 'LISTING',
+        targetId: listing.id,
+        source: 'OWNER_DOCUMENT_SUBMISSION',
+        submittedDocumentUrls: ['https://example.com/ownership-document.pdf'],
+        notes: 'Submitting ownership documents for review.'
+      })
+      .expect(201);
+
+    expect(response.body.verification).toMatchObject({
+      targetType: 'LISTING',
+      targetId: listing.id,
+      source: 'OWNER_DOCUMENT_SUBMISSION',
+      status: 'SUBMITTED',
+      submittedById: owner.id
+    });
+  });
+
+  it('blocks non-admin users from submitting future or official verification sources', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        ownerId: owner.id
+      }
+    });
+
+    await request(app)
+      .post('/api/verification')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        targetType: 'LISTING',
+        targetId: listing.id,
+        source: 'FUTURE_MOLUP_API',
+        notes: 'This should be admin-only.'
+      })
+      .expect(403);
+  });
+
+  it('blocks users from submitting verification for another owner listing', async () => {
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        owner: {
+          email: 'integration-owner@lux.test'
+        }
+      }
+    });
+
+    await request(app)
+      .post('/api/verification')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        targetType: 'LISTING',
+        targetId: listing.id,
+        source: 'OWNER_DOCUMENT_SUBMISSION',
+        notes: 'Trying to verify someone else listing.'
+      })
+      .expect(403);
+  });
+
+  it('lets users submit verification for their own user profile only', async () => {
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/verification')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        targetType: 'USER',
+        targetId: customer.id,
+        source: 'OWNER_DOCUMENT_SUBMISSION',
+        notes: 'Submitting profile identity documents.'
+      })
+      .expect(201);
+
+    expect(response.body.verification).toMatchObject({
+      targetType: 'USER',
+      targetId: customer.id,
+      source: 'OWNER_DOCUMENT_SUBMISSION',
+      submittedById: customer.id
+    });
+  });
+
+  it('blocks users from submitting verification for another user profile', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    await request(app)
+      .post('/api/verification')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        targetType: 'USER',
+        targetId: owner.id,
+        source: 'OWNER_DOCUMENT_SUBMISSION',
+        notes: 'Trying to verify another user.'
+      })
+      .expect(403);
+  });
+
+  it('lets admins submit admin and future verification sources', async () => {
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        owner: {
+          email: 'integration-owner@lux.test'
+        }
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/verification')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        targetType: 'LISTING',
+        targetId: listing.id,
+        source: 'FUTURE_MOLUP_API',
+        notes: 'Admin-submitted future integration verification request.'
+      })
+      .expect(201);
+
+    expect(response.body.verification).toMatchObject({
+      targetType: 'LISTING',
+      targetId: listing.id,
+      source: 'FUTURE_MOLUP_API',
+      status: 'SUBMITTED',
+      submittedById: expect.any(String)
+    });
+  });
+
+  it('returns not found for missing verification targets', async () => {
+    await request(app)
+      .post('/api/verification')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        targetType: 'LISTING',
+        targetId: 'missing-listing-id',
+        source: 'LUX_OM_ADMIN_REVIEW'
+      })
+      .expect(404);
+  });
 });
 
 describe('GET /api/listings', () => {
