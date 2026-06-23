@@ -502,7 +502,22 @@ function createPaymentReference() {
 }
 
 function getFrontendBaseUrl() {
-  return (process.env.FRONTEND_URL ?? 'http://localhost:5173').replace(/\/+$/, '');
+  const frontendUrl = process.env.FRONTEND_URL?.trim();
+
+  if (!frontendUrl && process.env.NODE_ENV === 'production') {
+    throw new AppError(500, 'FRONTEND_URL must be configured in production');
+  }
+
+  const resolvedUrl = frontendUrl ?? 'http://localhost:5173';
+
+  if (
+    process.env.NODE_ENV === 'production' &&
+    (resolvedUrl.includes('localhost') || resolvedUrl.includes('127.0.0.1'))
+  ) {
+    throw new AppError(500, 'FRONTEND_URL must not use localhost in production');
+  }
+
+  return resolvedUrl.replace(/\/+$/, '');
 }
 
 function getThawaniApiBaseUrl() {
