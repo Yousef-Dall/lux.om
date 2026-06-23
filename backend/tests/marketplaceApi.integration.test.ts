@@ -36,6 +36,8 @@ async function clearTestDatabase() {
   await prisma.marketplacePaymentLedger.deleteMany();
   await prisma.marketplaceTransaction.deleteMany();
 
+    await prisma.rentalContractDraft.deleteMany();
+
   await prisma.activityHighlight.deleteMany();
   await prisma.activityImage.deleteMany();
   await prisma.activity.deleteMany();
@@ -2168,6 +2170,194 @@ describe('POST/PATCH /api/rent-payments', () => {
         receiptNumber: 'RECEIPT-STAGE9-ADMIN-001'
       })
       .expect(200);
+  });
+});
+
+
+describe('POST /api/contracts', () => {
+  function contractPayload(overrides: Record<string, unknown> = {}) {
+    return {
+      title: 'Integration rental contract',
+      landlordName: 'Integration Owner',
+      landlordEmail: 'owner@lux.test',
+      landlordPhone: '+96891111111',
+      tenantName: 'Integration Tenant',
+      tenantEmail: 'tenant@lux.test',
+      tenantPhone: '+96892222222',
+      propertyTitle: 'Integration Property',
+      propertyAddress: 'Muscat, Oman',
+      propertyType: 'Apartment',
+      propertyNotes: 'Integration test contract draft.',
+      rentAmount: 500,
+      currency: 'OMR',
+      securityDeposit: 500,
+      contractStartDate: '2026-08-01T00:00:00.000Z',
+      contractEndDate: '2027-07-31T00:00:00.000Z',
+      paymentSchedule: 'Monthly',
+      utilitiesResponsibility: 'Tenant pays utilities.',
+      maintenanceTerms: 'Landlord handles structural maintenance.',
+      noticePeriod: '30 days',
+      additionalClauses: 'Subject to final legal review.',
+      attachmentsNotes: 'Civil ID and ownership documents pending.',
+      ...overrides
+    };
+  }
+
+  it('lets a listing owner create a contract draft for their own listing', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        ownerId: owner.id
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send(
+        contractPayload({
+          listingId: listing.id,
+          landlordUserId: owner.id
+        })
+      )
+      .expect(201);
+
+    expect(response.body.contract).toMatchObject({
+      title: 'Integration rental contract',
+      listingId: listing.id,
+      createdById: owner.id,
+      landlordUserId: owner.id,
+      tenantUserId: null,
+      currency: 'OMR'
+    });
+    expect(Number(response.body.contract.rentAmount)).toBe(500);
+    expect(Number(response.body.contract.securityDeposit)).toBe(500);
+  });
+
+  it('blocks a customer from creating a contract draft for another owner listing', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        ownerId: owner.id
+      }
+    });
+
+    await request(app)
+      .post('/api/contracts')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send(
+        contractPayload({
+          listingId: listing.id,
+          landlordUserId: owner.id
+        })
+      )
+      .expect(403);
+  });
+
+  it('blocks non-admin users from linking arbitrary tenant accounts', async () => {
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    await request(app)
+      .post('/api/contracts')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send(
+        contractPayload({
+          tenantUserId: customer.id
+        })
+      )
+      .expect(403);
+  });
+
+  it('lets admins create a contract draft with reviewed user links', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        ownerId: owner.id
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(
+        contractPayload({
+          listingId: listing.id,
+          landlordUserId: owner.id,
+          tenantUserId: customer.id
+        })
+      )
+      .expect(201);
+
+    expect(response.body.contract).toMatchObject({
+      listingId: listing.id,
+      createdById: expect.any(String),
+      landlordUserId: owner.id,
+      tenantUserId: customer.id
+    });
+  });
+
+  it('keeps contract drafts visible to linked owners in their workspace', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED',
+        ownerId: owner.id
+      }
+    });
+
+    const createResponse = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send(
+        contractPayload({
+          title: 'Owner workspace contract',
+          listingId: listing.id,
+          landlordUserId: owner.id
+        })
+      )
+      .expect(201);
+
+    const mineResponse = await request(app)
+      .get('/api/contracts/mine')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+
+    expect(
+      mineResponse.body.contracts.map((contract: { id: string }) => contract.id)
+    ).toContain(createResponse.body.contract.id);
   });
 });
 
