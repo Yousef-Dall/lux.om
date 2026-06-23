@@ -34,7 +34,7 @@ const statusSchema = z.object({
 
 const idParamsSchema = z.object({ id: z.string().trim().min(1) });
 
-transactionsRouter.post('/', requireAuth(), async (req, res, next) => {
+transactionsRouter.post('/', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
   try {
     const data = transactionSchema.parse(req.body);
 

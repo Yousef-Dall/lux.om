@@ -31,6 +31,11 @@ async function clearTestDatabase() {
   await prisma.rentPaymentDueItem.deleteMany();
   await prisma.rentPaymentSchedule.deleteMany();
 
+  await prisma.transactionAuditEvent.deleteMany();
+  await prisma.transactionParticipant.deleteMany();
+  await prisma.marketplacePaymentLedger.deleteMany();
+  await prisma.marketplaceTransaction.deleteMany();
+
   await prisma.activityHighlight.deleteMany();
   await prisma.activityImage.deleteMany();
   await prisma.activity.deleteMany();
@@ -38,6 +43,11 @@ async function clearTestDatabase() {
   await prisma.listingImage.deleteMany();
   await prisma.amenity.deleteMany();
   await prisma.listing.deleteMany();
+
+  await prisma.travelAgency.deleteMany();
+  await prisma.developerCompany.deleteMany();
+  await prisma.landmark.deleteMany();
+  await prisma.user.deleteMany();
 }
 
 async function seedMarketplaceFixtures() {
@@ -2158,6 +2168,92 @@ describe('POST/PATCH /api/rent-payments', () => {
         receiptNumber: 'RECEIPT-STAGE9-ADMIN-001'
       })
       .expect(200);
+  });
+});
+
+
+describe('POST /api/transactions', () => {
+  it('blocks non-admin users from creating marketplace transactions', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        title: 'Unauthorized customer transaction',
+        type: 'PROPERTY_RENTAL',
+        amount: 1000,
+        currency: 'OMR',
+        landlordId: owner.id,
+        tenantId: customer.id,
+        adminNotes: 'This should not be accepted from a customer.'
+      })
+      .expect(403);
+  });
+
+  it('lets admins create marketplace transactions and records an audit event', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        title: 'Admin-created rental transaction',
+        type: 'PROPERTY_RENTAL',
+        amount: 1200,
+        currency: 'OMR',
+        landlordId: owner.id,
+        tenantId: customer.id,
+        adminNotes: 'Created by admin during Stage 9 hardening.',
+        documentChecklist: {
+          contractDraft: true,
+          paymentSchedule: true
+        }
+      })
+      .expect(201);
+
+    expect(response.body.transaction).toMatchObject({
+      title: 'Admin-created rental transaction',
+      type: 'PROPERTY_RENTAL',
+      currency: 'OMR',
+      landlordId: owner.id,
+      tenantId: customer.id,
+      adminId: expect.any(String),
+      adminNotes: 'Created by admin during Stage 9 hardening.'
+    });
+    expect(Number(response.body.transaction.amount)).toBe(1200);
+    expect(response.body.transaction.documentChecklist).toMatchObject({
+      contractDraft: true,
+      paymentSchedule: true
+    });
+    expect(response.body.transaction.auditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'CREATED',
+          message: 'Transaction created.'
+        })
+      ])
+    );
   });
 });
 
