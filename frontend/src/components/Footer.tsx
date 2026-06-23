@@ -98,7 +98,6 @@ return ( <footer className="site-footer"> <section className="container footer-c
       <Link to="/travel-agencies">{copy.listAgency}</Link>
       <Link to="/developers">{t.footer.partnerWithLux}</Link>
       <Link to="/dashboard">{t.footer.dashboard}</Link>
-      <Link to="/admin">{t.footer.admin}</Link>
     </nav>
 
     <address className="footer-contact" aria-label={aria.contact}>
