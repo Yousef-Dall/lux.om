@@ -29,6 +29,7 @@ import { ApiError } from '../api/client';
 import { getActivityBySlug } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
+import ReportModal from '../components/ReportModal';
 import ReviewSection from '../components/ReviewSection';
 import SavedButton from '../components/SavedButton';
 import TrustBadges from '../components/TrustBadges';
@@ -636,9 +637,13 @@ return ( <article className="details-page details-page--activity-detail"> <secti
             location={activity.location}
             label={language === 'ar' ? 'استفسار واتساب' : 'WhatsApp inquiry'}
           />
-          <ButtonLink to="/contact" variant="secondary">
-            {copy.report}
-          </ButtonLink>
+          <ReportModal
+                targetType="ACTIVITY"
+                targetId={activity.id}
+                targetTitle={activity.title}
+                token={token}
+                triggerLabel={copy.report}
+              />
         </div>
 
         <div className="details-highlight-strip">

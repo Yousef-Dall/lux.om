@@ -16,11 +16,13 @@ import { Link, useParams } from 'react-router-dom';
 
 import { getListingBySlug } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
+import ReportModal from '../components/ReportModal';
 import ReviewSection from '../components/ReviewSection';
 import SavedButton from '../components/SavedButton';
 import TrustBadges from '../components/TrustBadges';
 import WhatsAppActions from '../components/WhatsAppActions';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { Listing } from '../types';
 import { formatMarketplacePrice } from '../utils/format';
@@ -29,6 +31,7 @@ import { getSafeEmbedUrl } from '../utils/mediaEmbeds';
 
 export default function ListingDetails() {
   const { t, language } = useLanguage();
+  const { token } = useAuth();
   const { slug } = useParams();
 
   const [listing, setListing] = useState<Listing | null>(null);
@@ -376,9 +379,13 @@ notSpecified: 'Not specified',
                 location={listing.location}
                 label={language === 'ar' ? 'استفسار واتساب' : 'WhatsApp inquiry'}
               />
-              <ButtonLink to="/contact" variant="secondary">
-                {copy.report}
-              </ButtonLink>
+              <ReportModal
+                targetType="LISTING"
+                targetId={listing.id}
+                targetTitle={listing.title}
+                token={token}
+                triggerLabel={copy.report}
+              />
             </div>
 
             <div className="details-highlight-strip">

@@ -8584,3 +8584,151 @@ transition: none;
     width: 100%;
   }
 }
+
+.report-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(8px);
+}
+
+.report-modal {
+  width: min(100%, 42rem);
+  max-height: min(90vh, 48rem);
+  overflow: auto;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: var(--color-surface, #ffffff);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+  padding: 1.5rem;
+}
+
+.report-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.report-modal__header h2 {
+  margin: 0.2rem 0 0;
+}
+
+.report-modal__close {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  color: inherit;
+  cursor: pointer;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.report-modal__target {
+  margin: 1rem 0;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.report-modal__form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.report-modal__form label,
+.report-modal__contact-grid label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 700;
+}
+
+.report-modal__form input,
+.report-modal__form select,
+.report-modal__form textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.9rem;
+  background: var(--color-surface, #ffffff);
+  color: inherit;
+  padding: 0.8rem 0.9rem;
+  font: inherit;
+}
+
+.report-modal__form textarea {
+  resize: vertical;
+}
+
+.report-modal__contact-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.report-modal__actions,
+.stage8-operations-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: center;
+}
+
+.report-modal__actions {
+  justify-content: flex-end;
+}
+
+.stage8-operations-queue {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.stage8-operations-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.stage8-operations-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 1.15rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.stage8-operations-row span,
+.stage8-operations-row p {
+  display: block;
+  margin: 0.35rem 0 0;
+  color: var(--color-muted, #64748b);
+}
+
+@media (max-width: 720px) {
+  .report-modal__contact-grid,
+  .stage8-operations-row {
+    grid-template-columns: 1fr;
+  }
+
+  .stage8-operations-row {
+    display: grid;
+  }
+
+  .report-modal__actions {
+    justify-content: stretch;
+  }
+
+  .report-modal__actions .button-link,
+  .stage8-operations-actions .button-link {
+    width: 100%;
+  }
+}
