@@ -48,6 +48,41 @@ export type ApiPayment = {
   updatedAt: string;
 };
 
+export type ApiBookingReceipt = {
+  receiptNumber: string;
+  bookingId: string;
+  bookingStatus: BookingStatus;
+  bookingTitle: string;
+  bookingType: string;
+  bookingLocation?: string | null;
+  bookingDate?: string | null;
+  preferredTime?: string | null;
+  guests: number;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  customerPhone?: string | null;
+  provider?: {
+    id: string;
+    name: string;
+    email?: string | null;
+    phone?: string | null;
+    type?: string | null;
+  } | null;
+  paymentId: string;
+  amount: string | number;
+  commission: string | number;
+  providerPayoutAmount?: string | number | null;
+  currency: string;
+  status: PaymentStatus;
+  providerName?: string | null;
+  reference?: string | null;
+  thawaniSessionId?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  note?: string | null;
+};
+
 export type ApiBooking = {
   id: string;
   message?: string | null;
@@ -134,6 +169,14 @@ export async function requestBookingCancellation(
   return apiClient.patch<{ booking: ApiBooking }>(
     `/api/bookings/${bookingId}/cancellation-request`,
     payload,
+    { token }
+  );
+}
+
+
+export async function getBookingReceipt(bookingId: string, token: string) {
+  return apiClient.get<{ receipt: ApiBookingReceipt }>(
+    `/api/bookings/${bookingId}/receipt`,
     { token }
   );
 }

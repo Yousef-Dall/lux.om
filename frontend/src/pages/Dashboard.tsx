@@ -19,10 +19,12 @@ import { useEffect, useState } from 'react';
 
 import {
   createPaymentSession,
+  getBookingReceipt,
   requestBookingCancellation,
   syncBookingPayment,
   updateOwnerBookingStatus,
-  type ApiBooking
+  type ApiBooking,
+  type ApiBookingReceipt
 } from '../api/bookings';
 import { ApiError } from '../api/client';
 import { getDashboardData, type DashboardData } from '../api/dashboard';
@@ -33,6 +35,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
 import SectionHeader from '../components/SectionHeader';
+import ReceiptView from '../components/ReceiptView';
 import Stage8DashboardPanel from '../components/Stage8DashboardPanel';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -212,6 +215,9 @@ export default function Dashboard() {
   const [paymentUpdatingId, setPaymentUpdatingId] = useState('');
   const [paymentError, setPaymentError] = useState('');
   const [paymentSuccess, setPaymentSuccess] = useState('');
+  const [receiptLoadingId, setReceiptLoadingId] = useState('');
+  const [receiptError, setReceiptError] = useState('');
+  const [activeReceipt, setActiveReceipt] = useState<ApiBookingReceipt | null>(null);
   const [bookingUpdatingId, setBookingUpdatingId] = useState('');
   const [bookingActionError, setBookingActionError] = useState('');
   const [bookingActionSuccess, setBookingActionSuccess] = useState('');
@@ -398,6 +404,8 @@ export default function Dashboard() {
           bookingRejected: 'Booking request rejected.',
           bookingActionError: 'Could not update the booking status.',
           requestCancellation: 'Request cancellation',
+          viewReceipt: 'View receipt',
+          receiptError: 'Could not load the receipt right now.',
           cancellationReasonPrompt: 'Enter the reason for cancellation',
           cancellationRequested: 'Cancellation request sent for review.',
           cancellationRequestedStatus: 'Cancellation request is under review.',
@@ -612,6 +620,24 @@ export default function Dashboard() {
       setBookingUpdatingId('');
     }
   }
+  async function openBookingReceipt(bookingId: string) {
+    if (!token || receiptLoadingId) return;
+
+    try {
+      setReceiptLoadingId(bookingId);
+      setReceiptError('');
+
+      const response = await getBookingReceipt(bookingId, token);
+      setActiveReceipt(response.receipt);
+    } catch (error) {
+      console.error(error);
+      setReceiptError(copy.receiptError ?? 'Could not load the receipt right now.');
+    } finally {
+      setReceiptLoadingId('');
+    }
+  }
+
+
 
   async function runPaymentAction(
     bookingId: string,
@@ -1194,6 +1220,19 @@ export default function Dashboard() {
 
                         <strong>{formatPaymentAmount(booking, copy.paymentNotRequired)}</strong>
 
+                        {booking.payment && paymentStatus !== 'NOT_REQUIRED' ? (
+                          <button
+                            className="button-link button-link--secondary"
+                            type="button"
+                            disabled={receiptLoadingId === booking.id}
+                            onClick={() => void openBookingReceipt(booking.id)}
+                          >
+                            {receiptLoadingId === booking.id
+                              ? `${copy.loading}`
+                              : copy.viewReceipt}
+                          </button>
+                        ) : null}
+
                         {paymentPending || paymentFailed ? (
                           <div className="dashboard-booking-actions">
                             <button
@@ -1437,6 +1476,28 @@ export default function Dashboard() {
           </div>
 
           <Stage8DashboardPanel token={token} />
+
+      {activeReceipt ? (
+        <div className="receipt-modal__backdrop" role="presentation">
+          <div
+            aria-label={copy.viewReceipt}
+            aria-modal="true"
+            className="receipt-modal"
+            role="dialog"
+          >
+            <ReceiptView
+              receipt={activeReceipt}
+              onClose={() => setActiveReceipt(null)}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {receiptError ? (
+        <div className="dashboard-toast" role="alert">
+          {receiptError}
+        </div>
+      ) : null}
         </>
       ) : null}
     </section>

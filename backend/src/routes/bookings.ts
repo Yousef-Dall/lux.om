@@ -448,6 +448,176 @@ const bookingInclude = {
   }
 };
 
+const receiptBookingInclude = {
+  user: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true
+    }
+  },
+  listing: {
+    include: {
+      owner: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true
+        }
+      }
+    }
+  },
+  activity: {
+    include: {
+      owner: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true
+        }
+      },
+      travelAgency: true
+    }
+  },
+  payment: true
+};
+
+function getReceiptBookingTitle(booking: any) {
+  if (booking.activity) {
+    return booking.activity.titleEn || booking.activity.titleAr || 'Activity booking';
+  }
+
+  if (booking.listing) {
+    return (
+      booking.listing.titleEn ||
+      booking.listing.titleAr ||
+      booking.listing.title ||
+      'Property booking'
+    );
+  }
+
+  return 'Booking';
+}
+
+function getReceiptBookingLocation(booking: any) {
+  if (booking.activity) {
+    return booking.activity.locationEn || booking.activity.locationAr || null;
+  }
+
+  if (booking.listing) {
+    return (
+      booking.listing.locationEn ||
+      booking.listing.locationAr ||
+      booking.listing.location ||
+      null
+    );
+  }
+
+  return null;
+}
+
+function getReceiptBookingType(booking: any) {
+  if (booking.activity) {
+    return booking.activity.travelRegion === 'OUTSIDE_OMAN'
+      ? 'Travel package'
+      : 'Activity';
+  }
+
+  if (booking.listing) {
+    return 'Property';
+  }
+
+  return 'Booking';
+}
+
+function getReceiptProvider(booking: any) {
+  if (booking.activity?.travelAgency) {
+    return {
+      id: booking.activity.travelAgency.id,
+      name:
+        booking.activity.travelAgency.nameEn ||
+        booking.activity.travelAgency.nameAr ||
+        'Travel agency',
+      email: booking.activity.travelAgency.email ?? null,
+      phone: booking.activity.travelAgency.phone ?? null,
+      type: 'Travel agency'
+    };
+  }
+
+  if (booking.activity?.owner) {
+    return {
+      id: booking.activity.owner.id,
+      name: booking.activity.owner.name,
+      email: booking.activity.owner.email,
+      phone: booking.activity.owner.phone ?? null,
+      type: 'Activity provider'
+    };
+  }
+
+  if (booking.listing?.owner) {
+    return {
+      id: booking.listing.owner.id,
+      name: booking.listing.owner.name,
+      email: booking.listing.owner.email,
+      phone: booking.listing.owner.phone ?? null,
+      type: 'Property owner'
+    };
+  }
+
+  return null;
+}
+
+function createBookingReceipt(booking: any) {
+  if (!booking.payment) {
+    throw new AppError(404, 'Payment receipt not found');
+  }
+
+  const payment = booking.payment;
+  const provider = getReceiptProvider(booking);
+  const amount = decimalToNumber(payment.amount);
+  const commission = decimalToNumber(payment.commission);
+  const providerPayoutAmount =
+    payment.providerPayoutAmount === null || payment.providerPayoutAmount === undefined
+      ? Math.max(amount - commission, 0)
+      : decimalToNumber(payment.providerPayoutAmount);
+
+  return {
+    receiptNumber:
+      payment.receiptNumber ||
+      payment.reference ||
+      `LUX-${payment.id.slice(-8).toUpperCase()}`,
+    bookingId: booking.id,
+    bookingStatus: booking.status,
+    bookingTitle: getReceiptBookingTitle(booking),
+    bookingType: getReceiptBookingType(booking),
+    bookingLocation: getReceiptBookingLocation(booking),
+    bookingDate: booking.scheduledDate,
+    preferredTime: booking.preferredTime,
+    guests: booking.guests,
+    customerName: booking.contactName || booking.user?.name || null,
+    customerEmail: booking.contactEmail || booking.user?.email || null,
+    customerPhone: booking.contactPhone || booking.user?.phone || null,
+    provider,
+    paymentId: payment.id,
+    amount,
+    commission,
+    providerPayoutAmount,
+    currency: payment.currency || 'OMR',
+    status: payment.status,
+    providerName: payment.provider,
+    reference: payment.reference,
+    thawaniSessionId: payment.providerSessionId,
+    paidAt: payment.paidAt,
+    createdAt: payment.createdAt,
+    updatedAt: payment.updatedAt,
+    note:
+      'This receipt is generated from lux.om booking and payment records. It does not store card details.'
+  };
+}
+
 function toScheduledDate(value?: string) {
   if (!value) return undefined;
 
@@ -1081,6 +1251,35 @@ bookingsRouter.patch('/:id/cancellation-request', requireAuth(), async (req, res
 
     res.json({
       booking: updatedBooking
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bookingsRouter.get('/:id/receipt', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = paramsSchema.parse(req.params);
+
+    const booking = await prisma.booking.findUnique({
+      where: {
+        id
+      },
+      include: receiptBookingInclude
+    });
+
+    if (!booking) {
+      throw new AppError(404, 'Booking not found');
+    }
+
+    assertBookingAccess(booking, req.user!);
+
+    if (!booking.payment || booking.payment.status === 'NOT_REQUIRED') {
+      throw new AppError(404, 'Payment receipt not found');
+    }
+
+    res.json({
+      receipt: createBookingReceipt(booking)
     });
   } catch (error) {
     next(error);
