@@ -815,6 +815,103 @@ activitiesRouter.get('/:id/availability', async (req, res, next) => {
   }
 });
 
+async function getAdminNotificationUserIds(actorId?: string) {
+  const admins = await prisma.user.findMany({
+    where: {
+      role: 'ADMIN',
+      ...(actorId
+        ? {
+            id: {
+              not: actorId
+            }
+          }
+        : {})
+    },
+    select: {
+      id: true
+    }
+  });
+
+  return admins.map((admin) => admin.id);
+}
+
+function getActivityNotificationTitle(activity: {
+  titleEn?: string | null;
+  titleAr?: string | null;
+}) {
+  return activity.titleEn ?? activity.titleAr ?? 'Activity';
+}
+
+function formatActivityStatus(status: string) {
+  return status.replace(/_/g, ' ').toLowerCase();
+}
+
+async function notifyActivitySubmittedForReview({
+  activity,
+  actorId
+}: {
+  activity: {
+    id: string;
+    titleEn?: string | null;
+    titleAr?: string | null;
+    ownerId: string;
+  };
+  actorId: string;
+}) {
+  const adminIds = await getAdminNotificationUserIds(actorId);
+
+  if (adminIds.length === 0) return;
+
+  await prisma.notification.createMany({
+    data: adminIds.map((userId) => ({
+      userId,
+      type: 'REVIEW_STATUS_UPDATED',
+      title: 'Activity awaiting review',
+      message: `${getActivityNotificationTitle(
+        activity
+      )} was submitted or updated and needs admin review.`
+    }))
+  });
+}
+
+async function notifyActivityStatusReviewed({
+  activity,
+  actorId
+}: {
+  activity: {
+    id: string;
+    titleEn?: string | null;
+    titleAr?: string | null;
+    ownerId: string;
+    status: string;
+    rejectedReason?: string | null;
+  };
+  actorId: string;
+}) {
+  if (activity.ownerId === actorId) return;
+
+  const activityTitle = getActivityNotificationTitle(activity);
+  const isRejected = activity.status === 'REJECTED';
+
+  await prisma.notification.create({
+    data: {
+      userId: activity.ownerId,
+      type: 'REVIEW_STATUS_UPDATED',
+      title:
+        activity.status === 'APPROVED'
+          ? 'Activity approved'
+          : isRejected
+            ? 'Activity rejected'
+            : 'Activity status updated',
+      message: isRejected
+        ? `${activityTitle} was rejected${
+            activity.rejectedReason ? `: ${activity.rejectedReason}` : '.'
+          }`
+        : `${activityTitle} is now ${formatActivityStatus(activity.status)}.`
+    }
+  });
+}
+
 activitiesRouter.get('/', async (req, res, next) => {
   try {
     const query = activitiesQuerySchema.parse(req.query);
@@ -1720,6 +1817,11 @@ activitiesRouter.patch(
         include: activityInclude
       });
 
+      await notifyActivityStatusReviewed({
+        activity,
+        actorId: req.user!.id
+      });
+
       res.json({
         activity
       });
@@ -1989,6 +2091,17 @@ activitiesRouter.patch('/:id', requireAuth(), async (req, res, next) => {
       include: activityInclude
     });
 
+    if (
+      req.user!.role !== 'ADMIN' &&
+      hasSensitiveActivityUpdate(data) &&
+      activity.status === 'PENDING'
+    ) {
+      await notifyActivitySubmittedForReview({
+        activity,
+        actorId: req.user!.id
+      });
+    }
+
     res.json({
       activity
     });
@@ -2165,6 +2278,13 @@ activitiesRouter.post(
         },
         include: activityInclude
       });
+
+      if (activity.status === 'PENDING') {
+        await notifyActivitySubmittedForReview({
+          activity,
+          actorId: req.user!.id
+        });
+      }
 
       res.status(201).json({
         activity

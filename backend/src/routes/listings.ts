@@ -723,6 +723,103 @@ async function notifyInvestorPriceTargetHits({
   });
 }
 
+async function getAdminNotificationUserIds(actorId?: string) {
+  const admins = await prisma.user.findMany({
+    where: {
+      role: 'ADMIN',
+      ...(actorId
+        ? {
+            id: {
+              not: actorId
+            }
+          }
+        : {})
+    },
+    select: {
+      id: true
+    }
+  });
+
+  return admins.map((admin) => admin.id);
+}
+
+function getListingNotificationTitle(listing: {
+  title?: string | null;
+  titleEn?: string | null;
+}) {
+  return listing.titleEn ?? listing.title ?? 'Listing';
+}
+
+function formatListingStatus(status: string) {
+  return status.replace(/_/g, ' ').toLowerCase();
+}
+
+async function notifyListingSubmittedForReview({
+  listing,
+  actorId
+}: {
+  listing: {
+    id: string;
+    title?: string | null;
+    titleEn?: string | null;
+    ownerId: string;
+  };
+  actorId: string;
+}) {
+  const adminIds = await getAdminNotificationUserIds(actorId);
+
+  if (adminIds.length === 0) return;
+
+  await prisma.notification.createMany({
+    data: adminIds.map((userId) => ({
+      userId,
+      type: 'REVIEW_STATUS_UPDATED',
+      title: 'Listing awaiting review',
+      message: `${getListingNotificationTitle(
+        listing
+      )} was submitted or updated and needs admin review.`
+    }))
+  });
+}
+
+async function notifyListingStatusReviewed({
+  listing,
+  actorId
+}: {
+  listing: {
+    id: string;
+    title?: string | null;
+    titleEn?: string | null;
+    ownerId: string;
+    status: string;
+    rejectedReason?: string | null;
+  };
+  actorId: string;
+}) {
+  if (listing.ownerId === actorId) return;
+
+  const listingTitle = getListingNotificationTitle(listing);
+  const isRejected = listing.status === 'REJECTED';
+
+  await prisma.notification.create({
+    data: {
+      userId: listing.ownerId,
+      type: 'REVIEW_STATUS_UPDATED',
+      title:
+        listing.status === 'APPROVED'
+          ? 'Listing approved'
+          : isRejected
+            ? 'Listing rejected'
+            : 'Listing status updated',
+      message: isRejected
+        ? `${listingTitle} was rejected${
+            listing.rejectedReason ? `: ${listing.rejectedReason}` : '.'
+          }`
+        : `${listingTitle} is now ${formatListingStatus(listing.status)}.`
+    }
+  });
+}
+
 listingsRouter.get('/', async (req, res, next) => {
   try {
     const query = listQuerySchema.parse(req.query);
@@ -1518,6 +1615,11 @@ listingsRouter.patch(
         include: listingInclude
       });
 
+      await notifyListingStatusReviewed({
+        listing,
+        actorId: req.user!.id
+      });
+
       res.json({
         listing
       });
@@ -2052,6 +2154,17 @@ listingsRouter.patch('/:id', requireAuth(), async (req, res, next) => {
       include: listingInclude
     });
 
+    if (
+      req.user!.role !== 'ADMIN' &&
+      hasSensitiveListingUpdate(data) &&
+      listing.status === 'PENDING'
+    ) {
+      await notifyListingSubmittedForReview({
+        listing,
+        actorId: req.user!.id
+      });
+    }
+
     if (hasPriceUpdate) {
       await notifyInvestorPriceTargetHits({
         listingId: listing.id,
@@ -2255,6 +2368,13 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
       },
       include: listingInclude
     });
+
+    if (listing.status === 'PENDING') {
+      await notifyListingSubmittedForReview({
+        listing,
+        actorId: req.user!.id
+      });
+    }
 
     res.status(201).json({
       listing

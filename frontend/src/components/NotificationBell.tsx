@@ -71,7 +71,7 @@ function formatType(type?: string) {
     BOOKING_PAYMENT_FAILED: 'payment failed',
     RENT_PAYMENT_DUE: 'rent payment',
     TRANSACTION_STATUS_UPDATED: 'contract / transaction',
-    REVIEW_STATUS_UPDATED: 'review / report',
+    REVIEW_STATUS_UPDATED: 'review / status',
     VERIFICATION_STATUS_UPDATED: 'verification',
     SAVED_SEARCH_MATCH: 'saved search'
   };
