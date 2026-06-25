@@ -6,6 +6,7 @@ import { getMyRentSchedules } from '../api/rentPayments';
 import { getSavedDashboard, type JsonRecord } from '../api/saved';
 import { getMyMarketplaceTransactions } from '../api/transactions';
 import { getMyValuations } from '../api/valuations';
+import ContractRentWorkspace from './ContractRentWorkspace';
 
 type DashboardCollections = {
   savedListings: JsonRecord[];
@@ -43,11 +44,6 @@ function getRecord(record: JsonRecord | null | undefined, key: string) {
   return isRecord(value) ? value : null;
 }
 
-function getRecords(record: JsonRecord | null | undefined, key: string) {
-  const value = getValue(record, key);
-
-  return Array.isArray(value) ? value.filter(isRecord) : [];
-}
 
 function getText(
   record: JsonRecord | null | undefined,
@@ -67,19 +63,6 @@ function getText(
   return fallback;
 }
 
-function getDate(record: JsonRecord | null | undefined, keys: string | string[]) {
-  const raw = getText(record, keys, '');
-
-  if (!raw) return '—';
-
-  const date = new Date(raw);
-
-  if (Number.isNaN(date.getTime())) return '—';
-
-  return new Intl.DateTimeFormat('en-GB', {
-    dateStyle: 'medium'
-  }).format(date);
-}
 
 function getMoney(
   record: JsonRecord | null | undefined,
@@ -497,58 +480,11 @@ export default function Stage8DashboardPanel({
           </div>
         </section>
 
-        <section className="stage8-dashboard-section">
-          <div className="details-section-heading">
-            <p className="eyebrow">Contracts and rent</p>
-            <h3>Drafts and payment schedules</h3>
-            <p>
-              Contract and registration tools prepare records for review. They
-              do not replace official registration or legal review.
-            </p>
-          </div>
-
-          <div className="stage8-dashboard-list">
-            {collections.contracts.slice(0, 4).map((contract) => (
-              <DashboardMiniCard
-                key={getText(contract, 'id')}
-                eyebrow="Contract draft"
-                title={getText(contract, ['title', 'propertyTitle'], 'Rental contract draft')}
-                meta={`${getText(contract, 'propertyAddress', '—')} · ${getMoney(
-                  contract,
-                  'rentAmount'
-                )}`}
-                status={getText(contract, 'registrationStatus', 'NOT_STARTED')}
-              />
-            ))}
-
-            {collections.rentSchedules.slice(0, 4).map((schedule) => {
-              const dueItems = getRecords(schedule, 'dueItems');
-              const nextDue =
-                dueItems.find((item) => getText(item, 'status') !== 'PAID') ??
-                dueItems[0];
-
-              return (
-                <DashboardMiniCard
-                  key={getText(schedule, 'id')}
-                  eyebrow="Rent schedule"
-                  title={getText(schedule, 'title', 'Rent payment schedule')}
-                  meta={`${getText(schedule, 'frequency', 'MONTHLY')} · ${getMoney(
-                    schedule,
-                    'amount'
-                  )} · Next due ${getDate(nextDue, 'dueDate')}`}
-                  status={getText(nextDue, 'status', 'PENDING')}
-                />
-              );
-            })}
-
-            {!collections.contracts.length &&
-            !collections.rentSchedules.length ? (
-              <p className="trust-note">
-                No contract drafts or rent schedules yet.
-              </p>
-            ) : null}
-          </div>
-        </section>
+        <ContractRentWorkspace
+          token={token}
+          contracts={collections.contracts}
+          rentSchedules={collections.rentSchedules}
+        />
 
         <section className="stage8-dashboard-section">
           <div className="details-section-heading">

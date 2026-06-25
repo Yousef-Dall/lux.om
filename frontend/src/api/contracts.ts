@@ -14,3 +14,16 @@ export async function getMyContractDrafts(token: string) {
 export async function getAdminContractDrafts(token: string) {
   return apiClient.get<{ contracts: JsonRecord[] }>('/api/contracts/admin/all', { token });
 }
+
+
+export async function updateAdminContractRegistration(
+  contractId: string,
+  payload: JsonRecord,
+  token: string
+) {
+  return apiClient.patch<{ contract: JsonRecord }>(
+    `/api/contracts/admin/${contractId}/registration`,
+    payload,
+    { token }
+  );
+}
