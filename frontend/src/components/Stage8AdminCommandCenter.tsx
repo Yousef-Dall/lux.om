@@ -9,8 +9,10 @@ import {
 } from '../api/reports';
 import { getAdminReviews } from '../api/reviews';
 import { getAdminMarketplaceTransactions } from '../api/transactions';
+import { getAdminValuations } from '../api/valuations';
 import { getAdminVerifications } from '../api/verification';
 import ContractRegistrationAdminPanel from './ContractRegistrationAdminPanel';
+import TransactionValuationAdminPanel from './TransactionValuationAdminPanel';
 
 function count(value?: JsonRecord[] | null) {
   return value?.length ?? 0;
@@ -58,6 +60,7 @@ export default function Stage8AdminCommandCenter({
     reports: 0,
     reviews: 0,
     transactions: 0,
+    valuations: 0,
     insights: 0
   });
   const [reports, setReports] = useState<JsonRecord[]>([]);
@@ -80,6 +83,7 @@ export default function Stage8AdminCommandCenter({
           reportResponse,
           reviews,
           transactions,
+          valuations,
           insights
         ] = await Promise.all([
           getAdminContractDrafts(token!),
@@ -87,6 +91,7 @@ export default function Stage8AdminCommandCenter({
           getAdminReports(token!),
           getAdminReviews(token!),
           getAdminMarketplaceTransactions(token!),
+          getAdminValuations(token!),
           getMarketInsights()
         ]);
 
@@ -99,6 +104,7 @@ export default function Stage8AdminCommandCenter({
           reports: count(reportResponse.reports),
           reviews: count(reviews.reviews),
           transactions: count(transactions.transactions),
+          valuations: count(valuations.valuations),
           insights: count(insights.insights)
         });
       } catch (error) {
@@ -171,6 +177,7 @@ export default function Stage8AdminCommandCenter({
     ['Reports/moderation', summary.reports],
     ['Review moderation', summary.reviews],
     ['Transactions', summary.transactions],
+    ['Valuation review', summary.valuations],
     ['Market insight locations', summary.insights]
   ] as const;
 
@@ -207,6 +214,8 @@ export default function Stage8AdminCommandCenter({
       </div>
 
       <ContractRegistrationAdminPanel token={token} />
+
+      <TransactionValuationAdminPanel token={token} />
 
       <div className="stage8-operations-queue">
         <div className="details-section-heading">

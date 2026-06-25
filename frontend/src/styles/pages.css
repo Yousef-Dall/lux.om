@@ -9955,3 +9955,51 @@ transition: none;
     display: grid;
   }
 }
+
+/* Stage 8 transaction / valuation workflow */
+.transaction-valuation-workspace,
+.transaction-valuation-admin {
+  display: grid;
+  gap: 22px;
+}
+
+.stage8-dashboard-section.transaction-valuation-workspace {
+  grid-column: 1 / -1;
+}
+
+.transaction-valuation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.transaction-valuation-workspace .stage8-tool-card,
+.transaction-valuation-admin .stage8-tool-card {
+  min-width: 0;
+}
+
+.valuation-card-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.inline-review-form {
+  margin-top: 14px;
+}
+
+.transaction-audit-list {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(7, 56, 62, 0.08);
+}
+
+.transaction-audit-list .trust-note {
+  margin: 0;
+}
+
+@media (max-width: 960px) {
+  .transaction-valuation-grid {
+    grid-template-columns: 1fr;
+  }
+}

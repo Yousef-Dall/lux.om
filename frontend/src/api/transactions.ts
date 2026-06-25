@@ -14,3 +14,16 @@ export async function getMyMarketplaceTransactions(token: string) {
 export async function getAdminMarketplaceTransactions(token: string) {
   return apiClient.get<{ transactions: JsonRecord[] }>('/api/transactions/admin/all', { token });
 }
+
+
+export async function updateAdminMarketplaceTransactionStatus(
+  transactionId: string,
+  payload: JsonRecord,
+  token: string
+) {
+  return apiClient.patch<{ transaction: JsonRecord }>(
+    `/api/transactions/admin/${transactionId}/status`,
+    payload,
+    { token }
+  );
+}

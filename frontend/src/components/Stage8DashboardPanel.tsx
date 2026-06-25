@@ -7,6 +7,7 @@ import { getSavedDashboard, type JsonRecord } from '../api/saved';
 import { getMyMarketplaceTransactions } from '../api/transactions';
 import { getMyValuations } from '../api/valuations';
 import ContractRentWorkspace from './ContractRentWorkspace';
+import TransactionValuationWorkspace from './TransactionValuationWorkspace';
 
 type DashboardCollections = {
   savedListings: JsonRecord[];
@@ -486,67 +487,11 @@ export default function Stage8DashboardPanel({
           rentSchedules={collections.rentSchedules}
         />
 
-        <section className="stage8-dashboard-section">
-          <div className="details-section-heading">
-            <p className="eyebrow">Transactions and valuation</p>
-            <h3>Transaction-readiness and market estimates</h3>
-            <p>
-              Escrow-ready workflows and valuation estimates are internal
-              readiness tools. Funds handling, external verification, and formal
-              appraisal require approved providers.
-            </p>
-          </div>
-
-          <div className="stage8-dashboard-list">
-            {collections.transactions.slice(0, 4).map((transaction) => (
-              <DashboardMiniCard
-                key={getText(transaction, 'id')}
-                eyebrow="Marketplace transaction"
-                title={getText(transaction, 'title', 'Marketplace transaction')}
-                meta={`${getText(transaction, 'type', 'OTHER')} · ${getMoney(
-                  transaction,
-                  'amount'
-                )} · Escrow ${formatStatus(
-                  getText(transaction, 'escrowStatus', 'NOT_STARTED')
-                )}`}
-                status={getText(transaction, 'status', 'DRAFT')}
-              />
-            ))}
-
-            {collections.valuations.slice(0, 4).map((valuation) => {
-              const estimateLow = getMoney(valuation, 'estimateLow');
-              const estimateHigh = getMoney(valuation, 'estimateHigh');
-              const estimate =
-                estimateLow === '—' || estimateHigh === '—'
-                  ? 'More data needed'
-                  : `${estimateLow} - ${estimateHigh}`;
-
-              return (
-                <DashboardMiniCard
-                  key={getText(valuation, 'id')}
-                  eyebrow="Valuation request"
-                  title={`${getText(valuation, 'location', 'Location')} · ${getText(
-                    valuation,
-                    'propertyType',
-                    'Property'
-                  )}`}
-                  meta={`${estimate} · ${getText(
-                    valuation,
-                    'confidence',
-                    'LOW_DATA'
-                  )}`}
-                  status={getText(valuation, 'status', 'REQUESTED')}
-                />
-              );
-            })}
-
-            {!collections.transactions.length && !collections.valuations.length ? (
-              <p className="trust-note">
-                No marketplace transactions or valuation requests yet.
-              </p>
-            ) : null}
-          </div>
-        </section>
+        <TransactionValuationWorkspace
+          token={token}
+          transactions={collections.transactions}
+          valuations={collections.valuations}
+        />
       </div>
     </section>
   );

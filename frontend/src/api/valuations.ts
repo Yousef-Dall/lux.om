@@ -22,3 +22,20 @@ export async function createValuation(payload: CreateValuationPayload, token: st
 export async function getMyValuations(token: string) {
   return apiClient.get<{ valuations: JsonRecord[] }>('/api/valuations/mine', { token });
 }
+
+
+export async function getAdminValuations(token: string) {
+  return apiClient.get<{ valuations: JsonRecord[] }>('/api/valuations/admin/all', { token });
+}
+
+export async function updateAdminValuationReview(
+  valuationId: string,
+  payload: JsonRecord,
+  token: string
+) {
+  return apiClient.patch<{ valuation: JsonRecord }>(
+    `/api/valuations/admin/${valuationId}/review`,
+    payload,
+    { token }
+  );
+}
