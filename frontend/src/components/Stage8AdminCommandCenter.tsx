@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { getAdminContractDrafts, type JsonRecord } from '../api/contracts';
-import { getMarketInsights } from '../api/marketInsights';
+import { getMarketInsights, refreshMarketInsightSnapshots } from '../api/marketInsights';
 import {
   getAdminReports,
   updateAdminReportStatus,
@@ -69,6 +69,8 @@ export default function Stage8AdminCommandCenter({
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [updatingReportId, setUpdatingReportId] = useState('');
+  const [refreshingInsights, setRefreshingInsights] = useState(false);
+  const [insightsMessage, setInsightsMessage] = useState('');
 
   useEffect(() => {
     if (!token) return;
@@ -171,6 +173,32 @@ export default function Stage8AdminCommandCenter({
     }
   }
 
+
+  async function handleRefreshMarketInsights() {
+    if (!token || refreshingInsights) return;
+
+    try {
+      setRefreshingInsights(true);
+      setInsightsMessage('');
+      setLoadError('');
+
+      const response = await refreshMarketInsightSnapshots(token);
+
+      setSummary((current) => ({
+        ...current,
+        insights: response.count ?? count(response.snapshots)
+      }));
+      setInsightsMessage(
+        `Market insight snapshots refreshed: ${response.count ?? count(response.snapshots)} locations.`
+      );
+    } catch (error) {
+      console.error(error);
+      setLoadError('Could not refresh market insight snapshots.');
+    } finally {
+      setRefreshingInsights(false);
+    }
+  }
+
   if (!token || !loaded) return null;
 
   const items = [
@@ -213,6 +241,32 @@ export default function Stage8AdminCommandCenter({
             <strong>{value}</strong>
           </article>
         ))}
+      </div>
+
+      <div className="stage8-insight-refresh-card">
+        <div>
+          <p className="eyebrow">8.10 Market insights</p>
+          <h3>Refresh market insight snapshots</h3>
+          <p>
+            Rebuilds conservative asking-price and rental-yield snapshots from
+            approved lux.om listing data. These remain internal market signals,
+            not formal valuations.
+          </p>
+          {insightsMessage ? (
+            <p className="form-success" role="status" aria-live="polite">
+              {insightsMessage}
+            </p>
+          ) : null}
+        </div>
+
+        <button
+          className="button-link button-link--secondary"
+          type="button"
+          onClick={() => void handleRefreshMarketInsights()}
+          disabled={refreshingInsights}
+        >
+          {refreshingInsights ? 'Refreshing…' : 'Refresh insights'}
+        </button>
       </div>
 
       <ContractRegistrationAdminPanel token={token} />

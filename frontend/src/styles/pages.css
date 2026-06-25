@@ -10066,3 +10066,57 @@ transition: none;
     display: grid;
   }
 }
+
+/* Stage 8 final product gap polish */
+.smart-search-feedback {
+  align-self: center;
+  margin: 0;
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.smart-search-feedback--hint {
+  color: var(--color-muted);
+  font-weight: 650;
+}
+
+.stage8-insight-refresh-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  padding: 18px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 22px;
+  background: rgba(250, 247, 240, 0.72);
+}
+
+.stage8-insight-refresh-card h3,
+.stage8-insight-refresh-card p {
+  margin: 0;
+}
+
+.stage8-insight-refresh-card > div {
+  display: grid;
+  gap: 6px;
+}
+
+.stage8-insight-refresh-card .form-success {
+  margin-top: 6px;
+}
+
+@media (max-width: 760px) {
+  .stage8-insight-refresh-card {
+    display: grid;
+  }
+
+  .stage8-insight-refresh-card .button-link {
+    width: 100%;
+  }
+
+  .normal-filters--activities-enhanced .smart-search-button,
+  .normal-filters--activities-enhanced .smart-search-feedback {
+    grid-column: 1 / -1;
+  }
+}

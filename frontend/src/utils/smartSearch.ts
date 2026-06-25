@@ -182,3 +182,149 @@ export function parseSmartPropertySearch(input: string): SmartSearchFilters {
 
   return filters;
 }
+
+export type SmartActivitySearchFilters = {
+  search?: string;
+  category?: string;
+  location?: string;
+  travelRegion?: 'INSIDE_OMAN' | 'OUTSIDE_OMAN';
+  durationType?: string;
+  activityType?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  familyFriendly?: boolean;
+  includesTransfer?: boolean;
+  mealIncluded?: boolean;
+  outdoor?: boolean;
+};
+
+const activityCategoryTerms: Record<string, string> = {
+  desert: 'Desert',
+  sea: 'Sea',
+  boat: 'Sea',
+  snorkeling: 'Sea',
+  culture: 'Culture',
+  cultural: 'Culture',
+  adventure: 'Adventure',
+  mountain: 'Mountain',
+  hiking: 'Mountain',
+  nature: 'Nature',
+  wadi: 'Nature'
+};
+
+const activityLocationTerms = [
+  'Muscat',
+  'Nizwa',
+  'Salalah',
+  'Jebel Akhdar',
+  'Jabal Akhdar',
+  'Wahiba',
+  'Sur',
+  'Dubai',
+  'Abu Dhabi',
+  'Istanbul',
+  'Turkey',
+  'Georgia',
+  'Azerbaijan',
+  'Baku',
+  'Maldives',
+  'Doha'
+];
+
+function extractActivityLocation(lower: string, original: string) {
+  for (const location of activityLocationTerms) {
+    if (lower.includes(location.toLowerCase())) return location;
+  }
+
+  const match = original.match(
+    /\b(?:in|near|around|to|from)\s+([A-Z]?[A-Za-z]+(?:\s+[A-Z]?[A-Za-z]+){0,2})/i
+  );
+
+  return match ? normalizeLocation(match[1]) : undefined;
+}
+
+export function parseSmartActivitySearch(input: string): SmartActivitySearchFilters {
+  const text = input.trim();
+  const lower = text.toLowerCase();
+  const filters: SmartActivitySearchFilters = { search: text };
+
+  if (!text) return filters;
+
+  if (
+    lower.includes('outside oman') ||
+    lower.includes('travel package') ||
+    lower.includes('package') ||
+    lower.includes('flight') ||
+    lower.includes('hotel') ||
+    lower.includes('visa') ||
+    lower.includes('dubai') ||
+    lower.includes('turkey') ||
+    lower.includes('istanbul') ||
+    lower.includes('georgia') ||
+    lower.includes('baku') ||
+    lower.includes('maldives')
+  ) {
+    filters.travelRegion = 'OUTSIDE_OMAN';
+  }
+
+  if (
+    lower.includes('inside oman') ||
+    lower.includes('local') ||
+    lower.includes('wadi') ||
+    lower.includes('muscat') ||
+    lower.includes('nizwa') ||
+    lower.includes('salalah')
+  ) {
+    filters.travelRegion = 'INSIDE_OMAN';
+  }
+
+  for (const [term, value] of Object.entries(activityCategoryTerms)) {
+    if (new RegExp(`\\b${term}\\b`).test(lower)) {
+      filters.category = value;
+      break;
+    }
+  }
+
+  if (lower.includes('private')) filters.activityType = 'Private';
+  if (lower.includes('group')) filters.activityType = 'Group';
+
+  if (lower.includes('overnight')) filters.durationType = 'Overnight';
+  if (lower.includes('full day') || lower.includes('fullday')) filters.durationType = 'Full day';
+  if (lower.includes('half day') || lower.includes('halfday')) filters.durationType = 'Half day';
+  if (lower.includes('short')) filters.durationType = 'Short';
+
+  const under = lower.match(/(?:under|max|below|less than)\s*(\d+(?:\.\d+)?)\s*(k|m)?/);
+  if (under) {
+    const multiplier =
+      under[2] === 'm' ? 1_000_000 : under[2] === 'k' ? 1_000 : 1;
+    filters.maxPrice = Number(under[1]) * multiplier;
+  }
+
+  const over = lower.match(/(?:over|min|above|more than)\s*(\d+(?:\.\d+)?)\s*(k|m)?/);
+  if (over) {
+    const multiplier =
+      over[2] === 'm' ? 1_000_000 : over[2] === 'k' ? 1_000 : 1;
+    filters.minPrice = Number(over[1]) * multiplier;
+  }
+
+  const location = extractActivityLocation(lower, text);
+  if (location) filters.location = location;
+
+  if (lower.includes('family') || lower.includes('kids') || lower.includes('children')) {
+    filters.familyFriendly = true;
+  }
+
+  if (lower.includes('transfer') || lower.includes('pickup') || lower.includes('transport')) {
+    filters.includesTransfer = true;
+  }
+
+  if (lower.includes('meal') || lower.includes('lunch') || lower.includes('dinner') || lower.includes('breakfast')) {
+    filters.mealIncluded = true;
+  }
+
+  if (lower.includes('outdoor') || lower.includes('hike') || lower.includes('camping') || lower.includes('desert')) {
+    filters.outdoor = true;
+  }
+
+  return filters;
+}

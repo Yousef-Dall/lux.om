@@ -16,3 +16,11 @@ export async function getMarketInsightForLocation(params: {
     params
   });
 }
+
+export async function refreshMarketInsightSnapshots(token: string) {
+  return apiClient.post<{ snapshots: JsonRecord[]; count: number }>(
+    '/api/market-insights/admin/refresh-snapshots',
+    {},
+    { token }
+  );
+}

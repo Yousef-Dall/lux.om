@@ -26,6 +26,7 @@ import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useLanguage } from '../i18n/LanguageContext';
+import { parseSmartActivitySearch } from '../utils/smartSearch';
 import type { Activity, ActivityTravelRegion, Landmark } from '../types';
 
 const categoryFilters = [
@@ -185,6 +186,7 @@ const [freeFrom, setFreeFrom] = useState(searchParams.get('from') ?? '');
 const [freeUntil, setFreeUntil] = useState(searchParams.get('until') ?? '');
 
 const [showAdvanced, setShowAdvanced] = useState(false);
+const [smartSearchMessage, setSmartSearchMessage] = useState('');
 const [durationType, setDurationType] = useState<(typeof durationFilters)[number]>(initialDurationType);
 const [activityType, setActivityType] = useState<(typeof activityTypeFilters)[number]>(initialActivityType);
 const [travelRegion, setTravelRegion] =
@@ -244,6 +246,9 @@ allModeText: 'يمكنك التبديل بين داخل عُمان وخارج ع
 packagesOnPage: 'باقات في هذه الصفحة',
 localsOnPage: 'أنشطة محلية في هذه الصفحة',
 activeFilters: 'الفلاتر النشطة',
+applySmartSearch: 'تطبيق البحث الذكي',
+smartSearchApplied: 'تم تحويل البحث إلى فلاتر قابلة للتعديل.',
+smartSearchHint: 'جرّبي: باقة دبي مع فندق وطيران تحت 300 أو نشاط عائلي مع نقل',
 loading: 'جاري تحميل الأنشطة...',
 error: 'تعذر تحميل الأنشطة. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.',
 noOutsideTitle: 'لا توجد باقات سفر مطابقة حالياً.',
@@ -286,6 +291,9 @@ allModeText: 'Switch quickly between inside-Oman activities and outside-Oman tra
 packagesOnPage: 'packages on this page',
 localsOnPage: 'local activities on this page',
 activeFilters: 'Active filters',
+applySmartSearch: 'Apply smart search',
+smartSearchApplied: 'Smart search converted your query into editable filters.',
+smartSearchHint: 'Try: Dubai package with hotel and flights under 300, or family activity with transfer',
 loading: 'Loading activities...',
 error: 'Could not load activities. Make sure the backend is running and try again.',
 noOutsideTitle: 'No matching travel packages yet.',
@@ -738,6 +746,74 @@ copy.outsideOman
 
 const activeFilterCount = activeChips.length;
 
+const smartSearchParam = searchParams.get('smart');
+
+useEffect(() => {
+  if (smartSearchParam !== '1') return;
+
+  const smartQuery = searchParams.get('q') ?? query;
+
+  if (!smartQuery.trim()) return;
+
+  applySmartActivitySearch(smartQuery);
+
+  const params = new URLSearchParams(searchParams);
+  params.delete('smart');
+  setSearchParams(params, { replace: true });
+}, [smartSearchParam]);
+
+function applySmartActivitySearch(input = query) {
+  const parsed = parseSmartActivitySearch(input);
+
+  if (!input.trim()) return;
+
+  setQuery(parsed.search ?? input);
+
+  if (parsed.category && categoryFilters.includes(parsed.category as (typeof categoryFilters)[number])) {
+    setCategory(parsed.category as (typeof categoryFilters)[number]);
+  }
+
+  if (parsed.location) {
+    setLocation(parsed.location);
+  }
+
+  if (parsed.travelRegion) {
+    handleTravelRegionChange(parsed.travelRegion);
+  }
+
+  if (
+    parsed.durationType &&
+    durationFilters.includes(parsed.durationType as (typeof durationFilters)[number])
+  ) {
+    setDurationType(parsed.durationType as (typeof durationFilters)[number]);
+  }
+
+  if (
+    parsed.activityType &&
+    activityTypeFilters.includes(parsed.activityType as (typeof activityTypeFilters)[number])
+  ) {
+    setActivityType(parsed.activityType as (typeof activityTypeFilters)[number]);
+  }
+
+  if (parsed.minPrice !== undefined) {
+    setMinPrice(String(parsed.minPrice));
+  }
+
+  if (parsed.maxPrice !== undefined) {
+    setMaxPrice(String(parsed.maxPrice));
+  }
+
+  if (parsed.familyFriendly) setFamilyFriendly(true);
+  if (parsed.includesTransfer) setIncludesTransfer(true);
+  if (parsed.mealIncluded) setMealIncluded(true);
+  if (parsed.outdoor) setOutdoor(true);
+
+  setShowAdvanced(true);
+  setSmartSearchMessage(copy.smartSearchApplied);
+  setPage(1);
+}
+
+
 const filteredActivities = hasTimeError ? [] : activities;
 const resultTotal = hasTimeError ? 0 : pagination.total;
 
@@ -965,9 +1041,32 @@ actions={ <ButtonLink to="/add-activity" variant="soft">
               : activityCopy.searchPlaceholder
           }
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setSmartSearchMessage('');
+          }}
         />
       </label>
+
+      <button
+        className="smart-search-button"
+        type="button"
+        onClick={() => applySmartActivitySearch()}
+        aria-label={copy.applySmartSearch}
+      >
+        <Sparkles size={16} aria-hidden="true" />
+        {copy.applySmartSearch}
+      </button>
+
+      {smartSearchMessage ? (
+        <p className="smart-search-feedback" role="status" aria-live="polite">
+          {smartSearchMessage}
+        </p>
+      ) : (
+        <p className="smart-search-feedback smart-search-feedback--hint">
+          {copy.smartSearchHint}
+        </p>
+      )}
 
       <label>
         {activityCopy.category}
