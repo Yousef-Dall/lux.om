@@ -1034,6 +1034,9 @@ function listingMatchesSavedSearch(
   const minSqm = getFilterNumber(filters, 'minSqm');
   if (minSqm !== null && (listing.sqm ?? 0) < minSqm) return false;
 
+  const minParking = getFilterNumber(filters, 'minParking');
+  if (minParking !== null && minParking > 0 && !listing.parking) return false;
+
   const minPrice = getFilterNumber(filters, 'minPrice');
   const maxPrice = getFilterNumber(filters, 'maxPrice');
   const price = decimalLikeToNumber(listing.priceAmount);

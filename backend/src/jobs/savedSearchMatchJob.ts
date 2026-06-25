@@ -312,6 +312,7 @@ function listingMatchesSavedSearch(
     beds?: number | null;
     baths?: number | null;
     sqm?: number | null;
+    parking?: boolean | null;
     furnishing?: string | null;
     view?: string | null;
     videoWalkthroughUrl?: string | null;
@@ -390,6 +391,9 @@ function listingMatchesSavedSearch(
 
   const minSqm = getFilterNumber(filters, 'minSqm');
   if (minSqm !== null && (listing.sqm ?? 0) < minSqm) return false;
+
+  const minParking = getFilterNumber(filters, 'minParking');
+  if (minParking !== null && minParking > 0 && !listing.parking) return false;
 
   const minPrice = getFilterNumber(filters, 'minPrice');
   const maxPrice = getFilterNumber(filters, 'maxPrice');
