@@ -1,8 +1,10 @@
 import { createApp } from './app';
 import { env } from './config/env';
 import { prisma } from './lib/prisma';
+import { startBackgroundNotificationJobs } from './jobs/notificationJobs';
 
 const app = createApp();
+const stopBackgroundNotificationJobs = startBackgroundNotificationJobs();
 
 const server = app.listen(env.PORT, () => {
   console.log(`lux.om API running on http://localhost:${env.PORT}`);
@@ -10,6 +12,7 @@ const server = app.listen(env.PORT, () => {
 
 async function shutdown(signal: string) {
   console.log(`${signal} received. Closing server.`);
+  stopBackgroundNotificationJobs();
 
   server.close(async (error) => {
     if (error) {
