@@ -280,6 +280,30 @@ async function assertUserCanSubmitVerification(
   );
 }
 
+function formatVerificationStatus(status: string) {
+  return status.replace(/_/g, ' ').toLowerCase();
+}
+
+async function notifyVerificationReviewed(verification: {
+  id: string;
+  targetType: string;
+  status: string;
+  submittedById?: string | null;
+}) {
+  if (!verification.submittedById) return;
+
+  await prisma.notification.create({
+    data: {
+      userId: verification.submittedById,
+      type: 'VERIFICATION_STATUS_UPDATED',
+      title: 'Verification status updated',
+      message: `${verification.targetType.toLowerCase()} verification is now ${formatVerificationStatus(
+        verification.status
+      )}.`
+    }
+  });
+}
+
 verificationRouter.post('/', requireAuth(), async (req, res, next) => {
   try {
     const data = verificationSchema.parse(req.body);
@@ -356,8 +380,16 @@ verificationRouter.patch('/admin/:id/review', requireAuth(), requireRole('ADMIN'
             ? new Date()
             : undefined,
         reviewedById: req.user!.id
+      },
+      select: {
+        id: true,
+        targetType: true,
+        status: true,
+        submittedById: true
       }
     });
+
+    await notifyVerificationReviewed(verification);
 
     res.json({ verification });
   } catch (error) {

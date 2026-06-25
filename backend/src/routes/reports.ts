@@ -120,6 +120,30 @@ async function assertReportTargetExists(targetType: string, targetId: string) {
   }
 }
 
+function formatReportStatus(status: string) {
+  return status.replace(/_/g, ' ').toLowerCase();
+}
+
+async function notifyTrustReportReviewed(report: {
+  id: string;
+  targetType: string;
+  status: string;
+  reporterId?: string | null;
+}) {
+  if (!report.reporterId) return;
+
+  await prisma.notification.create({
+    data: {
+      userId: report.reporterId,
+      type: 'REVIEW_STATUS_UPDATED',
+      title: 'Trust report reviewed',
+      message: `Your ${report.targetType.toLowerCase()} report is now ${formatReportStatus(
+        report.status
+      )}.`
+    }
+  });
+}
+
 reportsRouter.post('/', requireAuth(false), async (req, res, next) => {
   try {
     const data = reportSchema.parse(req.body);
@@ -167,8 +191,16 @@ reportsRouter.patch('/admin/:id/status', requireAuth(), requireRole('ADMIN'), as
         status: data.status,
         reviewNotes: data.reviewNotes,
         reviewedById: req.user!.id
+      },
+      select: {
+        id: true,
+        targetType: true,
+        status: true,
+        reporterId: true
       }
     });
+
+    await notifyTrustReportReviewed(report);
 
     res.json({ report });
   } catch (error) {

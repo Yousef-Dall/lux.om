@@ -60,7 +60,23 @@ function formatNotificationDate(value?: string, language: Language = 'en') {
 function formatType(type?: string) {
   if (!type) return '';
 
-  return type.replace(/_/g, ' ').toLowerCase();
+  const labels: Record<string, string> = {
+    BOOKING_CREATED: 'booking',
+    BOOKING_OWNER_APPROVED: 'booking approved',
+    BOOKING_OWNER_REJECTED: 'booking rejected',
+    BOOKING_ADMIN_CONFIRMED: 'booking confirmed',
+    BOOKING_CANCELLATION_REQUESTED: 'cancellation requested',
+    BOOKING_CANCELLED: 'booking cancelled',
+    BOOKING_PAYMENT_PAID: 'payment paid',
+    BOOKING_PAYMENT_FAILED: 'payment failed',
+    RENT_PAYMENT_DUE: 'rent payment',
+    TRANSACTION_STATUS_UPDATED: 'contract / transaction',
+    REVIEW_STATUS_UPDATED: 'review / report',
+    VERIFICATION_STATUS_UPDATED: 'verification',
+    SAVED_SEARCH_MATCH: 'saved search'
+  };
+
+  return labels[type] ?? type.replace(/_/g, ' ').toLowerCase();
 }
 
 export default function NotificationBell({

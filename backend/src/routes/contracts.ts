@@ -131,6 +131,57 @@ async function assertContractDraftLinksAreAllowed(
   };
 }
 
+function getUniqueContractNotificationUsers(
+  contract: {
+    createdById: string;
+    landlordUserId?: string | null;
+    tenantUserId?: string | null;
+  },
+  actorId?: string
+) {
+  return Array.from(
+    new Set(
+      [contract.createdById, contract.landlordUserId, contract.tenantUserId]
+        .filter((id): id is string => Boolean(id))
+        .filter((id) => id !== actorId)
+    )
+  );
+}
+
+function formatContractRegistrationStatus(status: string) {
+  return status.replace(/_/g, ' ').toLowerCase();
+}
+
+async function notifyContractRegistrationUpdated({
+  contract,
+  actorId
+}: {
+  contract: {
+    id: string;
+    title: string;
+    registrationStatus: string;
+    createdById: string;
+    landlordUserId?: string | null;
+    tenantUserId?: string | null;
+  };
+  actorId: string;
+}) {
+  const userIds = getUniqueContractNotificationUsers(contract, actorId);
+
+  if (userIds.length === 0) return;
+
+  await prisma.notification.createMany({
+    data: userIds.map((userId) => ({
+      userId,
+      type: 'TRANSACTION_STATUS_UPDATED',
+      title: 'Contract registration updated',
+      message: `${contract.title} registration status is now ${formatContractRegistrationStatus(
+        contract.registrationStatus
+      )}.`
+    }))
+  });
+}
+
 contractsRouter.post('/', requireAuth(), async (req, res, next) => {
   try {
     const data = contractSchema.parse(req.body);
@@ -244,7 +295,20 @@ contractsRouter.patch('/admin/:id/registration', requireAuth(), requireRole('ADM
           data.registrationStatus === 'SUBMITTED_EXTERNALLY' ? now : undefined,
         registeredExternallyAt:
           data.registrationStatus === 'REGISTERED_EXTERNALLY' ? now : undefined
+      },
+      select: {
+        id: true,
+        title: true,
+        registrationStatus: true,
+        createdById: true,
+        landlordUserId: true,
+        tenantUserId: true
       }
+    });
+
+    await notifyContractRegistrationUpdated({
+      contract,
+      actorId: req.user!.id
     });
 
     res.json({ contract });

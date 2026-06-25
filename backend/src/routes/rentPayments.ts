@@ -215,6 +215,122 @@ async function getRentScheduleForManagement(scheduleId: string, user: AuthUser) 
   return schedule;
 }
 
+function getUniqueRentNotificationUsers(
+  schedule: {
+    createdById: string;
+    landlordUserId?: string | null;
+    tenantUserId?: string | null;
+    listing?: {
+      ownerId: string;
+    } | null;
+    contractDraft?: {
+      createdById: string;
+      landlordUserId?: string | null;
+      tenantUserId?: string | null;
+      listing?: {
+        ownerId: string;
+      } | null;
+    } | null;
+  },
+  actorId?: string
+) {
+  return Array.from(
+    new Set(
+      [
+        schedule.createdById,
+        schedule.landlordUserId,
+        schedule.tenantUserId,
+        schedule.listing?.ownerId,
+        schedule.contractDraft?.createdById,
+        schedule.contractDraft?.landlordUserId,
+        schedule.contractDraft?.tenantUserId,
+        schedule.contractDraft?.listing?.ownerId
+      ]
+        .filter((id): id is string => Boolean(id))
+        .filter((id) => id !== actorId)
+    )
+  );
+}
+
+function formatRentMoney(amount: { toString(): string } | string | number, currency: string) {
+  const numericAmount = Number(amount.toString());
+
+  if (!Number.isFinite(numericAmount)) return `${currency} ${amount.toString()}`;
+
+  return `${currency} ${numericAmount.toLocaleString(undefined, {
+    maximumFractionDigits: 3,
+    minimumFractionDigits: 0
+  })}`;
+}
+
+function formatRentDate(value: Date) {
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium'
+  }).format(value);
+}
+
+async function notifyRentDueCreated({
+  schedule,
+  dueItem,
+  actorId
+}: {
+  schedule: Awaited<ReturnType<typeof getRentScheduleForManagement>>;
+  dueItem: {
+    dueDate: Date;
+    amount: { toString(): string } | string | number;
+    currency: string;
+  };
+  actorId: string;
+}) {
+  const userIds = getUniqueRentNotificationUsers(schedule, actorId);
+
+  if (userIds.length === 0) return;
+
+  await prisma.notification.createMany({
+    data: userIds.map((userId) => ({
+      userId,
+      type: 'RENT_PAYMENT_DUE',
+      title: 'Rent payment due',
+      message: `${schedule.title} has a rent payment due on ${formatRentDate(
+        dueItem.dueDate
+      )} for ${formatRentMoney(dueItem.amount, dueItem.currency)}.`
+    }))
+  });
+}
+
+async function notifyRentMarkedPaid({
+  schedule,
+  dueItem,
+  actorId
+}: {
+  schedule: Awaited<ReturnType<typeof getRentScheduleForManagement>>;
+  dueItem: {
+    paidAt?: Date | null;
+    amount: { toString(): string } | string | number;
+    currency: string;
+    receiptNumber?: string | null;
+  };
+  actorId: string;
+}) {
+  const userIds = getUniqueRentNotificationUsers(schedule, actorId);
+
+  if (userIds.length === 0) return;
+
+  await prisma.notification.createMany({
+    data: userIds.map((userId) => ({
+      userId,
+      type: 'RENT_PAYMENT_DUE',
+      title: 'Rent payment marked paid',
+      message: `${schedule.title} payment of ${formatRentMoney(
+        dueItem.amount,
+        dueItem.currency
+      )} was marked paid${
+        dueItem.receiptNumber ? ` with receipt ${dueItem.receiptNumber}` : ''
+      }.`
+    }))
+  });
+}
+
 rentPaymentsRouter.post('/schedules', requireAuth(), async (req, res, next) => {
   try {
     const data = scheduleSchema.parse(req.body);
@@ -253,7 +369,7 @@ rentPaymentsRouter.post('/schedules/:id/due-items', requireAuth(), async (req, r
     const { id } = idParamsSchema.parse(req.params);
     const data = dueItemSchema.parse(req.body);
 
-    await getRentScheduleForManagement(id, req.user!);
+    const schedule = await getRentScheduleForManagement(id, req.user!);
 
     const dueItem = await prisma.rentPaymentDueItem.create({
       data: {
@@ -265,6 +381,12 @@ rentPaymentsRouter.post('/schedules/:id/due-items', requireAuth(), async (req, r
         notes: data.notes,
         scheduleId: id
       }
+    });
+
+    await notifyRentDueCreated({
+      schedule,
+      dueItem,
+      actorId: req.user!.id
     });
 
     res.status(201).json({ dueItem });
@@ -361,6 +483,12 @@ rentPaymentsRouter.patch('/due-items/:id/paid', requireAuth(), async (req, res, 
         receiptNumber: data.receiptNumber,
         notes: data.notes
       }
+    });
+
+    await notifyRentMarkedPaid({
+      schedule: dueItem.schedule,
+      dueItem: updatedDueItem,
+      actorId: req.user!.id
     });
 
     res.json({ dueItem: updatedDueItem });
