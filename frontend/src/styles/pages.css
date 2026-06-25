@@ -8971,3 +8971,68 @@ transition: none;
     width: 100%;
   }
 }
+
+.smart-search-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 3rem;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 1rem;
+  background: rgba(37, 99, 235, 0.08);
+  color: inherit;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 0.75rem 1rem;
+}
+
+.smart-search-button:hover,
+.smart-search-button:focus-visible {
+  background: rgba(37, 99, 235, 0.14);
+}
+
+.smart-search-message,
+.smart-search-hint {
+  margin: 0.75rem 0 0;
+  border-radius: 1rem;
+  padding: 0.8rem 1rem;
+}
+
+.smart-search-message {
+  background: rgba(22, 163, 74, 0.1);
+  color: #166534;
+  font-weight: 700;
+}
+
+.smart-search-hint {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--color-muted, #64748b);
+}
+
+.lux-search-console input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+}
+
+.lux-search-console input::placeholder {
+  color: currentColor;
+  opacity: 0.72;
+}
+
+.lux-search-console button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-primary, #111827);
+  color: #ffffff;
+  cursor: pointer;
+  padding: 0.75rem;
+}

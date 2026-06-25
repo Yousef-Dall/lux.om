@@ -24,6 +24,7 @@ import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useLanguage } from '../i18n/LanguageContext';
+import { parseSmartPropertySearch } from '../utils/smartSearch';
 import {
   formatListingBuyerEligibility,
   listingBuyerEligibilityOptions
@@ -164,6 +165,14 @@ function getAmenitiesParam(value: string | null) {
     .filter((item) => amenityFilters.includes(item));
 }
 
+function getBooleanParam(value: string | null) {
+  return value === 'true' || value === '1';
+}
+
+function toFilterString(value: number | undefined) {
+  return value === undefined ? '' : String(value);
+}
+
 export default function Listings() {
   const { t, language } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -223,6 +232,13 @@ export default function Listings() {
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>(
     getAmenitiesParam(searchParams.get('amenities'))
   );
+  const [hasVirtualTour, setHasVirtualTour] = useState(
+    getBooleanParam(searchParams.get('hasVirtualTour'))
+  );
+  const [hasFloorPlan, setHasFloorPlan] = useState(
+    getBooleanParam(searchParams.get('hasFloorPlan'))
+  );
+  const [smartSearchMessage, setSmartSearchMessage] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>(initialSortBy);
 
   const debouncedQuery = useDebouncedValue(query);
@@ -249,6 +265,11 @@ export default function Listings() {
           sortBy: 'ترتيب حسب',
           quickFilters: 'فلاتر سريعة للغرف والحمامات',
           activeFilters: 'الفلاتر النشطة',
+          applySmartSearch: 'تطبيق البحث الذكي',
+          smartSearchApplied: 'تم تحويل البحث إلى فلاتر قابلة للتعديل.',
+          smartSearchHint: 'جرّب: فلل قابلة للشراء للأجانب في الموج تحت 300 ألف مع جولة افتراضية',
+          virtualTour: 'جولة افتراضية',
+          floorPlan: 'مخطط الوحدة',
           loading: 'جاري تحميل العقارات...',
           error: 'تعذر تحميل العقارات. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.',
           previous: 'السابق',
@@ -273,6 +294,11 @@ export default function Listings() {
           sortBy: 'Sort by',
           quickFilters: 'Quick bedroom and bathroom filters',
           activeFilters: 'Active filters',
+          applySmartSearch: 'Apply smart search',
+          smartSearchApplied: 'Smart search converted your query into editable filters.',
+          smartSearchHint: 'Try: expat-buyable villas in Al Mouj under 300k with virtual tour',
+          virtualTour: 'Virtual tour',
+          floorPlan: 'Floor plan',
           loading: 'Loading listings...',
           error: 'Could not load listings. Make sure the backend is running and try again.',
           previous: 'Previous',
@@ -331,6 +357,8 @@ export default function Listings() {
     furnishing,
     view,
     selectedAmenities,
+    hasVirtualTour,
+    hasFloorPlan,
     sortBy
   ]);
 
@@ -394,6 +422,8 @@ export default function Listings() {
             selectedAmenities.length > 0
               ? selectedAmenities.join(',')
               : undefined,
+          hasVirtualTour: hasVirtualTour || undefined,
+          hasFloorPlan: hasFloorPlan || undefined,
           page,
           pageSize: LISTINGS_PAGE_SIZE
         });
@@ -440,6 +470,8 @@ export default function Listings() {
     furnishing,
     view,
     selectedAmenities,
+    hasVirtualTour,
+    hasFloorPlan,
     sortBy,
     page,
     copy.error
@@ -477,6 +509,8 @@ export default function Listings() {
     setFurnishing(getFilterParam(searchParams.get('furnishing'), furnishingFilters, 'All'));
     setView(getFilterParam(searchParams.get('view'), viewFilters, 'All'));
     setSelectedAmenities(getAmenitiesParam(searchParams.get('amenities')));
+    setHasVirtualTour(getBooleanParam(searchParams.get('hasVirtualTour')));
+    setHasFloorPlan(getBooleanParam(searchParams.get('hasFloorPlan')));
     setSortBy(getFilterParam(searchParams.get('sortBy'), sortOptions, 'Recommended'));
   }, [searchParams]);
 
@@ -500,6 +534,8 @@ export default function Listings() {
     if (furnishing !== 'All') params.set('furnishing', furnishing);
     if (view !== 'All') params.set('view', view);
     if (selectedAmenities.length > 0) params.set('amenities', selectedAmenities.join(','));
+    if (hasVirtualTour) params.set('hasVirtualTour', 'true');
+    if (hasFloorPlan) params.set('hasFloorPlan', 'true');
     if (sortBy !== 'Recommended') params.set('sortBy', sortBy);
 
     if (params.toString() !== searchParams.toString()) {
@@ -523,6 +559,8 @@ export default function Listings() {
     furnishing,
     view,
     selectedAmenities,
+    hasVirtualTour,
+    hasFloorPlan,
     sortBy,
     searchParams,
     setSearchParams
@@ -618,6 +656,22 @@ export default function Listings() {
       });
     });
 
+    if (hasVirtualTour) {
+      chips.push({
+        key: 'hasVirtualTour',
+        label: copy.virtualTour,
+        onRemove: () => setHasVirtualTour(false)
+      });
+    }
+
+    if (hasFloorPlan) {
+      chips.push({
+        key: 'hasFloorPlan',
+        label: copy.floorPlan,
+        onRemove: () => setHasFloorPlan(false)
+      });
+    }
+
     return chips;
   }, [
     query,
@@ -637,10 +691,87 @@ export default function Listings() {
     language,
     furnishing,
     view,
-    selectedAmenities
+    selectedAmenities,
+    hasVirtualTour,
+    hasFloorPlan,
+    copy.virtualTour,
+    copy.floorPlan
   ]);
 
   const activeFilterCount = activeChips.length;
+
+  const smartSearchParam = searchParams.get('smart');
+
+  useEffect(() => {
+    if (smartSearchParam !== '1') return;
+
+    const smartQuery = searchParams.get('q') ?? query;
+
+    if (!smartQuery.trim()) return;
+
+    applySmartSearchFilters(smartQuery);
+
+    const params = new URLSearchParams(searchParams);
+    params.delete('smart');
+    setSearchParams(params, { replace: true });
+  }, [smartSearchParam]);
+
+  function applySmartSearchFilters(input = query) {
+    const parsed = parseSmartPropertySearch(input);
+
+    if (!input.trim()) return;
+
+    setQuery(parsed.search ?? input);
+
+    if (parsed.transaction) {
+      setTransaction(parsed.transaction);
+    }
+
+    if (parsed.type && typeFilters.includes(parsed.type as (typeof typeFilters)[number])) {
+      setPropertyType(parsed.type as (typeof typeFilters)[number]);
+    }
+
+    if (
+      parsed.buyerEligibility &&
+      buyerEligibilityFilters.includes(parsed.buyerEligibility as BuyerEligibilityFilter)
+    ) {
+      setBuyerEligibility(parsed.buyerEligibility as BuyerEligibilityFilter);
+    }
+
+    if (parsed.location) {
+      setLocation(parsed.location);
+    }
+
+    if (parsed.minBeds !== undefined) {
+      setMinBeds(String(parsed.minBeds));
+    }
+
+    if (parsed.minPrice !== undefined) {
+      setMinPrice(toFilterString(parsed.minPrice));
+    }
+
+    if (parsed.maxPrice !== undefined) {
+      setMaxPrice(toFilterString(parsed.maxPrice));
+    }
+
+    if (parsed.amenities?.length) {
+      setSelectedAmenities((current) =>
+        Array.from(new Set([...current, ...parsed.amenities!.filter((item) => amenityFilters.includes(item))]))
+      );
+    }
+
+    if (parsed.hasVirtualTour) {
+      setHasVirtualTour(true);
+    }
+
+    if (parsed.hasFloorPlan) {
+      setHasFloorPlan(true);
+    }
+
+    setShowAdvanced(true);
+    setSmartSearchMessage(copy.smartSearchApplied);
+    setPage(1);
+  }
 
   function toggleAmenity(amenity: string) {
     setSelectedAmenities((current) =>
@@ -676,6 +807,9 @@ export default function Listings() {
     setFurnishing('All');
     setView('All');
     setSelectedAmenities([]);
+    setHasVirtualTour(false);
+    setHasFloorPlan(false);
+    setSmartSearchMessage('');
     setSortBy('Recommended');
     setPage(1);
   }
@@ -744,9 +878,21 @@ return (
               type="search"
               placeholder={t.listings.searchPlaceholder}
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setSmartSearchMessage('');
+              }}
             />
           </label>
+
+          <button
+            className="smart-search-button"
+            type="button"
+            onClick={() => applySmartSearchFilters()}
+          >
+            <Sparkles size={16} aria-hidden="true" />
+            {copy.applySmartSearch}
+          </button>
 
           <label>
             {t.listings.transaction}
@@ -835,6 +981,14 @@ return (
           </label>
         </div>
 
+        {smartSearchMessage ? (
+          <p className="smart-search-message" role="status">
+            {smartSearchMessage}
+          </p>
+        ) : (
+          <p className="smart-search-hint">{copy.smartSearchHint}</p>
+        )}
+
         <div className="quick-filter-row" aria-label={copy.quickFilters}>
           <button
             type="button"
@@ -877,6 +1031,22 @@ return (
             className={selectedAmenities.includes('Private pool') ? 'active' : ''}
           >
             Private pool
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setHasVirtualTour((current) => !current)}
+            className={hasVirtualTour ? 'active' : ''}
+          >
+            {copy.virtualTour}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setHasFloorPlan((current) => !current)}
+            className={hasFloorPlan ? 'active' : ''}
+          >
+            {copy.floorPlan}
           </button>
         </div>
 

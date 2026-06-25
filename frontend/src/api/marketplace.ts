@@ -100,6 +100,8 @@ type ListingParams = ListParams & {
   furnishing?: string;
   view?: string;
   amenities?: string;
+  hasVirtualTour?: boolean;
+  hasFloorPlan?: boolean;
 };
 
 type ActivityParams = ListParams & {

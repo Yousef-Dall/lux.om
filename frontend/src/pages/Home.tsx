@@ -77,6 +77,7 @@ export default function Home() {
 
   const [selectedLandmark, setSelectedLandmark] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<DiscoveryCategoryValue>('all');
+  const [heroSmartSearch, setHeroSmartSearch] = useState('');
 
   const homepageListings = useMemo(
     () => prioritizeFeaturedItems(listings),
@@ -156,6 +157,7 @@ export default function Home() {
           properties: 'عقارات قريبة',
           activities: 'أنشطة قريبة',
           searchLabel: 'بحث الصفحة الرئيسية',
+          smartSearchPlaceholder: 'مثال: فلل قابلة للشراء للأجانب في الموج تحت 300 ألف',
           popularSearches: 'عمليات بحث شائعة',
           heroGallery: 'إقامات وأنشطة مميزة في عُمان',
           owners: 'ملاك موثقون',
@@ -198,6 +200,7 @@ viewProfile: 'عرض ملف الشركة',
           properties: 'properties nearby',
           activities: 'activities nearby',
           searchLabel: 'Homepage search',
+          smartSearchPlaceholder: 'Try: expat-buyable villas in Al Mouj under 300k',
           popularSearches: 'Popular searches',
           heroGallery: 'Featured Oman stays and activities',
           owners: 'Verified owners',
@@ -311,6 +314,19 @@ viewProfile: 'View company profile',
     navigate(buildDiscoveryPath(selectedLandmark, selectedCategory));
   }
 
+  function handleHeroSmartSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const query = heroSmartSearch.trim();
+
+    if (!query) {
+      navigate('/listings');
+      return;
+    }
+
+    navigate(`/listings?q=${encodeURIComponent(query)}&smart=1`);
+  }
+
   return (
     <>
       <section className="lux-hero">
@@ -336,16 +352,26 @@ viewProfile: 'View company profile',
               </ButtonLink>
             </div>
 
-            <div className="lux-search-console" role="search" aria-label={discoveryCopy.searchLabel}>
-              <div className="lux-search-console__main">
+            <form
+              className="lux-search-console"
+              role="search"
+              aria-label={discoveryCopy.searchLabel}
+              onSubmit={handleHeroSmartSearch}
+            >
+              <label className="lux-search-console__main">
                 <Search size={20} aria-hidden="true" />
-                <span>{t.home.searchPlaceholder}</span>
-              </div>
+                <span className="sr-only">{t.home.searchPlaceholder}</span>
+                <input
+                  value={heroSmartSearch}
+                  placeholder={discoveryCopy.smartSearchPlaceholder}
+                  onChange={(event) => setHeroSmartSearch(event.target.value)}
+                />
+              </label>
 
-              <Link to="/listings" aria-label={t.common.exploreListings}>
+              <button type="submit" aria-label={t.common.exploreListings}>
                 <ArrowRight size={18} aria-hidden="true" />
-              </Link>
-            </div>
+              </button>
+            </form>
 
             <div className="lux-chip-row" aria-label={discoveryCopy.popularSearches}>
               {localizedQuickSearches.map((item) => (
