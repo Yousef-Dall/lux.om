@@ -34,6 +34,7 @@ import {
 } from '../api/notifications';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
+import DashboardWhatsAppActions from '../components/DashboardWhatsAppActions';
 import SectionHeader from '../components/SectionHeader';
 import ReceiptView from '../components/ReceiptView';
 import Stage8DashboardPanel from '../components/Stage8DashboardPanel';
@@ -1052,6 +1053,12 @@ export default function Dashboard() {
                           {copy.cancellationReason}: {booking.cancellationReason}
                         </p>
                       ) : null}
+
+                      <DashboardWhatsAppActions
+                        item={booking}
+                        itemType="booking"
+                        language={language}
+                      />
                     </div>
 
                     {booking.status === 'PENDING' ? (
@@ -1352,13 +1359,21 @@ export default function Dashboard() {
                           </td>
 
                           <td>
-                            <button
-                              className="button-link button-link--ghost"
-                              type="button"
-                              onClick={() => setEditingListing(listing)}
-                            >
-                              {copy.editItem}
-                            </button>
+                            <div className="dashboard-row-actions">
+                              <button
+                                className="button-link button-link--ghost"
+                                type="button"
+                                onClick={() => setEditingListing(listing)}
+                              >
+                                {copy.editItem}
+                              </button>
+
+                              <DashboardWhatsAppActions
+                                item={listing}
+                                itemType="listing"
+                                language={language}
+                              />
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1398,6 +1413,12 @@ export default function Dashboard() {
                       >
                         {copy.editItem}
                       </button>
+
+                      <DashboardWhatsAppActions
+                        item={activity}
+                        itemType="activity"
+                        language={language}
+                      />
                     </article>
                   ))}
                 </div>

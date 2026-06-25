@@ -9882,3 +9882,76 @@ transition: none;
     visibility: hidden !important;
   }
 }
+
+/* Stage 8 WhatsApp dashboard actions */
+.dashboard-row-actions,
+.dashboard-whatsapp-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-row-actions {
+  min-width: 220px;
+}
+
+.dashboard-whatsapp-actions {
+  padding: 10px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 16px;
+  background: rgba(250, 247, 240, 0.58);
+}
+
+.dashboard-whatsapp-actions label {
+  display: grid;
+  gap: 5px;
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.dashboard-whatsapp-actions select {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid rgba(7, 56, 62, 0.12);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--color-primary);
+  font-weight: 750;
+}
+
+.dashboard-whatsapp-actions__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard-whatsapp-actions__buttons .button-link {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 0.78rem;
+}
+
+.dashboard-whatsapp-actions .trust-note {
+  margin: 0;
+  font-size: 0.74rem;
+}
+
+.dashboard-received-booking-item .dashboard-whatsapp-actions {
+  margin-top: 12px;
+  max-width: 520px;
+}
+
+.dashboard-editable-item .dashboard-whatsapp-actions {
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .dashboard-row-actions {
+    min-width: 0;
+  }
+
+  .dashboard-whatsapp-actions__buttons {
+    display: grid;
+  }
+}
