@@ -175,6 +175,42 @@ function getFiltersPreview(record: JsonRecord) {
   }
 }
 
+function getSavedSearchPath(search: JsonRecord) {
+  const params = new URLSearchParams();
+  const query = getText(search, 'query', '');
+  const filters = getValue(search, 'filters');
+
+  if (query) params.set('q', query);
+
+  if (isRecord(filters)) {
+    Object.entries(filters).forEach(([key, value]) => {
+      if (typeof value === 'string' && value.trim()) {
+        params.set(key, value);
+      }
+
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        params.set(key, String(value));
+      }
+
+      if (typeof value === 'boolean' && value) {
+        params.set(key, 'true');
+      }
+
+      if (Array.isArray(value)) {
+        const joined = value
+          .filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+          .join(',');
+
+        if (joined) params.set(key, joined);
+      }
+    });
+  }
+
+  const queryString = params.toString();
+
+  return queryString ? `/listings?${queryString}` : '/listings';
+}
+
 function count(value?: JsonRecord[] | null) {
   return value?.length ?? 0;
 }
@@ -421,6 +457,8 @@ export default function Stage8DashboardPanel({
                     ? 'DASHBOARD_ONLY'
                     : 'NONE'
                 }
+                actionTo={getSavedSearchPath(search)}
+                actionLabel="Run search"
               />
             ))}
 

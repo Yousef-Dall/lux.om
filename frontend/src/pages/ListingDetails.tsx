@@ -16,6 +16,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { getListingBySlug } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
+import InvestorWatchlistForm from '../components/InvestorWatchlistForm';
 import ReportModal from '../components/ReportModal';
 import ReviewSection from '../components/ReviewSection';
 import SavedButton from '../components/SavedButton';
@@ -432,6 +433,14 @@ notSpecified: 'Not specified',
                     ))}
                   </ul>
                 ) : null}
+                <InvestorWatchlistForm
+                  listingId={listing.id}
+                  listingTitle={listing.title}
+                  token={token}
+                  suggestedPrice={listing.priceAmount}
+                  language={language}
+                />
+
                 <p className="trust-note">
                   {listing.eligibilityDisclaimer || copy.eligibilityDisclaimer}
                 </p>

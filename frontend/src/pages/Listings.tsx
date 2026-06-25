@@ -1,4 +1,5 @@
 import {
+  BookmarkPlus,
   Bath,
   BedDouble,
   Filter,
@@ -19,6 +20,8 @@ import {
   getListingsPage,
   type MarketplacePagination
 } from '../api/marketplace';
+import { createSavedSearch, type JsonRecord } from '../api/saved';
+import { useAuth } from '../auth/AuthContext';
 import { ListingCard } from '../components/Cards';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -175,6 +178,7 @@ function toFilterString(value: number | undefined) {
 
 export default function Listings() {
   const { t, language } = useLanguage();
+  const { token } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   useDocumentTitle('Listings');
@@ -239,6 +243,10 @@ export default function Listings() {
     getBooleanParam(searchParams.get('hasFloorPlan'))
   );
   const [smartSearchMessage, setSmartSearchMessage] = useState('');
+  const [savedSearchName, setSavedSearchName] = useState('');
+  const [saveSearchMessage, setSaveSearchMessage] = useState('');
+  const [saveSearchError, setSaveSearchError] = useState('');
+  const [saveSearchLoading, setSaveSearchLoading] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>(initialSortBy);
 
   const debouncedQuery = useDebouncedValue(query);
@@ -270,6 +278,15 @@ export default function Listings() {
           smartSearchHint: 'جرّب: فلل قابلة للشراء للأجانب في الموج تحت 300 ألف مع جولة افتراضية',
           virtualTour: 'جولة افتراضية',
           floorPlan: 'مخطط الوحدة',
+          saveSearch: 'حفظ البحث',
+          saveSearchName: 'اسم البحث المحفوظ',
+          saveSearchPlaceholder: 'مثال: فلل استثمارية في الموج',
+          saveSearchNote: 'سيتم حفظ الفلاتر في لوحة التحكم. التنبيهات الخارجية تحتاج مزود إشعارات.',
+          saveSearchSuccess: 'تم حفظ البحث في لوحة التحكم.',
+          saveSearchLogin: 'سجّلي الدخول لحفظ هذا البحث.',
+          saveSearchEmpty: 'أضيفي بحثاً أو فلتر واحد على الأقل قبل الحفظ.',
+          saveSearchError: 'تعذر حفظ البحث حالياً.',
+          saving: 'جاري الحفظ...',
           loading: 'جاري تحميل العقارات...',
           error: 'تعذر تحميل العقارات. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.',
           previous: 'السابق',
@@ -299,6 +316,15 @@ export default function Listings() {
           smartSearchHint: 'Try: expat-buyable villas in Al Mouj under 300k with virtual tour',
           virtualTour: 'Virtual tour',
           floorPlan: 'Floor plan',
+          saveSearch: 'Save search',
+          saveSearchName: 'Saved search name',
+          saveSearchPlaceholder: 'Example: Al Mouj investment villas',
+          saveSearchNote: 'Filters are saved in your dashboard. External alerts require a notification provider.',
+          saveSearchSuccess: 'Search saved to your dashboard.',
+          saveSearchLogin: 'Sign in to save this search.',
+          saveSearchEmpty: 'Add a search term or at least one filter before saving.',
+          saveSearchError: 'Could not save this search right now.',
+          saving: 'Saving...',
           loading: 'Loading listings...',
           error: 'Could not load listings. Make sure the backend is running and try again.',
           previous: 'Previous',
@@ -716,6 +742,78 @@ export default function Listings() {
     setSearchParams(params, { replace: true });
   }, [smartSearchParam]);
 
+  function buildSavedSearchFilters() {
+    const filters: JsonRecord = {};
+
+    if (transaction !== 'All') filters.transaction = transaction;
+    if (propertyType !== 'All') filters.propertyType = propertyType;
+    if (buyerEligibility !== 'All') filters.buyerEligibility = buyerEligibility;
+    if (location.trim()) filters.location = location.trim();
+    if (selectedLandmarkSlug) filters.near = selectedLandmarkSlug;
+    if (selectedDeveloperSlug) filters.developer = selectedDeveloperSlug;
+    if (minBeds) filters.minBeds = minBeds;
+    if (minBaths) filters.minBaths = minBaths;
+    if (minSqm) filters.minSqm = minSqm;
+    if (minGuests) filters.minGuests = minGuests;
+    if (minParking) filters.minParking = minParking;
+    if (minPrice) filters.minPrice = minPrice;
+    if (maxPrice) filters.maxPrice = maxPrice;
+    if (furnishing !== 'All') filters.furnishing = furnishing;
+    if (view !== 'All') filters.view = view;
+    if (selectedAmenities.length) filters.amenities = selectedAmenities;
+    if (hasVirtualTour) filters.hasVirtualTour = true;
+    if (hasFloorPlan) filters.hasFloorPlan = true;
+    if (sortBy !== 'Recommended') filters.sortBy = sortBy;
+
+    return filters;
+  }
+
+  async function saveCurrentSearch() {
+    const filters = buildSavedSearchFilters();
+    const hasFilters = Object.keys(filters).length > 0;
+
+    if (!token) {
+      setSaveSearchMessage('');
+      setSaveSearchError(copy.saveSearchLogin);
+      return;
+    }
+
+    if (!query.trim() && !hasFilters) {
+      setSaveSearchMessage('');
+      setSaveSearchError(copy.saveSearchEmpty);
+      return;
+    }
+
+    try {
+      setSaveSearchLoading(true);
+      setSaveSearchMessage('');
+      setSaveSearchError('');
+
+      await createSavedSearch(
+        {
+          name:
+            savedSearchName.trim() ||
+            (query.trim() ? `Listings: ${query.trim()}` : 'Listings search'),
+          category: 'LISTINGS',
+          query: query.trim() || undefined,
+          filters,
+          alertFrequency: 'DASHBOARD_ONLY',
+          alertsEnabled: true
+        },
+        token
+      );
+
+      setSavedSearchName('');
+      setSaveSearchMessage(copy.saveSearchSuccess);
+    } catch (error) {
+      console.error(error);
+      setSaveSearchMessage('');
+      setSaveSearchError(copy.saveSearchError);
+    } finally {
+      setSaveSearchLoading(false);
+    }
+  }
+
   function applySmartSearchFilters(input = query) {
     const parsed = parseSmartPropertySearch(input);
 
@@ -810,6 +908,9 @@ export default function Listings() {
     setHasVirtualTour(false);
     setHasFloorPlan(false);
     setSmartSearchMessage('');
+    setSavedSearchName('');
+    setSaveSearchMessage('');
+    setSaveSearchError('');
     setSortBy('Recommended');
     setPage(1);
   }
@@ -988,6 +1089,45 @@ return (
         ) : (
           <p className="smart-search-hint">{copy.smartSearchHint}</p>
         )}
+
+        <div className="saved-search-panel" aria-label={copy.saveSearch}>
+          <label>
+            {copy.saveSearchName}
+            <input
+              value={savedSearchName}
+              placeholder={copy.saveSearchPlaceholder}
+              onChange={(event) => {
+                setSavedSearchName(event.target.value);
+                setSaveSearchMessage('');
+                setSaveSearchError('');
+              }}
+            />
+          </label>
+
+          <button
+            className="button-link button-link--secondary"
+            type="button"
+            disabled={saveSearchLoading}
+            onClick={() => void saveCurrentSearch()}
+          >
+            <BookmarkPlus size={16} aria-hidden="true" />
+            {saveSearchLoading ? copy.saving : copy.saveSearch}
+          </button>
+
+          <p>{copy.saveSearchNote}</p>
+
+          {saveSearchMessage ? (
+            <p className="form-success" role="status">
+              {saveSearchMessage}
+            </p>
+          ) : null}
+
+          {saveSearchError ? (
+            <p className="form-error" role="alert">
+              {saveSearchError}
+            </p>
+          ) : null}
+        </div>
 
         <div className="quick-filter-row" aria-label={copy.quickFilters}>
           <button
