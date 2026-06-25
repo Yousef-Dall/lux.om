@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { runPeriodicSavedSearchMatchJob } from './savedSearchMatchJob';
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_RENT_DUE_SOON_DAYS = 3;
@@ -267,10 +268,12 @@ async function processRentOverdueReminders(now = new Date()) {
 export async function runBackgroundNotificationJobs(now = new Date()) {
   const dueSoon = await processRentDueSoonReminders(now);
   const overdue = await processRentOverdueReminders(now);
+  const savedSearchMatches = await runPeriodicSavedSearchMatchJob(now);
 
   return {
     ...dueSoon,
-    ...overdue
+    ...overdue,
+    ...savedSearchMatches
   };
 }
 
@@ -306,7 +309,8 @@ export function startBackgroundNotificationJobs() {
         result.dueSoonItemsUpdated > 0 ||
         result.overdueItemsUpdated > 0 ||
         result.dueSoonNotificationsCreated > 0 ||
-        result.overdueNotificationsCreated > 0
+        result.overdueNotificationsCreated > 0 ||
+        result.savedSearchMatchesCreated > 0
       ) {
         console.log('Background notification jobs completed:', result);
       }
