@@ -723,6 +723,473 @@ async function notifyInvestorPriceTargetHits({
   });
 }
 
+type SavedSearchRecord = {
+  id: string;
+  name: string;
+  userId: string;
+  category?: string | null;
+  query?: string | null;
+  filters: unknown;
+  lastMatchedAt?: Date | null;
+};
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getFilterText(filters: Record<string, unknown>, key: string) {
+  const value = filters[key];
+
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function getFilterNumber(filters: Record<string, unknown>, key: string) {
+  const value = filters[key];
+
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function getFilterBoolean(filters: Record<string, unknown>, key: string) {
+  const value = filters[key];
+
+  return value === true || value === 'true' || value === '1';
+}
+
+function getFilterTextArray(filters: Record<string, unknown>, key: string) {
+  const value = filters[key];
+
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string');
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function normalizeSearchText(value: unknown) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function textIncludes(value: unknown, needle: string) {
+  if (!needle) return true;
+
+  return normalizeSearchText(value).includes(needle.toLowerCase());
+}
+
+function getListingSearchText(listing: {
+  title?: string | null;
+  titleEn?: string | null;
+  titleAr?: string | null;
+  description?: string | null;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
+  location?: string | null;
+  locationEn?: string | null;
+  locationAr?: string | null;
+  type?: string | null;
+  typeEn?: string | null;
+  typeAr?: string | null;
+  transaction?: string | null;
+  buyerEligibility?: readonly string[];
+  developer?: {
+    nameEn?: string | null;
+    nameAr?: string | null;
+    slug?: string | null;
+  } | null;
+  nearestLandmark?: {
+    nameEn?: string | null;
+    nameAr?: string | null;
+    slug?: string | null;
+  } | null;
+}) {
+  return [
+    listing.title,
+    listing.titleEn,
+    listing.titleAr,
+    listing.description,
+    listing.descriptionEn,
+    listing.descriptionAr,
+    listing.location,
+    listing.locationEn,
+    listing.locationAr,
+    listing.type,
+    listing.typeEn,
+    listing.typeAr,
+    listing.transaction,
+    ...(listing.buyerEligibility ?? []),
+    listing.developer?.nameEn,
+    listing.developer?.nameAr,
+    listing.developer?.slug,
+    listing.nearestLandmark?.nameEn,
+    listing.nearestLandmark?.nameAr,
+    listing.nearestLandmark?.slug
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function hasMeaningfulSavedSearchFilters(filters: Record<string, unknown>) {
+  return Object.entries(filters).some(([key, value]) => {
+    if (key === 'sortBy') return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return Number.isFinite(value);
+    if (typeof value === 'string') return Boolean(value.trim());
+
+    return false;
+  });
+}
+
+function savedSearchCategoryMatches(search: SavedSearchRecord, target: 'LISTING' | 'ACTIVITY') {
+  if (!search.category) return true;
+
+  const category = search.category.toUpperCase();
+
+  if (target === 'LISTING') {
+    return (
+      category.includes('LISTING') ||
+      category.includes('PROPERTY') ||
+      category.includes('REAL_ESTATE')
+    );
+  }
+
+  return category.includes('ACTIVITY') || category.includes('TRAVEL');
+}
+
+function savedSearchQueryMatches(search: SavedSearchRecord, candidateText: string) {
+  const query = search.query?.trim();
+
+  if (!query) return true;
+
+  const filters = isPlainRecord(search.filters) ? search.filters : {};
+
+  if (hasMeaningfulSavedSearchFilters(filters)) {
+    return true;
+  }
+
+  const tokens = query
+    .toLowerCase()
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-z0-9\u0600-\u06ff]/gi, ''))
+    .filter((token) => token.length >= 3)
+    .filter(
+      (token) =>
+        ![
+          'with',
+          'under',
+          'over',
+          'near',
+          'around',
+          'from',
+          'for',
+          'the',
+          'and'
+        ].includes(token)
+    );
+
+  if (tokens.length === 0) return true;
+
+  return tokens.every((token) => candidateText.includes(token));
+}
+
+function listingMatchesSavedSearch(
+  listing: {
+    id: string;
+    ownerId: string;
+    title?: string | null;
+    titleEn?: string | null;
+    titleAr?: string | null;
+    description?: string | null;
+    descriptionEn?: string | null;
+    descriptionAr?: string | null;
+    location?: string | null;
+    locationEn?: string | null;
+    locationAr?: string | null;
+    type?: string | null;
+    typeEn?: string | null;
+    typeAr?: string | null;
+    transaction?: string | null;
+    priceAmount?: Prisma.Decimal | string | number | null;
+    beds?: number | null;
+    baths?: number | null;
+    sqm?: number | null;
+    parking?: boolean | null;
+    furnishing?: string | null;
+    view?: string | null;
+    videoWalkthroughUrl?: string | null;
+    tour360Url?: string | null;
+    virtualTourUrl?: string | null;
+    floorPlanUrl?: string | null;
+    buyerEligibility?: readonly string[];
+    amenities?: Array<{
+      name?: string | null;
+      nameEn?: string | null;
+    }>;
+    developer?: {
+      id?: string | null;
+      nameEn?: string | null;
+      nameAr?: string | null;
+      slug?: string | null;
+    } | null;
+    nearestLandmark?: {
+      id?: string | null;
+      nameEn?: string | null;
+      nameAr?: string | null;
+      slug?: string | null;
+    } | null;
+  },
+  search: SavedSearchRecord
+) {
+  if (!savedSearchCategoryMatches(search, 'LISTING')) return false;
+
+  const filters = isPlainRecord(search.filters) ? search.filters : {};
+  const candidateText = getListingSearchText(listing);
+
+  if (!savedSearchQueryMatches(search, candidateText)) return false;
+
+  const transaction = getFilterText(filters, 'transaction');
+  if (transaction && transaction !== 'All' && listing.transaction !== transaction) {
+    return false;
+  }
+
+  const propertyType = getFilterText(filters, 'propertyType') || getFilterText(filters, 'type');
+  if (
+    propertyType &&
+    propertyType !== 'All' &&
+    !textIncludes(listing.typeEn ?? listing.type, propertyType)
+  ) {
+    return false;
+  }
+
+  const buyerEligibility = getFilterText(filters, 'buyerEligibility');
+  if (
+    buyerEligibility &&
+    buyerEligibility !== 'All' &&
+    !(listing.buyerEligibility ?? []).includes(buyerEligibility)
+  ) {
+    return false;
+  }
+
+  const location = getFilterText(filters, 'location');
+  if (
+    location &&
+    ![
+      listing.location,
+      listing.locationEn,
+      listing.locationAr,
+      listing.nearestLandmark?.nameEn,
+      listing.nearestLandmark?.nameAr
+    ].some((value) => textIncludes(value, location))
+  ) {
+    return false;
+  }
+
+  const developer = getFilterText(filters, 'developer');
+  if (
+    developer &&
+    ![
+      listing.developer?.id,
+      listing.developer?.slug,
+      listing.developer?.nameEn,
+      listing.developer?.nameAr
+    ].some((value) => textIncludes(value, developer))
+  ) {
+    return false;
+  }
+
+  const near = getFilterText(filters, 'near');
+  if (
+    near &&
+    ![
+      listing.nearestLandmark?.id,
+      listing.nearestLandmark?.slug,
+      listing.nearestLandmark?.nameEn,
+      listing.nearestLandmark?.nameAr
+    ].some((value) => textIncludes(value, near))
+  ) {
+    return false;
+  }
+
+  const minBeds = getFilterNumber(filters, 'minBeds');
+  if (minBeds !== null && (listing.beds ?? 0) < minBeds) return false;
+
+  const minBaths = getFilterNumber(filters, 'minBaths');
+  if (minBaths !== null && (listing.baths ?? 0) < minBaths) return false;
+
+  const minSqm = getFilterNumber(filters, 'minSqm');
+  if (minSqm !== null && (listing.sqm ?? 0) < minSqm) return false;
+
+  const minPrice = getFilterNumber(filters, 'minPrice');
+  const maxPrice = getFilterNumber(filters, 'maxPrice');
+  const price = decimalLikeToNumber(listing.priceAmount);
+
+  if (minPrice !== null && (price === null || price < minPrice)) return false;
+  if (maxPrice !== null && (price === null || price > maxPrice)) return false;
+
+  const furnishing = getFilterText(filters, 'furnishing');
+  if (furnishing && furnishing !== 'All' && !textIncludes(listing.furnishing, furnishing)) {
+    return false;
+  }
+
+  const view = getFilterText(filters, 'view');
+  if (view && view !== 'All' && !textIncludes(listing.view, view)) {
+    return false;
+  }
+
+  const amenities = getFilterTextArray(filters, 'amenities');
+  if (amenities.length > 0) {
+    const listingAmenities = (listing.amenities ?? [])
+      .flatMap((amenity) => [amenity.name, amenity.nameEn])
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    if (!amenities.every((amenity) => listingAmenities.includes(amenity.toLowerCase()))) {
+      return false;
+    }
+  }
+
+  if (
+    getFilterBoolean(filters, 'hasVirtualTour') &&
+    !listing.virtualTourUrl &&
+    !listing.tour360Url &&
+    !listing.videoWalkthroughUrl
+  ) {
+    return false;
+  }
+
+  if (getFilterBoolean(filters, 'hasFloorPlan') && !listing.floorPlanUrl) {
+    return false;
+  }
+
+  return true;
+}
+
+async function notifySavedSearchMatchesForListing({
+  listing,
+  actorId
+}: {
+  listing: {
+    id: string;
+    ownerId: string;
+    title?: string | null;
+    titleEn?: string | null;
+    titleAr?: string | null;
+    description?: string | null;
+    descriptionEn?: string | null;
+    descriptionAr?: string | null;
+    location?: string | null;
+    locationEn?: string | null;
+    locationAr?: string | null;
+    type?: string | null;
+    typeEn?: string | null;
+    typeAr?: string | null;
+    transaction?: string | null;
+    priceAmount?: Prisma.Decimal | string | number | null;
+    beds?: number | null;
+    baths?: number | null;
+    sqm?: number | null;
+    parking?: boolean | null;
+    furnishing?: string | null;
+    view?: string | null;
+    videoWalkthroughUrl?: string | null;
+    tour360Url?: string | null;
+    virtualTourUrl?: string | null;
+    floorPlanUrl?: string | null;
+    buyerEligibility?: readonly string[];
+    amenities?: Array<{
+      name?: string | null;
+      nameEn?: string | null;
+    }>;
+    developer?: {
+      id?: string | null;
+      nameEn?: string | null;
+      nameAr?: string | null;
+      slug?: string | null;
+    } | null;
+    nearestLandmark?: {
+      id?: string | null;
+      nameEn?: string | null;
+      nameAr?: string | null;
+      slug?: string | null;
+    } | null;
+    updatedAt?: Date;
+  };
+  actorId?: string;
+}) {
+  const savedSearches = await prisma.savedSearch.findMany({
+    where: {
+      alertsEnabled: true,
+      alertFrequency: {
+        not: 'NONE'
+      },
+      userId: {
+        notIn: [listing.ownerId, actorId].filter((id): id is string => Boolean(id))
+      }
+    },
+    select: {
+      id: true,
+      name: true,
+      userId: true,
+      category: true,
+      query: true,
+      filters: true,
+      lastMatchedAt: true
+    }
+  });
+
+  const matchedSearches = savedSearches.filter((search) => {
+    if (
+      search.lastMatchedAt &&
+      listing.updatedAt &&
+      listing.updatedAt <= search.lastMatchedAt
+    ) {
+      return false;
+    }
+
+    return listingMatchesSavedSearch(listing, search);
+  });
+
+  if (matchedSearches.length === 0) return;
+
+  await prisma.notification.createMany({
+    data: matchedSearches.map((search) => ({
+      userId: search.userId,
+      type: 'SAVED_SEARCH_MATCH',
+      title: 'New listing matches your saved search',
+      message: `${getListingNotificationTitle(
+        listing
+      )} matches "${search.name}".`
+    }))
+  });
+
+  await prisma.savedSearch.updateMany({
+    where: {
+      id: {
+        in: matchedSearches.map((search) => search.id)
+      }
+    },
+    data: {
+      lastMatchedAt: new Date()
+    }
+  });
+}
+
 async function getAdminNotificationUserIds(actorId?: string) {
   const admins = await prisma.user.findMany({
     where: {
@@ -1620,6 +2087,13 @@ listingsRouter.patch(
         actorId: req.user!.id
       });
 
+      if (listing.status === 'APPROVED') {
+        await notifySavedSearchMatchesForListing({
+          listing,
+          actorId: req.user!.id
+        });
+      }
+
       res.json({
         listing
       });
@@ -2371,6 +2845,13 @@ listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (re
 
     if (listing.status === 'PENDING') {
       await notifyListingSubmittedForReview({
+        listing,
+        actorId: req.user!.id
+      });
+    }
+
+    if (listing.status === 'APPROVED') {
+      await notifySavedSearchMatchesForListing({
         listing,
         actorId: req.user!.id
       });
