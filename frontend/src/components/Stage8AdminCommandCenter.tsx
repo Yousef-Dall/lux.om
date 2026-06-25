@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { getAdminContractDrafts, type JsonRecord } from '../api/contracts';
+import { getActivities, getListings } from '../api/marketplace';
 import { getMarketInsights, refreshMarketInsightSnapshots } from '../api/marketInsights';
 import {
   getAdminReports,
@@ -44,6 +46,31 @@ function getDate(record: JsonRecord, key: string) {
   }).format(date);
 }
 
+const mediaReviewStatuses = new Set(['NOT_CHECKED', 'NEEDS_REVIEW', 'BLOCKED']);
+
+function toMediaQueueItem(item: unknown, itemType: 'LISTING' | 'ACTIVITY'): JsonRecord {
+  const record = item as JsonRecord;
+
+  return {
+    ...record,
+    mediaItemType: itemType
+  };
+}
+
+function isMediaReviewItem(item: JsonRecord) {
+  return mediaReviewStatuses.has(getText(item, 'mediaQualityStatus', 'NOT_CHECKED'));
+}
+
+function getMediaItemPath(item: JsonRecord) {
+  const slug = getText(item, 'slug', '');
+
+  if (!slug) return '';
+
+  return getText(item, 'mediaItemType', 'LISTING') === 'ACTIVITY'
+    ? `/activities/${slug}`
+    : `/listings/${slug}`;
+}
+
 function getReportPriority(status: string) {
   if (status === 'PENDING') return 0;
   if (status === 'UNDER_REVIEW') return 1;
@@ -63,9 +90,11 @@ export default function Stage8AdminCommandCenter({
     reviews: 0,
     transactions: 0,
     valuations: 0,
+    mediaQuality: 0,
     insights: 0
   });
   const [reports, setReports] = useState<JsonRecord[]>([]);
+  const [mediaQueue, setMediaQueue] = useState<JsonRecord[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [updatingReportId, setUpdatingReportId] = useState('');
@@ -88,7 +117,9 @@ export default function Stage8AdminCommandCenter({
           reviews,
           transactions,
           valuations,
-          insights
+          insights,
+          listings,
+          activities
         ] = await Promise.all([
           getAdminContractDrafts(token!),
           getAdminVerifications(token!),
@@ -96,12 +127,20 @@ export default function Stage8AdminCommandCenter({
           getAdminReviews(token!),
           getAdminMarketplaceTransactions(token!),
           getAdminValuations(token!),
-          getMarketInsights()
+          getMarketInsights(),
+          getListings('en', { take: 100 }),
+          getActivities('en', { take: 100 })
         ]);
 
         if (!active) return;
 
+        const mediaItems = [
+          ...(listings ?? []).map((listing) => toMediaQueueItem(listing, 'LISTING')),
+          ...(activities ?? []).map((activity) => toMediaQueueItem(activity, 'ACTIVITY'))
+        ].filter(isMediaReviewItem);
+
         setReports(reportResponse.reports ?? []);
+        setMediaQueue(mediaItems.slice(0, 8));
         setSummary({
           contracts: count(contracts.contracts),
           verifications: count(verifications.verifications),
@@ -109,6 +148,7 @@ export default function Stage8AdminCommandCenter({
           reviews: count(reviews.reviews),
           transactions: count(transactions.transactions),
           valuations: count(valuations.valuations),
+          mediaQuality: count(mediaItems),
           insights: count(insights.insights)
         });
       } catch (error) {
@@ -208,6 +248,7 @@ export default function Stage8AdminCommandCenter({
     ['Review moderation', summary.reviews],
     ['Transactions', summary.transactions],
     ['Valuation review', summary.valuations],
+    ['Media quality review', summary.mediaQuality],
     ['Market insight locations', summary.insights]
   ] as const;
 
@@ -267,6 +308,57 @@ export default function Stage8AdminCommandCenter({
         >
           {refreshingInsights ? 'Refreshing…' : 'Refresh insights'}
         </button>
+      </div>
+
+      <div className="stage8-operations-queue media-quality-admin-queue">
+        <div className="details-section-heading">
+          <p className="eyebrow">8.3 Media quality</p>
+          <h3>Media quality review queue</h3>
+          <p>
+            Items here need manual image/media review or improvement before they
+            should be treated as premium-ready.
+          </p>
+        </div>
+
+        {mediaQueue.length ? (
+          <div className="stage8-operations-list">
+            {mediaQueue.map((item) => {
+              const itemId = getText(item, 'id');
+              const path = getMediaItemPath(item);
+              const status = getText(item, 'mediaQualityStatus', 'NOT_CHECKED');
+              const enhancementStatus = getText(item, 'enhancementStatus', 'NOT_REQUESTED');
+              const title = getText(item, 'title', getText(item, 'titleEn', 'Marketplace item'));
+
+              return (
+                <article key={`${getText(item, 'mediaItemType')}-${itemId}`} className="stage8-operations-row">
+                  <div>
+                    <strong>
+                      {getText(item, 'mediaItemType')} · {title}
+                    </strong>
+                    <span>
+                      Quality: {status.replace(/_/g, ' ').toLowerCase()} · Enhancement: {enhancementStatus.replace(/_/g, ' ').toLowerCase()}
+                    </span>
+                    {getText(item, 'mediaQualityNotes', '') ? (
+                      <p>{getText(item, 'mediaQualityNotes', '')}</p>
+                    ) : (
+                      <p>Review images, missing media, and premium tour assets.</p>
+                    )}
+                  </div>
+
+                  {path ? (
+                    <Link className="button-link button-link--secondary" to={path}>
+                      Open item
+                    </Link>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="trust-note">
+            No public items currently need media quality review.
+          </p>
+        )}
       </div>
 
       <ContractRegistrationAdminPanel token={token} />

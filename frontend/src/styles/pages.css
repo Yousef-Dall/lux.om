@@ -10120,3 +10120,26 @@ transition: none;
     grid-column: 1 / -1;
   }
 }
+
+/* Stage 8 final closure: reviews and admin media queue */
+.review-section__summary-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.media-quality-admin-queue {
+  border-color: rgba(7, 56, 62, 0.1);
+}
+
+@media (max-width: 760px) {
+  .review-section__summary-grid {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .review-section__summary-grid .review-section__summary {
+    flex: 1 1 9rem;
+  }
+}
