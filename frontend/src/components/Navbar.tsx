@@ -15,6 +15,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { cn } from '../utils/format';
 import ButtonLink from './ButtonLink';
+import NotificationBell from './NotificationBell';
 
 export default function Navbar() {
 const [isOpen, setIsOpen] = useState(false);
@@ -23,7 +24,7 @@ const [hasScrolled, setHasScrolled] = useState(false);
 const { pathname } = useLocation();
 const navigate = useNavigate();
 const { t, toggleLanguage, language } = useLanguage();
-const { user, isAuthenticated, isAdmin, logout } = useAuth();
+const { user, token, isAuthenticated, isAdmin, logout } = useAuth();
 
 const navCopy =
 language === 'ar'
@@ -171,7 +172,14 @@ return (
         </button>
 
         {isAuthenticated ? (
-          <details className="nav-account">
+          <>
+            <NotificationBell
+              token={token}
+              language={language}
+              onNavigate={() => setIsOpen(false)}
+            />
+
+            <details className="nav-account">
             <summary
               className="nav-account__trigger"
               aria-label={accessibilityCopy.account}
@@ -225,6 +233,7 @@ return (
               </button>
             </div>
           </details>
+          </>
         ) : (
           <>
             <ButtonLink to="/login" variant="secondary" onClick={() => setIsOpen(false)}>

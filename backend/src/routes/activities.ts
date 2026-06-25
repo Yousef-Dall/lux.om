@@ -346,6 +346,141 @@ const activityCreateSchema = z
     }
   });
 
+
+const activityUpdateSchema = z
+  .object({
+    titleEn: z.string().trim().min(3).max(140).optional(),
+    titleAr: optionalTrimmedString(140),
+    descriptionEn: z.string().trim().min(20).max(4000).optional(),
+    descriptionAr: optionalTrimmedString(4000),
+    locationEn: z.string().trim().min(2).max(160).optional(),
+    locationAr: optionalTrimmedString(160),
+    categoryEn: z.string().trim().min(2).max(80).optional(),
+    categoryAr: optionalTrimmedString(80),
+
+    travelAgencyId: optionalTrimmedString(120),
+    providerEn: optionalTrimmedString(120),
+    providerAr: optionalTrimmedString(120),
+
+    price: optionalTrimmedString(80),
+    priceAmount: optionalPriceAmountSchema,
+    priceCurrency: optionalCurrencySchema,
+    priceQualifier: z.enum(priceQualifierValues).optional(),
+    priceUnit: z.enum(priceUnitValues).optional(),
+
+    durationMinutes: z.coerce.number().int().positive().max(10080).optional(),
+    durationLabelEn: optionalTrimmedString(80),
+    durationLabelAr: optionalTrimmedString(80),
+    durationType: z.enum(['Short', 'Half day', 'Full day', 'Overnight']).optional(),
+    groupSize: optionalTrimmedString(80),
+    capacity: optionalPositiveIntSchema(10000),
+    language: optionalTrimmedString(80),
+    difficulty: optionalTrimmedString(80),
+    activityType: optionalTrimmedString(80),
+    travelRegion: z.enum(activityTravelRegionValues).optional(),
+
+    destinationCountry: optionalTrimmedString(120),
+    destinationCity: optionalTrimmedString(120),
+    departureCity: optionalTrimmedString(120),
+    tripDurationDays: optionalPositiveIntSchema(365),
+    tripDurationNights: optionalPositiveIntSchema(365),
+
+    flightIncluded: z.coerce.boolean().optional(),
+    airline: optionalTrimmedString(120),
+    flightNotes: optionalTrimmedString(1000),
+
+    hotelIncluded: z.coerce.boolean().optional(),
+    hotelName: optionalTrimmedString(160),
+    hotelRating: optionalPositiveIntSchema(7),
+    roomType: optionalTrimmedString(120),
+    mealPlan: optionalTrimmedString(80),
+
+    visaSupportIncluded: z.coerce.boolean().optional(),
+    travelInsuranceIncluded: z.coerce.boolean().optional(),
+    airportTransferIncluded: z.coerce.boolean().optional(),
+
+    packageItinerary: optionalTrimmedString(4000),
+    requiredDocuments: optionalTrimmedString(2000),
+    cancellationPolicy: optionalTrimmedString(2000),
+    availableTravelDates: optionalTrimmedString(1000),
+    minimumGroupSize: optionalPositiveIntSchema(10000),
+    packageInclusions: optionalTrimmedString(2000),
+    packageExclusions: optionalTrimmedString(2000),
+
+    availabilityDays: z.array(dayNameSchema).max(7).optional(),
+    availabilityStartTime: timeSchema.optional(),
+    availabilityEndTime: timeSchema.optional(),
+
+    familyFriendly: z.coerce.boolean().optional(),
+    includesTransfer: z.coerce.boolean().optional(),
+    mealIncluded: z.coerce.boolean().optional(),
+    outdoor: z.coerce.boolean().optional(),
+
+    videoWalkthroughUrl: optionalSafeMediaUrlSchema,
+    tour360Url: optionalSafeMediaUrlSchema,
+    virtualTourUrl: optionalSafeMediaUrlSchema,
+    premiumMedia: z.array(premiumMediaInputSchema).max(20).optional(),
+
+    nearestLandmarkId: optionalTrimmedString(120),
+    distanceFromLandmarkEn: optionalTrimmedString(120),
+    distanceFromLandmarkAr: optionalTrimmedString(120),
+
+    images: z
+      .array(
+        z.object({
+          url: imageUrlSchema,
+          altEn: optionalTrimmedString(160),
+          altAr: optionalTrimmedString(160),
+          sortOrder: z.coerce.number().int().min(0).default(0)
+        })
+      )
+      .max(20)
+      .optional(),
+
+    highlights: z
+      .array(
+        z.object({
+          textEn: z.string().trim().min(1).max(160),
+          textAr: optionalTrimmedString(160)
+        })
+      )
+      .max(20)
+      .optional()
+  })
+  .strict();
+
+type ActivityUpdateData = z.infer<typeof activityUpdateSchema>;
+
+const sensitiveActivityUpdateKeys = [
+  'titleEn',
+  'titleAr',
+  'descriptionEn',
+  'descriptionAr',
+  'locationEn',
+  'locationAr',
+  'categoryEn',
+  'categoryAr',
+  'travelAgencyId',
+  'providerEn',
+  'providerAr',
+  'travelRegion',
+  'destinationCountry',
+  'destinationCity',
+  'departureCity',
+  'packageItinerary',
+  'requiredDocuments',
+  'cancellationPolicy',
+  'packageInclusions',
+  'packageExclusions',
+  'nearestLandmarkId',
+  'distanceFromLandmarkEn',
+  'distanceFromLandmarkAr'
+] as const;
+
+function hasSensitiveActivityUpdate(data: ActivityUpdateData) {
+  return sensitiveActivityUpdateKeys.some((key) => hasOwnProperty(data, key));
+}
+
 const optionalBooleanQuerySchema = z
   .union([z.boolean(), z.enum(['true', 'false'])])
   .optional()
@@ -464,6 +599,13 @@ const activityInclude = {
   },
   highlights: true
 };
+
+function hasOwnProperty<T extends object, K extends PropertyKey>(
+  object: T,
+  key: K
+): object is T & Record<K, unknown> {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
 
 function createPremiumMediaData(
   premiumMedia: z.infer<typeof premiumMediaInputSchema>[]
@@ -1586,6 +1728,274 @@ activitiesRouter.patch(
     }
   }
 );
+
+
+activitiesRouter.patch('/:id', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParamsSchema.parse(req.params);
+    const data = activityUpdateSchema.parse(req.body);
+
+    if (Object.keys(data).length === 0) {
+      throw new AppError(400, 'At least one activity field is required');
+    }
+
+    const existingActivity = await prisma.activity.findUnique({
+      where: {
+        id
+      },
+      include: {
+        images: true
+      }
+    });
+
+    if (!existingActivity) {
+      throw new AppError(404, 'Activity not found');
+    }
+
+    if (req.user!.role !== 'ADMIN' && existingActivity.ownerId !== req.user!.id) {
+      throw new AppError(403, 'You can only update your own activities');
+    }
+
+    const nextTravelRegion = data.travelRegion ?? existingActivity.travelRegion;
+
+    if (nextTravelRegion === 'OUTSIDE_OMAN') {
+      const destinationCountry =
+        data.destinationCountry ?? existingActivity.destinationCountry;
+      const destinationCity = data.destinationCity ?? existingActivity.destinationCity;
+      const tripDurationDays =
+        data.tripDurationDays ?? existingActivity.tripDurationDays;
+
+      if (!destinationCountry || !destinationCity || !tripDurationDays) {
+        throw new AppError(
+          400,
+          'Destination country, destination city, and trip duration are required for outside-Oman packages'
+        );
+      }
+    }
+
+    const travelAgency = data.travelAgencyId
+      ? await prisma.travelAgency.findUnique({
+          where: {
+            id: data.travelAgencyId
+          }
+        })
+      : null;
+
+    if (data.travelAgencyId && !travelAgency) {
+      throw new AppError(400, 'Selected travel agency was not found');
+    }
+
+    if (data.travelAgencyId && (data.providerEn || data.providerAr)) {
+      throw new AppError(
+        400,
+        'Choose either a listed travel agency or manual provider details'
+      );
+    }
+
+    const nearestLandmark = data.nearestLandmarkId
+      ? await prisma.landmark.findUnique({
+          where: {
+            id: data.nearestLandmarkId
+          }
+        })
+      : null;
+
+    if (data.nearestLandmarkId && !nearestLandmark) {
+      throw new AppError(400, 'Selected landmark was not found');
+    }
+
+    const updateData: Prisma.ActivityUpdateInput = {};
+
+    const hasPriceUpdate =
+      hasOwnProperty(data, 'price') ||
+      hasOwnProperty(data, 'priceAmount') ||
+      hasOwnProperty(data, 'priceCurrency') ||
+      hasOwnProperty(data, 'priceQualifier') ||
+      hasOwnProperty(data, 'priceUnit');
+
+    if (hasPriceUpdate) {
+      const resolvedPrice = resolvePriceInput({
+        displayPrice: data.price ?? existingActivity.price,
+        priceAmount:
+          data.priceAmount ?? existingActivity.priceAmount?.toString() ?? undefined,
+        priceCurrency:
+          data.priceCurrency ?? existingActivity.priceCurrency ?? undefined,
+        priceQualifier:
+          data.priceQualifier ?? existingActivity.priceQualifier ?? undefined,
+        priceUnit: data.priceUnit ?? existingActivity.priceUnit ?? undefined
+      });
+
+      updateData.price = resolvedPrice.price;
+      updateData.priceAmount = resolvedPrice.priceAmount;
+      updateData.priceCurrency = resolvedPrice.priceCurrency;
+      updateData.priceQualifier = resolvedPrice.priceQualifier;
+      updateData.priceUnit = resolvedPrice.priceUnit;
+    }
+
+    const scalarFields = [
+      'titleEn',
+      'titleAr',
+      'descriptionEn',
+      'descriptionAr',
+      'locationEn',
+      'locationAr',
+      'categoryEn',
+      'categoryAr',
+      'providerEn',
+      'providerAr',
+      'durationMinutes',
+      'durationLabelEn',
+      'durationLabelAr',
+      'durationType',
+      'groupSize',
+      'capacity',
+      'language',
+      'difficulty',
+      'activityType',
+      'travelRegion',
+      'destinationCountry',
+      'destinationCity',
+      'departureCity',
+      'tripDurationDays',
+      'tripDurationNights',
+      'flightIncluded',
+      'airline',
+      'flightNotes',
+      'hotelIncluded',
+      'hotelName',
+      'hotelRating',
+      'roomType',
+      'mealPlan',
+      'visaSupportIncluded',
+      'travelInsuranceIncluded',
+      'airportTransferIncluded',
+      'packageItinerary',
+      'requiredDocuments',
+      'cancellationPolicy',
+      'availableTravelDates',
+      'minimumGroupSize',
+      'packageInclusions',
+      'packageExclusions',
+      'availabilityStartTime',
+      'availabilityEndTime',
+      'familyFriendly',
+      'includesTransfer',
+      'mealIncluded',
+      'outdoor',
+      'videoWalkthroughUrl',
+      'tour360Url',
+      'virtualTourUrl',
+      'distanceFromLandmarkEn',
+      'distanceFromLandmarkAr'
+    ] as const;
+
+    const scalarUpdateData = updateData as Record<string, unknown>;
+
+    scalarFields.forEach((field) => {
+      if (hasOwnProperty(data, field)) {
+        scalarUpdateData[field] = data[field] ?? null;
+      }
+    });
+
+    if (hasOwnProperty(data, 'availabilityDays')) {
+      updateData.availabilityDays = {
+        set: data.availabilityDays ?? []
+      };
+    }
+
+    if (hasOwnProperty(data, 'travelAgencyId')) {
+      updateData.travelAgency = travelAgency
+        ? {
+            connect: {
+              id: travelAgency.id
+            }
+          }
+        : {
+            disconnect: true
+          };
+      updateData.providerEn = travelAgency ? travelAgency.nameEn : updateData.providerEn;
+      updateData.providerAr = travelAgency ? travelAgency.nameAr : updateData.providerAr;
+    }
+
+    if (hasOwnProperty(data, 'nearestLandmarkId')) {
+      updateData.nearestLandmark = nearestLandmark
+        ? {
+            connect: {
+              id: nearestLandmark.id
+            }
+          }
+        : {
+            disconnect: true
+          };
+    }
+
+    if (hasOwnProperty(data, 'images')) {
+      updateData.images = {
+        deleteMany: {},
+        create: data.images ?? []
+      };
+    }
+
+    if (hasOwnProperty(data, 'premiumMedia')) {
+      updateData.premiumMedia = {
+        deleteMany: {},
+        create: createPremiumMediaData(data.premiumMedia ?? [])
+      };
+    }
+
+    if (hasOwnProperty(data, 'highlights')) {
+      updateData.highlights = {
+        deleteMany: {},
+        create: data.highlights ?? []
+      };
+    }
+
+    const hasMediaQualityUpdate =
+      hasOwnProperty(data, 'images') ||
+      hasOwnProperty(data, 'videoWalkthroughUrl') ||
+      hasOwnProperty(data, 'tour360Url') ||
+      hasOwnProperty(data, 'virtualTourUrl') ||
+      hasOwnProperty(data, 'categoryEn');
+
+    if (hasMediaQualityUpdate) {
+      const nextImages =
+        data.images ?? existingActivity.images.map((image) => ({ url: image.url }));
+      const qualityUpdate = createMediaQualityUpdate(
+        createActivityMediaQualityInput({
+          images: nextImages,
+          videoWalkthroughUrl:
+            data.videoWalkthroughUrl ?? existingActivity.videoWalkthroughUrl,
+          tour360Url: data.tour360Url ?? existingActivity.tour360Url,
+          virtualTourUrl: data.virtualTourUrl ?? existingActivity.virtualTourUrl,
+          category: data.categoryEn ?? existingActivity.categoryEn
+        })
+      );
+
+      updateData.mediaQualityStatus = qualityUpdate.mediaQualityStatus;
+      updateData.mediaQualityNotes = qualityUpdate.mediaQualityNotes;
+      updateData.enhancementStatus = qualityUpdate.enhancementStatus;
+    }
+
+    if (req.user!.role !== 'ADMIN' && hasSensitiveActivityUpdate(data)) {
+      updateData.status = 'PENDING';
+      updateData.rejectedReason = null;
+    }
+
+    const activity = await prisma.activity.update({
+      where: {
+        id
+      },
+      data: updateData,
+      include: activityInclude
+    });
+
+    res.json({
+      activity
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 activitiesRouter.get('/:slug', async (req, res, next) => {
   try {

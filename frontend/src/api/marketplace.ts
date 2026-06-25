@@ -293,3 +293,73 @@ export async function getLandmarkBySlug(
 
   return mapLandmark(response.landmark, language);
 }
+export type UpdateListingPayload = {
+  title?: string;
+  description?: string;
+  type?: string;
+  transaction?: string;
+  location?: string;
+  price?: string;
+  priceAmount?: string | number;
+  priceCurrency?: string;
+  priceQualifier?: string;
+  priceUnit?: string;
+  beds?: number;
+  baths?: number;
+  sqm?: number;
+  image?: string;
+  videoWalkthroughUrl?: string | null;
+  tour360Url?: string | null;
+  virtualTourUrl?: string | null;
+  floorPlanUrl?: string | null;
+};
+
+export type UpdateActivityPayload = {
+  titleEn?: string;
+  descriptionEn?: string;
+  locationEn?: string;
+  categoryEn?: string;
+  price?: string;
+  priceAmount?: string | number;
+  priceCurrency?: string;
+  priceQualifier?: string;
+  priceUnit?: string;
+  capacity?: number;
+  travelRegion?: ActivityTravelRegion;
+  availabilityDays?: string[];
+  availabilityStartTime?: string;
+  availabilityEndTime?: string;
+  videoWalkthroughUrl?: string | null;
+  tour360Url?: string | null;
+  virtualTourUrl?: string | null;
+};
+
+export async function updateListing(
+  listingId: string,
+  payload: UpdateListingPayload,
+  token: string,
+  language: Language
+): Promise<Listing> {
+  const response = await apiClient.patch<{ listing: ApiListing }>(
+    `/api/listings/${listingId}`,
+    payload,
+    { token }
+  );
+
+  return mapListing(response.listing, language);
+}
+
+export async function updateActivity(
+  activityId: string,
+  payload: UpdateActivityPayload,
+  token: string,
+  language: Language
+): Promise<Activity> {
+  const response = await apiClient.patch<{ activity: ApiActivity }>(
+    `/api/activities/${activityId}`,
+    payload,
+    { token }
+  );
+
+  return mapActivity(response.activity, language);
+}

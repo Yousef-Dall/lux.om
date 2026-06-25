@@ -409,6 +409,12 @@ const adminStage8ListingSchema = z
       .max(12)
       .optional(),
 
+    price: z.string().trim().min(1).max(80).optional(),
+    priceAmount: optionalPriceAmountSchema,
+    priceCurrency: optionalCurrencySchema,
+    priceQualifier: z.enum(priceQualifierValues).optional(),
+    priceUnit: z.enum(priceUnitValues).optional(),
+
     videoWalkthroughUrl: optionalSafeMediaUrlSchema.nullable(),
     tour360Url: optionalSafeMediaUrlSchema.nullable(),
     virtualTourUrl: optionalSafeMediaUrlSchema.nullable(),
@@ -429,6 +435,76 @@ const adminStage8ListingSchema = z
     verificationExpiryDate: z.coerce.date().nullable().optional()
   })
   .strict();
+
+
+const listingUpdateSchema = z
+  .object({
+    title: z.string().trim().min(3).max(120).optional(),
+    description: z.string().trim().min(20).max(3000).optional(),
+    type: z.string().trim().min(2).max(40).optional(),
+    transaction: z.enum(['Sale', 'Rent', 'Short stay']).optional(),
+    buyerEligibility: z
+      .array(z.enum(listingBuyerEligibilityValues))
+      .max(listingBuyerEligibilityValues.length)
+      .optional(),
+    eligibilityNotes: z.string().trim().max(3000).nullable().optional(),
+    eligibilityDisclaimer: z.string().trim().max(3000).nullable().optional(),
+    investorHighlights: z
+      .array(z.string().trim().min(1).max(120))
+      .max(12)
+      .optional(),
+    location: z.string().trim().min(2).max(120).optional(),
+
+    price: z.string().trim().min(1).max(80).optional(),
+    priceAmount: optionalPriceAmountSchema,
+    priceCurrency: optionalCurrencySchema,
+    priceQualifier: z.enum(priceQualifierValues).optional(),
+    priceUnit: z.enum(priceUnitValues).optional(),
+
+    beds: z.coerce.number().int().min(0).max(50).optional(),
+    baths: z.coerce.number().int().min(0).max(50).optional(),
+    sqm: z.coerce.number().int().min(1).max(100000).optional(),
+    image: imageUrlSchema.optional(),
+    images: z
+      .array(
+        z.object({
+          url: imageUrlSchema,
+          altEn: z.string().trim().max(160).optional(),
+          altAr: z.string().trim().max(160).optional(),
+          sortOrder: z.coerce.number().int().min(0).default(0)
+        })
+      )
+      .max(20)
+      .optional(),
+
+    videoWalkthroughUrl: optionalSafeMediaUrlSchema.nullable(),
+    tour360Url: optionalSafeMediaUrlSchema.nullable(),
+    virtualTourUrl: optionalSafeMediaUrlSchema.nullable(),
+    floorPlanUrl: optionalSafeMediaUrlSchema.nullable(),
+    premiumMedia: z.array(premiumMediaInputSchema).max(20).optional(),
+
+    amenities: z.array(z.string().trim().min(1).max(50)).max(30).optional(),
+
+    developerId: optionalIdSchema,
+    developerNameEn: optionalTextSchema,
+    developerNameAr: optionalTextSchema,
+    nearestLandmarkId: optionalIdSchema,
+    distanceFromLandmark: optionalTextSchema,
+    distanceFromLandmarkEn: optionalTextSchema,
+    distanceFromLandmarkAr: optionalTextSchema,
+
+    minStayNights: optionalNumberSchema,
+    maxGuests: optionalNumberSchema,
+    parkingSpaces: optionalNumberSchema,
+    floorNumber: optionalNumberSchema,
+
+    furnishing: optionalTextSchema,
+    view: optionalTextSchema,
+    paymentFrequency: optionalTextSchema
+  })
+  .strict();
+
+type ListingUpdateData = z.infer<typeof listingUpdateSchema>;
 
 const idParamsSchema = z.object({
   id: z.string().min(1)
@@ -539,6 +615,112 @@ function createMediaQualityInput(data: {
     listingType: data.type,
     transaction: data.transaction
   };
+}
+
+const sensitiveListingUpdateKeys = [
+  'title',
+  'description',
+  'type',
+  'transaction',
+  'buyerEligibility',
+  'eligibilityNotes',
+  'eligibilityDisclaimer',
+  'investorHighlights',
+  'location',
+  'developerId',
+  'developerNameEn',
+  'developerNameAr',
+  'nearestLandmarkId',
+  'distanceFromLandmark',
+  'distanceFromLandmarkEn',
+  'distanceFromLandmarkAr'
+] as const;
+
+function hasSensitiveListingUpdate(data: ListingUpdateData) {
+  return sensitiveListingUpdateKeys.some((key) => hasOwnProperty(data, key));
+}
+
+function decimalLikeToNumber(
+  value: Prisma.Decimal | string | number | null | undefined
+) {
+  if (value === null || value === undefined) return null;
+
+  const numberValue =
+    typeof value === 'number' ? value : Number(value.toString());
+
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function formatPriceForNotification(amount: number, currency: string | null | undefined) {
+  return `${currency ?? 'OMR'} ${amount.toLocaleString(undefined, {
+    maximumFractionDigits: 3,
+    minimumFractionDigits: 0
+  })}`;
+}
+
+async function notifyInvestorPriceTargetHits({
+  listingId,
+  listingTitle,
+  previousPrice,
+  nextPrice,
+  currency,
+  status
+}: {
+  listingId: string;
+  listingTitle: string;
+  previousPrice: Prisma.Decimal | string | number | null | undefined;
+  nextPrice: Prisma.Decimal | string | number | null | undefined;
+  currency: string | null | undefined;
+  status: string;
+}) {
+  if (status !== 'APPROVED') return;
+
+  const previous = decimalLikeToNumber(previousPrice);
+  const next = decimalLikeToNumber(nextPrice);
+
+  if (previous === null || next === null || next >= previous) return;
+
+  const watchlistItems = await prisma.investorWatchlistItem.findMany({
+    where: {
+      listingId,
+      alertOnPriceChange: true,
+      targetPrice: {
+        not: null
+      }
+    },
+    select: {
+      id: true,
+      userId: true,
+      targetPrice: true
+    }
+  });
+
+  const crossedTargets = watchlistItems.filter((item) => {
+    const target = decimalLikeToNumber(item.targetPrice);
+
+    return target !== null && previous > target && next <= target;
+  });
+
+  if (crossedTargets.length === 0) return;
+
+  await prisma.notification.createMany({
+    data: crossedTargets.map((item) => {
+      const target = decimalLikeToNumber(item.targetPrice);
+
+      return {
+        userId: item.userId,
+        type: 'SAVED_SEARCH_MATCH',
+        title: 'Investor price target reached',
+        message: `${listingTitle} dropped to ${formatPriceForNotification(
+          next,
+          currency
+        )}. Your target was ${formatPriceForNotification(
+          target ?? next,
+          currency
+        )}.`
+      };
+    })
+  });
 }
 
 listingsRouter.get('/', async (req, res, next) => {
@@ -1369,6 +1551,35 @@ listingsRouter.patch(
 
       const updateData: Prisma.ListingUpdateInput = {};
 
+      const hasPriceUpdate =
+        hasOwnProperty(data, 'price') ||
+        hasOwnProperty(data, 'priceAmount') ||
+        hasOwnProperty(data, 'priceCurrency') ||
+        hasOwnProperty(data, 'priceQualifier') ||
+        hasOwnProperty(data, 'priceUnit');
+
+      if (hasPriceUpdate) {
+        const resolvedPrice = resolvePriceInput({
+          displayPrice: data.price ?? existingListing.price,
+          priceAmount:
+            data.priceAmount ??
+            existingListing.priceAmount?.toString() ??
+            undefined,
+          priceCurrency:
+            data.priceCurrency ?? existingListing.priceCurrency ?? undefined,
+          priceQualifier:
+            data.priceQualifier ?? existingListing.priceQualifier ?? undefined,
+          priceUnit: data.priceUnit ?? existingListing.priceUnit ?? undefined,
+          paymentFrequency: existingListing.paymentFrequency ?? undefined
+        });
+
+        updateData.price = resolvedPrice.price;
+        updateData.priceAmount = resolvedPrice.priceAmount;
+        updateData.priceCurrency = resolvedPrice.priceCurrency;
+        updateData.priceQualifier = resolvedPrice.priceQualifier;
+        updateData.priceUnit = resolvedPrice.priceUnit;
+      }
+
       if (hasOwnProperty(data, 'buyerEligibility')) {
         updateData.buyerEligibility =
           existingListing.transaction === 'Sale'
@@ -1536,6 +1747,329 @@ listingsRouter.patch(
     }
   }
 );
+
+
+listingsRouter.patch('/:id', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParamsSchema.parse(req.params);
+    const data = listingUpdateSchema.parse(req.body);
+
+    if (Object.keys(data).length === 0) {
+      throw new AppError(400, 'At least one listing field is required');
+    }
+
+    const existingListing = await prisma.listing.findUnique({
+      where: {
+        id
+      },
+      include: {
+        images: true
+      }
+    });
+
+    if (!existingListing) {
+      throw new AppError(404, 'Listing not found');
+    }
+
+    if (req.user!.role !== 'ADMIN' && existingListing.ownerId !== req.user!.id) {
+      throw new AppError(403, 'You can only update your own listings');
+    }
+
+    const mergedTransaction = data.transaction ?? existingListing.transaction;
+
+    if (
+      mergedTransaction !== 'Sale' &&
+      hasOwnProperty(data, 'buyerEligibility') &&
+      (data.buyerEligibility?.length ?? 0) > 0
+    ) {
+      throw new AppError(400, 'Buyer eligibility is only available for sale listings');
+    }
+
+    if (data.developerId && (data.developerNameEn || data.developerNameAr)) {
+      throw new AppError(
+        400,
+        'Choose either a listed development company or enter a manual developer name'
+      );
+    }
+
+    const developer = data.developerId
+      ? await prisma.developerCompany.findUnique({
+          where: {
+            id: data.developerId
+          }
+        })
+      : null;
+
+    if (data.developerId && !developer) {
+      throw new AppError(400, 'Selected development company was not found');
+    }
+
+    const nearestLandmark = data.nearestLandmarkId
+      ? await prisma.landmark.findUnique({
+          where: {
+            id: data.nearestLandmarkId
+          }
+        })
+      : null;
+
+    if (data.nearestLandmarkId && !nearestLandmark) {
+      throw new AppError(400, 'Selected landmark was not found');
+    }
+
+    const updateData: Prisma.ListingUpdateInput = {};
+
+    const hasPriceUpdate =
+      hasOwnProperty(data, 'price') ||
+      hasOwnProperty(data, 'priceAmount') ||
+      hasOwnProperty(data, 'priceCurrency') ||
+      hasOwnProperty(data, 'priceQualifier') ||
+      hasOwnProperty(data, 'priceUnit') ||
+      hasOwnProperty(data, 'paymentFrequency');
+
+    if (hasPriceUpdate) {
+      const resolvedPrice = resolvePriceInput({
+        displayPrice: data.price ?? existingListing.price,
+        priceAmount:
+          data.priceAmount ?? existingListing.priceAmount?.toString() ?? undefined,
+        priceCurrency:
+          data.priceCurrency ?? existingListing.priceCurrency ?? undefined,
+        priceQualifier:
+          data.priceQualifier ?? existingListing.priceQualifier ?? undefined,
+        priceUnit: data.priceUnit ?? existingListing.priceUnit ?? undefined,
+        paymentFrequency:
+          data.paymentFrequency ?? existingListing.paymentFrequency ?? undefined
+      });
+
+      updateData.price = resolvedPrice.price;
+      updateData.priceAmount = resolvedPrice.priceAmount;
+      updateData.priceCurrency = resolvedPrice.priceCurrency;
+      updateData.priceQualifier = resolvedPrice.priceQualifier;
+      updateData.priceUnit = resolvedPrice.priceUnit;
+    }
+
+    if (hasOwnProperty(data, 'title')) {
+      updateData.title = data.title;
+      updateData.titleEn = data.title;
+    }
+
+    if (hasOwnProperty(data, 'description')) {
+      updateData.description = data.description;
+      updateData.descriptionEn = data.description;
+    }
+
+    if (hasOwnProperty(data, 'type')) {
+      updateData.type = data.type;
+      updateData.typeEn = data.type;
+    }
+
+    if (hasOwnProperty(data, 'transaction')) {
+      updateData.transaction = data.transaction;
+    }
+
+    if (hasOwnProperty(data, 'location')) {
+      updateData.location = data.location;
+      updateData.locationEn = data.location;
+    }
+
+    if (hasOwnProperty(data, 'buyerEligibility') || data.transaction !== undefined) {
+      updateData.buyerEligibility =
+        mergedTransaction === 'Sale'
+          ? {
+              set: data.buyerEligibility ?? existingListing.buyerEligibility
+            }
+          : {
+              set: []
+            };
+
+      if (mergedTransaction === 'Sale') {
+        updateData.eligibilityMarkedBy = {
+          connect: {
+            id: req.user!.id
+          }
+        };
+      }
+    }
+
+    if (hasOwnProperty(data, 'eligibilityNotes')) {
+      updateData.eligibilityNotes = data.eligibilityNotes ?? null;
+      updateData.eligibilityMarkedBy = {
+        connect: {
+          id: req.user!.id
+        }
+      };
+    }
+
+    if (hasOwnProperty(data, 'eligibilityDisclaimer')) {
+      updateData.eligibilityDisclaimer = data.eligibilityDisclaimer ?? null;
+    }
+
+    if (hasOwnProperty(data, 'investorHighlights')) {
+      updateData.investorHighlights = {
+        set: data.investorHighlights ?? []
+      };
+    }
+
+    if (hasOwnProperty(data, 'beds')) updateData.beds = data.beds;
+    if (hasOwnProperty(data, 'baths')) updateData.baths = data.baths;
+    if (hasOwnProperty(data, 'sqm')) updateData.sqm = data.sqm;
+    if (hasOwnProperty(data, 'image')) updateData.image = data.image;
+
+    if (hasOwnProperty(data, 'videoWalkthroughUrl')) {
+      updateData.videoWalkthroughUrl = data.videoWalkthroughUrl ?? null;
+    }
+
+    if (hasOwnProperty(data, 'tour360Url')) {
+      updateData.tour360Url = data.tour360Url ?? null;
+    }
+
+    if (hasOwnProperty(data, 'virtualTourUrl')) {
+      updateData.virtualTourUrl = data.virtualTourUrl ?? null;
+    }
+
+    if (hasOwnProperty(data, 'floorPlanUrl')) {
+      updateData.floorPlanUrl = data.floorPlanUrl ?? null;
+    }
+
+    if (hasOwnProperty(data, 'developerId')) {
+      updateData.developer = developer
+        ? {
+            connect: {
+              id: developer.id
+            }
+          }
+        : {
+            disconnect: true
+          };
+      updateData.developerNameEn = developer ? null : existingListing.developerNameEn;
+      updateData.developerNameAr = developer ? null : existingListing.developerNameAr;
+    }
+
+    if (hasOwnProperty(data, 'developerNameEn') || hasOwnProperty(data, 'developerNameAr')) {
+      updateData.developer = {
+        disconnect: true
+      };
+      updateData.developerNameEn = data.developerNameEn ?? existingListing.developerNameEn;
+      updateData.developerNameAr = data.developerNameAr ?? existingListing.developerNameAr;
+    }
+
+    if (hasOwnProperty(data, 'nearestLandmarkId')) {
+      updateData.nearestLandmark = nearestLandmark
+        ? {
+            connect: {
+              id: nearestLandmark.id
+            }
+          }
+        : {
+            disconnect: true
+          };
+    }
+
+    if (hasOwnProperty(data, 'distanceFromLandmark') || hasOwnProperty(data, 'distanceFromLandmarkEn')) {
+      updateData.distanceFromLandmarkEn =
+        data.distanceFromLandmarkEn ?? data.distanceFromLandmark ?? null;
+    }
+
+    if (hasOwnProperty(data, 'distanceFromLandmarkAr')) {
+      updateData.distanceFromLandmarkAr = data.distanceFromLandmarkAr ?? null;
+    }
+
+    if (hasOwnProperty(data, 'minStayNights')) updateData.minStayNights = data.minStayNights ?? null;
+    if (hasOwnProperty(data, 'maxGuests')) updateData.maxGuests = data.maxGuests ?? null;
+    if (hasOwnProperty(data, 'parkingSpaces')) {
+      updateData.parking = typeof data.parkingSpaces === 'number' ? data.parkingSpaces > 0 : null;
+    }
+    if (hasOwnProperty(data, 'floorNumber')) updateData.floor = data.floorNumber ?? null;
+    if (hasOwnProperty(data, 'furnishing')) updateData.furnishing = data.furnishing ?? null;
+    if (hasOwnProperty(data, 'view')) updateData.view = data.view ?? null;
+    if (hasOwnProperty(data, 'paymentFrequency')) updateData.paymentFrequency = data.paymentFrequency ?? null;
+
+    if (hasOwnProperty(data, 'amenities')) {
+      updateData.amenities = {
+        deleteMany: {},
+        create: (data.amenities ?? []).map((name) => ({
+          name,
+          nameEn: name
+        }))
+      };
+    }
+
+    if (hasOwnProperty(data, 'images')) {
+      updateData.images = {
+        deleteMany: {},
+        create: data.images ?? []
+      };
+    }
+
+    if (hasOwnProperty(data, 'premiumMedia')) {
+      updateData.premiumMedia = {
+        deleteMany: {},
+        create: createPremiumMediaData(data.premiumMedia ?? [])
+      };
+    }
+
+    const hasMediaQualityUpdate =
+      hasOwnProperty(data, 'image') ||
+      hasOwnProperty(data, 'images') ||
+      hasOwnProperty(data, 'videoWalkthroughUrl') ||
+      hasOwnProperty(data, 'tour360Url') ||
+      hasOwnProperty(data, 'virtualTourUrl') ||
+      hasOwnProperty(data, 'floorPlanUrl') ||
+      hasOwnProperty(data, 'type') ||
+      hasOwnProperty(data, 'transaction');
+
+    if (hasMediaQualityUpdate) {
+      const nextImages =
+        data.images ?? existingListing.images.map((image) => ({ url: image.url }));
+      const qualityUpdate = createMediaQualityUpdate(
+        createMediaQualityInput({
+          image: data.image ?? existingListing.image,
+          images: nextImages,
+          videoWalkthroughUrl:
+            data.videoWalkthroughUrl ?? existingListing.videoWalkthroughUrl,
+          tour360Url: data.tour360Url ?? existingListing.tour360Url,
+          virtualTourUrl: data.virtualTourUrl ?? existingListing.virtualTourUrl,
+          floorPlanUrl: data.floorPlanUrl ?? existingListing.floorPlanUrl,
+          type: data.type ?? existingListing.type,
+          transaction: data.transaction ?? existingListing.transaction
+        })
+      );
+
+      updateData.mediaQualityStatus = qualityUpdate.mediaQualityStatus;
+      updateData.mediaQualityNotes = qualityUpdate.mediaQualityNotes;
+      updateData.enhancementStatus = qualityUpdate.enhancementStatus;
+    }
+
+    if (req.user!.role !== 'ADMIN' && hasSensitiveListingUpdate(data)) {
+      updateData.status = 'PENDING';
+      updateData.rejectedReason = null;
+    }
+
+    const listing = await prisma.listing.update({
+      where: {
+        id
+      },
+      data: updateData,
+      include: listingInclude
+    });
+
+    if (hasPriceUpdate) {
+      await notifyInvestorPriceTargetHits({
+        listingId: listing.id,
+        listingTitle: listing.titleEn ?? listing.title ?? 'Listing',
+        previousPrice: existingListing.priceAmount,
+        nextPrice: listing.priceAmount,
+        currency: listing.priceCurrency ?? existingListing.priceCurrency,
+        status: listing.status
+      });
+    }
+
+    res.json({
+      listing
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 listingsRouter.get('/:slug', async (req, res, next) => {
   try {

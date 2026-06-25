@@ -37,9 +37,11 @@ import ButtonLink from '../components/ButtonLink';
 import SectionHeader from '../components/SectionHeader';
 import ReceiptView from '../components/ReceiptView';
 import Stage8DashboardPanel from '../components/Stage8DashboardPanel';
+import OwnerMarketplaceEditModal from '../components/OwnerMarketplaceEditModal';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import { formatMarketplacePrice } from '../utils/format';
+import type { Activity, Listing } from '../types';
 
 function getStatusClass(status?: string) {
   if (
@@ -225,6 +227,8 @@ export default function Dashboard() {
     useState<ReceivedBookingStatusFilter>('ALL');
   const [notificationUpdatingId, setNotificationUpdatingId] = useState('');
   const [notificationActionError, setNotificationActionError] = useState('');
+  const [editingListing, setEditingListing] = useState<Listing | null>(null);
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
 
   const copy =
     language === 'ar'
@@ -414,7 +418,9 @@ export default function Dashboard() {
           contact: 'Contact',
           preferredTime: 'Preferred time',
           emptyBookings: 'No bookings are connected to your account yet.',
-          emptyReceivedBookings: 'No received booking requests yet.'
+          emptyReceivedBookings: 'No received booking requests yet.',
+          actions: 'Actions',
+          editItem: 'Edit'
         };
 
   async function refreshDashboard() {
@@ -1309,6 +1315,7 @@ export default function Dashboard() {
                         <th>{t.addListing.type}</th>
                         <th>{t.addListing.price}</th>
                         <th>{copy.status}</th>
+                        <th>{copy.actions}</th>
                       </tr>
                     </thead>
 
@@ -1343,6 +1350,16 @@ export default function Dashboard() {
                                   : copy.pending}
                             </span>
                           </td>
+
+                          <td>
+                            <button
+                              className="button-link button-link--ghost"
+                              type="button"
+                              onClick={() => setEditingListing(listing)}
+                            >
+                              {copy.editItem}
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1368,10 +1385,20 @@ export default function Dashboard() {
               {activities.length > 0 ? (
                 <div className="action-checklist">
                   {activities.map((activity) => (
-                    <span key={activity.id}>
-                      <StatusIcon status={activity.status} />
-                      {activity.title}
-                    </span>
+                    <article className="dashboard-editable-item" key={activity.id}>
+                      <span>
+                        <StatusIcon status={activity.status} />
+                        {activity.title}
+                      </span>
+
+                      <button
+                        className="button-link button-link--ghost"
+                        type="button"
+                        onClick={() => setEditingActivity(activity)}
+                      >
+                        {copy.editItem}
+                      </button>
+                    </article>
                   ))}
                 </div>
               ) : (
@@ -1476,6 +1503,26 @@ export default function Dashboard() {
           </div>
 
           <Stage8DashboardPanel token={token} />
+
+          {editingListing ? (
+            <OwnerMarketplaceEditModal
+              listing={editingListing}
+              token={token}
+              language={language}
+              onClose={() => setEditingListing(null)}
+              onUpdated={() => refreshDashboard()}
+            />
+          ) : null}
+
+          {editingActivity ? (
+            <OwnerMarketplaceEditModal
+              activity={editingActivity}
+              token={token}
+              language={language}
+              onClose={() => setEditingActivity(null)}
+              onUpdated={() => refreshDashboard()}
+            />
+          ) : null}
 
       {activeReceipt ? (
         <div className="receipt-modal__backdrop" role="presentation">

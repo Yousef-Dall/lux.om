@@ -478,11 +478,11 @@ export default function Stage8DashboardPanel({
                   key={getText(item, 'id')}
                   eyebrow="Investor watchlist"
                   title={title}
-                  meta={`Target ${getMoney(item, 'targetPrice')} · ${getText(
-                    item,
-                    'notes',
-                    'No notes'
-                  )}`}
+                  meta={`Target ${getMoney(item, 'targetPrice')} · ${
+                    getText(item, 'alertOnPriceChange', 'Yes') === 'Yes'
+                      ? 'Price alert on'
+                      : 'Dashboard only'
+                  } · ${getText(item, 'notes', 'No notes')}`}
                   actionTo={listing ? getListingPath(listing) : undefined}
                   actionLabel={listing ? 'Open listing' : undefined}
                 />
