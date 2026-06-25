@@ -14,3 +14,16 @@ export async function createReview(payload: JsonRecord, token: string) {
 export async function getAdminReviews(token: string) {
   return apiClient.get<{ reviews: JsonRecord[] }>('/api/reviews/admin/all', { token });
 }
+
+
+export async function updateAdminReviewModeration(
+  reviewId: string,
+  payload: JsonRecord,
+  token: string
+) {
+  return apiClient.patch<{ review: JsonRecord }>(
+    `/api/reviews/admin/${reviewId}/moderate`,
+    payload,
+    { token }
+  );
+}

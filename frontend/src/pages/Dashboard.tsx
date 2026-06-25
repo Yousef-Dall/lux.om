@@ -35,6 +35,8 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
 import DashboardWhatsAppActions from '../components/DashboardWhatsAppActions';
+import MediaQualityGuidance from '../components/MediaQualityGuidance';
+import VerificationRequestWorkspace from '../components/VerificationRequestWorkspace';
 import SectionHeader from '../components/SectionHeader';
 import ReceiptView from '../components/ReceiptView';
 import Stage8DashboardPanel from '../components/Stage8DashboardPanel';
@@ -1373,6 +1375,12 @@ export default function Dashboard() {
                                 itemType="listing"
                                 language={language}
                               />
+
+                              <MediaQualityGuidance
+                                item={listing}
+                                itemType="listing"
+                                language={language}
+                              />
                             </div>
                           </td>
                         </tr>
@@ -1415,6 +1423,12 @@ export default function Dashboard() {
                       </button>
 
                       <DashboardWhatsAppActions
+                        item={activity}
+                        itemType="activity"
+                        language={language}
+                      />
+
+                      <MediaQualityGuidance
                         item={activity}
                         itemType="activity"
                         language={language}
@@ -1522,6 +1536,13 @@ export default function Dashboard() {
               </div>
             </aside>
           </div>
+
+          <VerificationRequestWorkspace
+            token={token}
+            listings={listings}
+            activities={activities}
+            language={language}
+          />
 
           <Stage8DashboardPanel token={token} />
 

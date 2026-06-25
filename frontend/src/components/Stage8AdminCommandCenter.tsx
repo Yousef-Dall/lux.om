@@ -13,6 +13,8 @@ import { getAdminValuations } from '../api/valuations';
 import { getAdminVerifications } from '../api/verification';
 import ContractRegistrationAdminPanel from './ContractRegistrationAdminPanel';
 import TransactionValuationAdminPanel from './TransactionValuationAdminPanel';
+import VerificationReviewAdminPanel from './VerificationReviewAdminPanel';
+import ReviewModerationAdminPanel from './ReviewModerationAdminPanel';
 
 function count(value?: JsonRecord[] | null) {
   return value?.length ?? 0;
@@ -216,6 +218,10 @@ export default function Stage8AdminCommandCenter({
       <ContractRegistrationAdminPanel token={token} />
 
       <TransactionValuationAdminPanel token={token} />
+
+      <VerificationReviewAdminPanel token={token} />
+
+      <ReviewModerationAdminPanel token={token} />
 
       <div className="stage8-operations-queue">
         <div className="details-section-heading">

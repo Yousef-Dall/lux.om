@@ -10003,3 +10003,66 @@ transition: none;
     grid-template-columns: 1fr;
   }
 }
+
+/* Stage 8 media quality, verification, and review closure */
+.media-quality-guidance {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.media-quality-guidance > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.media-quality-guidance strong {
+  color: var(--color-primary);
+}
+
+.media-quality-guidance span {
+  color: var(--color-muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.media-quality-guidance p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+
+.media-quality-guidance ul {
+  display: grid;
+  gap: 5px;
+  padding-left: 18px;
+  margin: 0;
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.verification-request-workspace {
+  grid-column: 1 / -1;
+}
+
+.verification-request-workspace .stage8-tool-card {
+  max-width: 980px;
+}
+
+.verification-admin-panel,
+.review-moderation-admin {
+  display: grid;
+  gap: 18px;
+}
+
+@media (max-width: 760px) {
+  .media-quality-guidance > div {
+    display: grid;
+  }
+}
