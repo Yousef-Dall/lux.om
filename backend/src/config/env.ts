@@ -3,6 +3,18 @@ import { z } from 'zod';
 
 const isProductionEnv = process.env.NODE_ENV === 'production';
 
+const optionalTrimmedString = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => value || undefined);
+
+const optionalBooleanString = z
+  .enum(['true', 'false'])
+  .optional()
+  .transform((value) => value === 'true');
+
+
 const corsOriginsSchema = z
   .string()
   .optional()
@@ -43,6 +55,13 @@ const envSchema = z
     }),
     JWT_SECRET: z.string().min(24, 'JWT_SECRET must be at least 24 characters long'),
     CORS_ORIGIN: corsOriginsSchema,
+    FRONTEND_URL: optionalTrimmedString,
+    SMTP_HOST: optionalTrimmedString,
+    SMTP_PORT: z.coerce.number().int().positive().optional(),
+    SMTP_SECURE: optionalBooleanString.default(false),
+    SMTP_USER: optionalTrimmedString,
+    SMTP_PASS: optionalTrimmedString,
+    MAIL_FROM: optionalTrimmedString,
     STORAGE_DRIVER: z.enum(['local', 'cloudinary']).default('local'),
     UPLOAD_DIR: z.string().default('uploads'),
     MAX_UPLOAD_MB: z.coerce.number().positive().default(5),
@@ -58,6 +77,26 @@ const envSchema = z
         path: ['JWT_SECRET'],
         message: 'JWT_SECRET must be changed before running in production'
       });
+    }
+
+    if (env.NODE_ENV === 'production') {
+      const requiredEmailFields = [
+        ['SMTP_HOST', env.SMTP_HOST],
+        ['SMTP_PORT', env.SMTP_PORT],
+        ['SMTP_USER', env.SMTP_USER],
+        ['SMTP_PASS', env.SMTP_PASS],
+        ['MAIL_FROM', env.MAIL_FROM]
+      ] as const;
+
+      for (const [field, value] of requiredEmailFields) {
+        if (!value) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: 'SMTP email configuration is required in production'
+          });
+        }
+      }
     }
 
     if (env.STORAGE_DRIVER === 'cloudinary') {

@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'crypto';
+import * as nodemailer from 'nodemailer';
 
 import { env, isProduction } from '../config/env';
 
@@ -35,13 +36,72 @@ export function hashEmailVerificationToken(token: string) {
 }
 
 function getFrontendBaseUrl() {
-  const configuredUrl = process.env.FRONTEND_URL || env.CORS_ORIGIN[0] || 'http://localhost:5173';
+  const configuredUrl = env.FRONTEND_URL || env.CORS_ORIGIN[0] || 'http://localhost:5173';
 
   return configuredUrl.replace(/\/$/, '');
 }
 
 export function getEmailVerificationUrl(token: string) {
   return `${getFrontendBaseUrl()}/verify-email?token=${encodeURIComponent(token)}`;
+}
+
+function getSmtpConfig() {
+  if (!env.SMTP_HOST || !env.SMTP_PORT || !env.SMTP_USER || !env.SMTP_PASS || !env.MAIL_FROM) {
+    throw new Error('SMTP email configuration is missing.');
+  }
+
+  return {
+    host: env.SMTP_HOST,
+    port: env.SMTP_PORT,
+    secure: env.SMTP_SECURE,
+    auth: {
+      user: env.SMTP_USER,
+      pass: env.SMTP_PASS
+    },
+    from: env.MAIL_FROM
+  };
+}
+
+function buildVerificationEmail(input: {
+  name: string;
+  verificationUrl: string;
+}) {
+  const safeName = input.name.trim() || 'there';
+
+  return {
+    subject: 'Verify your lux.om email',
+    text: [
+      `Hi ${safeName},`,
+      '',
+      'Please verify your lux.om email address by opening this link:',
+      input.verificationUrl,
+      '',
+      'This link expires in 24 hours.',
+      '',
+      'If you did not create a lux.om account, you can ignore this email.',
+      '',
+      'lux.om'
+    ].join('\n'),
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#07383e;max-width:620px">
+        <p>Hi ${safeName},</p>
+        <p>Please verify your lux.om email address by clicking the button below.</p>
+        <p>
+          <a
+            href="${input.verificationUrl}"
+            style="display:inline-block;background:#07383e;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:700"
+          >
+            Verify email
+          </a>
+        </p>
+        <p>If the button does not work, copy and paste this link into your browser:</p>
+        <p style="word-break:break-all;color:#38585d">${input.verificationUrl}</p>
+        <p>This link expires in 24 hours.</p>
+        <p>If you did not create a lux.om account, you can ignore this email.</p>
+        <p>lux.om</p>
+      </div>
+    `
+  };
 }
 
 export async function deliverEmailVerificationLink(input: {
@@ -51,11 +111,6 @@ export async function deliverEmailVerificationLink(input: {
 }): Promise<EmailVerificationDelivery> {
   const verificationUrl = getEmailVerificationUrl(input.token);
 
-  /*
-   * Email provider integration belongs in Stage 9/launch hardening.
-   * Until a provider is configured, in-app verification remains safely
-   * represented as "not sent externally".
-   */
   if (!isProduction) {
     console.info(
       `[lux.om] Development email verification link for ${input.email}: ${verificationUrl}`
@@ -67,7 +122,28 @@ export async function deliverEmailVerificationLink(input: {
     };
   }
 
+  const smtpConfig = getSmtpConfig();
+  const transporter = nodemailer.createTransport({
+    host: smtpConfig.host,
+    port: smtpConfig.port,
+    secure: smtpConfig.secure,
+    auth: smtpConfig.auth
+  });
+
+  const email = buildVerificationEmail({
+    name: input.name,
+    verificationUrl
+  });
+
+  await transporter.sendMail({
+    from: smtpConfig.from,
+    to: input.email,
+    subject: email.subject,
+    text: email.text,
+    html: email.html
+  });
+
   return {
-    emailSent: false
+    emailSent: true
   };
 }
