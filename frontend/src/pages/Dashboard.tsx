@@ -35,6 +35,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
 import DashboardWhatsAppActions from '../components/DashboardWhatsAppActions';
+import EmailVerificationBanner from '../components/EmailVerificationBanner';
 import MediaQualityGuidance from '../components/MediaQualityGuidance';
 import VerificationRequestWorkspace from '../components/VerificationRequestWorkspace';
 import SectionHeader from '../components/SectionHeader';
@@ -784,6 +785,8 @@ export default function Dashboard() {
           )
         }
       />
+
+      <EmailVerificationBanner />
 
       {loading ? (
         <div className="empty-state">

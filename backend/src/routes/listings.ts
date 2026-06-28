@@ -9,7 +9,7 @@ import {
   createPaginationMetadata,
   resolvePagination
 } from '../utils/pagination';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth, requireRole, requireVerifiedEmail } from '../middleware/auth';
 import { AppError } from '../utils/http';
 import { getLinkedPartnerTier, getManualPartnerTier } from '../utils/partnerTier';
 import {
@@ -2684,7 +2684,12 @@ listingsRouter.get('/:slug', async (req, res, next) => {
   }
 });
 
-listingsRouter.post('/', requireAuth(), requireRole('OWNER', 'ADMIN'), async (req, res, next) => {
+listingsRouter.post(
+  '/',
+  requireAuth(),
+  requireRole('OWNER', 'ADMIN'),
+  requireVerifiedEmail({ allowAdmin: true }),
+  async (req, res, next) => {
   try {
     const data = listingSchema.parse(req.body);
     const baseSlug = slugify(data.title);

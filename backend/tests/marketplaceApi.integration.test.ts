@@ -67,7 +67,8 @@ async function seedMarketplaceFixtures() {
       name: 'Integration Owner',
       email: 'integration-owner@lux.test',
       password: 'test-password',
-      role: 'OWNER'
+      role: 'OWNER',
+      emailVerified: true,
     }
   });
 
@@ -76,7 +77,8 @@ async function seedMarketplaceFixtures() {
       name: 'Integration Activity Provider',
       email: 'integration-activities@lux.test',
       password: 'test-password',
-      role: 'ACTIVITY_PROVIDER'
+      role: 'ACTIVITY_PROVIDER',
+      emailVerified: true,
     }
   });
 
@@ -95,7 +97,8 @@ async function seedMarketplaceFixtures() {
       name: 'Integration Admin',
       email: 'integration-admin@lux.test',
       password: 'test-password',
-      role: 'ADMIN'
+      role: 'ADMIN',
+      emailVerified: true,
     }
   });
 
@@ -589,7 +592,8 @@ describe('security hardening', () => {
   it('rejects stale JWTs when the stored user role changes', async () => {
     const ownerUser = await prisma.user.findFirstOrThrow({
       where: {
-        role: 'OWNER'
+        role: 'OWNER',
+        emailVerified: true,
       }
     });
 
@@ -629,7 +633,8 @@ describe('security hardening', () => {
           id: ownerUser.id
         },
         data: {
-          role: 'OWNER'
+          role: 'OWNER',
+          emailVerified: true,
         }
       });
     }

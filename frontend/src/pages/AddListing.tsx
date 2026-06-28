@@ -22,6 +22,7 @@ import {
 import { getDevelopers, getLandmarks } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
+import EmailVerificationBanner from '../components/EmailVerificationBanner';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
@@ -163,7 +164,7 @@ function optionalText(value: string) {
 
 export default function AddListing() {
   const { t, language } = useLanguage();
-  const { token } = useAuth();
+  const { token, user, isAdmin } = useAuth();
 
   useDocumentTitle('Add listing');
 
@@ -182,6 +183,7 @@ export default function AddListing() {
     string[]
   >([]);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
+  const emailVerificationRequired = Boolean(user && !user.emailVerified && !isAdmin);
 
   const copy =
     language === 'ar'
@@ -459,6 +461,11 @@ export default function AddListing() {
       return;
     }
 
+    if (emailVerificationRequired) {
+      setSubmitError('Please verify your email before submitting listings or activities for review.');
+      return;
+    }
+
     if (imageMode === 'upload' && imageFiles.length === 0) {
       alert(t.addListing.uploadRequired);
       return;
@@ -581,6 +588,20 @@ export default function AddListing() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (emailVerificationRequired) {
+    return (
+      <section className="page-section container add-listing-page">
+        <SectionHeader
+          eyebrow={t.addListing.eyebrow}
+          title={t.addListing.title}
+          description={t.addListing.description}
+        />
+
+        <EmailVerificationBanner mode="blocking" />
+      </section>
+    );
   }
 
   return (

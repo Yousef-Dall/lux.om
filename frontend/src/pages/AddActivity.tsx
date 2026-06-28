@@ -29,6 +29,7 @@ uploadImage
 import { getLandmarks, getTravelAgencies } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
+import EmailVerificationBanner from '../components/EmailVerificationBanner';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type {
@@ -202,7 +203,7 @@ return Number.isFinite(numberValue) ? numberValue : undefined;
 
 export default function AddActivity() {
 const { t, language } = useLanguage();
-const { token } = useAuth();
+const { token, user, isAdmin } = useAuth();
 
 useDocumentTitle('Add activity');
 
@@ -217,6 +218,7 @@ const [imageMode, setImageMode] = useState<ImageMode>('upload');
 const [imageFiles, setImageFiles] = useState<File[]>([]);
 const [uploadedImagePreviews, setUploadedImagePreviews] = useState<string[]>([]);
 const [submitted, setSubmitted] = useState(false);
+const emailVerificationRequired = Boolean(user && !user.emailVerified && !isAdmin);
 const [submitting, setSubmitting] = useState(false);
 const [submitError, setSubmitError] = useState('');
 const [loadingOptions, setLoadingOptions] = useState(true);
@@ -690,6 +692,11 @@ if (!token) {
   return;
 }
 
+if (emailVerificationRequired) {
+  setSubmitError('Please verify your email before submitting listings or activities for review.');
+  return;
+}
+
 if (selectedDays.length === 0) {
   alert(addActivityCopy.selectAtLeastOneDay);
   return;
@@ -881,6 +888,20 @@ try {
 }
 
 
+}
+
+if (emailVerificationRequired) {
+return (
+<section className="page-section container add-listing-page add-activity-page">
+<SectionHeader
+eyebrow={addActivityCopy.eyebrow}
+title={addActivityCopy.title ?? copy.addActivityTitle}
+description={addActivityCopy.description ?? copy.addActivityDescription}
+/>
+
+<EmailVerificationBanner mode="blocking" />
+</section>
+);
 }
 
 return ( <section className="page-section container add-listing-page add-activity-page">

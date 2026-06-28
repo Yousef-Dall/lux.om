@@ -91,6 +91,35 @@ export function requireAuth(required = true) {
   };
 }
 
+export function requireVerifiedEmail(options: { allowAdmin?: boolean } = {}) {
+  const allowAdmin = options.allowAdmin ?? true;
+
+  return (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.user) {
+      next(new AppError(401, 'Unauthorized'));
+      return;
+    }
+
+    if (allowAdmin && req.user.role === 'ADMIN') {
+      next();
+      return;
+    }
+
+    if (!req.user.emailVerified) {
+      next(
+        new AppError(
+          403,
+          'Please verify your email before submitting listings or activities for review.'
+        )
+      );
+      return;
+    }
+
+    next();
+  };
+}
+
+
 export function requireRole(...roles: Role[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user || !roles.includes(req.user.role)) {

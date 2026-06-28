@@ -9,7 +9,7 @@ import {
   createPaginationMetadata,
   resolvePagination
 } from '../utils/pagination';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth, requireRole, requireVerifiedEmail } from '../middleware/auth';
 import { AppError } from '../utils/http';
 import { getLinkedPartnerTier, getManualPartnerTier } from '../utils/partnerTier';
 import {
@@ -2517,6 +2517,7 @@ activitiesRouter.post(
   '/',
   requireAuth(),
   requireRole('ACTIVITY_PROVIDER', 'OWNER', 'ADMIN'),
+  requireVerifiedEmail({ allowAdmin: true }),
   async (req, res, next) => {
     try {
       const data = activityCreateSchema.parse(req.body);
