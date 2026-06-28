@@ -17,12 +17,18 @@ export function publicUser(user: {
   email: string;
   role: string;
   phone?: string | null;
+  companyName?: string | null;
+  emailVerified?: boolean;
+  emailVerifiedAt?: Date | string | null;
 }) {
   return {
     id: user.id,
     name: user.name,
     email: user.email,
     role: user.role,
-    phone: user.phone ?? null
+    phone: user.phone ?? null,
+    companyName: user.companyName ?? null,
+    emailVerified: Boolean(user.emailVerified),
+    emailVerifiedAt: user.emailVerifiedAt ?? null
   };
 }

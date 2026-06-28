@@ -338,9 +338,14 @@ model User {
   email     String   @unique
   password  String
   role      Role     @default(USER)
-  phone     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  phone                       String?
+  companyName                 String?
+  emailVerified               Boolean   @default(false)
+  emailVerifiedAt             DateTime?
+  emailVerificationTokenHash  String?   @unique
+  emailVerificationExpiresAt  DateTime?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
 
   listings      Listing[]
   activities    Activity[]
@@ -395,6 +400,8 @@ model User {
   investorWatchlistItems InvestorWatchlistItem[]
 
   @@index([role])
+  @@index([emailVerified])
+  @@index([emailVerificationExpiresAt])
   @@index([createdAt])
 }
 

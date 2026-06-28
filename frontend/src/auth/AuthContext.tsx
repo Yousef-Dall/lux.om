@@ -12,9 +12,11 @@ import {
   getCurrentUser,
   login as loginRequest,
   register as registerRequest,
+  updateCurrentUser,
   type AuthUser,
   type LoginPayload,
-  type RegisterPayload
+  type RegisterPayload,
+  type UpdateProfilePayload
 } from '../api/auth';
 
 const TOKEN_STORAGE_KEY = 'lux_om_auth_token';
@@ -29,6 +31,8 @@ type AuthContextValue = {
   loading: boolean;
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
+  updateProfile: (payload: UpdateProfilePayload) => Promise<AuthUser>;
+  refreshUser: () => Promise<AuthUser | null>;
   logout: () => void;
 };
 
@@ -56,6 +60,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setUser(null);
   }, []);
+
+  const refreshUser = useCallback(async () => {
+    if (!token) {
+      setUser(null);
+      return null;
+    }
+
+    const response = await getCurrentUser(token);
+    setUser(response.user);
+
+    return response.user;
+  }, [token]);
 
   useEffect(() => {
     let isMounted = true;
@@ -109,6 +125,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(response.user);
   }, []);
 
+  const updateProfile = useCallback(
+    async (payload: UpdateProfilePayload) => {
+      if (!token) {
+        throw new Error('You must be signed in to update your profile.');
+      }
+
+      const response = await updateCurrentUser(payload, token);
+      setUser(response.user);
+
+      return response.user;
+    },
+    [token]
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -121,9 +151,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       login,
       register,
+      updateProfile,
+      refreshUser,
       logout
     }),
-    [user, token, loading, login, register, logout]
+    [user, token, loading, login, register, updateProfile, refreshUser, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

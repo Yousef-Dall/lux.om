@@ -69,6 +69,7 @@ language: 'تغيير اللغة',
 login: 'تسجيل الدخول',
 register: 'إنشاء حساب',
 dashboard: 'لوحة التحكم',
+profile: 'الملف الشخصي',
 admin: 'الأدمن',
 logout: 'خروج',
 signedInAs: 'مسجل باسم',
@@ -83,6 +84,7 @@ language: 'Change language',
 login: 'Login',
 register: 'Register',
 dashboard: 'Dashboard',
+profile: 'Profile',
 admin: 'Admin',
 logout: 'Logout',
 signedInAs: 'Signed in as',
@@ -210,6 +212,15 @@ return (
               >
                 <LayoutDashboard size={17} aria-hidden="true" />
                 {accessibilityCopy.dashboard}
+              </NavLink>
+
+              <NavLink
+                to="/profile"
+                className="nav-account__item"
+                onClick={() => setIsOpen(false)}
+              >
+                <UserCircle size={17} aria-hidden="true" />
+                {accessibilityCopy.profile}
               </NavLink>
 
               {isAdmin ? (

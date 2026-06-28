@@ -344,6 +344,9 @@ name: string;
 email: string;
 role?: UserRole | string;
 phone?: string | null;
+companyName?: string | null;
+emailVerified?: boolean;
+emailVerifiedAt?: string | null;
 };
 
 export type ApiLandmark = {

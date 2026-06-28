@@ -17,6 +17,7 @@ export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'USER' | 'OWNER'>('USER');
   const [submitting, setSubmitting] = useState(false);
@@ -31,6 +32,7 @@ export default function Register() {
           name: 'الاسم الكامل',
           email: 'البريد الإلكتروني',
           phone: 'الهاتف',
+          companyName: 'اسم الشركة / الوكالة',
           password: 'كلمة المرور',
           accountType: 'نوع الحساب',
           user: 'مستخدم',
@@ -48,6 +50,7 @@ export default function Register() {
           name: 'Full name',
           email: 'Email',
           phone: 'Phone',
+          companyName: 'Company / agency name',
           password: 'Password',
           accountType: 'Account type',
           user: 'User',
@@ -71,10 +74,11 @@ export default function Register() {
         email,
         password,
         role,
-        phone: phone.trim() || undefined
+        phone: phone.trim() || undefined,
+        companyName: companyName.trim() || undefined
       });
 
-      navigate('/dashboard', { replace: true });
+      navigate('/profile?registered=1', { replace: true });
     } catch (registerError) {
       console.error(registerError);
 
@@ -139,6 +143,18 @@ export default function Register() {
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
                 autoComplete="tel"
+              />
+            </span>
+          </label>
+
+          <label>
+            {copy.companyName}
+            <span className="input-with-icon">
+              <User size={17} aria-hidden="true" />
+              <input
+                value={companyName}
+                onChange={(event) => setCompanyName(event.target.value)}
+                autoComplete="organization"
               />
             </span>
           </label>

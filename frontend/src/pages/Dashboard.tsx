@@ -210,7 +210,7 @@ function getTimelineStepClass(step: TimelineStep) {
 
 export default function Dashboard() {
   const { t, language } = useLanguage();
-  const { token } = useAuth();
+  const { token, isOwner, isActivityProvider, isAdmin } = useAuth();
 
   useDocumentTitle('Dashboard');
 
@@ -741,6 +741,28 @@ export default function Dashboard() {
 
   const filteredReceivedBookings = receivedBookings.filter(matchesReceivedBookingStatusFilter);
   const unreadNotifications = notifications.filter((notification) => !notification.readAt).length;
+  const isOperatorDashboard = isOwner || isActivityProvider || isAdmin;
+
+  const accountDashboardCopy =
+    language === 'ar'
+      ? {
+          workspace: 'مساحة المستخدم',
+          heroTitle: 'تابع حجوزاتك، التنبيهات، والعناصر المحفوظة.',
+          heroText:
+            'استخدم لوحة التحكم لمتابعة طلباتك، المدفوعات، التنبيهات، والفرص الاستثمارية المحفوظة.',
+          exploreListings: 'استكشف العقارات',
+          exploreActivities: 'استكشف الأنشطة',
+          insightAction: 'رؤى المستثمر'
+        }
+      : {
+          workspace: 'User workspace',
+          heroTitle: 'Track your bookings, notifications, and saved opportunities.',
+          heroText:
+            'Use your dashboard to manage requests, payments, alerts, and saved investment opportunities.',
+          exploreListings: 'Explore listings',
+          exploreActivities: 'Explore activities',
+          insightAction: 'Investor insights'
+        };
 
   return (
     <section className="page-section container dashboard-page">
@@ -749,10 +771,17 @@ export default function Dashboard() {
         title={t.dashboard.title}
         description={t.dashboard.description}
         actions={
-          <ButtonLink to="/add-listing" variant="soft">
-            <Plus size={16} aria-hidden="true" />
-            {t.common.listProperty}
-          </ButtonLink>
+          isOperatorDashboard ? (
+            <ButtonLink to="/add-listing" variant="soft">
+              <Plus size={16} aria-hidden="true" />
+              {t.common.listProperty}
+            </ButtonLink>
+          ) : (
+            <ButtonLink to="/listings" variant="soft">
+              <Eye size={16} aria-hidden="true" />
+              {accountDashboardCopy.exploreListings}
+            </ButtonLink>
+          )
         }
       />
 
@@ -774,26 +803,49 @@ export default function Dashboard() {
         <>
           <div className="dashboard-hero-card">
             <div>
-              <p className="eyebrow">{copy.ownerWorkspace}</p>
-              <h2>{copy.heroTitle}</h2>
-              <p>{copy.heroText}</p>
+              <p className="eyebrow">
+                {isOperatorDashboard ? copy.ownerWorkspace : accountDashboardCopy.workspace}
+              </p>
+              <h2>{isOperatorDashboard ? copy.heroTitle : accountDashboardCopy.heroTitle}</h2>
+              <p>{isOperatorDashboard ? copy.heroText : accountDashboardCopy.heroText}</p>
             </div>
 
             <div className="dashboard-hero-actions">
-              <ButtonLink to="/add-listing">
-                <Plus size={16} aria-hidden="true" />
-                {t.common.listProperty}
-              </ButtonLink>
+              {isOperatorDashboard ? (
+                <>
+                  <ButtonLink to="/add-listing">
+                    <Plus size={16} aria-hidden="true" />
+                    {t.common.listProperty}
+                  </ButtonLink>
 
-              <ButtonLink to="/add-activity" variant="secondary">
-                <Sparkles size={16} aria-hidden="true" />
-                {copy.listActivity}
-              </ButtonLink>
+                  <ButtonLink to="/add-activity" variant="secondary">
+                    <Sparkles size={16} aria-hidden="true" />
+                    {copy.listActivity}
+                  </ButtonLink>
 
-              <ButtonLink to="/listings" variant="secondary">
-                <Eye size={16} aria-hidden="true" />
-                {copy.viewListings}
-              </ButtonLink>
+                  <ButtonLink to="/listings" variant="secondary">
+                    <Eye size={16} aria-hidden="true" />
+                    {copy.viewListings}
+                  </ButtonLink>
+                </>
+              ) : (
+                <>
+                  <ButtonLink to="/listings">
+                    <Eye size={16} aria-hidden="true" />
+                    {accountDashboardCopy.exploreListings}
+                  </ButtonLink>
+
+                  <ButtonLink to="/activities" variant="secondary">
+                    <Sparkles size={16} aria-hidden="true" />
+                    {accountDashboardCopy.exploreActivities}
+                  </ButtonLink>
+
+                  <ButtonLink to="/market-insights" variant="secondary">
+                    <BarChart3 size={16} aria-hidden="true" />
+                    {accountDashboardCopy.insightAction}
+                  </ButtonLink>
+                </>
+              )}
             </div>
           </div>
 
@@ -873,6 +925,8 @@ export default function Dashboard() {
           </div>
 
 
+          {isOperatorDashboard ? (
+            <>
           <div className="table-card table-card--premium dashboard-operations-card">
             <div className="table-card__header">
               <div>
@@ -1096,6 +1150,9 @@ export default function Dashboard() {
             )}
           </div>
 
+            </>
+          ) : null}
+
           <div className="table-card table-card--premium dashboard-bookings-card dashboard-bookings-card--enhanced">
             <div className="table-card__header">
               <div>
@@ -1300,6 +1357,8 @@ export default function Dashboard() {
             )}
           </div>
 
+          {isOperatorDashboard ? (
+            <>
           <div className="dashboard-split">
             <div className="table-card table-card--premium">
               <div className="table-card__header">
@@ -1543,6 +1602,9 @@ export default function Dashboard() {
             activities={activities}
             language={language}
           />
+
+            </>
+          ) : null}
 
           <Stage8DashboardPanel token={token} />
 

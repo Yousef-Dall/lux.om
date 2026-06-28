@@ -21,6 +21,8 @@ import MarketInsights from './pages/MarketInsights';
 import Listings from './pages/Listings';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Profile from './pages/Profile';
+import VerifyEmail from './pages/VerifyEmail';
 import TravelAgencies from './pages/TravelAgencies';
 import TravelAgencyDetails from './pages/TravelAgencyDetails';
 
@@ -436,6 +438,17 @@ export default function App() {
               </RequireAuth>
             }
           />
+
+          <Route
+            path="/profile"
+            element={
+              <RequireAuth>
+                <Profile />
+              </RequireAuth>
+            }
+          />
+
+          <Route path="/verify-email" element={<VerifyEmail />} />
 
           <Route
             path="/admin"
