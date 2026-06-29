@@ -4,6 +4,7 @@ import request from 'supertest';
 import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
 import { signToken } from '../src/middleware/auth';
+import { authAbuseRateLimitRules } from '../src/middleware/rateLimit';
 import { createOauthLoginCode } from '../src/services/googleOAuth';
 
 const app = createApp();
@@ -3610,5 +3611,186 @@ describe('POST /api/activities pricing compatibility', () => {
         priceUnit: 'PERSON'
       })
       .expect(400);
+  });
+});
+
+describe('auth abuse protection rate limiting', () => {
+  it('rate limits repeated login attempts', async () => {
+    const ip = '203.0.113.10';
+
+    for (let index = 0; index < authAbuseRateLimitRules.login.productionLimit; index += 1) {
+      await request(app)
+        .post('/api/auth/login')
+        .set('X-Forwarded-For', ip)
+        .send({
+          email: 'rate-login@lux.test',
+          password: 'WrongPassword2026!'
+        })
+        .expect(401);
+    }
+
+    const response = await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', ip)
+      .send({
+        email: 'rate-login@lux.test',
+        password: 'WrongPassword2026!'
+      })
+      .expect(429);
+
+    expect(response.body.message).toContain('Too many login attempts');
+  });
+
+  it('rate limits repeated account creation attempts', async () => {
+    const ip = '203.0.113.11';
+
+    for (let index = 0; index < authAbuseRateLimitRules.register.productionLimit; index += 1) {
+      await request(app)
+        .post('/api/auth/register')
+        .set('X-Forwarded-For', ip)
+        .send({
+          name: `Rate Register User ${index}`,
+          email: `rate-register-${index}@lux.test`,
+          password: 'SafeMarket2026!',
+          role: 'USER'
+        })
+        .expect(201);
+    }
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .set('X-Forwarded-For', ip)
+      .send({
+        name: 'Rate Register Blocked',
+        email: 'rate-register-blocked@lux.test',
+        password: 'SafeMarket2026!',
+        role: 'USER'
+      })
+      .expect(429);
+
+    expect(response.body.message).toContain('Too many account creation attempts');
+  });
+
+  it('rate limits repeated password reset requests', async () => {
+    const ip = '203.0.113.12';
+
+    for (
+      let index = 0;
+      index < authAbuseRateLimitRules.passwordResetRequest.productionLimit;
+      index += 1
+    ) {
+      await request(app)
+        .post('/api/auth/request-password-reset')
+        .set('X-Forwarded-For', ip)
+        .send({
+          email: `rate-reset-${index}@lux.test`
+        })
+        .expect(200);
+    }
+
+    const response = await request(app)
+      .post('/api/auth/request-password-reset')
+      .set('X-Forwarded-For', ip)
+      .send({
+        email: 'rate-reset-blocked@lux.test'
+      })
+      .expect(429);
+
+    expect(response.body.message).toContain('Too many password reset requests');
+  });
+
+  it('rate limits repeated verification resend requests', async () => {
+    const ip = '203.0.113.13';
+
+    const unverifiedUser = await prisma.user.create({
+      data: {
+        name: 'Rate Verification User',
+        email: 'rate-verification-user@lux.test',
+        password: 'test-password',
+        role: 'USER',
+        emailVerified: false
+      }
+    });
+
+    const unverifiedToken = signToken(unverifiedUser);
+
+    for (
+      let index = 0;
+      index < authAbuseRateLimitRules.verificationResend.productionLimit;
+      index += 1
+    ) {
+      await request(app)
+        .post('/api/auth/resend-verification')
+        .set('X-Forwarded-For', ip)
+        .set('Authorization', `Bearer ${unverifiedToken}`)
+        .expect(200);
+    }
+
+    const response = await request(app)
+      .post('/api/auth/resend-verification')
+      .set('X-Forwarded-For', ip)
+      .set('Authorization', `Bearer ${unverifiedToken}`)
+      .expect(429);
+
+    expect(response.body.message).toContain('Too many verification email requests');
+  });
+
+  it('rate limits repeated Google OAuth start attempts', async () => {
+    const ip = '203.0.113.14';
+
+    for (
+      let index = 0;
+      index < authAbuseRateLimitRules.googleStart.productionLimit;
+      index += 1
+    ) {
+      const response = await request(app)
+        .get('/api/auth/google/start')
+        .set('X-Forwarded-For', ip)
+        .query({
+          role: 'USER',
+          returnTo: '/dashboard'
+        });
+
+      expect([302, 503]).toContain(response.status);
+    }
+
+    const response = await request(app)
+      .get('/api/auth/google/start')
+      .set('X-Forwarded-For', ip)
+      .query({
+        role: 'USER',
+        returnTo: '/dashboard'
+      })
+      .expect(429);
+
+    expect(response.body.message).toContain('Too many Google login attempts');
+  });
+
+  it('rate limits repeated Google OAuth exchange attempts', async () => {
+    const ip = '203.0.113.15';
+
+    for (
+      let index = 0;
+      index < authAbuseRateLimitRules.googleExchange.productionLimit;
+      index += 1
+    ) {
+      await request(app)
+        .post('/api/auth/google/exchange')
+        .set('X-Forwarded-For', ip)
+        .send({
+          code: `invalid-google-exchange-code-${index}-00000000000000000000000000000000`
+        })
+        .expect(400);
+    }
+
+    const response = await request(app)
+      .post('/api/auth/google/exchange')
+      .set('X-Forwarded-For', ip)
+      .send({
+        code: 'invalid-google-exchange-code-blocked-00000000000000000000000000000000'
+      })
+      .expect(429);
+
+    expect(response.body.message).toContain('Too many Google login exchange attempts');
   });
 });

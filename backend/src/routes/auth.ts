@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { requireAuth, signToken } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { AppError, publicUser } from '../utils/http';
+import { authAbuseRateLimiters } from '../middleware/rateLimit';
 import { validatePasswordPolicy } from '../utils/passwordPolicy';
 import {
   createEmailVerificationChallenge,
@@ -120,7 +121,7 @@ function buildGoogleAuthErrorRedirect(message: string) {
   });
 }
 
-authRouter.get('/google/start', (req, res, next) => {
+authRouter.get('/google/start', authAbuseRateLimiters.googleStart, (req, res, next) => {
   try {
     const data = googleStartSchema.parse(req.query);
     const url = buildGoogleAuthorizationUrl({
@@ -134,7 +135,7 @@ authRouter.get('/google/start', (req, res, next) => {
   }
 });
 
-authRouter.get('/google/callback', async (req, res) => {
+authRouter.get('/google/callback', authAbuseRateLimiters.googleCallback, async (req, res) => {
   try {
     const data = googleCallbackSchema.parse(req.query);
     const result = await signInWithGoogleCode(data);
@@ -161,7 +162,7 @@ authRouter.get('/google/callback', async (req, res) => {
   }
 });
 
-authRouter.post('/google/exchange', async (req, res, next) => {
+authRouter.post('/google/exchange', authAbuseRateLimiters.googleExchange, async (req, res, next) => {
   try {
     const data = googleExchangeSchema.parse(req.body);
     const result = await consumeOauthLoginCode(data.code);
@@ -176,7 +177,7 @@ authRouter.post('/google/exchange', async (req, res, next) => {
   }
 });
 
-authRouter.post('/register', async (req, res, next) => {
+authRouter.post('/register', authAbuseRateLimiters.register, async (req, res, next) => {
   try {
     const data = registerSchema.parse(req.body);
 
@@ -227,7 +228,7 @@ authRouter.post('/register', async (req, res, next) => {
   }
 });
 
-authRouter.post('/login', async (req, res, next) => {
+authRouter.post('/login', authAbuseRateLimiters.login, async (req, res, next) => {
   try {
     const data = loginSchema.parse(req.body);
 
@@ -256,7 +257,7 @@ authRouter.post('/login', async (req, res, next) => {
   }
 });
 
-authRouter.post('/request-password-reset', async (req, res, next) => {
+authRouter.post('/request-password-reset', authAbuseRateLimiters.passwordResetRequest, async (req, res, next) => {
   try {
     const data = requestPasswordResetSchema.parse(req.body);
     const user = await prisma.user.findUnique({
@@ -305,7 +306,7 @@ authRouter.post('/request-password-reset', async (req, res, next) => {
   }
 });
 
-authRouter.post('/reset-password', async (req, res, next) => {
+authRouter.post('/reset-password', authAbuseRateLimiters.passwordReset, async (req, res, next) => {
   try {
     const data = resetPasswordSchema.parse(req.body);
     const tokenHash = hashPasswordResetToken(data.token);
@@ -415,7 +416,7 @@ authRouter.patch('/me', requireAuth(), async (req, res, next) => {
   }
 });
 
-authRouter.post('/resend-verification', requireAuth(), async (req, res, next) => {
+authRouter.post('/resend-verification', authAbuseRateLimiters.verificationResend, requireAuth(), async (req, res, next) => {
   try {
     if (!req.user) {
       throw new AppError(401, 'Unauthorized');
@@ -464,7 +465,7 @@ authRouter.post('/resend-verification', requireAuth(), async (req, res, next) =>
   }
 });
 
-authRouter.post('/verify-email', async (req, res, next) => {
+authRouter.post('/verify-email', authAbuseRateLimiters.verifyEmail, async (req, res, next) => {
   try {
     const data = verifyEmailSchema.parse(req.body);
     const tokenHash = hashEmailVerificationToken(data.token);
