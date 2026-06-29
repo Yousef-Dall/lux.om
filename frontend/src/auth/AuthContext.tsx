@@ -33,6 +33,7 @@ type AuthContextValue = {
   register: (payload: RegisterPayload) => Promise<void>;
   updateProfile: (payload: UpdateProfilePayload) => Promise<AuthUser>;
   refreshUser: () => Promise<AuthUser | null>;
+  completeOAuthLogin: (token: string) => Promise<AuthUser>;
   logout: () => void;
 };
 
@@ -125,6 +126,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(response.user);
   }, []);
 
+  const completeOAuthLogin = useCallback(async (nextToken: string) => {
+    saveToken(nextToken);
+    setToken(nextToken);
+
+    const response = await getCurrentUser(nextToken);
+    setUser(response.user);
+
+    return response.user;
+  }, []);
+
   const updateProfile = useCallback(
     async (payload: UpdateProfilePayload) => {
       if (!token) {
@@ -153,9 +164,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       updateProfile,
       refreshUser,
+      completeOAuthLogin,
       logout
     }),
-    [user, token, loading, login, register, updateProfile, refreshUser, logout]
+    [user, token, loading, login, register, updateProfile, refreshUser, completeOAuthLogin, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

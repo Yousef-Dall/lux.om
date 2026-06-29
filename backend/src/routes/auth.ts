@@ -11,6 +11,10 @@ import {
   deliverEmailVerificationLink,
   hashEmailVerificationToken
 } from '../services/emailVerification';
+import {
+  buildGoogleAuthorizationUrl,
+  signInWithGoogleCode
+} from '../services/googleOAuth';
 
 export const authRouter = Router();
 
@@ -60,6 +64,74 @@ const verifyEmailSchema = z
     token: z.string().trim().min(32).max(256)
   })
   .strict();
+
+const googleStartSchema = z
+  .object({
+    role: z.enum(['USER', 'OWNER']).optional(),
+    returnTo: z.string().trim().max(200).optional()
+  })
+  .strict();
+
+const googleCallbackSchema = z
+  .object({
+    code: z.string().trim().min(1),
+    state: z.string().trim().min(1)
+  })
+  .strict();
+
+function buildFrontendRedirect(pathname: string, params: Record<string, string>) {
+  const frontendUrl = new URL(pathname, process.env.FRONTEND_URL || 'http://localhost:5173');
+
+  for (const [key, value] of Object.entries(params)) {
+    frontendUrl.searchParams.set(key, value);
+  }
+
+  return frontendUrl.toString();
+}
+
+function buildGoogleAuthErrorRedirect(message: string) {
+  return buildFrontendRedirect('/login', {
+    googleError: message
+  });
+}
+
+authRouter.get('/google/start', (req, res, next) => {
+  try {
+    const data = googleStartSchema.parse(req.query);
+    const url = buildGoogleAuthorizationUrl({
+      role: data.role,
+      returnTo: data.returnTo
+    });
+
+    res.redirect(url);
+  } catch (error) {
+    next(error);
+  }
+});
+
+authRouter.get('/google/callback', async (req, res, next) => {
+  try {
+    const data = googleCallbackSchema.parse(req.query);
+    const result = await signInWithGoogleCode(data);
+    const token = signToken(result.user);
+
+    res.redirect(
+      buildFrontendRedirect('/auth/google/callback', {
+        token,
+        returnTo: result.returnTo
+      })
+    );
+  } catch (error) {
+    console.error(error);
+
+    if (error instanceof AppError) {
+      res.redirect(buildGoogleAuthErrorRedirect(error.message));
+      return;
+    }
+
+    res.redirect(buildGoogleAuthErrorRedirect('Google login failed. Please try again.'));
+  }
+});
 
 authRouter.post('/register', async (req, res, next) => {
   try {

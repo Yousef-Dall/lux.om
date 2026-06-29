@@ -338,6 +338,7 @@ model User {
   email     String   @unique
   password  String
   role      Role     @default(USER)
+  googleId                    String?   @unique
   phone                       String?
   companyName                 String?
   emailVerified               Boolean   @default(false)
@@ -400,6 +401,7 @@ model User {
   investorWatchlistItems InvestorWatchlistItem[]
 
   @@index([role])
+  @@index([googleId])
   @@index([emailVerified])
   @@index([emailVerificationExpiresAt])
   @@index([createdAt])

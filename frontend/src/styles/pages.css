@@ -10389,3 +10389,26 @@ transition: none;
 .password-policy__item--passed svg {
   color: var(--color-success);
 }
+
+/* Pre-revision Google OAuth actions */
+.auth-provider-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.auth-provider-button {
+  width: 100%;
+  justify-content: center;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  min-height: 1px;
+}
+
+.auth-divider span {
+  width: 100%;
+  height: 1px;
+  background: rgba(7, 56, 62, 0.1);
+}

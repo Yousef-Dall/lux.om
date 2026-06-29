@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LogIn, Mail, LockKeyhole, ShieldCheck } from 'lucide-react';
 
 import { ApiError } from '../api/client';
+import { getGoogleOAuthStartUrl } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -19,7 +20,10 @@ export default function Login() {
   const [email, setEmail] = useState('admin@lux.om');
   const [password, setPassword] = useState('Password123!');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('googleError') || '';
+  });
 
   const copy =
     language === 'ar'
@@ -30,6 +34,7 @@ export default function Login() {
           email: 'البريد الإلكتروني',
           password: 'كلمة المرور',
           submit: 'تسجيل الدخول',
+          google: 'المتابعة باستخدام Google',
           submitting: 'جاري الدخول...',
           noAccount: 'ليس لديك حساب؟',
           createAccount: 'إنشاء حساب',
@@ -43,12 +48,22 @@ export default function Login() {
           email: 'Email',
           password: 'Password',
           submit: 'Login',
+          google: 'Continue with Google',
           submitting: 'Signing in...',
           noAccount: 'No account yet?',
           createAccount: 'Create account',
           adminHint: '',
           error: 'Could not sign in. Check your details and try again.'
         };
+
+  function handleGoogleLogin() {
+    const state = location.state as { from?: string } | null;
+
+    window.location.href = getGoogleOAuthStartUrl({
+      role: 'USER',
+      returnTo: state?.from || '/dashboard'
+    });
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -90,6 +105,19 @@ export default function Login() {
         </div>
 
         <form className="form-card" onSubmit={handleSubmit}>
+          <button
+            className="button-link button-link--secondary auth-provider-button"
+            type="button"
+            onClick={handleGoogleLogin}
+          >
+            G
+            {copy.google}
+          </button>
+
+          <div className="auth-divider" aria-hidden="true">
+            <span />
+          </div>
+
           <label>
             {copy.email}
             <span className="input-with-icon">

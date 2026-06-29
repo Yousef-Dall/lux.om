@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Mail, LockKeyhole, UserPlus, Phone, User, CheckCircle2, Circle } from 'lucide-react';
 
 import { ApiError } from '../api/client';
+import { getGoogleOAuthStartUrl } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -51,6 +52,8 @@ export default function Register() {
           user: 'مستخدم',
           owner: 'مالك / وسيط',
           submit: 'إنشاء الحساب',
+          googleUser: 'المتابعة مع Google كمستخدم',
+          googleOwner: 'المتابعة مع Google كمالك / وسيط',
           submitting: 'جاري إنشاء الحساب...',
           hasAccount: 'لديك حساب بالفعل؟',
           login: 'تسجيل الدخول',
@@ -81,6 +84,8 @@ export default function Register() {
           user: 'User',
           owner: 'Owner / agent',
           submit: 'Create account',
+          googleUser: 'Continue with Google as user',
+          googleOwner: 'Continue with Google as owner / agent',
           submitting: 'Creating account...',
           hasAccount: 'Already have an account?',
           login: 'Login',
@@ -94,6 +99,13 @@ export default function Register() {
   });
 
   const passwordRuleLabels: Record<PasswordPolicyRuleId, string> = copy.passwordRules;
+
+  function handleGoogleRegister(nextRole: 'USER' | 'OWNER') {
+    window.location.href = getGoogleOAuthStartUrl({
+      role: nextRole,
+      returnTo: '/dashboard'
+    });
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -146,6 +158,30 @@ export default function Register() {
         </div>
 
         <form className="form-card" onSubmit={handleSubmit}>
+          <div className="auth-provider-actions">
+            <button
+              className="button-link button-link--secondary auth-provider-button"
+              type="button"
+              onClick={() => handleGoogleRegister('USER')}
+            >
+              G
+              {copy.googleUser}
+            </button>
+
+            <button
+              className="button-link button-link--secondary auth-provider-button"
+              type="button"
+              onClick={() => handleGoogleRegister('OWNER')}
+            >
+              G
+              {copy.googleOwner}
+            </button>
+          </div>
+
+          <div className="auth-divider" aria-hidden="true">
+            <span />
+          </div>
+
           <label>
             {copy.name}
             <span className="input-with-icon">

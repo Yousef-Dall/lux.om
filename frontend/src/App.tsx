@@ -23,6 +23,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Profile from './pages/Profile';
 import VerifyEmail from './pages/VerifyEmail';
+import GoogleAuthCallback from './pages/GoogleAuthCallback';
 import TravelAgencies from './pages/TravelAgencies';
 import TravelAgencyDetails from './pages/TravelAgencyDetails';
 
@@ -449,6 +450,7 @@ export default function App() {
           />
 
           <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/auth/google/callback" element={<GoogleAuthCallback />} />
 
           <Route
             path="/admin"

@@ -63,6 +63,10 @@ const envSchema = z
     SMTP_USER: optionalTrimmedString,
     SMTP_PASS: optionalTrimmedString,
     MAIL_FROM: optionalTrimmedString,
+    GOOGLE_OAUTH_ENABLED: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+    GOOGLE_CLIENT_ID: optionalTrimmedString,
+    GOOGLE_CLIENT_SECRET: optionalTrimmedString,
+    GOOGLE_OAUTH_REDIRECT_URL: optionalTrimmedString,
     STORAGE_DRIVER: z.enum(['local', 'cloudinary']).default('local'),
     UPLOAD_DIR: z.string().default('uploads'),
     MAX_UPLOAD_MB: z.coerce.number().positive().default(5),
@@ -102,6 +106,24 @@ const envSchema = z
               env.NODE_ENV === 'production'
                 ? 'SMTP email configuration is required in production'
                 : 'SMTP email configuration is required when EMAIL_DELIVERY_MODE=smtp'
+          });
+        }
+      }
+    }
+
+    if (env.GOOGLE_OAUTH_ENABLED) {
+      const requiredGoogleFields = [
+        ['GOOGLE_CLIENT_ID', env.GOOGLE_CLIENT_ID],
+        ['GOOGLE_CLIENT_SECRET', env.GOOGLE_CLIENT_SECRET],
+        ['GOOGLE_OAUTH_REDIRECT_URL', env.GOOGLE_OAUTH_REDIRECT_URL]
+      ] as const;
+
+      for (const [field, value] of requiredGoogleFields) {
+        if (!value) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: 'Google OAuth credentials are required when GOOGLE_OAUTH_ENABLED=true'
           });
         }
       }

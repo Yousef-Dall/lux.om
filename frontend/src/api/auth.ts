@@ -75,3 +75,29 @@ export async function verifyEmail(token: string) {
     token
   });
 }
+
+function getApiBaseUrl() {
+  const env = import.meta.env as ImportMetaEnv & {
+    VITE_API_URL?: string;
+    VITE_API_BASE_URL?: string;
+  };
+
+  return env.VITE_API_URL || env.VITE_API_BASE_URL || 'http://localhost:4000';
+}
+
+export function getGoogleOAuthStartUrl(input: {
+  role?: 'USER' | 'OWNER';
+  returnTo?: string;
+} = {}) {
+  const url = new URL('/api/auth/google/start', getApiBaseUrl());
+
+  if (input.role) {
+    url.searchParams.set('role', input.role);
+  }
+
+  if (input.returnTo) {
+    url.searchParams.set('returnTo', input.returnTo);
+  }
+
+  return url.toString();
+}
