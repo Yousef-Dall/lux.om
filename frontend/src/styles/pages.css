@@ -10762,3 +10762,245 @@ transition: none;
   font-size: clamp(1rem, 1.6vw, 1.12rem);
   line-height: 1.8;
 }
+
+/* =========================================================
+   Admin verification workflow polish
+   ========================================================= */
+
+.verification-admin-panel--polished {
+  display: grid;
+  gap: 18px;
+}
+
+.verification-admin-panel__heading,
+.verification-admin-detail__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.verification-admin-panel__heading h3,
+.verification-admin-detail__header h4 {
+  margin: 0;
+}
+
+.verification-admin-panel__heading p:not(.eyebrow),
+.verification-admin-detail__header p {
+  margin: 6px 0 0;
+  color: var(--color-muted);
+}
+
+.verification-admin-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.verification-admin-summary article,
+.verification-admin-meta-grid article {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.verification-admin-summary span,
+.verification-admin-meta-grid span,
+.verification-admin-target span {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.verification-admin-summary strong {
+  font-size: clamp(1.25rem, 2.4vw, 1.8rem);
+}
+
+.verification-admin-filters {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) repeat(3, minmax(150px, 0.4fr));
+  gap: 10px;
+  align-items: center;
+}
+
+.verification-admin-filters label,
+.verification-admin-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.verification-admin-filters input,
+.verification-admin-filters select,
+.verification-admin-review-form input,
+.verification-admin-review-form select,
+.verification-admin-review-form textarea {
+  width: 100%;
+  border-radius: 16px;
+}
+
+.verification-admin-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.25fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.verification-admin-list {
+  display: grid;
+  gap: 10px;
+  max-height: 720px;
+  overflow: auto;
+  padding-inline-end: 4px;
+}
+
+.verification-admin-card {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid rgba(7, 56, 62, 0.09);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.verification-admin-card:hover,
+.verification-admin-card--active {
+  border-color: rgba(194, 154, 82, 0.5);
+  box-shadow: 0 16px 42px rgba(7, 56, 62, 0.08);
+}
+
+.verification-admin-card small,
+.verification-admin-card span:not(.status-pill) {
+  color: var(--color-muted);
+}
+
+.verification-admin-detail {
+  display: grid;
+  gap: 16px;
+  padding: clamp(16px, 2vw, 22px);
+  border: 1px solid rgba(7, 56, 62, 0.09);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 100% 0, rgba(194, 154, 82, 0.12), transparent 18rem),
+    rgba(255, 255, 255, 0.78);
+}
+
+.verification-admin-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.verification-admin-meta-grid svg {
+  color: var(--color-gold);
+}
+
+.verification-admin-meta-grid strong,
+.verification-admin-target strong {
+  word-break: break-word;
+}
+
+.verification-admin-target {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.verification-admin-review-note,
+.verification-admin-checklist {
+  padding: 14px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.verification-admin-review-note h4,
+.verification-admin-checklist h4 {
+  margin: 0 0 8px;
+}
+
+.verification-admin-review-note p {
+  margin: 0;
+  color: var(--color-muted);
+  white-space: pre-wrap;
+}
+
+.verification-admin-checklist ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.verification-admin-checklist li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 0.8fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: var(--color-muted);
+}
+
+.verification-admin-checklist li svg {
+  color: var(--color-gold);
+}
+
+.verification-admin-checklist li strong {
+  color: var(--color-ink);
+  word-break: break-word;
+}
+
+.verification-admin-review-form {
+  display: grid;
+  gap: 12px;
+}
+
+.verification-admin-notes {
+  grid-column: 1 / -1;
+}
+
+.verification-admin-risk {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid rgba(191, 84, 84, 0.16);
+  border-radius: 16px;
+  background: rgba(191, 84, 84, 0.08);
+  color: #8d2d2d;
+}
+
+@media (max-width: 1080px) {
+  .verification-admin-summary,
+  .verification-admin-filters,
+  .verification-admin-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .verification-admin-meta-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .verification-admin-panel__heading,
+  .verification-admin-detail__header,
+  .verification-admin-target {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
