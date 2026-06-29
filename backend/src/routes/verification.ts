@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { submitVerificationRequest } from '../services/verificationAdapters';
+import { deliverTransactionalNotificationToUsers } from '../services/transactionalEmails';
 import { AppError } from '../utils/http';
 
 export const verificationRouter = Router();
@@ -544,6 +545,14 @@ async function createVerificationNotifications(
       title: input.title,
       message: input.message
     }))
+  });
+
+  await deliverTransactionalNotificationToUsers(db, {
+    userIds: uniqueUserIds,
+    type: NotificationType.VERIFICATION_STATUS_UPDATED,
+    title: input.title,
+    message: input.message,
+    actionPath: '/notifications'
   });
 }
 

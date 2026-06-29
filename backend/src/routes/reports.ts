@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
+import { deliverTransactionalNotificationToUser } from '../services/transactionalEmails';
 
 export const reportsRouter = Router();
 
@@ -132,15 +133,26 @@ async function notifyTrustReportReviewed(report: {
 }) {
   if (!report.reporterId) return;
 
+  const title = 'Trust report reviewed';
+  const message = `Your ${report.targetType.toLowerCase()} report is now ${formatReportStatus(
+    report.status
+  )}.`;
+
   await prisma.notification.create({
     data: {
       userId: report.reporterId,
       type: 'REVIEW_STATUS_UPDATED',
-      title: 'Trust report reviewed',
-      message: `Your ${report.targetType.toLowerCase()} report is now ${formatReportStatus(
-        report.status
-      )}.`
+      title,
+      message
     }
+  });
+
+  await deliverTransactionalNotificationToUser(prisma, {
+    userId: report.reporterId,
+    type: 'REVIEW_STATUS_UPDATED',
+    title,
+    message,
+    actionPath: '/notifications'
   });
 }
 

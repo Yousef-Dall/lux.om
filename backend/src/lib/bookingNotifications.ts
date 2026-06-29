@@ -5,6 +5,11 @@ import type {
   PrismaClient
 } from '@prisma/client';
 
+import {
+  deliverTransactionalNotificationToUser,
+  deliverTransactionalNotificationToUsers
+} from '../services/transactionalEmails';
+
 type BookingWithAudience = {
   id: string;
   status: BookingStatus;
@@ -56,7 +61,7 @@ export async function createNotification(
   prisma: PrismaClient,
   input: NotificationInput
 ) {
-  return prisma.notification.create({
+  const notification = await prisma.notification.create({
     data: {
       userId: input.userId,
       type: input.type,
@@ -65,6 +70,16 @@ export async function createNotification(
       bookingId: input.bookingId
     }
   });
+
+  await deliverTransactionalNotificationToUser(prisma, {
+    userId: input.userId,
+    type: input.type,
+    title: input.title,
+    message: input.message,
+    bookingId: input.bookingId
+  });
+
+  return notification;
 }
 
 export async function createBookingEvent(
@@ -108,6 +123,17 @@ export async function notifyAdmins(
       message: input.message,
       bookingId: input.bookingId
     }))
+  });
+
+  await deliverTransactionalNotificationToUsers(prisma, {
+    userIds: admins.map((admin) => admin.id),
+    type: input.type,
+    title: input.title,
+    message: input.message,
+    bookingId: input.bookingId,
+    actionPath: input.bookingId
+      ? `/dashboard?booking=${encodeURIComponent(input.bookingId)}`
+      : '/dashboard'
   });
 }
 

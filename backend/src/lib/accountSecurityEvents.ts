@@ -5,6 +5,8 @@ import {
   type PrismaClient
 } from '@prisma/client';
 
+import { deliverTransactionalNotificationToUser } from '../services/transactionalEmails';
+
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
 
 export type AccountSecurityEventInput = {
@@ -44,6 +46,14 @@ export async function recordAccountSecurityEvent(
       }
     })
   ]);
+
+  await deliverTransactionalNotificationToUser(db, {
+    userId: input.userId,
+    type: NotificationType.ACCOUNT_SECURITY,
+    title: input.title,
+    message: input.message,
+    actionPath: '/profile'
+  });
 
   return {
     event,

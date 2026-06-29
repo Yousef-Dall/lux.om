@@ -7,6 +7,8 @@ import { prisma } from '../src/lib/prisma';
 import { signToken } from '../src/middleware/auth';
 import { authAbuseRateLimitRules } from '../src/middleware/rateLimit';
 import { createOauthLoginCode } from '../src/services/googleOAuth';
+import { recordAccountSecurityEvent } from '../src/lib/accountSecurityEvents';
+import { createNotification } from '../src/lib/bookingNotifications';
 
 const app = createApp();
 
@@ -5505,5 +5507,83 @@ describe('notification action routing', () => {
         listingId: listing.id
       }
     });
+  });
+});
+
+describe('transactional email notifications', () => {
+  it('logs development transactional email for account security notifications', async () => {
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    try {
+      await recordAccountSecurityEvent(prisma, {
+        userId: customer.id,
+        type: 'PASSWORD_CHANGED',
+        title: 'Transactional security email',
+        message: 'Your password was changed.'
+      });
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Development transactional email for integration-customer@lux.test: Transactional security email'
+        )
+      );
+      expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('/profile'));
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
+  it('logs development transactional email for booking notifications with a booking deep link', async () => {
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED'
+      }
+    });
+
+    const booking = await prisma.booking.create({
+      data: {
+        userId: customer.id,
+        listingId: listing.id,
+        contactName: 'Transactional Email Customer',
+        contactEmail: 'integration-customer@lux.test',
+        contactPhone: '+96890000000',
+        guests: 1
+      }
+    });
+
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    try {
+      await createNotification(prisma, {
+        userId: customer.id,
+        type: 'BOOKING_OWNER_APPROVED',
+        title: 'Transactional booking email',
+        message: 'Your booking has a new update.',
+        bookingId: booking.id
+      });
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Development transactional email for integration-customer@lux.test: Transactional booking email'
+        )
+      );
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`/dashboard?booking=${booking.id}`)
+      );
+    } finally {
+      infoSpy.mockRestore();
+    }
   });
 });
