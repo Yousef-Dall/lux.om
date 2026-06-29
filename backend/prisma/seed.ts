@@ -1,9 +1,98 @@
+import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
+import { validatePasswordPolicy } from '../src/utils/passwordPolicy';
+
 const prisma = new PrismaClient();
 
-const seedPassword = process.env.SEED_PASSWORD ?? 'Password123!';
+const isProductionSeed = process.env.NODE_ENV === 'production';
+
+function createGeneratedSeedPassword() {
+  return `Lx-${crypto.randomBytes(18).toString('base64url')}!9aA`;
+}
+
+function optionalSeedValue(name: string) {
+  return process.env[name]?.trim() || undefined;
+}
+
+function assertValidEmail(name: string, value: string) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    throw new Error(`${name} must be a valid email address`);
+  }
+}
+
+function requireProductionSeedValue(name: string, value?: string) {
+  if (isProductionSeed && !value) {
+    throw new Error(`${name} is required when running seed in production`);
+  }
+}
+
+function getSeedConfig() {
+  if (isProductionSeed) {
+    const allowDestructiveSeed = process.env.ALLOW_DESTRUCTIVE_SEED === 'true';
+    const confirmedReset = process.env.CONFIRM_SEED_DATABASE_RESET === 'RESET_LUX_OM_DATABASE';
+
+    if (!allowDestructiveSeed || !confirmedReset) {
+      throw new Error(
+        'Refusing to run destructive seed in production. Set ALLOW_DESTRUCTIVE_SEED=true and CONFIRM_SEED_DATABASE_RESET=RESET_LUX_OM_DATABASE only if you intentionally want to wipe and reseed the database.'
+      );
+    }
+  }
+
+  const seedPassword = optionalSeedValue('SEED_PASSWORD') ?? createGeneratedSeedPassword();
+
+  const adminEmail = optionalSeedValue('SEED_ADMIN_EMAIL') ?? 'local-admin@example.test';
+  const ownerEmail = optionalSeedValue('SEED_OWNER_EMAIL') ?? 'local-owner@example.test';
+  const activityProviderEmail =
+    optionalSeedValue('SEED_ACTIVITY_PROVIDER_EMAIL') ?? 'local-activities@example.test';
+  const userEmail = optionalSeedValue('SEED_USER_EMAIL') ?? 'local-user@example.test';
+
+  requireProductionSeedValue('SEED_PASSWORD', optionalSeedValue('SEED_PASSWORD'));
+  requireProductionSeedValue('SEED_ADMIN_EMAIL', optionalSeedValue('SEED_ADMIN_EMAIL'));
+  requireProductionSeedValue('SEED_OWNER_EMAIL', optionalSeedValue('SEED_OWNER_EMAIL'));
+  requireProductionSeedValue(
+    'SEED_ACTIVITY_PROVIDER_EMAIL',
+    optionalSeedValue('SEED_ACTIVITY_PROVIDER_EMAIL')
+  );
+  requireProductionSeedValue('SEED_USER_EMAIL', optionalSeedValue('SEED_USER_EMAIL'));
+
+  const emails = {
+    SEED_ADMIN_EMAIL: adminEmail,
+    SEED_OWNER_EMAIL: ownerEmail,
+    SEED_ACTIVITY_PROVIDER_EMAIL: activityProviderEmail,
+    SEED_USER_EMAIL: userEmail
+  };
+
+  for (const [name, value] of Object.entries(emails)) {
+    assertValidEmail(name, value);
+  }
+
+  const passwordIssues = validatePasswordPolicy({
+    password: seedPassword,
+    email: adminEmail,
+    name: 'Lux Admin'
+  });
+
+  if (passwordIssues.length > 0) {
+    throw new Error(
+      `SEED_PASSWORD does not meet password policy: ${passwordIssues
+        .map((issue) => issue.message)
+        .join(' ')}`
+    );
+  }
+
+  return {
+    seedPassword,
+    adminEmail,
+    ownerEmail,
+    activityProviderEmail,
+    userEmail
+  };
+}
+
+const seedConfig = getSeedConfig();
+const seedPassword = seedConfig.seedPassword;
 
 async function main() {
   await prisma.inquiry.deleteMany();
@@ -21,6 +110,7 @@ async function main() {
   await prisma.travelAgency.deleteMany();
   await prisma.developerCompany.deleteMany();
   await prisma.landmark.deleteMany();
+  await prisma.oauthLoginCode.deleteMany();
   await prisma.user.deleteMany();
 
   const hashedPassword = await bcrypt.hash(seedPassword, 12);
@@ -28,18 +118,22 @@ async function main() {
   const admin = await prisma.user.create({
     data: {
       name: 'Lux Admin',
-      email: 'admin@lux.om',
+      email: seedConfig.adminEmail,
       password: hashedPassword,
-      role: 'ADMIN'
+      role: 'ADMIN',
+      emailVerified: true,
+      emailVerifiedAt: new Date()
     }
   });
 
   const owner = await prisma.user.create({
     data: {
       name: 'Lux Oman Properties',
-      email: 'owner@lux.om',
+      email: seedConfig.ownerEmail,
       password: hashedPassword,
       role: 'OWNER',
+      emailVerified: true,
+      emailVerifiedAt: new Date(),
       phone: '+968 9000 0000'
     }
   });
@@ -47,9 +141,11 @@ async function main() {
   const activityProvider = await prisma.user.create({
     data: {
       name: 'Muscat Premium Activities',
-      email: 'activities@lux.om',
+      email: seedConfig.activityProviderEmail,
       password: hashedPassword,
       role: 'ACTIVITY_PROVIDER',
+      emailVerified: true,
+      emailVerifiedAt: new Date(),
       phone: '+968 9111 1111'
     }
   });
@@ -57,9 +153,11 @@ async function main() {
   const user = await prisma.user.create({
     data: {
       name: 'Salam User',
-      email: 'user@lux.om',
+      email: seedConfig.userEmail,
       password: hashedPassword,
-      role: 'USER'
+      role: 'USER',
+      emailVerified: true,
+      emailVerifiedAt: new Date()
     }
   });
 
