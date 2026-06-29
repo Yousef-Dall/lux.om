@@ -20,6 +20,7 @@ import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import { announceNotificationUnreadCount } from '../utils/notificationEvents';
 
 type NotificationRecord = ActionableNotification;
 type ReadFilter = 'ALL' | 'UNREAD' | 'READ';
@@ -209,6 +210,7 @@ export default function Notifications() {
 
         setNotifications(response.notifications);
         setUnreadCount(response.unreadCount);
+        announceNotificationUnreadCount(response.unreadCount);
         setTotal(response.pagination.total);
         setSkip(response.pagination.skip);
       } catch (loadError) {
@@ -267,13 +269,19 @@ export default function Notifications() {
 
       const response = await markNotificationRead(notificationId, token);
 
+      const wasUnread = notifications.some(
+        (notification) => notification.id === notificationId && !notification.readAt
+      );
+      const nextUnreadCount = wasUnread ? Math.max(0, unreadCount - 1) : unreadCount;
+
       setNotifications((current) =>
         current.map((notification) =>
           notification.id === notificationId ? response.notification : notification
         )
       );
 
-      setUnreadCount((current) => Math.max(0, current - 1));
+      setUnreadCount(nextUnreadCount);
+      announceNotificationUnreadCount(nextUnreadCount);
       setActionMessage(copy.loaded);
     } catch (markError) {
       console.error(markError);

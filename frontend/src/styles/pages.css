@@ -11667,3 +11667,38 @@ transition: none;
     display: grid;
   }
 }
+
+/* =========================================================
+   Navbar notification unread sync
+   ========================================================= */
+
+.nav-account__badge {
+  display: inline-grid;
+  min-width: 22px;
+  min-height: 22px;
+  margin-inline-start: auto;
+  padding: 0 7px;
+  place-items: center;
+  border-radius: 999px;
+  background: #b91c1c;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 8px 18px rgba(185, 28, 28, 0.2);
+}
+
+.notification-bell__item-action {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 8px;
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.notification-bell__item-action:hover,
+.notification-bell__item-action:focus-visible {
+  text-decoration: underline;
+}

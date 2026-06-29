@@ -8,11 +8,17 @@ import {
   markNotificationRead
 } from '../api/notifications';
 import type { Language } from '../types';
+import {
+  announceNotificationUnreadCount,
+  NOTIFICATION_UNREAD_COUNT_EVENT,
+  readNotificationUnreadCountEvent
+} from '../utils/notificationEvents';
 
 type NotificationBellProps = {
   token: string | null;
   language: Language;
   onNavigate?: () => void;
+  onUnreadCountChange?: (unreadCount: number) => void;
 };
 
 type NotificationItem = {
@@ -22,6 +28,11 @@ type NotificationItem = {
   message?: string;
   readAt?: string | null;
   createdAt?: string;
+  actionUrl?: string | null;
+  actionLabel?: string | null;
+  actionContext?: string | null;
+  targetType?: string | null;
+  targetId?: string | null;
 };
 
 function normalizeNotification(value: unknown): NotificationItem | null {
@@ -40,7 +51,27 @@ function normalizeNotification(value: unknown): NotificationItem | null {
       typeof record.readAt === 'string' || record.readAt === null
         ? record.readAt
         : undefined,
-    createdAt: typeof record.createdAt === 'string' ? record.createdAt : undefined
+    createdAt: typeof record.createdAt === 'string' ? record.createdAt : undefined,
+    actionUrl:
+      typeof record.actionUrl === 'string' || record.actionUrl === null
+        ? record.actionUrl
+        : undefined,
+    actionLabel:
+      typeof record.actionLabel === 'string' || record.actionLabel === null
+        ? record.actionLabel
+        : undefined,
+    actionContext:
+      typeof record.actionContext === 'string' || record.actionContext === null
+        ? record.actionContext
+        : undefined,
+    targetType:
+      typeof record.targetType === 'string' || record.targetType === null
+        ? record.targetType
+        : undefined,
+    targetId:
+      typeof record.targetId === 'string' || record.targetId === null
+        ? record.targetId
+        : undefined
   };
 }
 
@@ -61,6 +92,7 @@ function formatType(type?: string) {
   if (!type) return '';
 
   const labels: Record<string, string> = {
+    ACCOUNT_SECURITY: 'account security',
     BOOKING_CREATED: 'booking',
     BOOKING_OWNER_APPROVED: 'booking approved',
     BOOKING_OWNER_REJECTED: 'booking rejected',
@@ -82,7 +114,8 @@ function formatType(type?: string) {
 export default function NotificationBell({
   token,
   language,
-  onNavigate
+  onNavigate,
+  onUnreadCountChange
 }: NotificationBellProps) {
   const copy =
     language === 'ar'
@@ -93,6 +126,7 @@ export default function NotificationBell({
           markRead: 'تحديد كمقروء',
           markAll: 'تحديد الكل كمقروء',
           openDashboard: 'فتح مركز الإشعارات',
+          openAction: 'فتح الإجراء',
           unread: 'إشعارات غير مقروءة',
           error: 'تعذر تحميل الإشعارات حالياً.'
         }
@@ -103,6 +137,7 @@ export default function NotificationBell({
           markRead: 'Mark read',
           markAll: 'Mark all read',
           openDashboard: 'Open notification center',
+          openAction: 'Open action',
           unread: 'Unread notifications',
           error: 'Could not load notifications right now.'
         };
@@ -114,6 +149,18 @@ export default function NotificationBell({
   const [actionId, setActionId] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const rootRef = useRef<HTMLDivElement | null>(null);
+
+
+  function syncUnreadCount(nextCount: number, options?: { broadcast?: boolean }) {
+    const normalizedCount = Math.max(0, nextCount);
+
+    setUnreadCount(normalizedCount);
+    onUnreadCountChange?.(normalizedCount);
+
+    if (options?.broadcast !== false) {
+      announceNotificationUnreadCount(normalizedCount);
+    }
+  }
 
   async function loadNotifications(options?: { silent?: boolean }) {
     if (!token) return;
@@ -129,7 +176,7 @@ export default function NotificationBell({
           .map((notification) => normalizeNotification(notification))
           .filter((notification): notification is NotificationItem => Boolean(notification))
       );
-      setUnreadCount(response.unreadCount);
+      syncUnreadCount(response.unreadCount);
     } catch (error) {
       console.error(error);
       if (!options?.silent) setErrorMessage(copy.error);
@@ -138,10 +185,27 @@ export default function NotificationBell({
     }
   }
 
+
+  useEffect(() => {
+    function handleUnreadCountEvent(event: Event) {
+      const nextCount = readNotificationUnreadCountEvent(event);
+
+      if (nextCount === null) return;
+
+      setUnreadCount(nextCount);
+      onUnreadCountChange?.(nextCount);
+    }
+
+    window.addEventListener(NOTIFICATION_UNREAD_COUNT_EVENT, handleUnreadCountEvent);
+
+    return () =>
+      window.removeEventListener(NOTIFICATION_UNREAD_COUNT_EVENT, handleUnreadCountEvent);
+  }, [onUnreadCountChange]);
+
   useEffect(() => {
     if (!token) {
       setNotifications([]);
-      setUnreadCount(0);
+      syncUnreadCount(0);
       setIsOpen(false);
       return;
     }
@@ -293,6 +357,16 @@ export default function NotificationBell({
                     {notification.createdAt ? (
                       <small>{formatNotificationDate(notification.createdAt, language)}</small>
                     ) : null}
+                    <Link
+                      className="notification-bell__item-action"
+                      to={notification.actionUrl || '/notifications'}
+                      onClick={() => {
+                        setIsOpen(false);
+                        onNavigate?.();
+                      }}
+                    >
+                      {notification.actionLabel || copy.openAction}
+                    </Link>
                   </div>
 
                   {isUnread ? (

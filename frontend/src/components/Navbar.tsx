@@ -24,6 +24,7 @@ import NotificationBell from './NotificationBell';
 export default function Navbar() {
 const [isOpen, setIsOpen] = useState(false);
 const [hasScrolled, setHasScrolled] = useState(false);
+const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
 
 const { pathname } = useLocation();
 const navigate = useNavigate();
@@ -105,6 +106,13 @@ account: 'Account menu'
 useEffect(() => {
 setIsOpen(false);
 }, [pathname]);
+
+
+useEffect(() => {
+if (!isAuthenticated) {
+setNotificationUnreadCount(0);
+}
+}, [isAuthenticated]);
 
 useEffect(() => {
 function handleScroll() {
@@ -190,6 +198,7 @@ return (
               token={token}
               language={language}
               onNavigate={() => setIsOpen(false)}
+              onUnreadCountChange={setNotificationUnreadCount}
             />
 
             <details className="nav-account">
@@ -240,7 +249,12 @@ return (
                 onClick={() => setIsOpen(false)}
               >
                 <Bell size={17} aria-hidden="true" />
-                {accessibilityCopy.notifications}
+                <span>{accessibilityCopy.notifications}</span>
+                {notificationUnreadCount > 0 ? (
+                  <span className="nav-account__badge">
+                    {notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}
+                  </span>
+                ) : null}
               </NavLink>
 
               {isAdmin ? (
