@@ -7,6 +7,7 @@ import {
   MapPin,
   RotateCcw,
   Search,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   X
@@ -242,6 +243,9 @@ export default function Listings() {
   const [hasFloorPlan, setHasFloorPlan] = useState(
     getBooleanParam(searchParams.get('hasFloorPlan'))
   );
+  const [verifiedOnly, setVerifiedOnly] = useState(
+    getBooleanParam(searchParams.get('verifiedOnly'))
+  );
   const [smartSearchMessage, setSmartSearchMessage] = useState('');
   const [savedSearchName, setSavedSearchName] = useState('');
   const [saveSearchMessage, setSaveSearchMessage] = useState('');
@@ -278,6 +282,7 @@ export default function Listings() {
           smartSearchHint: 'جرّب: فلل قابلة للشراء للأجانب في الموج تحت 300 ألف مع جولة افتراضية',
           virtualTour: 'جولة افتراضية',
           floorPlan: 'مخطط الوحدة',
+          verifiedOnly: 'موثق فقط',
           saveSearch: 'حفظ البحث',
           saveSearchName: 'اسم البحث المحفوظ',
           saveSearchPlaceholder: 'مثال: فلل استثمارية في الموج',
@@ -316,6 +321,7 @@ export default function Listings() {
           smartSearchHint: 'Try: expat-buyable villas in Al Mouj under 300k with virtual tour',
           virtualTour: 'Virtual tour',
           floorPlan: 'Floor plan',
+          verifiedOnly: 'Verified only',
           saveSearch: 'Save search',
           saveSearchName: 'Saved search name',
           saveSearchPlaceholder: 'Example: Al Mouj investment villas',
@@ -450,6 +456,7 @@ export default function Listings() {
               : undefined,
           hasVirtualTour: hasVirtualTour || undefined,
           hasFloorPlan: hasFloorPlan || undefined,
+          verifiedOnly: verifiedOnly || undefined,
           page,
           pageSize: LISTINGS_PAGE_SIZE
         });
@@ -498,6 +505,7 @@ export default function Listings() {
     selectedAmenities,
     hasVirtualTour,
     hasFloorPlan,
+    verifiedOnly,
     sortBy,
     page,
     copy.error
@@ -537,6 +545,7 @@ export default function Listings() {
     setSelectedAmenities(getAmenitiesParam(searchParams.get('amenities')));
     setHasVirtualTour(getBooleanParam(searchParams.get('hasVirtualTour')));
     setHasFloorPlan(getBooleanParam(searchParams.get('hasFloorPlan')));
+    setVerifiedOnly(getBooleanParam(searchParams.get('verifiedOnly')));
     setSortBy(getFilterParam(searchParams.get('sortBy'), sortOptions, 'Recommended'));
   }, [searchParams]);
 
@@ -562,6 +571,7 @@ export default function Listings() {
     if (selectedAmenities.length > 0) params.set('amenities', selectedAmenities.join(','));
     if (hasVirtualTour) params.set('hasVirtualTour', 'true');
     if (hasFloorPlan) params.set('hasFloorPlan', 'true');
+    if (verifiedOnly) params.set('verifiedOnly', 'true');
     if (sortBy !== 'Recommended') params.set('sortBy', sortBy);
 
     if (params.toString() !== searchParams.toString()) {
@@ -587,6 +597,7 @@ export default function Listings() {
     selectedAmenities,
     hasVirtualTour,
     hasFloorPlan,
+    verifiedOnly,
     sortBy,
     searchParams,
     setSearchParams
@@ -698,6 +709,14 @@ export default function Listings() {
       });
     }
 
+    if (verifiedOnly) {
+      chips.push({
+        key: 'verifiedOnly',
+        label: copy.verifiedOnly,
+        onRemove: () => setVerifiedOnly(false)
+      });
+    }
+
     return chips;
   }, [
     query,
@@ -720,8 +739,10 @@ export default function Listings() {
     selectedAmenities,
     hasVirtualTour,
     hasFloorPlan,
+    verifiedOnly,
     copy.virtualTour,
-    copy.floorPlan
+    copy.floorPlan,
+    copy.verifiedOnly
   ]);
 
   const activeFilterCount = activeChips.length;
@@ -763,6 +784,7 @@ export default function Listings() {
     if (selectedAmenities.length) filters.amenities = selectedAmenities;
     if (hasVirtualTour) filters.hasVirtualTour = true;
     if (hasFloorPlan) filters.hasFloorPlan = true;
+    if (verifiedOnly) filters.verifiedOnly = true;
     if (sortBy !== 'Recommended') filters.sortBy = sortBy;
 
     return filters;
@@ -907,6 +929,7 @@ export default function Listings() {
     setSelectedAmenities([]);
     setHasVirtualTour(false);
     setHasFloorPlan(false);
+    setVerifiedOnly(false);
     setSmartSearchMessage('');
     setSavedSearchName('');
     setSaveSearchMessage('');
@@ -1188,6 +1211,16 @@ return (
           >
             {copy.floorPlan}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setVerifiedOnly((current) => !current)}
+            className={verifiedOnly ? 'active' : ''}
+          >
+            <ShieldCheck size={15} aria-hidden="true" />
+            {copy.verifiedOnly}
+          </button>
+
         </div>
 
         {activeChips.length > 0 ? (

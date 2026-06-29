@@ -102,6 +102,7 @@ type ListingParams = ListParams & {
   amenities?: string;
   hasVirtualTour?: boolean;
   hasFloorPlan?: boolean;
+  verifiedOnly?: boolean;
 };
 
 type ActivityParams = ListParams & {
@@ -129,6 +130,7 @@ type ActivityParams = ListParams & {
   mealIncluded?: boolean;
   outdoor?: boolean;
   featured?: boolean;
+  verifiedOnly?: boolean;
 
   minPrice?: number;
   maxPrice?: number;

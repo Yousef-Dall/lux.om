@@ -19,6 +19,7 @@ import {
 } from '../utils/pricing';
 import {
   buildSearchRelevance,
+  getVerificationTrustScore,
   paginateExplicitlySortedIds,
   paginateRankedIds,
   restoreRankedOrder
@@ -171,6 +172,16 @@ const verificationSourceValues = [
   'FUTURE_MUNICIPALITY_REGISTRATION',
   'FUTURE_THIRD_PARTY_PROVIDER'
 ] as const;
+
+const optionalBooleanQuerySchema = z
+  .preprocess((value) => {
+    if (value === undefined || value === '') return undefined;
+    if (value === true || value === 'true' || value === '1') return true;
+    if (value === false || value === 'false' || value === '0') return false;
+
+    return value;
+  }, z.boolean())
+  .optional();
 
 function normalizeBuyerEligibilitySearch(value: string) {
   return value.toLowerCase().replace(/[_-]+/g, ' ').trim();
@@ -356,6 +367,7 @@ const listQuerySchema = z.object({
   hasVirtualTour: z.coerce.boolean().optional(),
   hasFloorPlan: z.coerce.boolean().optional(),
   verificationStatus: z.enum(verificationStatusValues).optional(),
+  verifiedOnly: optionalBooleanQuerySchema,
   mediaQualityStatus: z.enum(mediaQualityStatusValues).optional(),
 
   sort: z
@@ -936,6 +948,7 @@ function listingMatchesSavedSearch(
     virtualTourUrl?: string | null;
     floorPlanUrl?: string | null;
     buyerEligibility?: readonly string[];
+    verificationStatus?: string | null;
     amenities?: Array<{
       name?: string | null;
       nameEn?: string | null;
@@ -1077,6 +1090,13 @@ function listingMatchesSavedSearch(
   }
 
   if (getFilterBoolean(filters, 'hasFloorPlan') && !listing.floorPlanUrl) {
+    return false;
+  }
+
+  if (
+    getFilterBoolean(filters, 'verifiedOnly') &&
+    getVerificationTrustScore(listing.verificationStatus) <= 0
+  ) {
     return false;
   }
 
@@ -1540,7 +1560,13 @@ listingsRouter.get('/', async (req, res, next) => {
       });
     }
 
-    if (query.verificationStatus) {
+    if (query.verifiedOnly) {
+      listingFilters.push({
+        verificationStatus: {
+          in: ['ADMIN_VERIFIED', 'EXTERNALLY_VERIFIED']
+        }
+      });
+    } else if (query.verificationStatus) {
       listingFilters.push({
         verificationStatus: query.verificationStatus
       });
@@ -1789,6 +1815,7 @@ listingsRouter.get('/', async (req, res, next) => {
           priceAmount: true,
           sqm: true,
           partnerTier: true,
+          verificationStatus: true,
           createdAt: true
         }
       });
@@ -1801,6 +1828,7 @@ listingsRouter.get('/', async (req, res, next) => {
             candidate.price,
           area: candidate.sqm,
           partnerTier: candidate.partnerTier,
+          trustScore: getVerificationTrustScore(candidate.verificationStatus),
           createdAt: candidate.createdAt
         })),
         query.sort,
@@ -1988,6 +2016,7 @@ listingsRouter.get('/', async (req, res, next) => {
               ]
             ]),
             partnerTier: candidate.partnerTier,
+            trustScore: getVerificationTrustScore(candidate.verificationStatus),
             qualityScore,
             createdAt: candidate.createdAt
           };
@@ -2010,20 +2039,45 @@ listingsRouter.get('/', async (req, res, next) => {
 
       listings = restoreRankedOrder(rankedListings, orderedIds);
     } else {
-      listings = await prisma.listing.findMany({
+      const candidates = await prisma.listing.findMany({
         where: listingWhere,
-        include: listingInclude,
-        orderBy: [
-          {
-            partnerTier: 'desc'
-          },
-          {
-            createdAt: 'desc'
-          }
-        ],
-        take: pagination.take,
-        skip: pagination.skip
+        select: {
+          id: true,
+          partnerTier: true,
+          verificationStatus: true,
+          mediaQualityStatus: true,
+          createdAt: true
+        }
       });
+
+      const orderedIds = paginateRankedIds(
+        candidates.map((candidate) => ({
+          id: candidate.id,
+          relevance: [],
+          partnerTier: candidate.partnerTier,
+          trustScore: getVerificationTrustScore(candidate.verificationStatus),
+          qualityScore:
+            Number(candidate.mediaQualityStatus === 'EXCELLENT') * 2 +
+            Number(candidate.mediaQualityStatus === 'ACCEPTABLE'),
+          createdAt: candidate.createdAt
+        })),
+        pagination.skip,
+        pagination.take
+      );
+
+      const trustedListings =
+        orderedIds.length > 0
+          ? await prisma.listing.findMany({
+              where: {
+                id: {
+                  in: orderedIds
+                }
+              },
+              include: listingInclude
+            })
+          : [];
+
+      listings = restoreRankedOrder(trustedListings, orderedIds);
     }
 
     res.json({

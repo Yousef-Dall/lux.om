@@ -19,6 +19,7 @@ import {
 } from '../utils/pricing';
 import {
   buildSearchRelevance,
+  getVerificationTrustScore,
   paginateExplicitlySortedIds,
   paginateRankedIds,
   restoreRankedOrder
@@ -139,6 +140,15 @@ const mediaAssetTypeValues = [
   'FLOOR_PLAN',
   'DOCUMENT',
   'OTHER'
+] as const;
+
+const verificationStatusValues = [
+  'UNVERIFIED',
+  'SUBMITTED',
+  'ADMIN_VERIFIED',
+  'EXTERNALLY_VERIFIED',
+  'REJECTED',
+  'EXPIRED'
 ] as const;
 
 const premiumMediaInputSchema = z
@@ -512,6 +522,8 @@ const activitiesQuerySchema = z
     mealIncluded: optionalBooleanQuerySchema,
     outdoor: optionalBooleanQuerySchema,
     featured: optionalBooleanQuerySchema,
+    verificationStatus: z.enum(verificationStatusValues).optional(),
+    verifiedOnly: optionalBooleanQuerySchema,
 
     price: z.string().trim().optional(),
     minPrice: z.coerce.number().finite().min(0).optional(),
@@ -1004,6 +1016,7 @@ function activityMatchesSavedSearch(
     providerEn?: string | null;
     providerAr?: string | null;
     travelRegion?: string | null;
+    verificationStatus?: string | null;
     priceAmount?: Prisma.Decimal | string | number | null;
     capacity?: number | null;
     destinationCountry?: string | null;
@@ -1081,6 +1094,13 @@ function activityMatchesSavedSearch(
     !activity.virtualTourUrl &&
     !activity.tour360Url &&
     !activity.videoWalkthroughUrl
+  ) {
+    return false;
+  }
+
+  if (
+    getFilterBoolean(filters, 'verifiedOnly') &&
+    getVerificationTrustScore(activity.verificationStatus) <= 0
   ) {
     return false;
   }
@@ -1573,6 +1593,18 @@ activitiesRouter.get('/', async (req, res, next) => {
       });
     }
 
+    if (query.verifiedOnly) {
+      activityFilters.push({
+        verificationStatus: {
+          in: ['ADMIN_VERIFIED', 'EXTERNALLY_VERIFIED']
+        }
+      });
+    } else if (query.verificationStatus) {
+      activityFilters.push({
+        verificationStatus: query.verificationStatus
+      });
+    }
+
     if (search) {
       activityFilters.push({
         OR: [
@@ -1848,6 +1880,7 @@ activitiesRouter.get('/', async (req, res, next) => {
           price: true,
           priceAmount: true,
           partnerTier: true,
+          verificationStatus: true,
           createdAt: true
         }
       });
@@ -1859,6 +1892,7 @@ activitiesRouter.get('/', async (req, res, next) => {
             candidate.priceAmount?.toString() ??
             candidate.price,
           partnerTier: candidate.partnerTier,
+          trustScore: getVerificationTrustScore(candidate.verificationStatus),
           createdAt: candidate.createdAt
         })),
         query.sort,
@@ -1938,6 +1972,8 @@ activitiesRouter.get('/', async (req, res, next) => {
           mealIncluded: true,
           outdoor: true,
 
+          verificationStatus: true,
+
           travelAgencyId: true,
           nearestLandmarkId: true,
           partnerTier: true,
@@ -1978,6 +2014,7 @@ activitiesRouter.get('/', async (req, res, next) => {
             candidate.travelAgency?.nameAr,
             candidate.nearestLandmark?.nameEn,
             candidate.nearestLandmark?.nameAr,
+            candidate.verificationStatus,
             ...candidate.highlights.flatMap((highlight) => [
               highlight.textEn,
               highlight.textAr
@@ -2018,6 +2055,8 @@ activitiesRouter.get('/', async (req, res, next) => {
             Number(Boolean(candidate.difficulty)) +
             Number(Boolean(candidate.activityType)) +
             Number(Boolean(candidate.travelRegion)) +
+            Number(candidate.verificationStatus === 'ADMIN_VERIFIED') * 2 +
+            Number(candidate.verificationStatus === 'EXTERNALLY_VERIFIED') * 3 +
             Number(Boolean(candidate.destinationCountry)) +
             Number(Boolean(candidate.destinationCity)) +
             Number(Boolean(candidate.departureCity)) +
@@ -2082,6 +2121,7 @@ activitiesRouter.get('/', async (req, res, next) => {
               ]
             ]),
             partnerTier: candidate.partnerTier,
+            trustScore: getVerificationTrustScore(candidate.verificationStatus),
             qualityScore,
             createdAt: candidate.createdAt
           };
@@ -2107,20 +2147,42 @@ activitiesRouter.get('/', async (req, res, next) => {
         orderedIds
       );
     } else {
-      activities = await prisma.activity.findMany({
+      const candidates = await prisma.activity.findMany({
         where: activityWhere,
-        include: activityInclude,
-        orderBy: [
-          {
-            partnerTier: 'desc'
-          },
-          {
-            createdAt: 'desc'
-          }
-        ],
-        take: pagination.take,
-        skip: pagination.skip
+        select: {
+          id: true,
+          partnerTier: true,
+          verificationStatus: true,
+          createdAt: true
+        }
       });
+
+      const orderedIds = paginateRankedIds(
+        candidates.map((candidate) => ({
+          id: candidate.id,
+          relevance: [],
+          partnerTier: candidate.partnerTier,
+          trustScore: getVerificationTrustScore(candidate.verificationStatus),
+          qualityScore: 0,
+          createdAt: candidate.createdAt
+        })),
+        pagination.skip,
+        pagination.take
+      );
+
+      const trustedActivities =
+        orderedIds.length > 0
+          ? await prisma.activity.findMany({
+              where: {
+                id: {
+                  in: orderedIds
+                }
+              },
+              include: activityInclude
+            })
+          : [];
+
+      activities = restoreRankedOrder(trustedActivities, orderedIds);
     }
 
     res.json({

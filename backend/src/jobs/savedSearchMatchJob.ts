@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 
 import { prisma } from '../lib/prisma';
+import { getVerificationTrustScore } from '../utils/searchRanking';
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_SAVED_SEARCH_MATCH_LOOKBACK_DAYS = 7;
@@ -54,6 +55,16 @@ function getFilterNumber(filters: Record<string, unknown>, key: string) {
   }
 
   return null;
+}
+
+function getSavedSearchVerificationStatus(candidate: unknown) {
+  if (!candidate || typeof candidate !== 'object' || !('verificationStatus' in candidate)) {
+    return null;
+  }
+
+  const value = (candidate as { verificationStatus?: unknown }).verificationStatus;
+
+  return typeof value === 'string' ? value : null;
 }
 
 function getFilterBoolean(filters: Record<string, unknown>, key: string) {
@@ -202,6 +213,7 @@ function getListingSearchText(listing: {
   typeAr?: string | null;
   transaction?: string | null;
   buyerEligibility?: readonly string[];
+  verificationStatus?: string | null;
   developer?: {
     nameEn?: string | null;
     nameAr?: string | null;
@@ -436,6 +448,13 @@ function listingMatchesSavedSearch(
     return false;
   }
 
+  if (
+    getFilterBoolean(filters, 'verifiedOnly') &&
+    getVerificationTrustScore(getSavedSearchVerificationStatus(listing)) <= 0
+  ) {
+    return false;
+  }
+
   return true;
 }
 
@@ -527,6 +546,13 @@ function activityMatchesSavedSearch(
     !activity.virtualTourUrl &&
     !activity.tour360Url &&
     !activity.videoWalkthroughUrl
+  ) {
+    return false;
+  }
+
+  if (
+    getFilterBoolean(filters, 'verifiedOnly') &&
+    getVerificationTrustScore(getSavedSearchVerificationStatus(activity)) <= 0
   ) {
     return false;
   }

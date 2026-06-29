@@ -6,12 +6,22 @@ export type RankedSearchCandidate = {
   id: string;
   relevance: SearchRelevance;
   partnerTier: number;
+  trustScore?: number;
   qualityScore: number;
   createdAt: Date;
 };
 
 function normalizeSearchText(value: string) {
   return value.normalize('NFKC').trim().toLocaleLowerCase();
+}
+
+export function getVerificationTrustScore(status: string | null | undefined) {
+  if (status === 'EXTERNALLY_VERIFIED') return 30;
+  if (status === 'ADMIN_VERIFIED') return 24;
+  if (status === 'SUBMITTED') return -2;
+  if (status === 'REJECTED' || status === 'EXPIRED') return -20;
+
+  return 0;
 }
 
 function getTextMatchLevel(
@@ -102,6 +112,13 @@ export function paginateRankedIds(
         return partnerDifference;
       }
 
+      const trustDifference =
+        (right.trustScore ?? 0) - (left.trustScore ?? 0);
+
+      if (trustDifference !== 0) {
+        return trustDifference;
+      }
+
       const qualityDifference =
         right.qualityScore - left.qualityScore;
 
@@ -148,6 +165,7 @@ export type ExplicitSortCandidate = {
   price?: string | null;
   area?: number | null;
   partnerTier: number;
+  trustScore?: number;
   createdAt: Date;
 };
 
@@ -234,6 +252,13 @@ export function paginateExplicitlySortedIds(
 
       if (partnerDifference !== 0) {
         return partnerDifference;
+      }
+
+      const trustDifference =
+        (right.trustScore ?? 0) - (left.trustScore ?? 0);
+
+      if (trustDifference !== 0) {
+        return trustDifference;
       }
 
       const freshnessDifference =

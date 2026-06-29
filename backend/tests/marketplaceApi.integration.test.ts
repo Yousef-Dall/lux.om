@@ -174,7 +174,7 @@ async function seedMarketplaceFixtures() {
       price: 'OMR 9,999',
       priceAmount: '100',
       priceCurrency: 'OMR',
-      priceQualifier: 'FIXED',
+      priceQualifier: 'FIXED' as const,
       priceUnit: 'MONTH',
       beds: 1,
       baths: 1,
@@ -222,8 +222,8 @@ async function seedMarketplaceFixtures() {
       price: 'OMR 3,000',
       priceAmount: '3000',
       priceCurrency: 'USD',
-      priceQualifier: 'FIXED',
-      priceUnit: 'TOTAL',
+      priceQualifier: 'FIXED' as const,
+      priceUnit: 'TOTAL' as const,
       sqm: 400,
       partnerTier: 3,
       developerId: featuredDeveloper.id,
@@ -282,8 +282,8 @@ async function seedMarketplaceFixtures() {
       price: 'OMR 999',
       priceAmount: '20',
       priceCurrency: 'OMR',
-      priceQualifier: 'FIXED',
-      priceUnit: 'PERSON',
+      priceQualifier: 'FIXED' as const,
+      priceUnit: 'PERSON' as const,
       partnerTier: 1,
       familyFriendly: false,
       createdAt: new Date('2026-01-01T00:00:00.000Z')
@@ -299,7 +299,7 @@ async function seedMarketplaceFixtures() {
       priceAmount: '50',
       priceCurrency: 'OMR',
       priceQualifier: 'FROM',
-      priceUnit: 'PERSON',
+      priceUnit: 'PERSON' as const,
       partnerTier: 2,
       travelAgencyId: standardAgency.id,
       outdoor: true,
@@ -315,7 +315,7 @@ async function seedMarketplaceFixtures() {
       price: 'OMR 150',
       priceAmount: '150',
       priceCurrency: 'USD',
-      priceQualifier: 'FIXED',
+      priceQualifier: 'FIXED' as const,
       priceUnit: 'GROUP',
       partnerTier: 3,
       travelAgencyId: featuredAgency.id,
@@ -669,7 +669,7 @@ describe('saved, reviews, and reports hardening', () => {
         price: 'OMR 100',
         priceAmount: '100',
         priceCurrency: 'OMR',
-        priceQualifier: 'FIXED',
+        priceQualifier: 'FIXED' as const,
         priceUnit: 'MONTH',
         beds: 1,
         baths: 1,
@@ -696,8 +696,8 @@ const draftActivity = await prisma.activity.create({
     price: 'OMR 20',
     priceAmount: '20',
     priceCurrency: 'OMR',
-    priceQualifier: 'FIXED',
-    priceUnit: 'PERSON',
+    priceQualifier: 'FIXED' as const,
+    priceUnit: 'PERSON' as const,
     status: 'PENDING',
     ownerId: owner.id
   }
@@ -3327,7 +3327,7 @@ describe('POST /api/listings pricing compatibility', () => {
         title: 'Structured Price Listing',
         priceAmount: '2800',
         priceCurrency: 'omr',
-        priceQualifier: 'FIXED',
+        priceQualifier: 'FIXED' as const,
         priceUnit: 'MONTH'
       })
       .expect(201);
@@ -3356,7 +3356,7 @@ describe('POST /api/listings pricing compatibility', () => {
         buyerEligibility: ['FOREIGNERS_ALLOWED', 'FREEHOLD'],
         priceAmount: '75000',
         priceCurrency: 'omr',
-        priceQualifier: 'FIXED',
+        priceQualifier: 'FIXED' as const,
         priceUnit: 'TOTAL'
       })
       .expect(201);
@@ -3514,7 +3514,7 @@ describe('POST /api/activities pricing compatibility', () => {
         priceAmount: '280',
         priceCurrency: 'OMR',
         priceQualifier: 'FROM',
-        priceUnit: 'PERSON',
+        priceUnit: 'PERSON' as const,
         travelRegion: 'OUTSIDE_OMAN',
         destinationCountry: 'United Arab Emirates',
         destinationCity: 'Dubai',
@@ -3609,7 +3609,7 @@ describe('POST /api/activities pricing compatibility', () => {
         ...activityPayload,
         titleEn: 'Invalid Structured Price Activity',
         priceCurrency: 'OMR',
-        priceQualifier: 'FIXED',
+        priceQualifier: 'FIXED' as const,
         priceUnit: 'PERSON'
       })
       .expect(400);
@@ -4948,5 +4948,168 @@ describe('verification backend hardening and notifications', () => {
     });
 
     expect(notification.message).toContain('admin verified');
+  });
+});
+
+describe('verified discovery filters and trust sorting', () => {
+  it('filters public listings to verified records and ranks trusted matches first', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const baseListing = {
+      description:
+        'A sufficiently detailed verified discovery listing description.',
+      transaction: 'Sale',
+      location: 'Muscat, Oman',
+      type: 'Apartment',
+      price: 'OMR 100,000',
+      priceAmount: '100000',
+      priceCurrency: 'OMR',
+      priceQualifier: 'FIXED' as const,
+      priceUnit: 'TOTAL' as const,
+      beds: 2,
+      baths: 2,
+      sqm: 120,
+      image: 'https://example.com/verified-discovery.jpg',
+      status: 'APPROVED' as const,
+      ownerId: owner.id,
+      partnerTier: 0,
+      createdAt: new Date('2026-04-01T00:00:00.000Z')
+    };
+
+    const unverified = await prisma.listing.create({
+      data: {
+        ...baseListing,
+        slug: 'verified-discovery-unverified-listing',
+        title: 'Verified Discovery Trust Home',
+        verificationStatus: 'UNVERIFIED'
+      }
+    });
+
+    const verified = await prisma.listing.create({
+      data: {
+        ...baseListing,
+        slug: 'verified-discovery-approved-listing',
+        title: 'Verified Discovery Trust Residence',
+        verificationStatus: 'ADMIN_VERIFIED',
+        verificationSource: 'LUX_OM_ADMIN_REVIEW',
+        verificationDate: new Date('2026-04-02T00:00:00.000Z')
+      }
+    });
+
+    const filteredResponse = await request(app)
+      .get('/api/listings')
+      .query({
+        search: 'Verified Discovery Trust',
+        verifiedOnly: 'true',
+        pageSize: 20
+      })
+      .expect(200);
+
+    const filteredIds = filteredResponse.body.listings.map(
+      (listing: { id: string }) => listing.id
+    );
+
+    expect(filteredIds).toContain(verified.id);
+    expect(filteredIds).not.toContain(unverified.id);
+
+    const rankedResponse = await request(app)
+      .get('/api/listings')
+      .query({
+        search: 'Verified Discovery Trust',
+        pageSize: 20
+      })
+      .expect(200);
+
+    const rankedIds = rankedResponse.body.listings.map(
+      (listing: { id: string }) => listing.id
+    );
+
+    expect(rankedIds.indexOf(verified.id)).toBeGreaterThanOrEqual(0);
+    expect(rankedIds.indexOf(unverified.id)).toBeGreaterThanOrEqual(0);
+    expect(rankedIds.indexOf(verified.id)).toBeLessThan(
+      rankedIds.indexOf(unverified.id)
+    );
+  });
+
+  it('filters public activities to verified records and ranks trusted matches first', async () => {
+    const provider = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-activities@lux.test'
+      }
+    });
+
+    const baseActivity = {
+      descriptionEn:
+        'A sufficiently detailed verified discovery activity description.',
+      locationEn: 'Muscat, Oman',
+      categoryEn: 'Experience',
+      price: 'OMR 25',
+      priceAmount: '25',
+      priceCurrency: 'OMR',
+      priceQualifier: 'FIXED' as const,
+      priceUnit: 'PERSON' as const,
+      ownerId: provider.id,
+      status: 'APPROVED' as const,
+      partnerTier: 0,
+      createdAt: new Date('2026-04-01T00:00:00.000Z')
+    };
+
+    const unverified = await prisma.activity.create({
+      data: {
+        ...baseActivity,
+        slug: 'verified-discovery-unverified-activity',
+        titleEn: 'Verified Discovery Trust Tour',
+        verificationStatus: 'UNVERIFIED'
+      }
+    });
+
+    const verified = await prisma.activity.create({
+      data: {
+        ...baseActivity,
+        slug: 'verified-discovery-approved-activity',
+        titleEn: 'Verified Discovery Trust Experience',
+        verificationStatus: 'EXTERNALLY_VERIFIED',
+        verificationSource: 'FUTURE_THIRD_PARTY_PROVIDER',
+        verificationDate: new Date('2026-04-02T00:00:00.000Z')
+      }
+    });
+
+    const filteredResponse = await request(app)
+      .get('/api/activities')
+      .query({
+        search: 'Verified Discovery Trust',
+        verifiedOnly: 'true',
+        pageSize: 20
+      })
+      .expect(200);
+
+    const filteredIds = filteredResponse.body.activities.map(
+      (activity: { id: string }) => activity.id
+    );
+
+    expect(filteredIds).toContain(verified.id);
+    expect(filteredIds).not.toContain(unverified.id);
+
+    const rankedResponse = await request(app)
+      .get('/api/activities')
+      .query({
+        search: 'Verified Discovery Trust',
+        pageSize: 20
+      })
+      .expect(200);
+
+    const rankedIds = rankedResponse.body.activities.map(
+      (activity: { id: string }) => activity.id
+    );
+
+    expect(rankedIds.indexOf(verified.id)).toBeGreaterThanOrEqual(0);
+    expect(rankedIds.indexOf(unverified.id)).toBeGreaterThanOrEqual(0);
+    expect(rankedIds.indexOf(verified.id)).toBeLessThan(
+      rankedIds.indexOf(unverified.id)
+    );
   });
 });

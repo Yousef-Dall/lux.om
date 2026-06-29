@@ -196,6 +196,7 @@ const [familyFriendly, setFamilyFriendly] = useState(getBooleanParam(searchParam
 const [includesTransfer, setIncludesTransfer] = useState(getBooleanParam(searchParams.get('includesTransfer')));
 const [mealIncluded, setMealIncluded] = useState(getBooleanParam(searchParams.get('mealIncluded')));
 const [outdoor, setOutdoor] = useState(getBooleanParam(searchParams.get('outdoor')));
+const [verifiedOnly, setVerifiedOnly] = useState(getBooleanParam(searchParams.get('verifiedOnly')));
 
 const [minPrice, setMinPrice] = useState(getNonNegativeNumberParam(searchParams.get('minPrice')));
 const [maxPrice, setMaxPrice] = useState(getNonNegativeNumberParam(searchParams.get('maxPrice')));
@@ -256,6 +257,7 @@ noOutsideText: 'جرّبي تغيير الوجهة أو السعر أو إزال
 noInsideTitle: 'لا توجد أنشطة محلية مطابقة حالياً.',
 noInsideText: 'جرّبي تغيير المنطقة أو التاريخ أو إزالة بعض الفلاتر.',
 sortBy: 'ترتيب حسب',
+verifiedOnly: 'موثق فقط',
 previous: 'السابق',
 next: 'التالي',
 page: 'الصفحة',
@@ -301,6 +303,7 @@ noOutsideText: 'Try another destination, price range, or remove a few filters.',
 noInsideTitle: 'No matching local activities yet.',
 noInsideText: 'Try another area, date, or remove a few filters.',
 sortBy: 'Sort by',
+verifiedOnly: 'Verified only',
 previous: 'Previous',
 next: 'Next',
 page: 'Page',
@@ -322,6 +325,7 @@ setFamilyFriendly(getBooleanParam(searchParams.get('familyFriendly')));
 setIncludesTransfer(getBooleanParam(searchParams.get('includesTransfer')));
 setMealIncluded(getBooleanParam(searchParams.get('mealIncluded')));
 setOutdoor(getBooleanParam(searchParams.get('outdoor')));
+setVerifiedOnly(getBooleanParam(searchParams.get('verifiedOnly')));
 setMinPrice(getNonNegativeNumberParam(searchParams.get('minPrice')));
 setMaxPrice(getNonNegativeNumberParam(searchParams.get('maxPrice')));
 setSortBy(
@@ -352,6 +356,7 @@ if (familyFriendly) params.set('familyFriendly', '1');
 if (includesTransfer) params.set('includesTransfer', '1');
 if (mealIncluded) params.set('mealIncluded', '1');
 if (outdoor) params.set('outdoor', '1');
+if (verifiedOnly) params.set('verifiedOnly', '1');
 if (minPrice) params.set('minPrice', minPrice);
 if (maxPrice) params.set('maxPrice', maxPrice);
 if (sortBy !== 'recommended') params.set('sortBy', sortBy);
@@ -377,6 +382,7 @@ familyFriendly,
 includesTransfer,
 mealIncluded,
 outdoor,
+verifiedOnly,
 minPrice,
 maxPrice,
 sortBy,
@@ -433,6 +439,7 @@ familyFriendly,
 includesTransfer,
 mealIncluded,
 outdoor,
+verifiedOnly,
 debouncedMinPrice,
 debouncedMaxPrice,
 sortBy
@@ -494,6 +501,7 @@ async function loadActivities() {
       includesTransfer: includesTransfer || undefined,
       mealIncluded: mealIncluded || undefined,
       outdoor: outdoor || undefined,
+      verifiedOnly: verifiedOnly || undefined,
 
       minPrice: toOptionalNumber(debouncedMinPrice),
       maxPrice: toOptionalNumber(debouncedMaxPrice),
@@ -692,6 +700,14 @@ if (outdoor) {
   });
 }
 
+if (verifiedOnly) {
+  chips.push({
+    key: 'verifiedOnly',
+    label: copy.verifiedOnly,
+    onRemove: () => setVerifiedOnly(false)
+  });
+}
+
 if (minPrice.trim()) {
   chips.push({
     key: 'minPrice',
@@ -728,6 +744,7 @@ familyFriendly,
 includesTransfer,
 mealIncluded,
 outdoor,
+verifiedOnly,
 minPrice,
 maxPrice,
 language,
@@ -738,6 +755,7 @@ activityCopy.familyFriendly,
 activityCopy.includesTransfer,
 activityCopy.mealIncluded,
 activityCopy.outdoor,
+copy.verifiedOnly,
 copy.resultsNear,
 copy.resultsAgency,
 copy.insideOman,
@@ -874,6 +892,7 @@ setFamilyFriendly(false);
 setIncludesTransfer(false);
 setMealIncluded(false);
 setOutdoor(false);
+setVerifiedOnly(false);
 setMinPrice('');
 setMaxPrice('');
 setSortBy('recommended');
@@ -1281,6 +1300,16 @@ actions={ <ButtonLink to="/add-activity" variant="soft">
             >
               {activityCopy.outdoor}
             </button>
+
+            <button
+              type="button"
+              className={verifiedOnly ? 'active' : ''}
+              onClick={() => setVerifiedOnly((value) => !value)}
+            >
+              <ShieldCheck size={15} aria-hidden="true" />
+              {copy.verifiedOnly}
+            </button>
+
           </div>
         </div>
       ) : null}
