@@ -1,0 +1,103 @@
+
+/* =========================================================
+   Public verification trust badges
+   ========================================================= */
+
+.trust-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+}
+
+.trust-badges--full {
+  align-items: stretch;
+  gap: 10px;
+}
+
+.trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 9px;
+  border: 1px solid rgba(7, 56, 62, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--color-muted);
+  font-size: 0.73rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  box-shadow: 0 10px 24px rgba(7, 56, 62, 0.06);
+}
+
+.trust-badge svg {
+  flex: 0 0 auto;
+}
+
+.trust-badge > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trust-badges--full .trust-badge {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 5px;
+  min-width: min(190px, 100%);
+  border-radius: 18px;
+  padding: 10px 12px;
+}
+
+.trust-badges--full .trust-badge > span {
+  white-space: normal;
+}
+
+.trust-badge small {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.trust-badge--verified {
+  border-color: rgba(20, 119, 93, 0.2);
+  background: rgba(20, 119, 93, 0.1);
+  color: #126f57;
+}
+
+.trust-badge--official {
+  border-color: rgba(16, 92, 137, 0.2);
+  background: rgba(16, 92, 137, 0.1);
+  color: #105c89;
+}
+
+.trust-badge--pending {
+  border-color: rgba(194, 154, 82, 0.24);
+  background: rgba(194, 154, 82, 0.12);
+  color: #836229;
+}
+
+.trust-badge--warning {
+  border-color: rgba(191, 84, 84, 0.2);
+  background: rgba(191, 84, 84, 0.1);
+  color: #8d2d2d;
+}
+
+.trust-badge--neutral {
+  border-color: rgba(7, 56, 62, 0.1);
+  background: rgba(7, 56, 62, 0.055);
+  color: var(--color-ink);
+}
+
+@media (max-width: 620px) {
+  .trust-badge {
+    max-width: 100%;
+  }
+
+  .trust-badge > span {
+    white-space: normal;
+  }
+}

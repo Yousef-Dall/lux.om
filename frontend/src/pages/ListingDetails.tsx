@@ -370,7 +370,8 @@ notSpecified: 'Not specified',
               verificationStatus={listing.verificationStatus}
               mediaQualityStatus={listing.mediaQualityStatus}
               buyerEligibility={listing.buyerEligibility}
-            />
+                      variant="full"
+        />
 
             <div className="stage8-detail-actions">
               <SavedButton targetId={listing.id} targetType="listing" />

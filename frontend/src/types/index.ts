@@ -705,6 +705,13 @@ export type EnhancementStatus =
 | 'COMPLETED'
 | 'FAILED';
 
+export type VerificationSource =
+  | 'LUX_OM_ADMIN_REVIEW'
+  | 'OWNER_DOCUMENT_SUBMISSION'
+  | 'FUTURE_MOLUP_API'
+  | 'FUTURE_MUNICIPALITY_REGISTRATION'
+  | 'FUTURE_THIRD_PARTY_PROVIDER';
+
 export type VerificationStatus =
 | 'UNVERIFIED'
 | 'SUBMITTED'

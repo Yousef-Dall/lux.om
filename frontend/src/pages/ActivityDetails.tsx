@@ -627,6 +627,7 @@ return ( <article className="details-page details-page--activity-detail"> <secti
         <TrustBadges
           verificationStatus={activity.verificationStatus}
           mediaQualityStatus={activity.mediaQualityStatus}
+                  variant="full"
         />
 
         <div className="stage8-detail-actions">
