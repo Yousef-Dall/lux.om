@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
+import bcrypt from 'bcryptjs';
 
 import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
@@ -3792,5 +3793,117 @@ describe('auth abuse protection rate limiting', () => {
       .expect(429);
 
     expect(response.body.message).toContain('Too many Google login exchange attempts');
+  });
+});
+
+describe('account password security settings', () => {
+  it('changes password with current password and rejects wrong or weak changes', async () => {
+    const passwordHash = await bcrypt.hash('CurrentSafe2026!', 12);
+
+    const passwordUser = await prisma.user.create({
+      data: {
+        name: 'Change Password User',
+        email: 'change-password-user@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    const passwordUserToken = signToken(passwordUser);
+
+    await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${passwordUserToken}`)
+      .send({
+        currentPassword: 'WrongCurrent2026!',
+        newPassword: 'NextSafe2026!'
+      })
+      .expect(401);
+
+    await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${passwordUserToken}`)
+      .send({
+        currentPassword: 'CurrentSafe2026!',
+        newPassword: 'weak'
+      })
+      .expect(400);
+
+    await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${passwordUserToken}`)
+      .send({
+        currentPassword: 'CurrentSafe2026!',
+        newPassword: 'NextSafe2026!'
+      })
+      .expect(200);
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: 'change-password-user@lux.test',
+        password: 'CurrentSafe2026!'
+      })
+      .expect(401);
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: 'change-password-user@lux.test',
+        password: 'NextSafe2026!'
+      })
+      .expect(200);
+  });
+
+  it('lets Google-only users set a password without a current password', async () => {
+    const googlePasswordHash = await bcrypt.hash('RandomGoogleOnly2026!', 12);
+
+    const googleOnlyUser = await prisma.user.create({
+      data: {
+        name: 'Google Only Password User',
+        email: 'google-only-password-user@lux.test',
+        password: googlePasswordHash,
+        passwordLoginEnabled: false,
+        googleId: 'google-only-password-user-id',
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    const googleOnlyToken = signToken(googleOnlyUser);
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: 'google-only-password-user@lux.test',
+        password: 'RandomGoogleOnly2026!'
+      })
+      .expect(401);
+
+    const response = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${googleOnlyToken}`)
+      .send({
+        newPassword: 'SafeAccess2026!'
+      })
+      .expect(200);
+
+    expect(response.body.user).toMatchObject({
+      email: 'google-only-password-user@lux.test',
+      googleConnected: true,
+      passwordLoginEnabled: true
+    });
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: 'google-only-password-user@lux.test',
+        password: 'SafeAccess2026!'
+      })
+      .expect(200);
   });
 });

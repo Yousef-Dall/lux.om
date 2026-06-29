@@ -1,13 +1,14 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Building2, CheckCircle2, Mail, Phone, ShieldCheck, User, XCircle } from 'lucide-react';
+import { Building2, CheckCircle2, Circle, KeyRound, LockKeyhole, Mail, Phone, ShieldCheck, User, XCircle } from 'lucide-react';
 
 import { ApiError } from '../api/client';
-import { resendEmailVerification } from '../api/auth';
+import { changePassword, resendEmailVerification } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import { getAccountRoleDescription, getAccountRoleLabel } from '../utils/accountRoles';
+import { getPasswordPolicyStatus } from '../utils/passwordPolicy';
 
 export default function Profile() {
   const { language } = useLanguage();
@@ -21,6 +22,12 @@ export default function Profile() {
   const [companyName, setCompanyName] = useState(user?.companyName ?? '');
   const [saving, setSaving] = useState(false);
   const [sendingVerification, setSendingVerification] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [devVerificationUrl, setDevVerificationUrl] = useState('');
@@ -32,6 +39,21 @@ export default function Profile() {
   }, [user]);
 
   const registered = searchParams.get('registered') === '1';
+
+  const securityPasswordPolicy = getPasswordPolicyStatus({
+    password: newPassword,
+    email: user?.email,
+    name: user?.name
+  });
+  const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
+  const canSetPasswordWithoutCurrent = Boolean(
+    user?.googleConnected && !user?.passwordLoginEnabled
+  );
+  const canChangePassword =
+    securityPasswordPolicy.isValid &&
+    passwordsMatch &&
+    (canSetPasswordWithoutCurrent || currentPassword.length > 0) &&
+    !changingPassword;
 
   const copy =
     language === 'ar'
@@ -59,7 +81,30 @@ export default function Profile() {
           error: 'تعذر تحديث الملف الشخصي.',
           verificationError: 'تعذر تجهيز رابط التحقق.',
           devLink: 'رابط تحقق التطوير',
-          dashboard: 'العودة للوحة التحكم'
+          dashboard: 'العودة للوحة التحكم',
+          securityTitle: 'أمان الحساب',
+          securityDescription: 'غيّري كلمة المرور أو أضيفي كلمة مرور لحساب Google.',
+          currentPassword: 'كلمة المرور الحالية',
+          newPassword: 'كلمة المرور الجديدة',
+          confirmPassword: 'تأكيد كلمة المرور',
+          passwordHelp: 'يجب أن تحتوي كلمة المرور على:',
+          passwordMismatch: 'كلمتا المرور غير متطابقتين.',
+          passwordChanged: 'تم تحديث كلمة المرور بنجاح.',
+          passwordChangeError: 'تعذر تحديث كلمة المرور.',
+          setPasswordGoogle:
+            'هذا الحساب متصل بـ Google. يمكنك إضافة كلمة مرور للدخول بالبريد وكلمة المرور أيضاً.',
+          changePassword: 'تحديث كلمة المرور',
+          changingPassword: 'جاري التحديث...',
+          passwordRules: {
+            length: 'من 10 إلى 100 حرف',
+            lowercase: 'حرف صغير واحد على الأقل',
+            uppercase: 'حرف كبير واحد على الأقل',
+            number: 'رقم واحد على الأقل',
+            symbol: 'رمز واحد على الأقل',
+            trim: 'لا تبدأ أو تنتهي بمسافة',
+            email: 'لا تحتوي على اسم البريد الإلكتروني',
+            name: 'لا تحتوي على اسمك'
+          }
         }
       : {
           eyebrow: 'Profile',
@@ -85,7 +130,30 @@ export default function Profile() {
           error: 'Could not update your profile.',
           verificationError: 'Could not prepare a verification link.',
           devLink: 'Development verification link',
-          dashboard: 'Back to dashboard'
+          dashboard: 'Back to dashboard',
+          securityTitle: 'Account security',
+          securityDescription: 'Change your password or add a password to a Google account.',
+          currentPassword: 'Current password',
+          newPassword: 'New password',
+          confirmPassword: 'Confirm password',
+          passwordHelp: 'Password must include:',
+          passwordMismatch: 'Passwords do not match.',
+          passwordChanged: 'Password updated successfully.',
+          passwordChangeError: 'Could not update password.',
+          setPasswordGoogle:
+            'This account is connected with Google. You can add a password to also sign in with email and password.',
+          changePassword: 'Update password',
+          changingPassword: 'Updating...',
+          passwordRules: {
+            length: '10 to 100 characters',
+            lowercase: 'At least one lowercase letter',
+            uppercase: 'At least one uppercase letter',
+            number: 'At least one number',
+            symbol: 'At least one symbol',
+            trim: 'No spaces at the beginning or end',
+            email: 'Does not contain the email username',
+            name: 'Does not contain your name'
+          }
         };
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -113,6 +181,47 @@ export default function Profile() {
       }
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!token) return;
+
+    if (!passwordsMatch) {
+      setPasswordError(copy.passwordMismatch);
+      return;
+    }
+
+    try {
+      setChangingPassword(true);
+      setPasswordMessage('');
+      setPasswordError('');
+
+      await changePassword(
+        {
+          ...(canSetPasswordWithoutCurrent ? {} : { currentPassword }),
+          newPassword
+        },
+        token
+      );
+
+      await refreshUser();
+
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordMessage(copy.passwordChanged);    } catch (caughtError) {
+      console.error(caughtError);
+
+      if (caughtError instanceof ApiError) {
+        setPasswordError(caughtError.message);
+      } else {
+        setPasswordError(copy.passwordChangeError);
+      }
+    } finally {
+      setChangingPassword(false);
     }
   }
 
@@ -280,6 +389,107 @@ export default function Profile() {
             </p>
           ) : null}
         </aside>
+
+        <form className="profile-card form-card profile-card--security" onSubmit={handleChangePassword}>
+          <div className="form-group-heading">
+            <span className="form-section-icon">
+              <KeyRound size={18} aria-hidden="true" />
+            </span>
+
+            <div>
+              <h2>{copy.securityTitle}</h2>
+              <p>{copy.securityDescription}</p>
+            </div>
+          </div>
+
+          {canSetPasswordWithoutCurrent ? (
+            <p className="trust-note">{copy.setPasswordGoogle}</p>
+          ) : (
+            <label>
+              {copy.currentPassword}
+              <span className="input-with-icon">
+                <LockKeyhole size={17} aria-hidden="true" />
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  autoComplete="current-password"
+                />
+              </span>
+            </label>
+          )}
+
+          <label>
+            {copy.newPassword}
+            <span className="input-with-icon">
+              <LockKeyhole size={17} aria-hidden="true" />
+              <input
+                minLength={10}
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                autoComplete="new-password"
+              />
+            </span>
+          </label>
+
+          <div className="password-policy" aria-live="polite">
+            <p>{copy.passwordHelp}</p>
+            <ul>
+              {securityPasswordPolicy.rules.map((rule) => (
+                <li
+                  key={rule.id}
+                  className={rule.passed ? 'password-policy__item--passed' : ''}
+                >
+                  {rule.passed ? (
+                    <CheckCircle2 size={15} aria-hidden="true" />
+                  ) : (
+                    <Circle size={15} aria-hidden="true" />
+                  )}
+                  <span>{copy.passwordRules[rule.id as keyof typeof copy.passwordRules]}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <label>
+            {copy.confirmPassword}
+            <span className="input-with-icon">
+              <LockKeyhole size={17} aria-hidden="true" />
+              <input
+                minLength={10}
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                autoComplete="new-password"
+              />
+            </span>
+          </label>
+
+          {confirmPassword && !passwordsMatch ? (
+            <p className="form-error" role="alert">
+              {copy.passwordMismatch}
+            </p>
+          ) : null}
+
+          {passwordMessage ? (
+            <p className="form-success" role="status">
+              {passwordMessage}
+            </p>
+          ) : null}
+
+          {passwordError ? (
+            <p className="form-error" role="alert">
+              {passwordError}
+            </p>
+          ) : null}
+
+          <button className="button-link button-link--primary" type="submit" disabled={!canChangePassword}>
+            <KeyRound size={17} aria-hidden="true" />
+            {changingPassword ? copy.changingPassword : copy.changePassword}
+          </button>
+        </form>
+
       </div>
     </section>
   );

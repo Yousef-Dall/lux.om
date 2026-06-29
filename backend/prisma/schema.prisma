@@ -337,6 +337,7 @@ model User {
   name      String
   email     String   @unique
   password  String
+  passwordLoginEnabled       Boolean   @default(true)
   role      Role     @default(USER)
   googleId                    String?   @unique
   phone                       String?

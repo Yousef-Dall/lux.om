@@ -33,6 +33,12 @@ export const authAbuseRateLimitRules = {
     developmentLimit: 80,
     message: 'Too many password reset attempts. Please wait before trying again.'
   },
+  changePassword: {
+    windowMs: 15 * 60 * 1000,
+    productionLimit: 8,
+    developmentLimit: 80,
+    message: 'Too many password change attempts. Please wait before trying again.'
+  },
   verificationResend: {
     windowMs: 15 * 60 * 1000,
     productionLimit: 3,
@@ -92,6 +98,7 @@ export const authAbuseRateLimiters = {
     authAbuseRateLimitRules.passwordResetRequest
   ),
   passwordReset: createAuthAbuseRateLimiter(authAbuseRateLimitRules.passwordReset),
+  changePassword: createAuthAbuseRateLimiter(authAbuseRateLimitRules.changePassword),
   verificationResend: createAuthAbuseRateLimiter(
     authAbuseRateLimitRules.verificationResend
   ),

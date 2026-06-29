@@ -20,6 +20,8 @@ export function publicUser(user: {
   companyName?: string | null;
   emailVerified?: boolean;
   emailVerifiedAt?: Date | string | null;
+  googleId?: string | null;
+  passwordLoginEnabled?: boolean;
 }) {
   return {
     id: user.id,
@@ -29,6 +31,8 @@ export function publicUser(user: {
     phone: user.phone ?? null,
     companyName: user.companyName ?? null,
     emailVerified: Boolean(user.emailVerified),
-    emailVerifiedAt: user.emailVerifiedAt ?? null
+    emailVerifiedAt: user.emailVerifiedAt ?? null,
+    googleConnected: Boolean(user.googleId),
+    passwordLoginEnabled: user.passwordLoginEnabled ?? true
   };
 }

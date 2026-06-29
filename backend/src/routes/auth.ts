@@ -70,6 +70,13 @@ const resetPasswordSchema = z
   })
   .strict();
 
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(100).optional(),
+    newPassword: z.string().min(1).max(100)
+  })
+  .strict();
+
 const updateProfileSchema = z
   .object({
     name: z.string().trim().min(2).max(80).optional(),
@@ -242,6 +249,13 @@ authRouter.post('/login', authAbuseRateLimiters.login, async (req, res, next) =>
       throw new AppError(401, 'Invalid credentials');
     }
 
+    if (!user.passwordLoginEnabled) {
+
+      throw new AppError(401, 'Invalid email or password');
+
+    }
+
+
     const passwordMatches = await bcrypt.compare(data.password, user.password);
 
     if (!passwordMatches) {
@@ -355,6 +369,7 @@ authRouter.post('/reset-password', authAbuseRateLimiters.passwordReset, async (r
         },
         data: {
           password: passwordHash,
+          passwordLoginEnabled: true,
           passwordResetTokenHash: null,
           passwordResetExpiresAt: null,
           passwordResetUsedAt: now
@@ -380,6 +395,83 @@ authRouter.post('/reset-password', authAbuseRateLimiters.passwordReset, async (r
     next(error);
   }
 });
+
+authRouter.post(
+  '/change-password',
+  authAbuseRateLimiters.changePassword,
+  requireAuth(),
+  async (req, res, next) => {
+    try {
+      if (!req.user) {
+        throw new AppError(401, 'Unauthorized');
+      }
+
+      const data = changePasswordSchema.parse(req.body);
+      const user = await prisma.user.findUniqueOrThrow({
+        where: {
+          id: req.user.id
+        }
+      });
+
+      const passwordIssues = validatePasswordPolicy({
+        password: data.newPassword,
+        email: user.email,
+        name: user.name
+      });
+
+      if (passwordIssues.length > 0) {
+        throw new AppError(
+          400,
+          `Password does not meet security requirements: ${passwordIssues
+            .map((issue) => issue.message)
+            .join(' ')}`
+        );
+      }
+
+      if (user.passwordLoginEnabled) {
+        if (!data.currentPassword) {
+          throw new AppError(400, 'Current password is required');
+        }
+
+        const currentPasswordMatches = await bcrypt.compare(data.currentPassword, user.password);
+
+        if (!currentPasswordMatches) {
+          throw new AppError(401, 'Current password is incorrect');
+        }
+
+        const samePassword = await bcrypt.compare(data.newPassword, user.password);
+
+        if (samePassword) {
+          throw new AppError(400, 'New password must be different from your current password');
+        }
+      } else if (!user.googleId) {
+        throw new AppError(400, 'Current password is required');
+      }
+
+      const passwordHash = await bcrypt.hash(data.newPassword, 12);
+
+      const updatedUser = await prisma.user.update({
+        where: {
+          id: user.id
+        },
+        data: {
+          password: passwordHash,
+          passwordLoginEnabled: true,
+          passwordResetTokenHash: null,
+          passwordResetExpiresAt: null,
+          passwordResetUsedAt: null
+        }
+      });
+
+      res.json({
+        ok: true,
+        user: publicUser(updatedUser)
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 authRouter.get('/me', requireAuth(), (req, res) => {
   res.json({

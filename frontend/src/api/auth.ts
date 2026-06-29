@@ -6,6 +6,8 @@ export type AuthUser = PublicUser & {
   companyName?: string | null;
   emailVerified?: boolean;
   emailVerifiedAt?: string | null;
+  googleConnected?: boolean;
+  passwordLoginEnabled?: boolean;
 };
 
 export type AuthVerificationResponse = {
@@ -123,4 +125,15 @@ export async function requestPasswordReset(email: string) {
 
 export async function resetPassword(payload: { token: string; password: string }) {
   return apiClient.post<{ ok: true; user: AuthUser }>('/api/auth/reset-password', payload);
+}
+
+export type ChangePasswordPayload = {
+  currentPassword?: string;
+  newPassword: string;
+};
+
+export async function changePassword(payload: ChangePasswordPayload, token: string) {
+  return apiClient.post<{ ok: true; user: AuthUser }>('/api/auth/change-password', payload, {
+    token
+  });
 }

@@ -236,6 +236,7 @@ export async function signInWithGoogleCode(input: { code: string; state: string 
       name: profile.name,
       email: profile.email,
       password: passwordHash,
+      passwordLoginEnabled: false,
       role: state.role as Role,
       googleId: profile.googleId,
       emailVerified: true,
