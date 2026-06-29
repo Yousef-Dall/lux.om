@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Bell, Building2, CheckCircle2, Circle, KeyRound, LockKeyhole, LogOut, Mail, Phone, ShieldCheck, User, XCircle } from 'lucide-react';
 
@@ -14,6 +14,7 @@ export default function Profile() {
   const { language } = useLanguage();
   const { token, user, updateProfile, refreshUser, replaceSession } = useAuth();
   const [searchParams] = useSearchParams();
+  const preferenceCardRef = useRef<HTMLFormElement | null>(null);
 
   useDocumentTitle('Profile');
 
@@ -60,6 +61,22 @@ export default function Profile() {
   }, [user]);
 
   const registered = searchParams.get('registered') === '1';
+  const shouldHighlightEmailPreferences =
+    searchParams.get('section') === 'email-preferences';
+
+  useEffect(() => {
+    if (!shouldHighlightEmailPreferences) return;
+
+    const timer = window.setTimeout(() => {
+      preferenceCardRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+      preferenceCardRef.current?.focus({ preventScroll: true });
+    }, 50);
+
+    return () => window.clearTimeout(timer);
+  }, [shouldHighlightEmailPreferences]);
 
   const securityPasswordPolicy = getPasswordPolicyStatus({
     password: newPassword,
@@ -539,8 +556,14 @@ export default function Profile() {
         </aside>
 
         <form
-          className="profile-card form-card profile-card--notification-preferences"
+          id="email-preferences"
+          ref={preferenceCardRef}
+          tabIndex={-1}
+          className={`profile-card form-card profile-card--notification-preferences ${
+            shouldHighlightEmailPreferences ? 'profile-card--highlighted' : ''
+          }`}
           onSubmit={handleSubmit}
+          aria-labelledby="email-preferences-title"
         >
           <div className="form-group-heading">
             <span className="form-section-icon">
@@ -548,7 +571,7 @@ export default function Profile() {
             </span>
 
             <div>
-              <h2>{copy.notificationPreferencesTitle}</h2>
+              <h2 id="email-preferences-title">{copy.notificationPreferencesTitle}</h2>
               <p>{copy.notificationPreferencesDescription}</p>
             </div>
           </div>

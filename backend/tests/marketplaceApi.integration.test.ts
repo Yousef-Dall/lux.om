@@ -5595,6 +5595,36 @@ describe('transactional email notifications', () => {
 });
 
 describe('notification email preferences', () => {
+
+  it('includes an email preferences deep link in development transactional emails', async () => {
+    const customer = await prisma.user.update({
+      where: {
+        email: 'integration-customer@lux.test'
+      },
+      data: {
+        emailBookingUpdates: true
+      }
+    });
+
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    try {
+      await createNotification(prisma, {
+        userId: customer.id,
+        type: 'BOOKING_OWNER_APPROVED',
+        title: 'Email preference footer deep link',
+        message: 'This email should include a manage preferences link.'
+      });
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/profile?section=email-preferences')
+      );
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
+
   it('skips optional booking emails when the user opts out', async () => {
     const customer = await prisma.user.update({
       where: {

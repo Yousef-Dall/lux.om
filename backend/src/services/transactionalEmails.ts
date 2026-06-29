@@ -5,6 +5,8 @@ import { env, isProduction } from '../config/env';
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
 
+const EMAIL_PREFERENCES_PATH = '/profile?section=email-preferences';
+
 type TransactionalEmailRecipient = {
   id?: string;
   email: string | null;
@@ -166,17 +168,44 @@ function getActionUrl(input: TransactionalNotificationEmailInput) {
   return `${getFrontendBaseUrl()}${actionPath.startsWith('/') ? '' : '/'}${actionPath}`;
 }
 
+
+function getEmailPreferencesUrl() {
+  return `${getFrontendBaseUrl()}${EMAIL_PREFERENCES_PATH}`;
+}
+
+function getEmailPreferenceExplanation(type: NotificationType) {
+  if (isMandatoryTransactionalEmail(type)) {
+    return {
+      label: 'Required account or transaction email',
+      text:
+        'You received this required email because it relates to account security, verification, trust and safety, payments, cancellations, or another important transaction update. Required emails cannot be disabled.'
+    };
+  }
+
+  return {
+    label: 'Optional notification email',
+    text:
+      'You received this optional notification email based on your lux.om email preferences. You can manage optional booking, saved-search, and marketing emails at any time.'
+  };
+}
+
 function buildTransactionalEmail(input: {
   name: string | null | undefined;
+  type: NotificationType;
   title: string;
   message: string;
   actionUrl: string;
+  preferencesUrl: string;
 }) {
   const safeName = input.name?.trim() || 'there';
   const escapedName = escapeHtml(safeName);
   const escapedTitle = escapeHtml(input.title);
   const escapedMessage = escapeHtml(input.message);
   const escapedActionUrl = escapeHtml(input.actionUrl);
+  const escapedPreferencesUrl = escapeHtml(input.preferencesUrl);
+  const preferenceExplanation = getEmailPreferenceExplanation(input.type);
+  const escapedPreferenceLabel = escapeHtml(preferenceExplanation.label);
+  const escapedPreferenceText = escapeHtml(preferenceExplanation.text);
 
   return {
     subject: `lux.om: ${input.title}`,
@@ -189,6 +218,9 @@ function buildTransactionalEmail(input: {
       '',
       'Open this link to review the update:',
       input.actionUrl,
+      '',
+      `${preferenceExplanation.label}: ${preferenceExplanation.text}`,
+      `Manage optional email preferences: ${input.preferencesUrl}`,
       '',
       'lux.om'
     ].join('\n'),
@@ -207,6 +239,17 @@ function buildTransactionalEmail(input: {
         </p>
         <p>If the button does not work, copy and paste this link into your browser:</p>
         <p style="word-break:break-all;color:#38585d">${escapedActionUrl}</p>
+        <hr style="border:none;border-top:1px solid #d9e2e4;margin:24px 0" />
+        <p style="font-size:13px;color:#557075;margin:0 0 8px">
+          <strong>${escapedPreferenceLabel}</strong>
+        </p>
+        <p style="font-size:13px;color:#557075;margin:0 0 8px">${escapedPreferenceText}</p>
+        <p style="font-size:13px;color:#557075;margin:0">
+          Manage optional email preferences:
+          <a href="${escapedPreferencesUrl}" style="color:#07383e;font-weight:700">
+            ${escapedPreferencesUrl}
+          </a>
+        </p>
         <p>lux.om</p>
       </div>
     `
@@ -224,11 +267,12 @@ async function safelyDeliverTransactionalNotificationEmail(
   if (recipients.length === 0) return;
 
   const actionUrl = getActionUrl(input);
+  const preferencesUrl = getEmailPreferencesUrl();
 
   if (!shouldUseSmtpDelivery()) {
     for (const recipient of recipients) {
       console.info(
-        `[lux.om] Development transactional email for ${recipient.email}: ${input.title} -> ${actionUrl}`
+        `[lux.om] Development transactional email for ${recipient.email}: ${input.title} -> ${actionUrl} | preferences: ${preferencesUrl}`
       );
     }
 
@@ -247,9 +291,11 @@ async function safelyDeliverTransactionalNotificationEmail(
     recipients.map((recipient) => {
       const email = buildTransactionalEmail({
         name: recipient.name,
+        type: input.type,
         title: input.title,
         message: input.message,
-        actionUrl
+        actionUrl,
+        preferencesUrl
       });
 
       return transporter.sendMail({
