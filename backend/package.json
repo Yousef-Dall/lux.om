@@ -20,7 +20,8 @@
     "test:integration": "node scripts/run-with-test-env.mjs npx prisma migrate deploy && node scripts/run-with-test-env.mjs npx vitest run --config vitest.integration.config.mts",
     "test:all": "npm run test && npm run test:integration",
     "jobs:notifications:once": "tsx src/jobs/runNotificationJobs.ts",
-    "verify:production-env": "tsx scripts/verifyProductionEnv.ts"
+    "verify:production-env": "tsx scripts/verifyProductionEnv.ts",
+    "jobs:email-deliveries:prune": "tsx scripts/pruneEmailDeliveryEvents.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

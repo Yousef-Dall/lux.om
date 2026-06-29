@@ -9,6 +9,10 @@ import { authAbuseRateLimitRules } from '../src/middleware/rateLimit';
 import { createOauthLoginCode } from '../src/services/googleOAuth';
 import { recordAccountSecurityEvent } from '../src/lib/accountSecurityEvents';
 import { createNotification } from '../src/lib/bookingNotifications';
+import {
+  getEmailDeliveryRetentionDays,
+  pruneOldEmailDeliveryEvents
+} from '../src/services/emailDeliveryRetention';
 
 const app = createApp();
 
@@ -5874,5 +5878,95 @@ describe('admin email delivery health summary', () => {
         })
       ])
     );
+  });
+});
+
+describe('email delivery retention cleanup', () => {
+  it('validates retention windows with safe minimum guardrails', () => {
+    expect(getEmailDeliveryRetentionDays('45')).toBe(45);
+    expect(getEmailDeliveryRetentionDays(180)).toBe(180);
+    expect(() => getEmailDeliveryRetentionDays('29')).toThrow('at least 30');
+    expect(() => getEmailDeliveryRetentionDays('invalid')).toThrow(
+      'positive integer'
+    );
+  });
+
+  it('dry-runs and deletes only email delivery events older than the retention cutoff', async () => {
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    const now = new Date('2026-06-30T12:00:00.000Z');
+    const oldCreatedAt = new Date('2025-12-01T12:00:00.000Z');
+    const recentCreatedAt = new Date('2026-06-15T12:00:00.000Z');
+
+    await prisma.emailDeliveryEvent.createMany({
+      data: [
+        {
+          status: 'LOGGED',
+          deliveryMode: 'dev',
+          notificationType: 'BOOKING_OWNER_APPROVED',
+          title: 'Retention cleanup old event',
+          recipientUserId: customer.id,
+          recipientEmail: customer.email,
+          createdAt: oldCreatedAt,
+          reason: 'Old development email delivery event.'
+        },
+        {
+          status: 'LOGGED',
+          deliveryMode: 'dev',
+          notificationType: 'BOOKING_OWNER_APPROVED',
+          title: 'Retention cleanup recent event',
+          recipientUserId: customer.id,
+          recipientEmail: customer.email,
+          createdAt: recentCreatedAt,
+          reason: 'Recent development email delivery event.'
+        }
+      ]
+    });
+
+    const dryRun = await pruneOldEmailDeliveryEvents(prisma, {
+      retentionDays: 180,
+      dryRun: true,
+      now
+    });
+
+    expect(dryRun.dryRun).toBe(true);
+    expect(dryRun.deletedCount).toBe(0);
+    expect(dryRun.matchedCount).toBeGreaterThanOrEqual(1);
+
+    await expect(
+      prisma.emailDeliveryEvent.findFirstOrThrow({
+        where: {
+          title: 'Retention cleanup old event'
+        }
+      })
+    ).resolves.toBeTruthy();
+
+    const executed = await pruneOldEmailDeliveryEvents(prisma, {
+      retentionDays: 180,
+      dryRun: false,
+      now
+    });
+
+    expect(executed.dryRun).toBe(false);
+    expect(executed.deletedCount).toBeGreaterThanOrEqual(1);
+
+    const oldCount = await prisma.emailDeliveryEvent.count({
+      where: {
+        title: 'Retention cleanup old event'
+      }
+    });
+
+    const recentCount = await prisma.emailDeliveryEvent.count({
+      where: {
+        title: 'Retention cleanup recent event'
+      }
+    });
+
+    expect(oldCount).toBe(0);
+    expect(recentCount).toBe(1);
   });
 });
