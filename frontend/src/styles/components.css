@@ -114,3 +114,23 @@
   margin-top: 16px;
   max-width: 720px;
 }
+
+.provider-report-card {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.provider-report-card h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+
+.provider-report-card p {
+  margin: 0 0 12px;
+  color: var(--muted-text);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}

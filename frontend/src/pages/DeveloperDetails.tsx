@@ -12,8 +12,10 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { getDeveloperBySlug, getListings } from '../api/marketplace';
+import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
 import { ListingCard } from '../components/Cards';
+import ReportModal from '../components/ReportModal';
 import SectionHeader from '../components/SectionHeader';
 import TrustBadges from '../components/TrustBadges';
 import WhatsAppActions from '../components/WhatsAppActions';
@@ -24,6 +26,7 @@ import type { DevelopmentCompany, Listing } from '../types';
 export default function DeveloperDetails() {
   const { slug } = useParams();
   const { language } = useLanguage();
+  const { token } = useAuth();
 
   const [developer, setDeveloper] = useState<DevelopmentCompany | null>(null);
   const [developerListings, setDeveloperListings] = useState<Listing[]>([]);
@@ -56,6 +59,10 @@ export default function DeveloperDetails() {
           email: 'البريد الإلكتروني',
           website: 'الموقع الإلكتروني',
           partner: 'كن شريكاً مع lux.om',
+          reportTrustIssue: 'الإبلاغ عن مشكلة ثقة',
+          reportTrustDescription:
+            'أبلغي فريق lux.om إذا كانت بيانات الشركة أو حالة التحقق تبدو غير دقيقة.',
+          reportTrustTrigger: 'الإبلاغ عن هذا المطور',
           whatsapp: 'تواصل عبر واتساب',
           loading: 'جاري تحميل ملف المطور...',
           error: 'تعذر تحميل ملف المطور. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
@@ -82,6 +89,10 @@ export default function DeveloperDetails() {
           email: 'Email',
           website: 'Website',
           partner: 'Partner with lux.om',
+          reportTrustIssue: 'Report a trust concern',
+          reportTrustDescription:
+            'Tell lux.om if this company profile or verification status looks inaccurate.',
+          reportTrustTrigger: 'Report this developer',
           whatsapp: 'Chat on WhatsApp',
           loading: 'Loading developer profile...',
           error: 'Could not load developer profile. Make sure the backend is running and try again.'
@@ -298,6 +309,18 @@ export default function DeveloperDetails() {
                   <strong>{copy.website}:</strong> {developer.website.replace(/^https?:\/\//, '')}
                 </a>
               ) : null}
+            </div>
+
+            <div className="provider-report-card">
+              <h3>{copy.reportTrustIssue}</h3>
+              <p>{copy.reportTrustDescription}</p>
+              <ReportModal
+                targetType="DEVELOPER"
+                targetId={developer.id}
+                targetTitle={developer.name}
+                token={token}
+                triggerLabel={copy.reportTrustTrigger}
+              />
             </div>
 
             <ButtonLink to="/contact" isFullWidth>

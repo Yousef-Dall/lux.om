@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { getActivities, getTravelAgencyBySlug } from '../api/marketplace';
+import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
+import ReportModal from '../components/ReportModal';
 import TrustBadges from '../components/TrustBadges';
 import { ActivityCard } from '../components/Cards';
 import WhatsAppActions from '../components/WhatsAppActions';
@@ -13,6 +15,7 @@ import type { Activity, TravelAgency } from '../types';
 
 export default function TravelAgencyDetails() {
   const { language } = useLanguage();
+  const { token } = useAuth();
   const { slug } = useParams();
 
   const [agency, setAgency] = useState<TravelAgency | null>(null);
@@ -37,7 +40,11 @@ export default function TravelAgencyDetails() {
           activities: 'أنشطة هذه الوكالة',
           noActivities: 'لا توجد أنشطة منشورة لهذه الوكالة حالياً.',
           viewActivities: 'عرض كل الأنشطة',
-          whatsapp: 'تواصل عبر واتساب'
+          whatsapp: 'تواصل عبر واتساب',
+          reportTrustIssue: 'الإبلاغ عن مشكلة ثقة',
+          reportTrustDescription:
+            'أبلغي فريق lux.om إذا كانت بيانات الوكالة أو حالة التحقق تبدو غير دقيقة.',
+          reportTrustTrigger: 'الإبلاغ عن هذه الوكالة'
         }
       : {
           back: 'Back to travel agencies',
@@ -52,7 +59,11 @@ export default function TravelAgencyDetails() {
           activities: 'Activities by this agency',
           noActivities: 'No published activities from this agency yet.',
           viewActivities: 'View all activities',
-          whatsapp: 'Chat on WhatsApp'
+          whatsapp: 'Chat on WhatsApp',
+          reportTrustIssue: 'Report a trust concern',
+          reportTrustDescription:
+            'Tell lux.om if this agency profile or verification status looks inaccurate.',
+          reportTrustTrigger: 'Report this agency'
         };
 
   useEffect(() => {
@@ -293,6 +304,18 @@ export default function TravelAgencyDetails() {
               {agency.website}
             </p>
           ) : null}
+
+          <div className="provider-report-card">
+            <h3>{copy.reportTrustIssue}</h3>
+            <p>{copy.reportTrustDescription}</p>
+            <ReportModal
+              targetType="TRAVEL_AGENCY"
+              targetId={agency.id}
+              targetTitle={agency.name}
+              token={token}
+              triggerLabel={copy.reportTrustTrigger}
+            />
+          </div>
 
           <ButtonLink to={`/activities?travelAgencyId=${agency.id}`} isFullWidth>
             {copy.viewActivities}

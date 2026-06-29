@@ -5213,3 +5213,69 @@ describe('provider trust profiles and verification filters', () => {
     });
   });
 });
+
+describe('public provider trust reporting', () => {
+  it('lets visitors report a developer trust or verification concern', async () => {
+    const developer = await prisma.developerCompany.create({
+      data: {
+        slug: 'reportable-provider-developer',
+        nameEn: 'Reportable Provider Developer',
+        verified: true,
+        featured: false,
+        verificationStatus: 'ADMIN_VERIFIED' as const,
+        verificationSource: 'LUX_OM_ADMIN_REVIEW' as const
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/reports')
+      .send({
+        targetType: 'DEVELOPER',
+        targetId: developer.id,
+        reason: 'MISLEADING_INFO',
+        message: 'The public developer verification claim may be inaccurate.',
+        reporterEmail: 'developer-report@lux.test'
+      })
+      .expect(201);
+
+    expect(response.body.report).toMatchObject({
+      targetType: 'DEVELOPER',
+      targetId: developer.id,
+      reason: 'MISLEADING_INFO',
+      status: 'PENDING',
+      reporterEmail: 'developer-report@lux.test'
+    });
+  });
+
+  it('lets visitors report a travel agency trust or verification concern', async () => {
+    const agency = await prisma.travelAgency.create({
+      data: {
+        slug: 'reportable-provider-agency',
+        nameEn: 'Reportable Provider Agency',
+        verified: true,
+        featured: false,
+        verificationStatus: 'EXTERNALLY_VERIFIED' as const,
+        verificationSource: 'FUTURE_THIRD_PARTY_PROVIDER' as const
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/reports')
+      .send({
+        targetType: 'TRAVEL_AGENCY',
+        targetId: agency.id,
+        reason: 'SUSPECTED_FRAUD',
+        message: 'The public travel agency profile looks suspicious.',
+        reporterEmail: 'agency-report@lux.test'
+      })
+      .expect(201);
+
+    expect(response.body.report).toMatchObject({
+      targetType: 'TRAVEL_AGENCY',
+      targetId: agency.id,
+      reason: 'SUSPECTED_FRAUD',
+      status: 'PENDING',
+      reporterEmail: 'agency-report@lux.test'
+    });
+  });
+});
