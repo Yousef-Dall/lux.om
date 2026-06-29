@@ -10412,3 +10412,13 @@ transition: none;
   height: 1px;
   background: rgba(7, 56, 62, 0.1);
 }
+
+/* Pre-revision account role UX polish */
+.profile-role-description {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.45;
+}

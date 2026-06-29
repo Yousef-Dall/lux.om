@@ -7,6 +7,7 @@ import { resendEmailVerification } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import { getAccountRoleDescription, getAccountRoleLabel } from '../utils/accountRoles';
 
 export default function Profile() {
   const { language } = useLanguage();
@@ -144,6 +145,9 @@ export default function Profile() {
 
   if (!user) return null;
 
+  const roleLabel = getAccountRoleLabel(user.role, language);
+  const roleDescription = getAccountRoleDescription(user.role, language);
+
   return (
     <section className="page-section container profile-page">
       <div className="profile-page__header">
@@ -235,7 +239,8 @@ export default function Profile() {
               <ShieldCheck size={18} aria-hidden="true" />
               {copy.role}
             </span>
-            <strong>{user.role.replace(/_/g, ' ').toLowerCase()}</strong>
+            <strong>{roleLabel}</strong>
+            <small className="profile-role-description">{roleDescription}</small>
           </div>
 
           <div

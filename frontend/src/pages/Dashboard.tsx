@@ -45,6 +45,7 @@ import OwnerMarketplaceEditModal from '../components/OwnerMarketplaceEditModal';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import { formatMarketplacePrice } from '../utils/format';
+import { getAccountRoleDescription, getAccountRoleLabel } from '../utils/accountRoles';
 import type { Activity, Listing } from '../types';
 
 function getStatusClass(status?: string) {
@@ -211,7 +212,7 @@ function getTimelineStepClass(step: TimelineStep) {
 
 export default function Dashboard() {
   const { t, language } = useLanguage();
-  const { token, isOwner, isActivityProvider, isAdmin } = useAuth();
+  const { token, user, isMarketplaceOperator } = useAuth();
 
   useDocumentTitle('Dashboard');
 
@@ -742,7 +743,9 @@ export default function Dashboard() {
 
   const filteredReceivedBookings = receivedBookings.filter(matchesReceivedBookingStatusFilter);
   const unreadNotifications = notifications.filter((notification) => !notification.readAt).length;
-  const isOperatorDashboard = isOwner || isActivityProvider || isAdmin;
+  const isOperatorDashboard = isMarketplaceOperator;
+  const accountRoleLabel = user ? getAccountRoleLabel(user.role, language) : '';
+  const accountRoleDescription = user ? getAccountRoleDescription(user.role, language) : '';
 
   const accountDashboardCopy =
     language === 'ar'
@@ -753,7 +756,15 @@ export default function Dashboard() {
             'استخدم لوحة التحكم لمتابعة طلباتك، المدفوعات، التنبيهات، والفرص الاستثمارية المحفوظة.',
           exploreListings: 'استكشف العقارات',
           exploreActivities: 'استكشف الأنشطة',
-          insightAction: 'رؤى المستثمر'
+          insightAction: 'رؤى المستثمر',
+          myRequests: 'طلباتي',
+          inquiriesSent: 'استفسارات أرسلتها',
+          pendingPaymentsTitle: 'مدفوعات قيد الانتظار',
+          pendingPaymentsSmall: 'تحتاج متابعة الدفع',
+          accountStatus: 'حالة الحساب',
+          verifiedAccount: 'موثق',
+          unverifiedAccount: 'بانتظار التحقق',
+          roleSummary: 'نوع الحساب'
         }
       : {
           workspace: 'User workspace',
@@ -762,7 +773,15 @@ export default function Dashboard() {
             'Use your dashboard to manage requests, payments, alerts, and saved investment opportunities.',
           exploreListings: 'Explore listings',
           exploreActivities: 'Explore activities',
-          insightAction: 'Investor insights'
+          insightAction: 'Investor insights',
+          myRequests: 'My requests',
+          inquiriesSent: 'inquiries sent',
+          pendingPaymentsTitle: 'Pending payments',
+          pendingPaymentsSmall: 'need payment follow-up',
+          accountStatus: 'Account status',
+          verifiedAccount: 'Verified',
+          unverifiedAccount: 'Awaiting verification',
+          roleSummary: 'Account type'
         };
 
   return (
@@ -853,80 +872,138 @@ export default function Dashboard() {
           </div>
 
           <div className="dashboard-grid">
-            <article className="metric-card metric-card--accent">
-              <span>
-                <Home size={18} aria-hidden="true" />
-                {t.dashboard.totalListings}
-              </span>
-              <strong>{stats?.totalListings ?? 0}</strong>
-              <small>
-                {stats?.approvedListings ?? 0} {copy.approvedCount} ·{' '}
-                {stats?.rejectedListings ?? 0} {copy.rejectedCount}
-              </small>
-            </article>
+            {isOperatorDashboard ? (
+              <>
+                <article className="metric-card metric-card--accent">
+                  <span>
+                    <Home size={18} aria-hidden="true" />
+                    {t.dashboard.totalListings}
+                  </span>
+                  <strong>{stats?.totalListings ?? 0}</strong>
+                  <small>
+                    {stats?.approvedListings ?? 0} {copy.approvedCount} ·{' '}
+                    {stats?.rejectedListings ?? 0} {copy.rejectedCount}
+                  </small>
+                </article>
 
-            <article className="metric-card">
-              <span>
-                <MessageCircle size={18} aria-hidden="true" />
-                {t.dashboard.pendingInquiries}
-              </span>
-              <strong>{stats?.receivedInquiries ?? 0}</strong>
-              <small>{copy.pendingInquiriesSmall}</small>
-            </article>
+                <article className="metric-card">
+                  <span>
+                    <MessageCircle size={18} aria-hidden="true" />
+                    {t.dashboard.pendingInquiries}
+                  </span>
+                  <strong>{stats?.receivedInquiries ?? 0}</strong>
+                  <small>{copy.pendingInquiriesSmall}</small>
+                </article>
 
-            <article className="metric-card">
-              <span>
-                <ShieldCheck size={18} aria-hidden="true" />
-                {t.dashboard.profileScore}
-              </span>
-              <strong>{stats?.approvedListings || stats?.approvedActivities ? 'Active' : 'New'}</strong>
-              <small>{copy.profileQuality}</small>
-            </article>
+                <article className="metric-card">
+                  <span>
+                    <ShieldCheck size={18} aria-hidden="true" />
+                    {t.dashboard.profileScore}
+                  </span>
+                  <strong>{stats?.approvedListings || stats?.approvedActivities ? 'Active' : 'New'}</strong>
+                  <small>{copy.profileQuality}</small>
+                </article>
 
-            <article className="metric-card">
-              <span>
-                <Clock3 size={18} aria-hidden="true" />
-                {copy.shortStays}
-              </span>
-              <strong>{stats?.pendingListings ?? 0}</strong>
-              <small>{copy.shortStaysSmall}</small>
-            </article>
+                <article className="metric-card">
+                  <span>
+                    <Clock3 size={18} aria-hidden="true" />
+                    {copy.shortStays}
+                  </span>
+                  <strong>{stats?.pendingListings ?? 0}</strong>
+                  <small>{copy.shortStaysSmall}</small>
+                </article>
 
-            <article className="metric-card">
-              <span>
-                <Sparkles size={18} aria-hidden="true" />
-                {copy.activities}
-              </span>
-              <strong>{stats?.totalActivities ?? 0}</strong>
-              <small>
-                {stats?.approvedActivities ?? 0} {copy.approvedCount} ·{' '}
-                {stats?.pendingActivities ?? 0} {copy.pending}
-              </small>
-            </article>
+                <article className="metric-card">
+                  <span>
+                    <Sparkles size={18} aria-hidden="true" />
+                    {copy.activities}
+                  </span>
+                  <strong>{stats?.totalActivities ?? 0}</strong>
+                  <small>
+                    {stats?.approvedActivities ?? 0} {copy.approvedCount} ·{' '}
+                    {stats?.pendingActivities ?? 0} {copy.pending}
+                  </small>
+                </article>
 
-            <article className="metric-card">
-              <span>
-                <CreditCard size={18} aria-hidden="true" />
-                {copy.payment}
-              </span>
-              <strong>{stats?.pendingPayments ?? 0}</strong>
-              <small>
-                {stats?.submittedBookings ?? 0} {copy.myBookings.toLowerCase()}
-              </small>
-            </article>
+                <article className="metric-card">
+                  <span>
+                    <CreditCard size={18} aria-hidden="true" />
+                    {copy.payment}
+                  </span>
+                  <strong>{stats?.pendingPayments ?? 0}</strong>
+                  <small>
+                    {stats?.submittedBookings ?? 0} {copy.myBookings.toLowerCase()}
+                  </small>
+                </article>
 
-            <article className="metric-card">
-              <span>
-                <Bell size={18} aria-hidden="true" />
-                {copy.notifications}
-              </span>
-              <strong>{notifications.length}</strong>
-              <small>
-                {unreadNotifications} {copy.unreadNotifications}
-              </small>
-            </article>
+                <article className="metric-card">
+                  <span>
+                    <Bell size={18} aria-hidden="true" />
+                    {copy.notifications}
+                  </span>
+                  <strong>{notifications.length}</strong>
+                  <small>
+                    {unreadNotifications} {copy.unreadNotifications}
+                  </small>
+                </article>
+              </>
+            ) : (
+              <>
+                <article className="metric-card metric-card--accent">
+                  <span>
+                    <Users size={18} aria-hidden="true" />
+                    {accountDashboardCopy.myRequests}
+                  </span>
+                  <strong>{stats?.submittedBookings ?? 0}</strong>
+                  <small>
+                    {stats?.submittedInquiries ?? 0} {accountDashboardCopy.inquiriesSent}
+                  </small>
+                </article>
+
+                <article className="metric-card">
+                  <span>
+                    <CreditCard size={18} aria-hidden="true" />
+                    {accountDashboardCopy.pendingPaymentsTitle}
+                  </span>
+                  <strong>{stats?.pendingPayments ?? 0}</strong>
+                  <small>{accountDashboardCopy.pendingPaymentsSmall}</small>
+                </article>
+
+                <article className="metric-card">
+                  <span>
+                    <Bell size={18} aria-hidden="true" />
+                    {copy.notifications}
+                  </span>
+                  <strong>{notifications.length}</strong>
+                  <small>
+                    {unreadNotifications} {copy.unreadNotifications}
+                  </small>
+                </article>
+
+                <article className="metric-card">
+                  <span>
+                    <ShieldCheck size={18} aria-hidden="true" />
+                    {accountDashboardCopy.roleSummary}
+                  </span>
+                  <strong>{accountRoleLabel}</strong>
+                  <small>{accountRoleDescription}</small>
+                </article>
+
+                <article className="metric-card">
+                  <span>
+                    <CheckCircle2 size={18} aria-hidden="true" />
+                    {accountDashboardCopy.accountStatus}
+                  </span>
+                  <strong>
+                    {user?.emailVerified
+                      ? accountDashboardCopy.verifiedAccount
+                      : accountDashboardCopy.unverifiedAccount}
+                  </strong>
+                  <small>{user?.email ?? ''}</small>
+                </article>
+              </>
+            )}
           </div>
-
 
           {isOperatorDashboard ? (
             <>

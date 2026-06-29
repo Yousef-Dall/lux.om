@@ -17,8 +17,8 @@ export default function Login() {
 
   useDocumentTitle('Login');
 
-  const [email, setEmail] = useState('admin@lux.om');
-  const [password, setPassword] = useState('Password123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(() => {
     const params = new URLSearchParams(location.search);
@@ -38,7 +38,7 @@ export default function Login() {
           submitting: 'جاري الدخول...',
           noAccount: 'ليس لديك حساب؟',
           createAccount: 'إنشاء حساب',
-          adminHint: 'للتجربة كأدمن: admin@lux.om / Password123!',
+          adminHint: '',
           error: 'تعذر تسجيل الدخول. تأكدي من البيانات وحاولي مرة أخرى.'
         }
       : {

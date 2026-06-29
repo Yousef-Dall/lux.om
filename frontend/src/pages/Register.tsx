@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, LockKeyhole, UserPlus, Phone, User, CheckCircle2, Circle } from 'lucide-react';
 
@@ -51,6 +51,8 @@ export default function Register() {
           accountType: 'نوع الحساب',
           user: 'مستخدم',
           owner: 'مالك / وسيط',
+          userHelp: 'حساب المستخدم مناسب للتصفح، الاستفسارات، الحجز، والدفع.',
+          ownerHelp: 'حساب المالك / الوسيط مناسب لإضافة العقارات والأنشطة واستقبال الطلبات.',
           submit: 'إنشاء الحساب',
           googleUser: 'المتابعة مع Google كمستخدم',
           googleOwner: 'المتابعة مع Google كمالك / وسيط',
@@ -83,6 +85,8 @@ export default function Register() {
           accountType: 'Account type',
           user: 'User',
           owner: 'Owner / agent',
+          userHelp: 'User accounts are for browsing, inquiries, bookings, and payments.',
+          ownerHelp: 'Owner / agent accounts are for submitting listings and activities and receiving requests.',
           submit: 'Create account',
           googleUser: 'Continue with Google as user',
           googleOwner: 'Continue with Google as owner / agent',
@@ -99,6 +103,12 @@ export default function Register() {
   });
 
   const passwordRuleLabels: Record<PasswordPolicyRuleId, string> = copy.passwordRules;
+
+  useEffect(() => {
+    if (role === 'USER' && companyName) {
+      setCompanyName('');
+    }
+  }, [companyName, role]);
 
   function handleGoogleRegister(nextRole: 'USER' | 'OWNER') {
     window.location.href = getGoogleOAuthStartUrl({
@@ -221,17 +231,19 @@ export default function Register() {
             </span>
           </label>
 
-          <label>
-            {copy.companyName}
-            <span className="input-with-icon">
-              <User size={17} aria-hidden="true" />
-              <input
-                value={companyName}
-                onChange={(event) => setCompanyName(event.target.value)}
-                autoComplete="organization"
-              />
-            </span>
-          </label>
+          {role === 'OWNER' ? (
+            <label>
+              {copy.companyName}
+              <span className="input-with-icon">
+                <User size={17} aria-hidden="true" />
+                <input
+                  value={companyName}
+                  onChange={(event) => setCompanyName(event.target.value)}
+                  autoComplete="organization"
+                />
+              </span>
+            </label>
+          ) : null}
 
           <label>
             {copy.password}
@@ -273,6 +285,7 @@ export default function Register() {
               <option value="USER">{copy.user}</option>
               <option value="OWNER">{copy.owner}</option>
             </select>
+            <small>{role === 'OWNER' ? copy.ownerHelp : copy.userHelp}</small>
           </label>
 
           {error ? (

@@ -29,6 +29,9 @@ type AuthContextValue = {
   isAdmin: boolean;
   isOwner: boolean;
   isActivityProvider: boolean;
+  isCustomer: boolean;
+  isDeveloper: boolean;
+  isMarketplaceOperator: boolean;
   loading: boolean;
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
@@ -160,6 +163,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isOwner: user?.role === 'OWNER' || user?.role === 'ADMIN',
       isActivityProvider:
         user?.role === 'ACTIVITY_PROVIDER' || user?.role === 'OWNER' || user?.role === 'ADMIN',
+      isCustomer: user?.role === 'USER',
+      isDeveloper: user?.role === 'DEVELOPER',
+      isMarketplaceOperator:
+        user?.role === 'OWNER' ||
+        user?.role === 'ACTIVITY_PROVIDER' ||
+        user?.role === 'ADMIN',
       loading,
       login,
       register,

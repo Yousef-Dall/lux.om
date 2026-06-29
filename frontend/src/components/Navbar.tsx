@@ -14,6 +14,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { cn } from '../utils/format';
+import { getAccountRoleLabel } from '../utils/accountRoles';
 import ButtonLink from './ButtonLink';
 import NotificationBell from './NotificationBell';
 
@@ -25,6 +26,7 @@ const { pathname } = useLocation();
 const navigate = useNavigate();
 const { t, toggleLanguage, language } = useLanguage();
 const { user, token, isAuthenticated, isAdmin, logout } = useAuth();
+const accountRoleLabel = user ? getAccountRoleLabel(user.role, language) : '';
 
 const navCopy =
 language === 'ar'
@@ -193,7 +195,7 @@ return (
 
               <span className="nav-account__identity">
                 <strong>{user?.name || accessibilityCopy.dashboard}</strong>
-                <small>{isAdmin ? accessibilityCopy.admin : user?.email}</small>
+                <small>{isAdmin ? accessibilityCopy.admin : accountRoleLabel}</small>
               </span>
 
               <ChevronDown className="nav-account__chevron" size={16} aria-hidden="true" />
