@@ -76,6 +76,7 @@ enum InquiryType {
 }
 
 enum NotificationType {
+  ACCOUNT_SECURITY
   BOOKING_CREATED
   BOOKING_OWNER_APPROVED
   BOOKING_OWNER_REJECTED
@@ -89,6 +90,14 @@ enum NotificationType {
   REVIEW_STATUS_UPDATED
   VERIFICATION_STATUS_UPDATED
   SAVED_SEARCH_MATCH
+}
+
+enum AccountSecurityEventType {
+  PASSWORD_CHANGED
+  PASSWORD_RESET_COMPLETED
+  LOGOUT_ALL_SESSIONS
+  EMAIL_CHANGE_REQUESTED
+  EMAIL_CHANGE_CONFIRMED
 }
 
 enum BookingEventType {
@@ -361,6 +370,8 @@ model User {
   bookings      Booking[]
   inquiries     Inquiry[]
   notifications Notification[] @relation("UserNotifications")
+  accountSecurityEvents AccountSecurityEvent[] @relation("AccountSecurityEventUser")
+  accountSecurityEventsActed AccountSecurityEvent[] @relation("AccountSecurityEventActor")
   bookingEvents BookingEvent[] @relation("BookingEventActor")
   oauthLoginCodes OauthLoginCode[]
 
@@ -921,6 +932,27 @@ model Inquiry {
   @@index([userId])
   @@index([listingId])
   @@index([activityId])
+  @@index([createdAt])
+}
+
+model AccountSecurityEvent {
+  id       String                   @id @default(cuid())
+  type     AccountSecurityEventType
+  title    String
+  message  String
+  metadata Json?
+
+  userId String
+  user   User   @relation("AccountSecurityEventUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  actorId String?
+  actor   User?   @relation("AccountSecurityEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([actorId])
+  @@index([type])
   @@index([createdAt])
 }
 

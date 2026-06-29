@@ -37,6 +37,7 @@ async function clearTestDatabase() {
   }
 
   await prisma.inquiry.deleteMany();
+  await prisma.accountSecurityEvent.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.bookingEvent.deleteMany();
   await prisma.payment.deleteMany();
@@ -4292,5 +4293,226 @@ describe('secure email change workflow', () => {
       .expect(429);
 
     expect(response.body.message).toContain('Too many email change confirmation attempts');
+  });
+});
+
+describe('account security notifications and audit trail', () => {
+  it('creates notification and audit event after password reset completion', async () => {
+    const passwordHash = await bcrypt.hash('AuditReset2026!', 12);
+
+    const resetUser = await prisma.user.create({
+      data: {
+        name: 'Audit Reset User',
+        email: 'audit-reset-user@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    const resetRequestResponse = await request(app)
+      .post('/api/auth/request-password-reset')
+      .set('X-Forwarded-For', '203.0.113.80')
+      .send({
+        email: 'audit-reset-user@lux.test'
+      })
+      .expect(200);
+
+    const resetToken = extractTokenFromDevUrl(
+      resetRequestResponse.body.reset.devPasswordResetUrl
+    );
+
+    await request(app)
+      .post('/api/auth/reset-password')
+      .set('X-Forwarded-For', '203.0.113.81')
+      .send({
+        token: resetToken,
+        password: 'FortressAccess2026!'
+      })
+      .expect(200);
+
+    const event = await prisma.accountSecurityEvent.findFirstOrThrow({
+      where: {
+        userId: resetUser.id,
+        type: 'PASSWORD_RESET_COMPLETED'
+      }
+    });
+
+    expect(event.title).toContain('Password reset');
+
+    const notification = await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: resetUser.id,
+        type: 'ACCOUNT_SECURITY',
+        title: 'Password reset completed'
+      }
+    });
+
+    expect(notification.message).toContain('password was reset');
+  });
+
+  it('creates notification and audit event after password change', async () => {
+    const passwordHash = await bcrypt.hash('AuditChange2026!', 12);
+
+    const changeUser = await prisma.user.create({
+      data: {
+        name: 'Audit Change User',
+        email: 'audit-change-user@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    await request(app)
+      .post('/api/auth/change-password')
+      .set('X-Forwarded-For', '203.0.113.82')
+      .set('Authorization', `Bearer ${signToken(changeUser)}`)
+      .send({
+        currentPassword: 'AuditChange2026!',
+        newPassword: 'FortressAccess2026!'
+      })
+      .expect(200);
+
+    const [event, notification] = await Promise.all([
+      prisma.accountSecurityEvent.findFirstOrThrow({
+        where: {
+          userId: changeUser.id,
+          type: 'PASSWORD_CHANGED'
+        }
+      }),
+      prisma.notification.findFirstOrThrow({
+        where: {
+          userId: changeUser.id,
+          type: 'ACCOUNT_SECURITY',
+          title: 'Password changed'
+        }
+      })
+    ]);
+
+    expect(event.message).toContain('password was changed');
+    expect(notification.message).toContain('password was changed');
+  });
+
+  it('creates notification and audit event after logout all sessions', async () => {
+    const passwordHash = await bcrypt.hash('AuditLogout2026!', 12);
+
+    const logoutUser = await prisma.user.create({
+      data: {
+        name: 'Audit Logout User',
+        email: 'audit-logout-user@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    await request(app)
+      .post('/api/auth/logout-all-sessions')
+      .set('X-Forwarded-For', '203.0.113.83')
+      .set('Authorization', `Bearer ${signToken(logoutUser)}`)
+      .expect(200);
+
+    const [event, notification] = await Promise.all([
+      prisma.accountSecurityEvent.findFirstOrThrow({
+        where: {
+          userId: logoutUser.id,
+          type: 'LOGOUT_ALL_SESSIONS'
+        }
+      }),
+      prisma.notification.findFirstOrThrow({
+        where: {
+          userId: logoutUser.id,
+          type: 'ACCOUNT_SECURITY',
+          title: 'Other sessions logged out'
+        }
+      })
+    ]);
+
+    expect(event.message).toContain('sessions');
+    expect(notification.message).toContain('sessions');
+  });
+
+  it('creates notification and audit events for email change request and confirmation', async () => {
+    const passwordHash = await bcrypt.hash('AuditEmail2026!', 12);
+
+    const emailUser = await prisma.user.create({
+      data: {
+        name: 'Audit Email User',
+        email: 'audit-email-user@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    const requestResponse = await request(app)
+      .post('/api/auth/request-email-change')
+      .set('X-Forwarded-For', '203.0.113.84')
+      .set('Authorization', `Bearer ${signToken(emailUser)}`)
+      .send({
+        email: 'audit-email-user-new@lux.test',
+        currentPassword: 'AuditEmail2026!'
+      })
+      .expect(200);
+
+    await prisma.accountSecurityEvent.findFirstOrThrow({
+      where: {
+        userId: emailUser.id,
+        type: 'EMAIL_CHANGE_REQUESTED'
+      }
+    });
+
+    await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: emailUser.id,
+        type: 'ACCOUNT_SECURITY',
+        title: 'Email change requested'
+      }
+    });
+
+    const confirmationToken = extractTokenFromDevUrl(
+      requestResponse.body.emailChange.devEmailChangeVerificationUrl
+    );
+
+    await request(app)
+      .post('/api/auth/confirm-email-change')
+      .set('X-Forwarded-For', '203.0.113.85')
+      .send({
+        token: confirmationToken
+      })
+      .expect(200);
+
+    const updatedUser = await prisma.user.findUniqueOrThrow({
+      where: {
+        id: emailUser.id
+      }
+    });
+
+    await prisma.accountSecurityEvent.findFirstOrThrow({
+      where: {
+        userId: emailUser.id,
+        type: 'EMAIL_CHANGE_CONFIRMED'
+      }
+    });
+
+    const notification = await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: emailUser.id,
+        type: 'ACCOUNT_SECURITY',
+        title: 'Email changed'
+      }
+    });
+
+    expect(updatedUser.email).toBe('audit-email-user-new@lux.test');
+    expect(notification.message).toContain('audit-email-user-new@lux.test');
   });
 });

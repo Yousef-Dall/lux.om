@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import { AccountSecurityEventType } from '@prisma/client';
 import { z } from 'zod';
 
 import { requireAuth, signToken } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
+import { recordAccountSecurityEvent } from '../lib/accountSecurityEvents';
 import { AppError, publicUser } from '../utils/http';
 import { authAbuseRateLimiters } from '../middleware/rateLimit';
 import { env } from '../config/env';
@@ -407,6 +409,17 @@ authRouter.post('/reset-password', authAbuseRateLimiters.passwordReset, async (r
       });
     });
 
+    await recordAccountSecurityEvent(prisma, {
+      userId: updatedUser.id,
+      type: AccountSecurityEventType.PASSWORD_RESET_COMPLETED,
+      title: 'Password reset completed',
+      message:
+        'Your lux.om password was reset successfully. If this was not you, change your password immediately and contact support.',
+      metadata: {
+        email: updatedUser.email
+      }
+    });
+
     res.json({
       ok: true,
       user: publicUser(updatedUser)
@@ -483,6 +496,17 @@ authRouter.post(
           passwordResetTokenHash: null,
           passwordResetExpiresAt: null,
           passwordResetUsedAt: null
+        }
+      });
+
+      await recordAccountSecurityEvent(prisma, {
+        userId: updatedUser.id,
+        type: AccountSecurityEventType.PASSWORD_CHANGED,
+        title: 'Password changed',
+        message:
+          'Your lux.om password was changed successfully. If this was not you, use password reset and contact support.',
+        metadata: {
+          email: updatedUser.email
         }
       });
 
@@ -563,6 +587,19 @@ authRouter.post(
         name: updatedUser.name,
         oldEmail: updatedUser.email,
         token: emailChangeChallenge.token
+      });
+
+      await recordAccountSecurityEvent(prisma, {
+        userId: updatedUser.id,
+        type: AccountSecurityEventType.EMAIL_CHANGE_REQUESTED,
+        title: 'Email change requested',
+        message:
+          `A request was made to change your lux.om email from ${updatedUser.email} to ${data.email}. Confirm it only if this was you.`,
+        metadata: {
+          currentEmail: updatedUser.email,
+          pendingEmail: data.email,
+          emailSent: delivery.emailSent
+        }
       });
 
       res.json({
@@ -656,6 +693,18 @@ authRouter.post(
         });
       });
 
+      await recordAccountSecurityEvent(prisma, {
+        userId: updatedUser.id,
+        type: AccountSecurityEventType.EMAIL_CHANGE_CONFIRMED,
+        title: 'Email changed',
+        message:
+          `Your lux.om account email was changed from ${user.email} to ${updatedUser.email}.`,
+        metadata: {
+          oldEmail: user.email,
+          newEmail: updatedUser.email
+        }
+      });
+
       res.json({
         ok: true,
         user: publicUser(updatedUser),
@@ -685,6 +734,17 @@ authRouter.post(
           authTokenVersion: {
             increment: 1
           }
+        }
+      });
+
+      await recordAccountSecurityEvent(prisma, {
+        userId: updatedUser.id,
+        type: AccountSecurityEventType.LOGOUT_ALL_SESSIONS,
+        title: 'Other sessions logged out',
+        message:
+          'Older lux.om sessions on other devices and browsers were logged out successfully.',
+        metadata: {
+          email: updatedUser.email
         }
       });
 
