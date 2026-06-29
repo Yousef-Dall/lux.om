@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+import TrustBadges from './TrustBadges';
+
 type PartnerCardLabels = {
   verified: string;
   featured?: string;
@@ -31,6 +33,10 @@ type PartnerCardProps = {
   website?: string;
   verified?: boolean;
   featured?: boolean;
+  verificationStatus?: string | null;
+  verificationSource?: string | null;
+  verificationDate?: string | null;
+  verificationExpiryDate?: string | null;
   labels: PartnerCardLabels;
 };
 
@@ -51,6 +57,10 @@ export default function PartnerCard({
   website,
   verified = false,
   featured = false,
+  verificationStatus,
+  verificationSource,
+  verificationDate,
+  verificationExpiryDate,
   labels
 }: PartnerCardProps) {
   return (
@@ -88,6 +98,15 @@ export default function PartnerCard({
           <h2>
             <Link to={href}>{name}</Link>
           </h2>
+
+          <TrustBadges
+            verificationStatus={verificationStatus}
+            verificationSource={verificationSource}
+            verificationDate={verificationDate}
+            verificationExpiryDate={verificationExpiryDate}
+            variant="compact"
+            className="travel-agency-card__trust"
+          />
 
           {description ? (
             <p className="travel-agency-card__description">

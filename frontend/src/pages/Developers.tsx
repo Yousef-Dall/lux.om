@@ -191,6 +191,10 @@ viewProfile: 'View company profile',
         website={developer.website}
         verified={developer.verified}
         featured={developer.featured}
+        verificationStatus={developer.verificationStatus}
+        verificationSource={developer.verificationSource}
+        verificationDate={developer.verificationDate}
+        verificationExpiryDate={developer.verificationExpiryDate}
         labels={{
           verified: copy.verifiedDeveloper,
           featured: copy.featured,

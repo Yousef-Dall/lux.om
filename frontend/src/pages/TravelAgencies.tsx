@@ -184,6 +184,10 @@ export default function TravelAgencies() {
               website={agency.website}
               verified={agency.verified}
               featured={agency.featured}
+              verificationStatus={agency.verificationStatus}
+              verificationSource={agency.verificationSource}
+              verificationDate={agency.verificationDate}
+              verificationExpiryDate={agency.verificationExpiryDate}
               labels={{
                 verified: copy.verified,
                 featured: copy.featured,
