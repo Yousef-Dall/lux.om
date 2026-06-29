@@ -82,6 +82,13 @@ export function requireAuth(required = true) {
         throw new AppError(401, 'Unauthorized');
       }
 
+      if (user.suspendedAt) {
+        throw new AppError(
+          403,
+          'Account is suspended. Contact lux.om support if you believe this is a mistake.'
+        );
+      }
+
       if (payload.role !== user.role) {
         throw new AppError(401, 'Unauthorized');
       }

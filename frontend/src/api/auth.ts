@@ -178,3 +178,109 @@ export async function confirmEmailChange(token: string) {
     }
   );
 }
+
+export type AdminUserAccount = {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  phone?: string | null;
+  companyName?: string | null;
+  googleConnected: boolean;
+  passwordLoginEnabled: boolean;
+  emailVerified: boolean;
+  emailVerifiedAt?: string | null;
+  suspendedAt?: string | null;
+  suspendedReason?: string | null;
+  suspendedById?: string | null;
+  accountStatus: 'ACTIVE' | 'SUSPENDED';
+  authTokenVersion: number;
+  createdAt?: string;
+  updatedAt?: string;
+  counts?: {
+    listings: number;
+    activities: number;
+    bookings: number;
+    notifications: number;
+    accountSecurityEvents: number;
+  };
+};
+
+export type AdminUserSecurityEvent = {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  metadata?: unknown;
+  actorId?: string | null;
+  createdAt: string;
+};
+
+export type AdminUsersQuery = {
+  query?: string;
+  role?: UserRole;
+  status?: 'all' | 'active' | 'suspended' | 'verified' | 'unverified';
+  page?: number;
+  pageSize?: number;
+};
+
+export async function listAdminUsers(params: AdminUsersQuery, token: string) {
+  const searchParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') {
+      searchParams.set(key, String(value));
+    }
+  }
+
+  const queryString = searchParams.toString();
+
+  return apiClient.get<{
+    records: AdminUserAccount[];
+    pagination: {
+      page: number;
+      pageSize: number;
+      total: number;
+      pageCount: number;
+    };
+  }>(`/api/auth/admin/users${queryString ? `?${queryString}` : ''}`, {
+    token
+  });
+}
+
+export async function getAdminUserSecurity(userId: string, token: string) {
+  return apiClient.get<{
+    user: AdminUserAccount;
+    securityEvents: AdminUserSecurityEvent[];
+  }>(`/api/auth/admin/users/${userId}/security`, {
+    token
+  });
+}
+
+export async function updateAdminUserSuspension(
+  userId: string,
+  payload: { suspended: boolean; reason?: string },
+  token: string
+) {
+  return apiClient.patch<{ user: AdminUserAccount }>(
+    `/api/auth/admin/users/${userId}/suspension`,
+    payload,
+    {
+      token
+    }
+  );
+}
+
+export async function updateAdminUserEmailVerification(
+  userId: string,
+  payload: { emailVerified: boolean; reason: string },
+  token: string
+) {
+  return apiClient.patch<{ user: AdminUserAccount }>(
+    `/api/auth/admin/users/${userId}/email-verification`,
+    payload,
+    {
+      token
+    }
+  );
+}

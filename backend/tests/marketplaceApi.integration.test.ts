@@ -4516,3 +4516,207 @@ describe('account security notifications and audit trail', () => {
     expect(notification.message).toContain('audit-email-user-new@lux.test');
   });
 });
+
+describe('admin user account controls', () => {
+  it('blocks non-admin access and lets admins list/search users with security summaries', async () => {
+    await request(app)
+      .get('/api/auth/admin/users')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(403);
+
+    const listResponse = await request(app)
+      .get('/api/auth/admin/users?query=integration-admin&page=1&pageSize=10')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(listResponse.body.records.length).toBeGreaterThanOrEqual(1);
+    expect(listResponse.body.records[0]).toMatchObject({
+      email: 'integration-admin@lux.test',
+      accountStatus: 'ACTIVE'
+    });
+    expect(listResponse.body.pagination.total).toBeGreaterThanOrEqual(1);
+
+    const adminUserId = listResponse.body.records[0].id;
+
+    const securityResponse = await request(app)
+      .get(`/api/auth/admin/users/${adminUserId}/security`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(securityResponse.body.user.email).toBe('integration-admin@lux.test');
+    expect(Array.isArray(securityResponse.body.securityEvents)).toBe(true);
+  });
+
+  it('suspends and unsuspends a user, invalidates sessions, and records audit events', async () => {
+    const passwordHash = await bcrypt.hash('SuspendAccess2026!', 12);
+
+    const targetUser = await prisma.user.create({
+      data: {
+        name: 'Suspend Target User',
+        email: 'suspend-target-user@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    const oldToken = signToken(targetUser);
+
+    const suspendResponse = await request(app)
+      .patch(`/api/auth/admin/users/${targetUser.id}/suspension`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        suspended: true,
+        reason: 'Confirmed abusive account activity in integration test'
+      })
+      .expect(200);
+
+    expect(suspendResponse.body.user.accountStatus).toBe('SUSPENDED');
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${oldToken}`)
+      .expect(403);
+
+    await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '203.0.113.91')
+      .send({
+        email: 'suspend-target-user@lux.test',
+        password: 'SuspendAccess2026!'
+      })
+      .expect(403);
+
+    await prisma.accountSecurityEvent.findFirstOrThrow({
+      where: {
+        userId: targetUser.id,
+        type: 'ADMIN_USER_SUSPENDED'
+      }
+    });
+
+    await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: targetUser.id,
+        type: 'ACCOUNT_SECURITY',
+        title: 'Account suspended by admin'
+      }
+    });
+
+    const unsuspendResponse = await request(app)
+      .patch(`/api/auth/admin/users/${targetUser.id}/suspension`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        suspended: false,
+        reason: 'Suspension removed after admin review'
+      })
+      .expect(200);
+
+    expect(unsuspendResponse.body.user.accountStatus).toBe('ACTIVE');
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${oldToken}`)
+      .expect(401);
+
+    await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '203.0.113.92')
+      .send({
+        email: 'suspend-target-user@lux.test',
+        password: 'SuspendAccess2026!'
+      })
+      .expect(200);
+
+    await prisma.accountSecurityEvent.findFirstOrThrow({
+      where: {
+        userId: targetUser.id,
+        type: 'ADMIN_USER_UNSUSPENDED'
+      }
+    });
+  });
+
+  it('prevents admins from suspending their own account', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-admin@lux.test'
+      }
+    });
+
+    await request(app)
+      .patch(`/api/auth/admin/users/${admin.id}/suspension`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        suspended: true,
+        reason: 'Self suspension should be blocked'
+      })
+      .expect(400);
+  });
+
+  it('lets admins force email verification changes with reasons and audit events', async () => {
+    const passwordHash = await bcrypt.hash('VerifyAccess2026!', 12);
+
+    const targetUser = await prisma.user.create({
+      data: {
+        name: 'Admin Verify Target',
+        email: 'admin-verify-target@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: false
+      }
+    });
+
+    const oldToken = signToken(targetUser);
+
+    const verifyResponse = await request(app)
+      .patch(`/api/auth/admin/users/${targetUser.id}/email-verification`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        emailVerified: true,
+        reason: 'Manual document-backed verification from admin review'
+      })
+      .expect(200);
+
+    expect(verifyResponse.body.user.emailVerified).toBe(true);
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${oldToken}`)
+      .expect(401);
+
+    await prisma.accountSecurityEvent.findFirstOrThrow({
+      where: {
+        userId: targetUser.id,
+        type: 'ADMIN_EMAIL_VERIFIED'
+      }
+    });
+
+    await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: targetUser.id,
+        type: 'ACCOUNT_SECURITY',
+        title: 'Email verified by admin'
+      }
+    });
+
+    const unverifyResponse = await request(app)
+      .patch(`/api/auth/admin/users/${targetUser.id}/email-verification`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        emailVerified: false,
+        reason: 'Verification removed because submitted evidence was invalid'
+      })
+      .expect(200);
+
+    expect(unverifyResponse.body.user.emailVerified).toBe(false);
+
+    await prisma.accountSecurityEvent.findFirstOrThrow({
+      where: {
+        userId: targetUser.id,
+        type: 'ADMIN_EMAIL_UNVERIFIED'
+      }
+    });
+  });
+});

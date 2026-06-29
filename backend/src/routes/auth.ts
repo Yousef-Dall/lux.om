@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { AccountSecurityEventType } from '@prisma/client';
+import { AccountSecurityEventType, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 
-import { requireAuth, signToken } from '../middleware/auth';
+import { requireAuth, requireRole, signToken } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { recordAccountSecurityEvent } from '../lib/accountSecurityEvents';
 import { AppError, publicUser } from '../utils/http';
@@ -104,6 +104,42 @@ const updateProfileSchema = z
   })
   .strict();
 
+
+const adminUsersQuerySchema = z
+  .object({
+    query: z.string().trim().max(120).optional(),
+    role: z.enum(['USER', 'OWNER', 'ACTIVITY_PROVIDER', 'DEVELOPER', 'ADMIN']).optional(),
+    status: z
+      .enum(['all', 'active', 'suspended', 'verified', 'unverified'])
+      .default('all'),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(50).default(20)
+  })
+  .strict();
+
+const adminUserSuspensionSchema = z
+  .object({
+    suspended: z.boolean(),
+    reason: z.string().trim().min(10).max(500).optional()
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.suspended && !data.reason) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reason'],
+        message: 'Suspension reason is required'
+      });
+    }
+  });
+
+const adminEmailVerificationSchema = z
+  .object({
+    emailVerified: z.boolean(),
+    reason: z.string().trim().min(10).max(500)
+  })
+  .strict();
+
 const verifyEmailSchema = z
   .object({
     token: z.string().trim().min(32).max(256)
@@ -146,6 +182,105 @@ function buildGoogleAuthErrorRedirect(message: string) {
     googleError: message
   });
 }
+
+function adminUserResponse(user: {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  phone?: string | null;
+  companyName?: string | null;
+  googleId?: string | null;
+  passwordLoginEnabled?: boolean;
+  emailVerified?: boolean;
+  emailVerifiedAt?: Date | string | null;
+  suspendedAt?: Date | string | null;
+  suspendedReason?: string | null;
+  suspendedById?: string | null;
+  authTokenVersion?: number;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+}) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    phone: user.phone ?? null,
+    companyName: user.companyName ?? null,
+    googleConnected: Boolean(user.googleId),
+    passwordLoginEnabled: Boolean(user.passwordLoginEnabled),
+    emailVerified: Boolean(user.emailVerified),
+    emailVerifiedAt: user.emailVerifiedAt ?? null,
+    suspendedAt: user.suspendedAt ?? null,
+    suspendedReason: user.suspendedReason ?? null,
+    suspendedById: user.suspendedById ?? null,
+    accountStatus: user.suspendedAt ? 'SUSPENDED' : 'ACTIVE',
+    authTokenVersion: user.authTokenVersion ?? 0,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt
+  };
+}
+
+function getRouteParam(value: string | string[] | undefined, name: string) {
+  if (!value || Array.isArray(value)) {
+    throw new AppError(400, `Invalid ${name}`);
+  }
+
+  return value;
+}
+
+function getAdminUsersWhere(input: z.infer<typeof adminUsersQuerySchema>) {
+  const where: Prisma.UserWhereInput = {};
+
+  if (input.query) {
+    where.OR = [
+      {
+        name: {
+          contains: input.query,
+          mode: 'insensitive'
+        }
+      },
+      {
+        email: {
+          contains: input.query,
+          mode: 'insensitive'
+        }
+      },
+      {
+        companyName: {
+          contains: input.query,
+          mode: 'insensitive'
+        }
+      }
+    ];
+  }
+
+  if (input.role) {
+    where.role = input.role;
+  }
+
+  if (input.status === 'active') {
+    where.suspendedAt = null;
+  }
+
+  if (input.status === 'suspended') {
+    where.suspendedAt = {
+      not: null
+    };
+  }
+
+  if (input.status === 'verified') {
+    where.emailVerified = true;
+  }
+
+  if (input.status === 'unverified') {
+    where.emailVerified = false;
+  }
+
+  return where;
+}
+
 
 authRouter.get('/google/start', authAbuseRateLimiters.googleStart, (req, res, next) => {
   try {
@@ -192,6 +327,13 @@ authRouter.post('/google/exchange', authAbuseRateLimiters.googleExchange, async 
   try {
     const data = googleExchangeSchema.parse(req.body);
     const result = await consumeOauthLoginCode(data.code);
+
+    if (result.user.suspendedAt) {
+      throw new AppError(
+        403,
+        'Google account is suspended. Contact lux.om support if you believe this is a mistake.'
+      );
+    }
 
     res.json({
       user: publicUser(result.user),
@@ -266,6 +408,13 @@ authRouter.post('/login', authAbuseRateLimiters.login, async (req, res, next) =>
 
     if (!user) {
       throw new AppError(401, 'Invalid credentials');
+    }
+
+    if (user.suspendedAt) {
+      throw new AppError(
+        403,
+        'Account is suspended. Contact lux.om support if you believe this is a mistake.'
+      );
     }
 
     if (!user.passwordLoginEnabled) {
@@ -752,6 +901,319 @@ authRouter.post(
         ok: true,
         user: publicUser(updatedUser),
         token: signToken(updatedUser)
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+authRouter.get(
+  '/admin/users',
+  requireAuth(),
+  requireRole('ADMIN'),
+  async (req, res, next) => {
+    try {
+      const query = adminUsersQuerySchema.parse(req.query);
+      const where = getAdminUsersWhere(query);
+      const skip = (query.page - 1) * query.pageSize;
+
+      const [users, total] = await prisma.$transaction([
+        prisma.user.findMany({
+          where,
+          orderBy: [
+            {
+              suspendedAt: 'desc'
+            },
+            {
+              createdAt: 'desc'
+            }
+          ],
+          skip,
+          take: query.pageSize,
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            phone: true,
+            companyName: true,
+            googleId: true,
+            passwordLoginEnabled: true,
+            emailVerified: true,
+            emailVerifiedAt: true,
+            suspendedAt: true,
+            suspendedReason: true,
+            suspendedById: true,
+            authTokenVersion: true,
+            createdAt: true,
+            updatedAt: true,
+            _count: {
+              select: {
+                listings: true,
+                activities: true,
+                bookings: true,
+                notifications: true,
+                accountSecurityEvents: true
+              }
+            }
+          }
+        }),
+        prisma.user.count({
+          where
+        })
+      ]);
+
+      res.json({
+        records: users.map((user) => ({
+          ...adminUserResponse(user),
+          counts: user._count
+        })),
+        pagination: {
+          page: query.page,
+          pageSize: query.pageSize,
+          total,
+          pageCount: Math.ceil(total / query.pageSize)
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+authRouter.get(
+  '/admin/users/:id/security',
+  requireAuth(),
+  requireRole('ADMIN'),
+  async (req, res, next) => {
+    try {
+      const userId = getRouteParam(req.params.id, 'user id');
+
+      const user = await prisma.user.findUnique({
+        where: {
+          id: userId
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          phone: true,
+          companyName: true,
+          googleId: true,
+          passwordLoginEnabled: true,
+          emailVerified: true,
+          emailVerifiedAt: true,
+          suspendedAt: true,
+          suspendedReason: true,
+          suspendedById: true,
+          authTokenVersion: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: {
+            select: {
+              listings: true,
+              activities: true,
+              bookings: true,
+              notifications: true,
+              accountSecurityEvents: true
+            }
+          },
+          accountSecurityEvents: {
+            orderBy: {
+              createdAt: 'desc'
+            },
+            take: 25,
+            select: {
+              id: true,
+              type: true,
+              title: true,
+              message: true,
+              metadata: true,
+              actorId: true,
+              createdAt: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        throw new AppError(404, 'User not found');
+      }
+
+      res.json({
+        user: {
+          ...adminUserResponse(user),
+          counts: user._count
+        },
+        securityEvents: user.accountSecurityEvents
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+authRouter.patch(
+  '/admin/users/:id/suspension',
+  requireAuth(),
+  requireRole('ADMIN'),
+  async (req, res, next) => {
+    try {
+      if (!req.user) {
+        throw new AppError(401, 'Unauthorized');
+      }
+
+      const data = adminUserSuspensionSchema.parse(req.body);
+      const userId = getRouteParam(req.params.id, 'user id');
+
+      const targetUser = await prisma.user.findUnique({
+        where: {
+          id: userId
+        }
+      });
+
+      if (!targetUser) {
+        throw new AppError(404, 'User not found');
+      }
+
+      if (targetUser.id === req.user.id) {
+        throw new AppError(400, 'Admins cannot suspend their own account');
+      }
+
+      if (data.suspended && targetUser.role === 'ADMIN') {
+        const remainingActiveAdmins = await prisma.user.count({
+          where: {
+            role: 'ADMIN',
+            suspendedAt: null,
+            NOT: {
+              id: targetUser.id
+            }
+          }
+        });
+
+        if (remainingActiveAdmins < 1) {
+          throw new AppError(400, 'Cannot suspend the last active admin account');
+        }
+      }
+
+      const now = new Date();
+      const reason = data.suspended
+        ? data.reason ?? 'Administrative account suspension'
+        : data.reason ?? 'Administrative account suspension removed';
+
+      const updatedUser = await prisma.$transaction(async (tx) => {
+        const updated = await tx.user.update({
+          where: {
+            id: targetUser.id
+          },
+          data: {
+            suspendedAt: data.suspended ? now : null,
+            suspendedReason: data.suspended ? reason : null,
+            suspendedById: data.suspended ? req.user!.id : null,
+            authTokenVersion: {
+              increment: 1
+            }
+          }
+        });
+
+        await recordAccountSecurityEvent(tx, {
+          userId: updated.id,
+          actorId: req.user!.id,
+          type: data.suspended
+            ? AccountSecurityEventType.ADMIN_USER_SUSPENDED
+            : AccountSecurityEventType.ADMIN_USER_UNSUSPENDED,
+          title: data.suspended
+            ? 'Account suspended by admin'
+            : 'Account unsuspended by admin',
+          message: data.suspended
+            ? `Your lux.om account was suspended by an admin. Reason: ${reason}`
+            : 'Your lux.om account suspension was removed by an admin.',
+          metadata: {
+            adminId: req.user!.id,
+            adminEmail: req.user!.email,
+            targetEmail: updated.email,
+            reason
+          }
+        });
+
+        return updated;
+      });
+
+      res.json({
+        user: adminUserResponse(updatedUser)
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+authRouter.patch(
+  '/admin/users/:id/email-verification',
+  requireAuth(),
+  requireRole('ADMIN'),
+  async (req, res, next) => {
+    try {
+      if (!req.user) {
+        throw new AppError(401, 'Unauthorized');
+      }
+
+      const data = adminEmailVerificationSchema.parse(req.body);
+      const targetUser = await prisma.user.findUnique({
+        where: {
+          id: getRouteParam(req.params.id, 'user id')
+        }
+      });
+
+      if (!targetUser) {
+        throw new AppError(404, 'User not found');
+      }
+
+      const now = new Date();
+
+      const updatedUser = await prisma.$transaction(async (tx) => {
+        const updated = await tx.user.update({
+          where: {
+            id: targetUser.id
+          },
+          data: {
+            emailVerified: data.emailVerified,
+            emailVerifiedAt: data.emailVerified ? now : null,
+            emailVerificationTokenHash: null,
+            emailVerificationExpiresAt: null,
+            authTokenVersion: {
+              increment: 1
+            }
+          }
+        });
+
+        await recordAccountSecurityEvent(tx, {
+          userId: updated.id,
+          actorId: req.user!.id,
+          type: data.emailVerified
+            ? AccountSecurityEventType.ADMIN_EMAIL_VERIFIED
+            : AccountSecurityEventType.ADMIN_EMAIL_UNVERIFIED,
+          title: data.emailVerified
+            ? 'Email verified by admin'
+            : 'Email verification removed by admin',
+          message: data.emailVerified
+            ? `An admin marked ${updated.email} as verified. Reason: ${data.reason}`
+            : `An admin removed email verification for ${updated.email}. Reason: ${data.reason}`,
+          metadata: {
+            adminId: req.user!.id,
+            adminEmail: req.user!.email,
+            targetEmail: updated.email,
+            reason: data.reason
+          }
+        });
+
+        return updated;
+      });
+
+      res.json({
+        user: adminUserResponse(updatedUser)
       });
     } catch (error) {
       next(error);

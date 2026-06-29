@@ -98,6 +98,10 @@ enum AccountSecurityEventType {
   LOGOUT_ALL_SESSIONS
   EMAIL_CHANGE_REQUESTED
   EMAIL_CHANGE_CONFIRMED
+  ADMIN_USER_SUSPENDED
+  ADMIN_USER_UNSUSPENDED
+  ADMIN_EMAIL_VERIFIED
+  ADMIN_EMAIL_UNVERIFIED
 }
 
 enum BookingEventType {
@@ -348,6 +352,11 @@ model User {
   password  String
   passwordLoginEnabled       Boolean   @default(true)
   authTokenVersion           Int       @default(0)
+  suspendedAt                DateTime?
+  suspendedReason            String?
+  suspendedById              String?
+  suspendedBy                User?     @relation("UserSuspensionsIssued", fields: [suspendedById], references: [id], onDelete: SetNull)
+  suspensionsIssued          User[]    @relation("UserSuspensionsIssued")
   role      Role     @default(USER)
   googleId                    String?   @unique
   phone                       String?
@@ -421,6 +430,8 @@ model User {
   investorWatchlistItems InvestorWatchlistItem[]
 
   @@index([role])
+  @@index([suspendedAt])
+  @@index([suspendedById])
   @@index([googleId])
   @@index([emailVerified])
   @@index([emailVerificationExpiresAt])
