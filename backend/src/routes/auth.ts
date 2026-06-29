@@ -9,6 +9,7 @@ import { recordAccountSecurityEvent } from '../lib/accountSecurityEvents';
 import { AppError, publicUser } from '../utils/http';
 import { authAbuseRateLimiters } from '../middleware/rateLimit';
 import { env } from '../config/env';
+import { getEmailDeliveryRetentionDays } from '../services/emailDeliveryRetention';
 import { validatePasswordPolicy } from '../utils/passwordPolicy';
 import {
   createEmailChangeChallenge,
@@ -95,6 +96,43 @@ const confirmEmailChangeSchema = z
     token: z.string().trim().min(32).max(256)
   })
   .strict();
+
+
+type AdminSystemHealthStatus = 'healthy' | 'warning' | 'critical';
+
+function isLocalhostValue(value: string | undefined | null) {
+  if (!value) return false;
+
+  return (
+    value.includes('localhost') ||
+    value.includes('127.0.0.1') ||
+    value.includes('0.0.0.0')
+  );
+}
+
+function usesHttpsUrl(value: string | undefined | null) {
+  if (!value) return false;
+
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function buildHealthCheck(
+  key: string,
+  label: string,
+  status: AdminSystemHealthStatus,
+  message: string
+) {
+  return {
+    key,
+    label,
+    status,
+    message
+  };
+}
 
 const updateProfileSchema = z
   .object({
@@ -931,6 +969,196 @@ authRouter.post(
 );
 
 
+
+
+authRouter.get(
+  '/admin/system-health',
+  requireAuth(),
+  requireRole('ADMIN'),
+  async (_req, res, next) => {
+    try {
+      const checkedAt = new Date();
+      const databaseStartedAt = Date.now();
+
+      let databaseStatus: AdminSystemHealthStatus = 'healthy';
+      let databaseMessage = 'Database readiness query succeeded.';
+      let databaseLatencyMs = 0;
+
+      try {
+        await prisma.$queryRaw`SELECT 1`;
+        databaseLatencyMs = Date.now() - databaseStartedAt;
+      } catch {
+        databaseStatus = 'critical';
+        databaseMessage = 'Database readiness query failed.';
+        databaseLatencyMs = Date.now() - databaseStartedAt;
+      }
+
+      let retentionDays: number | null = null;
+      let retentionStatus: AdminSystemHealthStatus = 'healthy';
+      let retentionMessage = 'Email delivery retention is configured safely.';
+
+      try {
+        retentionDays = getEmailDeliveryRetentionDays();
+      } catch (error) {
+        retentionStatus = 'critical';
+        retentionMessage =
+          error instanceof Error
+            ? error.message
+            : 'Email delivery retention configuration is invalid.';
+      }
+
+      const frontendUrlConfigured = Boolean(env.FRONTEND_URL);
+      const frontendUrlUsesHttps = usesHttpsUrl(env.FRONTEND_URL);
+      const frontendUrlHasLocalhost = isLocalhostValue(env.FRONTEND_URL);
+      const corsOrigins = env.CORS_ORIGIN;
+      const corsUsesWildcard = corsOrigins.includes('*');
+      const corsHasLocalhost = corsOrigins.some((origin) => isLocalhostValue(origin));
+
+      const smtpConfigured = Boolean(
+        env.SMTP_HOST &&
+          env.SMTP_PORT &&
+          env.SMTP_USER &&
+          env.SMTP_PASS &&
+          env.MAIL_FROM
+      );
+
+      const emailModeStatus: AdminSystemHealthStatus =
+        env.NODE_ENV === 'production' && env.EMAIL_DELIVERY_MODE !== 'smtp'
+          ? 'critical'
+          : env.EMAIL_DELIVERY_MODE === 'dev'
+            ? 'warning'
+            : 'healthy';
+
+      const smtpStatus: AdminSystemHealthStatus =
+        env.NODE_ENV === 'production' && !smtpConfigured
+          ? 'critical'
+          : smtpConfigured
+            ? 'healthy'
+            : 'warning';
+
+      const frontendStatus: AdminSystemHealthStatus =
+        env.NODE_ENV === 'production' &&
+        (!frontendUrlConfigured || !frontendUrlUsesHttps || frontendUrlHasLocalhost)
+          ? 'critical'
+          : frontendUrlConfigured
+            ? 'healthy'
+            : 'warning';
+
+      const corsStatus: AdminSystemHealthStatus =
+        corsUsesWildcard || (env.NODE_ENV === 'production' && corsHasLocalhost)
+          ? 'critical'
+          : corsHasLocalhost
+            ? 'warning'
+            : 'healthy';
+
+      const rateLimitStatus: AdminSystemHealthStatus =
+        env.NODE_ENV === 'production' && env.RATE_LIMIT_TRUST_PROXY_HOPS < 1
+          ? 'critical'
+          : env.RATE_LIMIT_TRUST_PROXY_HOPS < 1
+            ? 'warning'
+            : 'healthy';
+
+      const checks = [
+        buildHealthCheck(
+          'database',
+          'Database readiness',
+          databaseStatus,
+          databaseMessage
+        ),
+        buildHealthCheck(
+          'emailDeliveryMode',
+          'Email delivery mode',
+          emailModeStatus,
+          env.EMAIL_DELIVERY_MODE === 'smtp'
+            ? 'SMTP email delivery mode is active.'
+            : 'Development email delivery mode is active.'
+        ),
+        buildHealthCheck(
+          'smtpConfiguration',
+          'SMTP configuration',
+          smtpStatus,
+          smtpConfigured
+            ? 'SMTP fields are present. Secrets are not exposed in this health response.'
+            : 'SMTP fields are incomplete or not configured.'
+        ),
+        buildHealthCheck(
+          'frontendUrl',
+          'Frontend URL',
+          frontendStatus,
+          frontendUrlConfigured
+            ? 'Frontend URL is configured.'
+            : 'Frontend URL is not configured.'
+        ),
+        buildHealthCheck(
+          'corsOrigins',
+          'CORS origins',
+          corsStatus,
+          `${corsOrigins.length} CORS origin(s) configured.`
+        ),
+        buildHealthCheck(
+          'rateLimitProxy',
+          'Rate-limit proxy hops',
+          rateLimitStatus,
+          `RATE_LIMIT_TRUST_PROXY_HOPS is ${env.RATE_LIMIT_TRUST_PROXY_HOPS}.`
+        ),
+        buildHealthCheck(
+          'emailRetention',
+          'Email delivery retention',
+          retentionStatus,
+          retentionMessage
+        )
+      ];
+
+      const overallStatus: AdminSystemHealthStatus = checks.some(
+        (check) => check.status === 'critical'
+      )
+        ? 'critical'
+        : checks.some((check) => check.status === 'warning')
+          ? 'warning'
+          : 'healthy';
+
+      res.json({
+        checkedAt: checkedAt.toISOString(),
+        overallStatus,
+        environment: {
+          nodeEnv: env.NODE_ENV,
+          isProduction: env.NODE_ENV === 'production'
+        },
+        database: {
+          status: databaseStatus,
+          latencyMs: databaseLatencyMs
+        },
+        email: {
+          deliveryMode: env.EMAIL_DELIVERY_MODE,
+          smtpConfigured,
+          smtpHostConfigured: Boolean(env.SMTP_HOST),
+          smtpPortConfigured: Boolean(env.SMTP_PORT),
+          smtpUserConfigured: Boolean(env.SMTP_USER),
+          smtpPasswordConfigured: Boolean(env.SMTP_PASS),
+          mailFromConfigured: Boolean(env.MAIL_FROM)
+        },
+        urls: {
+          frontendUrlConfigured,
+          frontendUrlUsesHttps,
+          frontendUrlHasLocalhost,
+          corsOriginsCount: corsOrigins.length,
+          corsUsesWildcard,
+          corsHasLocalhost
+        },
+        rateLimiting: {
+          trustProxyHops: env.RATE_LIMIT_TRUST_PROXY_HOPS
+        },
+        retention: {
+          retentionDays,
+          minimumDays: 30
+        },
+        checks
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 authRouter.get(
   '/admin/email-deliveries/summary',

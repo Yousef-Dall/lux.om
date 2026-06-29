@@ -363,3 +363,56 @@ export async function getAdminEmailDeliveryHealthSummary(token: string) {
     }
   );
 }
+
+export type AdminSystemHealthStatus = 'healthy' | 'warning' | 'critical';
+
+export type AdminSystemHealthCheck = {
+  key: string;
+  label: string;
+  status: AdminSystemHealthStatus;
+  message: string;
+};
+
+export type AdminSystemHealth = {
+  checkedAt: string;
+  overallStatus: AdminSystemHealthStatus;
+  environment: {
+    nodeEnv: string;
+    isProduction: boolean;
+  };
+  database: {
+    status: AdminSystemHealthStatus;
+    latencyMs: number;
+  };
+  email: {
+    deliveryMode: string;
+    smtpConfigured: boolean;
+    smtpHostConfigured: boolean;
+    smtpPortConfigured: boolean;
+    smtpUserConfigured: boolean;
+    smtpPasswordConfigured: boolean;
+    mailFromConfigured: boolean;
+  };
+  urls: {
+    frontendUrlConfigured: boolean;
+    frontendUrlUsesHttps: boolean;
+    frontendUrlHasLocalhost: boolean;
+    corsOriginsCount: number;
+    corsUsesWildcard: boolean;
+    corsHasLocalhost: boolean;
+  };
+  rateLimiting: {
+    trustProxyHops: number;
+  };
+  retention: {
+    retentionDays: number | null;
+    minimumDays: number;
+  };
+  checks: AdminSystemHealthCheck[];
+};
+
+export async function getAdminSystemHealth(token: string) {
+  return apiClient.get<AdminSystemHealth>('/api/auth/admin/system-health', {
+    token
+  });
+}

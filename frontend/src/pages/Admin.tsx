@@ -61,6 +61,7 @@ import type {
 } from '../types';
 import AdminOperationsTrustPanel from '../components/AdminOperationsTrustPanel';
 import AdminEmailDeliveryHealthPanel from '../components/AdminEmailDeliveryHealthPanel';
+import AdminSystemHealthPanel from '../components/AdminSystemHealthPanel';
 
 function getListingTitle(listing: ApiListing, language: 'en' | 'ar') {
   if (language === 'ar') {
@@ -1455,6 +1456,8 @@ async function deleteDeveloperCompany(developerId: string) {
 
       {!loading && !loadError ? (
         <>
+        {token ? <AdminSystemHealthPanel token={token} /> : null}
+
         <AdminOperationsTrustPanel />
 
           {token ? <AdminEmailDeliveryHealthPanel token={token} /> : null}

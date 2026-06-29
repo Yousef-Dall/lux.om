@@ -5970,3 +5970,78 @@ describe('email delivery retention cleanup', () => {
     expect(recentCount).toBe(1);
   });
 });
+
+describe('admin production system health', () => {
+  it('blocks non-admin users from reading system health', async () => {
+    await request(app)
+      .get('/api/auth/admin/system-health')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(403);
+  });
+
+  it('returns safe system health without leaking secrets to admins', async () => {
+    const response = await request(app)
+      .get('/api/auth/admin/system-health')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body.overallStatus).toMatch(/healthy|warning|critical/);
+    expect(response.body.environment.nodeEnv).toBe('test');
+    expect(response.body.database.status).toBe('healthy');
+    expect(response.body.database.latencyMs).toEqual(expect.any(Number));
+
+    expect(response.body.email).toEqual(
+      expect.objectContaining({
+        deliveryMode: expect.any(String),
+        smtpConfigured: expect.any(Boolean),
+        smtpHostConfigured: expect.any(Boolean),
+        smtpPortConfigured: expect.any(Boolean),
+        smtpUserConfigured: expect.any(Boolean),
+        smtpPasswordConfigured: expect.any(Boolean),
+        mailFromConfigured: expect.any(Boolean)
+      })
+    );
+
+    expect(response.body.urls).toEqual(
+      expect.objectContaining({
+        frontendUrlConfigured: expect.any(Boolean),
+        frontendUrlUsesHttps: expect.any(Boolean),
+        frontendUrlHasLocalhost: expect.any(Boolean),
+        corsOriginsCount: expect.any(Number),
+        corsUsesWildcard: expect.any(Boolean),
+        corsHasLocalhost: expect.any(Boolean)
+      })
+    );
+
+    expect(response.body.retention).toEqual(
+      expect.objectContaining({
+        retentionDays: expect.any(Number),
+        minimumDays: 30
+      })
+    );
+
+    expect(response.body.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'database'
+        }),
+        expect.objectContaining({
+          key: 'emailDeliveryMode'
+        }),
+        expect.objectContaining({
+          key: 'smtpConfiguration'
+        }),
+        expect.objectContaining({
+          key: 'emailRetention'
+        })
+      ])
+    );
+
+    expect(JSON.stringify(response.body)).not.toContain(
+      process.env.SMTP_PASS ?? 'smtp-password-fixture'
+    );
+    expect(JSON.stringify(response.body)).not.toContain(
+      process.env.JWT_SECRET ?? 'jwt-secret'
+    );
+  });
+});
