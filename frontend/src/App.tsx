@@ -12,6 +12,7 @@ import AddActivity from './pages/AddActivity';
 import AddListing from './pages/AddListing';
 import Admin from './pages/Admin';
 import AdminUsers from './pages/AdminUsers';
+import AdminEmailDeliveries from './pages/AdminEmailDeliveries';
 import AdminTrustReports from './pages/AdminTrustReports';
 import Contact from './pages/Contact';
 import Dashboard from './pages/Dashboard';
@@ -498,6 +499,15 @@ export default function App() {
             element={
               <RequireAdmin>
                 <AdminUsers />
+              </RequireAdmin>
+            }
+          />
+
+          <Route
+            path="/admin/email-deliveries"
+            element={
+              <RequireAdmin>
+                <AdminEmailDeliveries />
               </RequireAdmin>
             }
           />

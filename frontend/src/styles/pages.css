@@ -11735,3 +11735,75 @@ transition: none;
   outline: 3px solid rgba(7, 56, 62, 0.08);
   scroll-margin-top: 96px;
 }
+
+/* =========================================================
+   Admin email delivery audit
+   ========================================================= */
+
+.admin-email-deliveries-page {
+  padding-block: clamp(58px, 7vw, 96px);
+}
+
+.admin-email-deliveries-toolbar {
+  grid-template-columns: minmax(260px, 1fr) minmax(150px, 0.28fr) minmax(190px, 0.42fr) auto auto;
+}
+
+.admin-email-deliveries-table {
+  min-width: 980px;
+}
+
+.admin-email-deliveries-table td > strong,
+.admin-email-deliveries-table td > span,
+.admin-email-deliveries-table td > small {
+  display: block;
+}
+
+.admin-email-deliveries-table td > span,
+.admin-email-deliveries-table td > small {
+  margin-top: 4px;
+  color: var(--color-muted);
+}
+
+.admin-email-delivery-grid {
+  grid-template-columns: 1fr;
+}
+
+.admin-email-delivery-detail-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.admin-email-delivery-detail-list > div {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.admin-email-delivery-detail-list span {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.admin-email-delivery-detail-list strong,
+.admin-email-delivery-detail-list a {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.admin-email-delivery-detail-list a {
+  color: var(--color-primary);
+  font-weight: 800;
+}
+
+@media (max-width: 1080px) {
+  .admin-email-deliveries-toolbar {
+    grid-template-columns: 1fr;
+  }
+}

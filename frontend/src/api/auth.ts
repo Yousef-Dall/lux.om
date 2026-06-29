@@ -293,3 +293,56 @@ export async function updateAdminUserEmailVerification(
     }
   );
 }
+
+export type EmailDeliveryStatus = 'LOGGED' | 'SENT' | 'SKIPPED' | 'FAILED';
+
+export type AdminEmailDeliveryEvent = {
+  id: string;
+  status: EmailDeliveryStatus;
+  deliveryMode: string;
+  notificationType: string;
+  title: string;
+  recipientUserId?: string | null;
+  recipientEmail?: string | null;
+  actionUrl?: string | null;
+  preferencesUrl?: string | null;
+  messageId?: string | null;
+  reason?: string | null;
+  errorMessage?: string | null;
+  createdAt: string;
+};
+
+export type AdminEmailDeliveriesQuery = {
+  query?: string;
+  status?: 'all' | EmailDeliveryStatus;
+  type?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export async function listAdminEmailDeliveries(
+  params: AdminEmailDeliveriesQuery,
+  token: string
+) {
+  const searchParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') {
+      searchParams.set(key, String(value));
+    }
+  }
+
+  const queryString = searchParams.toString();
+
+  return apiClient.get<{
+    records: AdminEmailDeliveryEvent[];
+    pagination: {
+      page: number;
+      pageSize: number;
+      total: number;
+      pageCount: number;
+    };
+  }>(`/api/auth/admin/email-deliveries${queryString ? `?${queryString}` : ''}`, {
+    token
+  });
+}

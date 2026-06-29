@@ -4,6 +4,7 @@ ChevronDown,
 Globe2,
 LayoutDashboard,
 LogOut,
+Mail,
 Menu,
 ShieldCheck,
 AlertTriangle,
@@ -80,6 +81,7 @@ notifications: 'الإشعارات',
 admin: 'الأدمن',
 users: 'المستخدمون',
 reports: 'البلاغات',
+emailDeliveries: 'سجل البريد',
 logout: 'خروج',
 signedInAs: 'مسجل باسم',
 account: 'قائمة الحساب'
@@ -98,6 +100,7 @@ notifications: 'Notifications',
 admin: 'Admin',
 users: 'Users',
 reports: 'Reports',
+emailDeliveries: 'Email deliveries',
 logout: 'Logout',
 signedInAs: 'Signed in as',
 account: 'Account menu'
@@ -275,6 +278,15 @@ return (
                   >
                     <Users size={17} aria-hidden="true" />
                     {accessibilityCopy.users}
+                  </NavLink>
+
+                  <NavLink
+                    to="/admin/email-deliveries"
+                    className="nav-account__item"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    <Mail size={17} aria-hidden="true" />
+                    {accessibilityCopy.emailDeliveries}
                   </NavLink>
 
                   <NavLink
