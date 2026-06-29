@@ -338,6 +338,7 @@ model User {
   email     String   @unique
   password  String
   passwordLoginEnabled       Boolean   @default(true)
+  authTokenVersion           Int       @default(0)
   role      Role     @default(USER)
   googleId                    String?   @unique
   phone                       String?

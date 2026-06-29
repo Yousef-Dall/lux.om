@@ -9,6 +9,7 @@ import { AppError } from '../utils/http';
 type TokenPayload = {
   userId: string;
   role: Role;
+  authTokenVersion: number;
 };
 
 declare global {
@@ -26,14 +27,20 @@ function isTokenPayload(payload: unknown): payload is TokenPayload {
 
   const candidate = payload as Partial<TokenPayload>;
 
-  return typeof candidate.userId === 'string' && typeof candidate.role === 'string';
+  return (
+    typeof candidate.userId === 'string' &&
+    typeof candidate.role === 'string' &&
+    typeof candidate.authTokenVersion === 'number' &&
+    Number.isInteger(candidate.authTokenVersion)
+  );
 }
 
-export function signToken(user: { id: string; role: Role }) {
+export function signToken(user: { id: string; role: Role; authTokenVersion?: number }) {
   return jwt.sign(
     {
       userId: user.id,
-      role: user.role
+      role: user.role,
+      authTokenVersion: user.authTokenVersion ?? 0
     },
     env.JWT_SECRET,
     {
@@ -79,6 +86,10 @@ export function requireAuth(required = true) {
         throw new AppError(401, 'Unauthorized');
       }
 
+      if (payload.authTokenVersion !== user.authTokenVersion) {
+        throw new AppError(401, 'Unauthorized');
+      }
+
       req.user = user;
       return next();
     } catch (error) {
@@ -118,7 +129,6 @@ export function requireVerifiedEmail(options: { allowAdmin?: boolean } = {}) {
     next();
   };
 }
-
 
 export function requireRole(...roles: Role[]) {
   return (req: Request, _res: Response, next: NextFunction) => {

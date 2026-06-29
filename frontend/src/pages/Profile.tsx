@@ -12,7 +12,7 @@ import { getPasswordPolicyStatus } from '../utils/passwordPolicy';
 
 export default function Profile() {
   const { language } = useLanguage();
-  const { token, user, updateProfile, refreshUser } = useAuth();
+  const { token, user, updateProfile, refreshUser, replaceSession } = useAuth();
   const [searchParams] = useSearchParams();
 
   useDocumentTitle('Profile');
@@ -199,7 +199,7 @@ export default function Profile() {
       setPasswordMessage('');
       setPasswordError('');
 
-      await changePassword(
+      const response = await changePassword(
         {
           ...(canSetPasswordWithoutCurrent ? {} : { currentPassword }),
           newPassword
@@ -207,7 +207,7 @@ export default function Profile() {
         token
       );
 
-      await refreshUser();
+      replaceSession(response.token, response.user);
 
       setCurrentPassword('');
       setNewPassword('');

@@ -3907,3 +3907,106 @@ describe('account password security settings', () => {
       .expect(200);
   });
 });
+
+describe('session token invalidation after password security events', () => {
+  it('rejects old authenticated tokens after password reset', async () => {
+    const passwordHash = await bcrypt.hash('OldAccess2026!', 12);
+
+    const resetSessionUser = await prisma.user.create({
+      data: {
+        name: 'Reset Session Account',
+        email: 'reset-session-account@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    const oldToken = signToken(resetSessionUser);
+
+    const resetRequestResponse = await request(app)
+      .post('/api/auth/request-password-reset')
+      .set('X-Forwarded-For', '203.0.113.40')
+      .send({
+        email: 'reset-session-account@lux.test'
+      })
+      .expect(200);
+
+    const resetToken = extractTokenFromDevUrl(
+      resetRequestResponse.body.reset.devPasswordResetUrl
+    );
+
+    await request(app)
+      .post('/api/auth/reset-password')
+      .set('X-Forwarded-For', '203.0.113.41')
+      .send({
+        token: resetToken,
+        password: 'VaultAccess2026!'
+      })
+      .expect(200);
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${oldToken}`)
+      .expect(401);
+
+    const loginResponse = await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '203.0.113.42')
+      .send({
+        email: 'reset-session-account@lux.test',
+        password: 'VaultAccess2026!'
+      })
+      .expect(200);
+
+    expect(loginResponse.body.token).toBeTruthy();
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${loginResponse.body.token}`)
+      .expect(200);
+  });
+
+  it('returns a replacement token and rejects the old token after password change', async () => {
+    const passwordHash = await bcrypt.hash('StartAccess2026!', 12);
+
+    const changeSessionUser = await prisma.user.create({
+      data: {
+        name: 'Change Session Account',
+        email: 'change-session-account@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    const oldToken = signToken(changeSessionUser);
+
+    const changeResponse = await request(app)
+      .post('/api/auth/change-password')
+      .set('X-Forwarded-For', '203.0.113.43')
+      .set('Authorization', `Bearer ${oldToken}`)
+      .send({
+        currentPassword: 'StartAccess2026!',
+        newPassword: 'VaultAccess2026!'
+      })
+      .expect(200);
+
+    expect(changeResponse.body.token).toBeTruthy();
+    expect(changeResponse.body.token).not.toBe(oldToken);
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${oldToken}`)
+      .expect(401);
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${changeResponse.body.token}`)
+      .expect(200);
+  });
+});

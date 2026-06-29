@@ -370,6 +370,9 @@ authRouter.post('/reset-password', authAbuseRateLimiters.passwordReset, async (r
         data: {
           password: passwordHash,
           passwordLoginEnabled: true,
+          authTokenVersion: {
+            increment: 1
+          },
           passwordResetTokenHash: null,
           passwordResetExpiresAt: null,
           passwordResetUsedAt: now
@@ -457,6 +460,9 @@ authRouter.post(
         data: {
           password: passwordHash,
           passwordLoginEnabled: true,
+          authTokenVersion: {
+            increment: 1
+          },
           passwordResetTokenHash: null,
           passwordResetExpiresAt: null,
           passwordResetUsedAt: null
@@ -465,7 +471,8 @@ authRouter.post(
 
       res.json({
         ok: true,
-        user: publicUser(updatedUser)
+        user: publicUser(updatedUser),
+        token: signToken(updatedUser)
       });
     } catch (error) {
       next(error);

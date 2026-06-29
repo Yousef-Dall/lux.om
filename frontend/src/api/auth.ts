@@ -133,7 +133,7 @@ export type ChangePasswordPayload = {
 };
 
 export async function changePassword(payload: ChangePasswordPayload, token: string) {
-  return apiClient.post<{ ok: true; user: AuthUser }>('/api/auth/change-password', payload, {
+  return apiClient.post<{ ok: true; user: AuthUser; token: string }>('/api/auth/change-password', payload, {
     token
   });
 }
