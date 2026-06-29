@@ -1,5 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import {
+  NotificationType,
+  Role,
+  type Prisma
+} from '@prisma/client';
 
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/auth';
@@ -16,6 +21,148 @@ const paramsSchema = z.object({
   id: z.string().min(1)
 });
 
+
+const notificationInclude = {
+  booking: {
+    select: {
+      id: true,
+      status: true,
+      listingId: true,
+      activityId: true,
+      payment: {
+        select: {
+          status: true
+        }
+      }
+    }
+  }
+} satisfies Prisma.NotificationInclude;
+
+type NotificationWithActionSource = Prisma.NotificationGetPayload<{
+  include: typeof notificationInclude;
+}>;
+
+type NotificationActionContext =
+  | 'ACCOUNT_SECURITY'
+  | 'BOOKING'
+  | 'REPORT'
+  | 'VERIFICATION'
+  | 'RENT_PAYMENT'
+  | 'TRANSACTION'
+  | 'SAVED_SEARCH'
+  | 'DASHBOARD';
+
+function dashboardAction(actionContext: NotificationActionContext) {
+  return {
+    actionUrl: '/dashboard',
+    actionLabel: 'Open dashboard',
+    actionContext
+  };
+}
+
+function getNotificationAction(
+  notification: NotificationWithActionSource,
+  userRole: Role
+) {
+  const isAdmin = userRole === Role.ADMIN;
+
+  if (
+    notification.type === NotificationType.BOOKING_CREATED ||
+    notification.type === NotificationType.BOOKING_OWNER_APPROVED ||
+    notification.type === NotificationType.BOOKING_OWNER_REJECTED ||
+    notification.type === NotificationType.BOOKING_ADMIN_CONFIRMED ||
+    notification.type === NotificationType.BOOKING_CANCELLATION_REQUESTED ||
+    notification.type === NotificationType.BOOKING_CANCELLED ||
+    notification.type === NotificationType.BOOKING_PAYMENT_PAID ||
+    notification.type === NotificationType.BOOKING_PAYMENT_FAILED
+  ) {
+    return {
+      actionUrl: notification.bookingId
+        ? `/dashboard?booking=${notification.bookingId}`
+        : '/dashboard',
+      actionLabel: 'View booking',
+      actionContext: 'BOOKING' as const,
+      targetType: 'BOOKING',
+      targetId: notification.bookingId
+    };
+  }
+
+  if (notification.type === NotificationType.ACCOUNT_SECURITY) {
+    return {
+      actionUrl: '/profile',
+      actionLabel: 'Review account security',
+      actionContext: 'ACCOUNT_SECURITY' as const,
+      targetType: 'ACCOUNT_SECURITY',
+      targetId: notification.id
+    };
+  }
+
+  if (notification.type === NotificationType.REVIEW_STATUS_UPDATED) {
+    return {
+      actionUrl: isAdmin ? '/admin/reports' : '/dashboard',
+      actionLabel: isAdmin ? 'Open report queue' : 'View dashboard',
+      actionContext: 'REPORT' as const,
+      targetType: 'REPORT',
+      targetId: notification.id
+    };
+  }
+
+  if (notification.type === NotificationType.VERIFICATION_STATUS_UPDATED) {
+    return {
+      actionUrl: isAdmin ? '/admin' : '/dashboard',
+      actionLabel: isAdmin ? 'Open verification queue' : 'View verification workspace',
+      actionContext: 'VERIFICATION' as const,
+      targetType: 'VERIFICATION',
+      targetId: notification.id
+    };
+  }
+
+  if (notification.type === NotificationType.RENT_PAYMENT_DUE) {
+    return {
+      ...dashboardAction('RENT_PAYMENT'),
+      actionLabel: 'Open rent payments',
+      targetType: 'RENT_PAYMENT',
+      targetId: notification.id
+    };
+  }
+
+  if (notification.type === NotificationType.TRANSACTION_STATUS_UPDATED) {
+    return {
+      actionUrl: isAdmin ? '/admin' : '/dashboard',
+      actionLabel: isAdmin ? 'Open admin transactions' : 'Open transactions',
+      actionContext: 'TRANSACTION' as const,
+      targetType: 'TRANSACTION',
+      targetId: notification.id
+    };
+  }
+
+  if (notification.type === NotificationType.SAVED_SEARCH_MATCH) {
+    return {
+      actionUrl: '/dashboard',
+      actionLabel: 'Open saved searches',
+      actionContext: 'SAVED_SEARCH' as const,
+      targetType: 'SAVED_SEARCH',
+      targetId: notification.id
+    };
+  }
+
+  return {
+    ...dashboardAction('DASHBOARD'),
+    targetType: 'DASHBOARD',
+    targetId: notification.id
+  };
+}
+
+function decorateNotification(
+  notification: NotificationWithActionSource,
+  userRole: Role
+) {
+  return {
+    ...notification,
+    ...getNotificationAction(notification, userRole)
+  };
+}
+
 notificationsRouter.get('/', requireAuth(), async (req, res, next) => {
   try {
     const query = notificationsQuerySchema.parse(req.query);
@@ -25,6 +172,7 @@ notificationsRouter.get('/', requireAuth(), async (req, res, next) => {
         where: {
           userId: req.user!.id
         },
+        include: notificationInclude,
         orderBy: {
           createdAt: 'desc'
         },
@@ -47,7 +195,9 @@ notificationsRouter.get('/', requireAuth(), async (req, res, next) => {
     ]);
 
     res.json({
-      notifications,
+      notifications: notifications.map((notification) =>
+        decorateNotification(notification, req.user!.role)
+      ),
       unreadCount,
       pagination: {
         take: query.take,
@@ -69,14 +219,15 @@ notificationsRouter.patch('/:id/read', requireAuth(), async (req, res, next) => 
       where: {
         id,
         userId: req.user!.id
-      }
+      },
+      include: notificationInclude
     });
 
     if (!notification) {
       throw new AppError(404, 'Notification not found');
     }
 
-    const updatedNotification = await prisma.notification.update({
+    await prisma.notification.update({
       where: {
         id
       },
@@ -85,8 +236,16 @@ notificationsRouter.patch('/:id/read', requireAuth(), async (req, res, next) => 
       }
     });
 
+    const updatedNotification = await prisma.notification.findFirstOrThrow({
+      where: {
+        id,
+        userId: req.user!.id
+      },
+      include: notificationInclude
+    });
+
     res.json({
-      notification: updatedNotification
+      notification: decorateNotification(updatedNotification, req.user!.role)
     });
   } catch (error) {
     next(error);

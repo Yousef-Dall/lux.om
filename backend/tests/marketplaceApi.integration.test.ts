@@ -5393,3 +5393,117 @@ describe('admin trust and safety report review workflow', () => {
     );
   });
 });
+
+describe('notification action routing', () => {
+  it('adds actionable routing metadata to account security and rent notifications', async () => {
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    await prisma.notification.createMany({
+      data: [
+        {
+          userId: customer.id,
+          type: 'ACCOUNT_SECURITY',
+          title: 'Security action routing',
+          message: 'Review your account security settings.'
+        },
+        {
+          userId: customer.id,
+          type: 'RENT_PAYMENT_DUE',
+          title: 'Rent action routing',
+          message: 'A rent payment needs attention.'
+        }
+      ]
+    });
+
+    const response = await request(app)
+      .get('/api/notifications?take=20')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(200);
+
+    const securityNotification = response.body.notifications.find(
+      (notification: { title: string }) =>
+        notification.title === 'Security action routing'
+    );
+
+    const rentNotification = response.body.notifications.find(
+      (notification: { title: string }) =>
+        notification.title === 'Rent action routing'
+    );
+
+    expect(securityNotification).toMatchObject({
+      actionUrl: '/profile',
+      actionLabel: 'Review account security',
+      actionContext: 'ACCOUNT_SECURITY',
+      targetType: 'ACCOUNT_SECURITY'
+    });
+
+    expect(rentNotification).toMatchObject({
+      actionUrl: '/dashboard',
+      actionLabel: 'Open rent payments',
+      actionContext: 'RENT_PAYMENT',
+      targetType: 'RENT_PAYMENT'
+    });
+  });
+
+  it('routes booking notifications to the related dashboard booking', async () => {
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.findFirstOrThrow({
+      where: {
+        status: 'APPROVED'
+      }
+    });
+
+    const booking = await prisma.booking.create({
+      data: {
+        userId: customer.id,
+        listingId: listing.id,
+        contactName: 'Notification Routing Customer',
+        contactEmail: 'integration-customer@lux.test',
+        contactPhone: '+96890000000',
+        guests: 1
+      }
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: customer.id,
+        type: 'BOOKING_CREATED',
+        title: 'Booking action routing',
+        message: 'A booking notification should route to its booking.',
+        bookingId: booking.id
+      }
+    });
+
+    const response = await request(app)
+      .get('/api/notifications?take=20')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(200);
+
+    const bookingNotification = response.body.notifications.find(
+      (notification: { title: string }) =>
+        notification.title === 'Booking action routing'
+    );
+
+    expect(bookingNotification).toMatchObject({
+      bookingId: booking.id,
+      actionUrl: `/dashboard?booking=${booking.id}`,
+      actionLabel: 'View booking',
+      actionContext: 'BOOKING',
+      targetType: 'BOOKING',
+      targetId: booking.id,
+      booking: {
+        id: booking.id,
+        listingId: listing.id
+      }
+    });
+  });
+});

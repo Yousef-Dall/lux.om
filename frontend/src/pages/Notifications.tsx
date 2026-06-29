@@ -14,14 +14,14 @@ import {
   getNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-  type NotificationsResponse
+  type ActionableNotification
 } from '../api/notifications';
 import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 
-type NotificationRecord = NotificationsResponse['notifications'][number];
+type NotificationRecord = ActionableNotification;
 type ReadFilter = 'ALL' | 'UNREAD' | 'READ';
 
 const PAGE_SIZE = 25;
@@ -36,6 +36,8 @@ function formatNotificationDate(value: string | null | undefined, language: 'en'
 }
 
 function getNotificationRoute(notification: NotificationRecord, isAdmin: boolean) {
+  if (notification.actionUrl) return notification.actionUrl;
+
   if (notification.type === 'ACCOUNT_SECURITY') return '/profile';
 
   if (notification.type === 'REVIEW_STATUS_UPDATED') {
@@ -101,6 +103,17 @@ export default function Notifications() {
           markAll: 'تحديد الكل كمقروء',
           markRead: 'تحديد كمقروء',
           open: 'فتح الإجراء',
+          targetContext: 'الإجراء',
+          actionContextLabels: {
+            ACCOUNT_SECURITY: 'أمان الحساب',
+            BOOKING: 'حجز',
+            REPORT: 'بلاغ ثقة وسلامة',
+            VERIFICATION: 'تحقق',
+            RENT_PAYMENT: 'دفعات الإيجار',
+            TRANSACTION: 'معاملة',
+            SAVED_SEARCH: 'بحث محفوظ',
+            DASHBOARD: 'لوحة التحكم'
+          } as Record<string, string>,
           empty: 'لا توجد تنبيهات مطابقة.',
           loading: 'جاري تحميل التنبيهات...',
           previous: 'السابق',
@@ -144,6 +157,17 @@ export default function Notifications() {
           markAll: 'Mark all read',
           markRead: 'Mark read',
           open: 'Open action',
+          targetContext: 'Action',
+          actionContextLabels: {
+            ACCOUNT_SECURITY: 'Account security',
+            BOOKING: 'Booking',
+            REPORT: 'Trust report',
+            VERIFICATION: 'Verification',
+            RENT_PAYMENT: 'Rent payment',
+            TRANSACTION: 'Transaction',
+            SAVED_SEARCH: 'Saved search',
+            DASHBOARD: 'Dashboard'
+          } as Record<string, string>,
           empty: 'No matching notifications.',
           loading: 'Loading notifications...',
           previous: 'Previous',
@@ -214,7 +238,11 @@ export default function Notifications() {
         notification.type,
         copy.typeLabels[notification.type] ?? notification.type,
         notification.title,
-        notification.message
+        notification.message,
+        notification.actionLabel,
+        notification.actionContext,
+        notification.targetType,
+        notification.targetId
       ]
         .filter(Boolean)
         .join(' ')
@@ -380,9 +408,18 @@ export default function Notifications() {
                     <h2>{notification.title}</h2>
                     <p>{notification.message}</p>
 
+                    {notification.actionContext ? (
+                      <small className="notifications-list__target">
+                        {copy.targetContext}:{' '}
+                        {copy.actionContextLabels[notification.actionContext] ??
+                          notification.actionContext}
+                        {notification.targetId ? ` · ${notification.targetId}` : ''}
+                      </small>
+                    ) : null}
+
                     <div className="notifications-list__actions">
                       <Link className="button-link button-link--ghost" to={targetRoute}>
-                        {copy.open}
+                        {notification.actionLabel || copy.open}
                       </Link>
 
                       {isUnread ? (

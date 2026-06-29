@@ -1,8 +1,35 @@
 import { apiClient } from './client';
 import type { ApiNotification } from './dashboard';
 
+export type NotificationActionContext =
+  | 'ACCOUNT_SECURITY'
+  | 'BOOKING'
+  | 'REPORT'
+  | 'VERIFICATION'
+  | 'RENT_PAYMENT'
+  | 'TRANSACTION'
+  | 'SAVED_SEARCH'
+  | 'DASHBOARD';
+
+export type ActionableNotification = ApiNotification & {
+  actionUrl?: string | null;
+  actionLabel?: string | null;
+  actionContext?: NotificationActionContext | null;
+  targetType?: string | null;
+  targetId?: string | null;
+  booking?: {
+    id: string;
+    status?: string | null;
+    listingId?: string | null;
+    activityId?: string | null;
+    payment?: {
+      status?: string | null;
+    } | null;
+  } | null;
+};
+
 export type NotificationsResponse = {
-  notifications: ApiNotification[];
+  notifications: ActionableNotification[];
   unreadCount: number;
   pagination: {
     take: number;
@@ -27,7 +54,7 @@ export async function getNotifications(token: string, take = 20, skip = 0) {
 }
 
 export async function markNotificationRead(notificationId: string, token: string) {
-  return apiClient.patch<{ notification: ApiNotification }>(
+  return apiClient.patch<{ notification: ActionableNotification }>(
     `/api/notifications/${notificationId}/read`,
     {},
     {
