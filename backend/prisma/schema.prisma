@@ -92,6 +92,13 @@ enum NotificationType {
   SAVED_SEARCH_MATCH
 }
 
+enum EmailDeliveryStatus {
+  LOGGED
+  SENT
+  SKIPPED
+  FAILED
+}
+
 enum AccountSecurityEventType {
   PASSWORD_CHANGED
   PASSWORD_RESET_COMPLETED
@@ -989,6 +996,27 @@ model Notification {
   @@index([userId, createdAt])
   @@index([bookingId])
   @@index([type])
+}
+
+model EmailDeliveryEvent {
+  id               String              @id @default(cuid())
+  status           EmailDeliveryStatus
+  deliveryMode     String
+  notificationType NotificationType
+  title            String
+  recipientUserId  String?
+  recipientEmail   String?
+  actionUrl        String?
+  preferencesUrl   String?
+  messageId        String?
+  reason           String?
+  errorMessage     String?
+  createdAt        DateTime            @default(now())
+
+  @@index([status, createdAt])
+  @@index([recipientUserId, createdAt])
+  @@index([recipientEmail])
+  @@index([notificationType, createdAt])
 }
 
 model BookingEvent {

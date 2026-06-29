@@ -1,4 +1,4 @@
-import { NotificationType, type Prisma, type PrismaClient } from '@prisma/client';
+import { EmailDeliveryStatus, NotificationType, type Prisma, type PrismaClient } from '@prisma/client';
 import * as nodemailer from 'nodemailer';
 
 import { env, isProduction } from '../config/env';
@@ -256,18 +256,116 @@ function buildTransactionalEmail(input: {
   };
 }
 
+
+function getEmailDeliveryMode() {
+  return shouldUseSmtpDelivery() ? 'smtp' : 'dev';
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+
+  return 'Unknown email delivery error';
+}
+
+function getEmailSkipReasonForRecipient(
+  recipient: TransactionalEmailRecipient,
+  type: NotificationType
+) {
+  if (!recipient.email) {
+    return 'Recipient does not have an email address.';
+  }
+
+  if (isMandatoryTransactionalEmail(type)) return null;
+
+  if (isBookingEmail(type) && recipient.emailBookingUpdates === false) {
+    return 'Recipient disabled optional booking email updates.';
+  }
+
+  if (
+    type === NotificationType.SAVED_SEARCH_MATCH &&
+    recipient.emailSavedSearchUpdates === false
+  ) {
+    return 'Recipient disabled saved-search email updates.';
+  }
+
+  return null;
+}
+
+async function recordEmailDeliveryEvent(
+  db: DatabaseClient,
+  input: {
+    status: EmailDeliveryStatus;
+    deliveryMode: string;
+    notificationType: NotificationType;
+    title: string;
+    recipientUserId?: string | null;
+    recipientEmail?: string | null;
+    actionUrl?: string | null;
+    preferencesUrl?: string | null;
+    messageId?: string | null;
+    reason?: string | null;
+    errorMessage?: string | null;
+  }
+) {
+  try {
+    await db.emailDeliveryEvent.create({
+      data: {
+        status: input.status,
+        deliveryMode: input.deliveryMode,
+        notificationType: input.notificationType,
+        title: input.title,
+        recipientUserId: input.recipientUserId ?? null,
+        recipientEmail: input.recipientEmail ?? null,
+        actionUrl: input.actionUrl ?? null,
+        preferencesUrl: input.preferencesUrl ?? null,
+        messageId: input.messageId ?? null,
+        reason: input.reason ?? null,
+        errorMessage: input.errorMessage ?? null
+      }
+    });
+  } catch (error) {
+    console.error('[lux.om] Failed to record email delivery event', error);
+  }
+}
+
 async function safelyDeliverTransactionalNotificationEmail(
+  db: DatabaseClient,
   input: TransactionalNotificationEmailInput
 ) {
+  const actionUrl = getActionUrl(input);
+  const preferencesUrl = getEmailPreferencesUrl();
+  const deliveryMode = getEmailDeliveryMode();
+
+  const skippedDeliveries = input.recipients
+    .map((recipient) => ({
+      recipient,
+      reason: getEmailSkipReasonForRecipient(recipient, input.type)
+    }))
+    .filter((delivery) => Boolean(delivery.reason));
+
+  await Promise.all(
+    skippedDeliveries.map((delivery) =>
+      recordEmailDeliveryEvent(db, {
+        status: EmailDeliveryStatus.SKIPPED,
+        deliveryMode,
+        notificationType: input.type,
+        title: input.title,
+        recipientUserId: delivery.recipient.id ?? null,
+        recipientEmail: delivery.recipient.email ?? null,
+        actionUrl,
+        preferencesUrl,
+        reason: delivery.reason ?? 'Email delivery skipped.'
+      })
+    )
+  );
+
   const recipients = input.recipients.filter(
     (recipient): recipient is TransactionalEmailRecipient & { email: string } =>
-      Boolean(recipient.email) && shouldDeliverEmailToRecipient(recipient, input.type)
+      Boolean(recipient.email) &&
+      !getEmailSkipReasonForRecipient(recipient, input.type)
   );
 
   if (recipients.length === 0) return;
-
-  const actionUrl = getActionUrl(input);
-  const preferencesUrl = getEmailPreferencesUrl();
 
   if (!shouldUseSmtpDelivery()) {
     for (const recipient of recipients) {
@@ -276,10 +374,49 @@ async function safelyDeliverTransactionalNotificationEmail(
       );
     }
 
+    await Promise.all(
+      recipients.map((recipient) =>
+        recordEmailDeliveryEvent(db, {
+          status: EmailDeliveryStatus.LOGGED,
+          deliveryMode,
+          notificationType: input.type,
+          title: input.title,
+          recipientUserId: recipient.id ?? null,
+          recipientEmail: recipient.email,
+          actionUrl,
+          preferencesUrl,
+          reason: 'Development email delivery was logged instead of sent.'
+        })
+      )
+    );
+
     return;
   }
 
-  const smtpConfig = getSmtpConfig();
+  let smtpConfig: ReturnType<typeof getSmtpConfig>;
+
+  try {
+    smtpConfig = getSmtpConfig();
+  } catch (error) {
+    await Promise.all(
+      recipients.map((recipient) =>
+        recordEmailDeliveryEvent(db, {
+          status: EmailDeliveryStatus.FAILED,
+          deliveryMode,
+          notificationType: input.type,
+          title: input.title,
+          recipientUserId: recipient.id ?? null,
+          recipientEmail: recipient.email,
+          actionUrl,
+          preferencesUrl,
+          errorMessage: getErrorMessage(error)
+        })
+      )
+    );
+
+    return;
+  }
+
   const transporter = nodemailer.createTransport({
     host: smtpConfig.host,
     port: smtpConfig.port,
@@ -288,7 +425,7 @@ async function safelyDeliverTransactionalNotificationEmail(
   });
 
   await Promise.all(
-    recipients.map((recipient) => {
+    recipients.map(async (recipient) => {
       const email = buildTransactionalEmail({
         name: recipient.name,
         type: input.type,
@@ -298,13 +435,40 @@ async function safelyDeliverTransactionalNotificationEmail(
         preferencesUrl
       });
 
-      return transporter.sendMail({
-        from: smtpConfig.from,
-        to: recipient.email,
-        subject: email.subject,
-        text: email.text,
-        html: email.html
-      });
+      try {
+        const result = await transporter.sendMail({
+          from: smtpConfig.from,
+          to: recipient.email,
+          subject: email.subject,
+          text: email.text,
+          html: email.html
+        });
+
+        await recordEmailDeliveryEvent(db, {
+          status: EmailDeliveryStatus.SENT,
+          deliveryMode,
+          notificationType: input.type,
+          title: input.title,
+          recipientUserId: recipient.id ?? null,
+          recipientEmail: recipient.email,
+          actionUrl,
+          preferencesUrl,
+          messageId:
+            typeof result.messageId === 'string' ? result.messageId : null
+        });
+      } catch (error) {
+        await recordEmailDeliveryEvent(db, {
+          status: EmailDeliveryStatus.FAILED,
+          deliveryMode,
+          notificationType: input.type,
+          title: input.title,
+          recipientUserId: recipient.id ?? null,
+          recipientEmail: recipient.email,
+          actionUrl,
+          preferencesUrl,
+          errorMessage: getErrorMessage(error)
+        });
+      }
     })
   );
 }
@@ -330,7 +494,7 @@ export async function deliverTransactionalNotificationToUser(
 
     if (!user) return;
 
-    await safelyDeliverTransactionalNotificationEmail({
+    await safelyDeliverTransactionalNotificationEmail(db, {
       ...input,
       recipients: [user]
     });
@@ -364,7 +528,7 @@ export async function deliverTransactionalNotificationToUsers(
       }
     });
 
-    await safelyDeliverTransactionalNotificationEmail({
+    await safelyDeliverTransactionalNotificationEmail(db, {
       ...input,
       recipients: users
     });

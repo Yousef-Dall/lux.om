@@ -40,6 +40,7 @@ async function clearTestDatabase() {
 
   await prisma.inquiry.deleteMany();
   await prisma.accountSecurityEvent.deleteMany();
+  await prisma.emailDeliveryEvent.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.bookingEvent.deleteMany();
   await prisma.payment.deleteMany();
@@ -5682,5 +5683,125 @@ describe('notification email preferences', () => {
     } finally {
       infoSpy.mockRestore();
     }
+  });
+});
+
+describe('transactional email delivery audit trail', () => {
+  it('records development delivery audit events for notification emails', async () => {
+    const customer = await prisma.user.update({
+      where: {
+        email: 'integration-customer@lux.test'
+      },
+      data: {
+        emailBookingUpdates: true
+      }
+    });
+
+    await createNotification(prisma, {
+      userId: customer.id,
+      type: 'BOOKING_OWNER_APPROVED',
+      title: 'Delivery audit dev booking email',
+      message: 'This delivery should be logged for audit visibility.'
+    });
+
+    const event = await prisma.emailDeliveryEvent.findFirstOrThrow({
+      where: {
+        title: 'Delivery audit dev booking email',
+        recipientEmail: 'integration-customer@lux.test'
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    expect(event.status).toBe('LOGGED');
+    expect(event.deliveryMode).toBe('dev');
+    expect(event.notificationType).toBe('BOOKING_OWNER_APPROVED');
+    expect(event.actionUrl).toContain('/dashboard');
+    expect(event.preferencesUrl).toContain('/profile?section=email-preferences');
+    expect(event.reason).toContain('Development email delivery');
+  });
+
+  it('records skipped delivery audit events when optional preferences suppress email', async () => {
+    const customer = await prisma.user.update({
+      where: {
+        email: 'integration-customer@lux.test'
+      },
+      data: {
+        emailBookingUpdates: false
+      }
+    });
+
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    try {
+      await createNotification(prisma, {
+        userId: customer.id,
+        type: 'BOOKING_OWNER_APPROVED',
+        title: 'Delivery audit skipped booking email',
+        message: 'This optional booking email should be skipped and audited.'
+      });
+
+      expect(infoSpy).not.toHaveBeenCalled();
+    } finally {
+      infoSpy.mockRestore();
+    }
+
+    const event = await prisma.emailDeliveryEvent.findFirstOrThrow({
+      where: {
+        title: 'Delivery audit skipped booking email',
+        recipientEmail: 'integration-customer@lux.test'
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    expect(event.status).toBe('SKIPPED');
+    expect(event.deliveryMode).toBe('dev');
+    expect(event.reason).toContain('optional booking email updates');
+  });
+
+  it('lets admins inspect delivery events while blocking non-admin users', async () => {
+    const customer = await prisma.user.update({
+      where: {
+        email: 'integration-customer@lux.test'
+      },
+      data: {
+        emailBookingUpdates: true
+      }
+    });
+
+    await createNotification(prisma, {
+      userId: customer.id,
+      type: 'BOOKING_OWNER_APPROVED',
+      title: 'Delivery audit admin inspection email',
+      message: 'Admins should be able to inspect this delivery event.'
+    });
+
+    await request(app)
+      .get('/api/auth/admin/email-deliveries')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(403);
+
+    const response = await request(app)
+      .get('/api/auth/admin/email-deliveries')
+      .query({
+        query: 'Delivery audit admin inspection email',
+        status: 'LOGGED'
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Delivery audit admin inspection email',
+          status: 'LOGGED',
+          recipientEmail: 'integration-customer@lux.test'
+        })
+      ])
+    );
+    expect(response.body.pagination.total).toBeGreaterThanOrEqual(1);
   });
 });

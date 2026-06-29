@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { AccountSecurityEventType, type Prisma } from '@prisma/client';
+import { AccountSecurityEventType, EmailDeliveryStatus, NotificationType, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 import { requireAuth, requireRole, signToken } from '../middleware/auth';
@@ -107,6 +107,25 @@ const updateProfileSchema = z
   })
   .strict();
 
+
+
+const adminEmailDeliveriesQuerySchema = z
+  .object({
+    query: z.string().trim().max(160).optional(),
+    status: z
+      .enum([
+        'all',
+        EmailDeliveryStatus.LOGGED,
+        EmailDeliveryStatus.SENT,
+        EmailDeliveryStatus.SKIPPED,
+        EmailDeliveryStatus.FAILED
+      ])
+      .default('all'),
+    type: z.nativeEnum(NotificationType).optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(25)
+  })
+  .strict();
 
 const adminUsersQuerySchema = z
   .object({
@@ -904,6 +923,83 @@ authRouter.post(
         ok: true,
         user: publicUser(updatedUser),
         token: signToken(updatedUser)
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+
+authRouter.get(
+  '/admin/email-deliveries',
+  requireAuth(),
+  requireRole('ADMIN'),
+  async (req, res, next) => {
+    try {
+      const query = adminEmailDeliveriesQuerySchema.parse(req.query);
+      const skip = (query.page - 1) * query.pageSize;
+      const where: Prisma.EmailDeliveryEventWhereInput = {};
+
+      if (query.status !== 'all') {
+        where.status = query.status;
+      }
+
+      if (query.type) {
+        where.notificationType = query.type;
+      }
+
+      if (query.query) {
+        where.OR = [
+          {
+            title: {
+              contains: query.query,
+              mode: 'insensitive'
+            }
+          },
+          {
+            recipientEmail: {
+              contains: query.query,
+              mode: 'insensitive'
+            }
+          },
+          {
+            reason: {
+              contains: query.query,
+              mode: 'insensitive'
+            }
+          },
+          {
+            errorMessage: {
+              contains: query.query,
+              mode: 'insensitive'
+            }
+          }
+        ];
+      }
+
+      const [records, total] = await prisma.$transaction([
+        prisma.emailDeliveryEvent.findMany({
+          where,
+          orderBy: {
+            createdAt: 'desc'
+          },
+          skip,
+          take: query.pageSize
+        }),
+        prisma.emailDeliveryEvent.count({
+          where
+        })
+      ]);
+
+      res.json({
+        records,
+        pagination: {
+          page: query.page,
+          pageSize: query.pageSize,
+          total,
+          pageCount: Math.ceil(total / query.pageSize)
+        }
       });
     } catch (error) {
       next(error);
