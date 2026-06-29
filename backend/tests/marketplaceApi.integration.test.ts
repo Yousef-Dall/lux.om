@@ -4720,3 +4720,233 @@ describe('admin user account controls', () => {
     });
   });
 });
+
+describe('verification backend hardening and notifications', () => {
+  it('notifies submitter and admins when verification is submitted and blocks duplicate pending requests', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.create({
+      data: {
+        slug: 'verification-hardening-submission-listing',
+        title: 'Verification Hardening Submission Listing',
+        description:
+          'A sufficiently detailed listing created to test verification submission notifications.',
+        type: 'Apartment',
+        transaction: 'Sale',
+        location: 'Muscat, Oman',
+        price: 'OMR 85,000',
+        beds: 2,
+        baths: 2,
+        sqm: 120,
+        image: 'https://example.com/verification-hardening.jpg',
+        status: 'APPROVED',
+        ownerId: owner.id
+      }
+    });
+
+    const response = await request(app)
+      .post('/api/verification')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        targetType: 'LISTING',
+        targetId: listing.id,
+        source: 'OWNER_DOCUMENT_SUBMISSION',
+        submittedDocumentUrls: ['https://example.com/title-deed.pdf'],
+        notes: 'Submitting title deed for internal admin review.',
+        documentChecklist: {
+          titleDeed: true,
+          ownerCivilId: true
+        }
+      })
+      .expect(201);
+
+    expect(response.body.verification).toMatchObject({
+      targetType: 'LISTING',
+      targetId: listing.id,
+      source: 'OWNER_DOCUMENT_SUBMISSION',
+      status: 'SUBMITTED',
+      submittedById: owner.id
+    });
+
+    await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: owner.id,
+        type: 'VERIFICATION_STATUS_UPDATED',
+        title: 'Verification submitted'
+      }
+    });
+
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-admin@lux.test'
+      }
+    });
+
+    await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: admin.id,
+        type: 'VERIFICATION_STATUS_UPDATED',
+        title: 'New verification submitted'
+      }
+    });
+
+    await request(app)
+      .post('/api/verification')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        targetType: 'LISTING',
+        targetId: listing.id,
+        source: 'OWNER_DOCUMENT_SUBMISSION',
+        submittedDocumentUrls: ['https://example.com/title-deed.pdf'],
+        notes: 'Duplicate pending request should be blocked.'
+      })
+      .expect(409);
+  });
+
+  it('validates risky admin review decisions before saving', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.create({
+      data: {
+        slug: 'verification-hardening-validation-listing',
+        title: 'Verification Hardening Validation Listing',
+        description:
+          'A sufficiently detailed listing created to test verification review validation.',
+        type: 'Villa',
+        transaction: 'Sale',
+        location: 'Muscat, Oman',
+        price: 'OMR 145,000',
+        beds: 4,
+        baths: 4,
+        sqm: 260,
+        image: 'https://example.com/verification-validation.jpg',
+        status: 'APPROVED',
+        ownerId: owner.id
+      }
+    });
+
+    const verification = await prisma.verificationRecord.create({
+      data: {
+        targetType: 'LISTING',
+        targetId: listing.id,
+        source: 'OWNER_DOCUMENT_SUBMISSION',
+        status: 'SUBMITTED',
+        submittedById: owner.id,
+        notes: 'Owner submitted local title documents for review.'
+      }
+    });
+
+    await request(app)
+      .patch(`/api/verification/admin/${verification.id}/review`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'REJECTED',
+        notes: 'Too short'
+      })
+      .expect(400);
+
+    await request(app)
+      .patch(`/api/verification/admin/${verification.id}/review`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'ADMIN_VERIFIED',
+        notes: 'Documents look valid, but expiry cannot be in the past.',
+        expiryDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      })
+      .expect(400);
+
+    await request(app)
+      .patch(`/api/verification/admin/${verification.id}/review`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'EXTERNALLY_VERIFIED',
+        notes: 'External status should not be used for owner-uploaded documents.'
+      })
+      .expect(400);
+  });
+
+  it('updates listing verification snapshot and notifies the submitter after admin approval', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.create({
+      data: {
+        slug: 'verification-hardening-approval-listing',
+        title: 'Verification Hardening Approval Listing',
+        description:
+          'A sufficiently detailed listing created to test verification approval sync.',
+        type: 'Townhouse',
+        transaction: 'Sale',
+        location: 'Muscat, Oman',
+        price: 'OMR 99,500',
+        beds: 3,
+        baths: 3,
+        sqm: 175,
+        image: 'https://example.com/verification-approval.jpg',
+        status: 'APPROVED',
+        ownerId: owner.id
+      }
+    });
+
+    const verification = await prisma.verificationRecord.create({
+      data: {
+        targetType: 'LISTING',
+        targetId: listing.id,
+        source: 'OWNER_DOCUMENT_SUBMISSION',
+        status: 'SUBMITTED',
+        submittedById: owner.id,
+        notes: 'Owner submitted title deed and identity proof.'
+      }
+    });
+
+    const reviewResponse = await request(app)
+      .patch(`/api/verification/admin/${verification.id}/review`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'ADMIN_VERIFIED',
+        notes: 'Title deed and owner identity were reviewed and accepted.',
+        expiryDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
+      })
+      .expect(200);
+
+    expect(reviewResponse.body.verification).toMatchObject({
+      id: verification.id,
+      status: 'ADMIN_VERIFIED',
+      targetType: 'LISTING',
+      targetId: listing.id
+    });
+
+    const updatedListing = await prisma.listing.findUniqueOrThrow({
+      where: {
+        id: listing.id
+      }
+    });
+
+    expect(updatedListing.verificationStatus).toBe('ADMIN_VERIFIED');
+    expect(updatedListing.verificationSource).toBe('OWNER_DOCUMENT_SUBMISSION');
+    expect(updatedListing.verificationReviewedById).toBeTruthy();
+    expect(updatedListing.verificationDate).toBeTruthy();
+    expect(updatedListing.verificationExpiryDate).toBeTruthy();
+
+    const notification = await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: owner.id,
+        type: 'VERIFICATION_STATUS_UPDATED',
+        title: 'Verification approved'
+      }
+    });
+
+    expect(notification.message).toContain('admin verified');
+  });
+});
