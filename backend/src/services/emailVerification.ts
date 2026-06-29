@@ -45,6 +45,13 @@ export function getEmailVerificationUrl(token: string) {
   return `${getFrontendBaseUrl()}/verify-email?token=${encodeURIComponent(token)}`;
 }
 
+function shouldUseSmtpDelivery() {
+  return (
+    isProduction ||
+    (env.NODE_ENV === 'development' && env.EMAIL_DELIVERY_MODE === 'smtp')
+  );
+}
+
 function getSmtpConfig() {
   if (!env.SMTP_HOST || !env.SMTP_PORT || !env.SMTP_USER || !env.SMTP_PASS || !env.MAIL_FROM) {
     throw new Error('SMTP email configuration is missing.');
@@ -111,7 +118,7 @@ export async function deliverEmailVerificationLink(input: {
 }): Promise<EmailVerificationDelivery> {
   const verificationUrl = getEmailVerificationUrl(input.token);
 
-  if (!isProduction) {
+  if (!shouldUseSmtpDelivery()) {
     console.info(
       `[lux.om] Development email verification link for ${input.email}: ${verificationUrl}`
     );

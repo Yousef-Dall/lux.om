@@ -8,6 +8,9 @@ import { useAuth } from '../auth/AuthContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 
+const verifiedEmailTokens = new Set<string>();
+const verificationRequests = new Map<string, Promise<void>>();
+
 export default function VerifyEmail() {
   const { language } = useLanguage();
   const { isAuthenticated, refreshUser } = useAuth();
@@ -25,6 +28,7 @@ export default function VerifyEmail() {
           loading: 'جاري تأكيد بريدك الإلكتروني...',
           success: 'تم تأكيد البريد الإلكتروني',
           successText: 'تم تحديث حالة حسابك بنجاح.',
+          alreadyVerified: 'تم تأكيد بريدك الإلكتروني بنجاح.',
           error: 'تعذر تأكيد البريد',
           missing: 'رابط التحقق غير مكتمل.',
           expired: 'رابط التحقق غير صالح أو منتهي الصلاحية.',
@@ -36,6 +40,7 @@ export default function VerifyEmail() {
           loading: 'Verifying your email address...',
           success: 'Email verified',
           successText: 'Your account status has been updated successfully.',
+          alreadyVerified: 'Your email has been verified successfully.',
           error: 'Could not verify email',
           missing: 'The verification link is missing a token.',
           expired: 'Verification link is invalid or expired.',
@@ -52,16 +57,36 @@ export default function VerifyEmail() {
       return;
     }
 
+    const verificationToken = token;
     let active = true;
 
     async function runVerification() {
       try {
         setStatus('loading');
-        await verifyEmail(token!);
 
-        if (isAuthenticated) {
-          await refreshUser();
+        if (verifiedEmailTokens.has(verificationToken)) {
+          if (!active) return;
+
+          setStatus('success');
+          setMessage(copy.alreadyVerified);
+          return;
         }
+
+        let verificationRequest = verificationRequests.get(verificationToken);
+
+        if (!verificationRequest) {
+          verificationRequest = verifyEmail(verificationToken).then(async () => {
+            if (isAuthenticated) {
+              await refreshUser();
+            }
+
+            verifiedEmailTokens.add(verificationToken);
+          });
+
+          verificationRequests.set(verificationToken, verificationRequest);
+        }
+
+        await verificationRequest;
 
         if (!active) return;
 
@@ -69,6 +94,21 @@ export default function VerifyEmail() {
         setMessage(copy.successText);
       } catch (caughtError) {
         console.error(caughtError);
+        verificationRequests.delete(verificationToken);
+
+        if (isAuthenticated) {
+          const refreshedUser = await refreshUser().catch(() => null);
+
+          if (refreshedUser?.emailVerified) {
+            verifiedEmailTokens.add(verificationToken);
+
+            if (!active) return;
+
+            setStatus('success');
+            setMessage(copy.alreadyVerified);
+            return;
+          }
+        }
 
         if (!active) return;
 
@@ -87,7 +127,15 @@ export default function VerifyEmail() {
     return () => {
       active = false;
     };
-  }, [copy.expired, copy.missing, copy.successText, isAuthenticated, refreshUser, searchParams]);
+  }, [
+    copy.alreadyVerified,
+    copy.expired,
+    copy.missing,
+    copy.successText,
+    isAuthenticated,
+    refreshUser,
+    searchParams
+  ]);
 
   return (
     <section className="page-section container verify-email-page">

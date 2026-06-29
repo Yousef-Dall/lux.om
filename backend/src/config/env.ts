@@ -56,6 +56,7 @@ const envSchema = z
     JWT_SECRET: z.string().min(24, 'JWT_SECRET must be at least 24 characters long'),
     CORS_ORIGIN: corsOriginsSchema,
     FRONTEND_URL: optionalTrimmedString,
+    EMAIL_DELIVERY_MODE: z.enum(['dev', 'smtp']).default('dev'),
     SMTP_HOST: optionalTrimmedString,
     SMTP_PORT: z.coerce.number().int().positive().optional(),
     SMTP_SECURE: optionalBooleanString.default(false),
@@ -79,7 +80,11 @@ const envSchema = z
       });
     }
 
-    if (env.NODE_ENV === 'production') {
+    const smtpDeliveryRequired =
+      env.NODE_ENV === 'production' ||
+      (env.NODE_ENV === 'development' && env.EMAIL_DELIVERY_MODE === 'smtp');
+
+    if (smtpDeliveryRequired) {
       const requiredEmailFields = [
         ['SMTP_HOST', env.SMTP_HOST],
         ['SMTP_PORT', env.SMTP_PORT],
@@ -93,7 +98,10 @@ const envSchema = z
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: [field],
-            message: 'SMTP email configuration is required in production'
+            message:
+              env.NODE_ENV === 'production'
+                ? 'SMTP email configuration is required in production'
+                : 'SMTP email configuration is required when EMAIL_DELIVERY_MODE=smtp'
           });
         }
       }
