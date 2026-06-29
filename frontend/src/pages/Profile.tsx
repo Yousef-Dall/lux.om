@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Building2, CheckCircle2, Circle, KeyRound, LockKeyhole, LogOut, Mail, Phone, ShieldCheck, User, XCircle } from 'lucide-react';
 
 import { ApiError } from '../api/client';
-import { changePassword, logoutAllSessions, resendEmailVerification } from '../api/auth';
+import { changePassword, logoutAllSessions, requestEmailChange, resendEmailVerification } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -31,6 +31,12 @@ export default function Profile() {
   const [loggingOutSessions, setLoggingOutSessions] = useState(false);
   const [sessionMessage, setSessionMessage] = useState('');
   const [sessionError, setSessionError] = useState('');
+  const [requestedEmail, setRequestedEmail] = useState('');
+  const [emailChangeCurrentPassword, setEmailChangeCurrentPassword] = useState('');
+  const [requestingEmailChange, setRequestingEmailChange] = useState(false);
+  const [emailChangeMessage, setEmailChangeMessage] = useState('');
+  const [emailChangeError, setEmailChangeError] = useState('');
+  const [devEmailChangeUrl, setDevEmailChangeUrl] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [devVerificationUrl, setDevVerificationUrl] = useState('');
@@ -57,6 +63,13 @@ export default function Profile() {
     passwordsMatch &&
     (canSetPasswordWithoutCurrent || currentPassword.length > 0) &&
     !changingPassword;
+  const normalizedRequestedEmail = requestedEmail.trim().toLowerCase();
+  const canRequestEmailChange =
+    normalizedRequestedEmail.length > 0 &&
+    normalizedRequestedEmail !== user?.email &&
+    Boolean(user?.passwordLoginEnabled) &&
+    emailChangeCurrentPassword.length > 0 &&
+    !requestingEmailChange;
 
   const copy =
     language === 'ar'
@@ -105,6 +118,19 @@ export default function Profile() {
           loggingOutSessions: 'جاري تسجيل الخروج...',
           sessionsLoggedOut: 'تم تسجيل الخروج من الجلسات الأخرى بنجاح.',
           sessionLogoutError: 'تعذر تسجيل الخروج من الجلسات الأخرى.',
+          emailChangeTitle: 'تغيير البريد الإلكتروني',
+          emailChangeDescription:
+            'أدخلي البريد الجديد وكلمة المرور الحالية. سيتم إرسال رابط تأكيد إلى البريد الجديد.',
+          newEmail: 'البريد الإلكتروني الجديد',
+          emailChangePassword: 'كلمة المرور الحالية',
+          requestEmailChange: 'إرسال رابط تأكيد البريد الجديد',
+          requestingEmailChange: 'جاري الإرسال...',
+          emailChangeSent:
+            'تم تجهيز رابط تأكيد البريد الجديد. افتحي الرابط من البريد الجديد لإكمال التغيير.',
+          emailChangeError: 'تعذر تجهيز رابط تغيير البريد.',
+          emailChangeDevLink: 'رابط تغيير البريد للتطوير',
+          emailChangeNeedsPassword:
+            'يجب إضافة كلمة مرور للحساب قبل تغيير البريد الإلكتروني.',
           passwordRules: {
             length: 'من 10 إلى 100 حرف',
             lowercase: 'حرف صغير واحد على الأقل',
@@ -161,6 +187,19 @@ export default function Profile() {
           loggingOutSessions: 'Logging out...',
           sessionsLoggedOut: 'Other sessions were logged out successfully.',
           sessionLogoutError: 'Could not log out other sessions.',
+          emailChangeTitle: 'Change email',
+          emailChangeDescription:
+            'Enter your new email and current password. A confirmation link will be sent to the new email.',
+          newEmail: 'New email',
+          emailChangePassword: 'Current password',
+          requestEmailChange: 'Send new email confirmation link',
+          requestingEmailChange: 'Sending...',
+          emailChangeSent:
+            'New email confirmation link prepared. Open the link from the new email to complete the change.',
+          emailChangeError: 'Could not prepare email change link.',
+          emailChangeDevLink: 'Development email change link',
+          emailChangeNeedsPassword:
+            'You need to add a password to this account before changing your email.',
           passwordRules: {
             length: '10 to 100 characters',
             lowercase: 'At least one lowercase letter',
@@ -239,6 +278,42 @@ export default function Profile() {
       }
     } finally {
       setChangingPassword(false);
+    }
+  }
+
+  async function handleRequestEmailChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!token) return;
+
+    try {
+      setRequestingEmailChange(true);
+      setEmailChangeMessage('');
+      setEmailChangeError('');
+      setDevEmailChangeUrl('');
+
+      const response = await requestEmailChange(
+        {
+          email: normalizedRequestedEmail,
+          currentPassword: emailChangeCurrentPassword
+        },
+        token
+      );
+
+      setRequestedEmail(response.emailChange.pendingEmail);
+      setEmailChangeCurrentPassword('');
+      setDevEmailChangeUrl(response.emailChange.devEmailChangeVerificationUrl ?? '');
+      setEmailChangeMessage(copy.emailChangeSent);
+    } catch (caughtError) {
+      console.error(caughtError);
+
+      if (caughtError instanceof ApiError) {
+        setEmailChangeError(caughtError.message);
+      } else {
+        setEmailChangeError(copy.emailChangeError);
+      }
+    } finally {
+      setRequestingEmailChange(false);
     }
   }
 
@@ -431,6 +506,79 @@ export default function Profile() {
             </p>
           ) : null}
         </aside>
+
+        <form className="profile-card form-card profile-card--email-change" onSubmit={handleRequestEmailChange}>
+          <div className="form-group-heading">
+            <span className="form-section-icon">
+              <Mail size={18} aria-hidden="true" />
+            </span>
+
+            <div>
+              <h2>{copy.emailChangeTitle}</h2>
+              <p>{copy.emailChangeDescription}</p>
+            </div>
+          </div>
+
+          {!user.passwordLoginEnabled ? (
+            <p className="trust-note">{copy.emailChangeNeedsPassword}</p>
+          ) : null}
+
+          <label>
+            {copy.newEmail}
+            <span className="input-with-icon">
+              <Mail size={17} aria-hidden="true" />
+              <input
+                type="email"
+                value={requestedEmail}
+                onChange={(event) => setRequestedEmail(event.target.value)}
+                autoComplete="email"
+              />
+            </span>
+          </label>
+
+          <label>
+            {copy.emailChangePassword}
+            <span className="input-with-icon">
+              <LockKeyhole size={17} aria-hidden="true" />
+              <input
+                type="password"
+                value={emailChangeCurrentPassword}
+                onChange={(event) => setEmailChangeCurrentPassword(event.target.value)}
+                autoComplete="current-password"
+                disabled={!user.passwordLoginEnabled}
+              />
+            </span>
+          </label>
+
+          {emailChangeMessage ? (
+            <p className="form-success" role="status">
+              {emailChangeMessage}
+            </p>
+          ) : null}
+
+          {emailChangeError ? (
+            <p className="form-error" role="alert">
+              {emailChangeError}
+            </p>
+          ) : null}
+
+          {devEmailChangeUrl ? (
+            <p className="trust-note">
+              {copy.emailChangeDevLink}:{' '}
+              <a href={devEmailChangeUrl} rel="noreferrer" target="_blank">
+                {devEmailChangeUrl}
+              </a>
+            </p>
+          ) : null}
+
+          <button
+            className="button-link button-link--secondary"
+            type="submit"
+            disabled={!canRequestEmailChange}
+          >
+            {requestingEmailChange ? copy.requestingEmailChange : copy.requestEmailChange}
+          </button>
+        </form>
 
         <form className="profile-card form-card profile-card--security" onSubmit={handleChangePassword}>
           <div className="form-group-heading">

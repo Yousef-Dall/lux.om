@@ -8,10 +8,13 @@ import { AppError, publicUser } from '../utils/http';
 import { authAbuseRateLimiters } from '../middleware/rateLimit';
 import { validatePasswordPolicy } from '../utils/passwordPolicy';
 import {
+  createEmailChangeChallenge,
   createEmailVerificationChallenge,
   createPasswordResetChallenge,
+  deliverEmailChangeVerificationLink,
   deliverEmailVerificationLink,
   deliverPasswordResetLink,
+  hashEmailChangeToken,
   hashEmailVerificationToken,
   hashPasswordResetToken
 } from '../services/emailVerification';
@@ -74,6 +77,19 @@ const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1).max(100).optional(),
     newPassword: z.string().min(1).max(100)
+  })
+  .strict();
+
+const requestEmailChangeSchema = z
+  .object({
+    email: z.string().trim().email().toLowerCase(),
+    currentPassword: z.string().min(1).max(100).optional()
+  })
+  .strict();
+
+const confirmEmailChangeSchema = z
+  .object({
+    token: z.string().trim().min(32).max(256)
   })
   .strict();
 
@@ -467,6 +483,176 @@ authRouter.post(
           passwordResetExpiresAt: null,
           passwordResetUsedAt: null
         }
+      });
+
+      res.json({
+        ok: true,
+        user: publicUser(updatedUser),
+        token: signToken(updatedUser)
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+authRouter.post(
+  '/request-email-change',
+  authAbuseRateLimiters.emailChangeRequest,
+  requireAuth(),
+  async (req, res, next) => {
+    try {
+      if (!req.user) {
+        throw new AppError(401, 'Unauthorized');
+      }
+
+      const data = requestEmailChangeSchema.parse(req.body);
+      const user = await prisma.user.findUniqueOrThrow({
+        where: {
+          id: req.user.id
+        }
+      });
+
+      if (data.email === user.email) {
+        throw new AppError(400, 'New email must be different from your current email');
+      }
+
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          OR: [{ email: data.email }, { pendingEmail: data.email }],
+          NOT: {
+            id: user.id
+          }
+        }
+      });
+
+      if (existingUser) {
+        throw new AppError(409, 'Email is already in use');
+      }
+
+      if (!user.passwordLoginEnabled) {
+        throw new AppError(400, 'Set a password before changing your email');
+      }
+
+      if (!data.currentPassword) {
+        throw new AppError(400, 'Current password is required');
+      }
+
+      const currentPasswordMatches = await bcrypt.compare(data.currentPassword, user.password);
+
+      if (!currentPasswordMatches) {
+        throw new AppError(401, 'Current password is incorrect');
+      }
+
+      const emailChangeChallenge = createEmailChangeChallenge();
+
+      const updatedUser = await prisma.user.update({
+        where: {
+          id: user.id
+        },
+        data: {
+          pendingEmail: data.email,
+          emailChangeTokenHash: emailChangeChallenge.tokenHash,
+          emailChangeExpiresAt: emailChangeChallenge.expiresAt
+        }
+      });
+
+      const delivery = await deliverEmailChangeVerificationLink({
+        email: data.email,
+        name: updatedUser.name,
+        oldEmail: updatedUser.email,
+        token: emailChangeChallenge.token
+      });
+
+      res.json({
+        ok: true,
+        emailChange: {
+          pendingEmail: data.email,
+          emailSent: delivery.emailSent,
+          devEmailChangeVerificationUrl:
+            delivery.devEmailChangeVerificationUrl ?? null
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+authRouter.post(
+  '/confirm-email-change',
+  authAbuseRateLimiters.emailChangeConfirm,
+  async (req, res, next) => {
+    try {
+      const data = confirmEmailChangeSchema.parse(req.body);
+      const tokenHash = hashEmailChangeToken(data.token);
+      const now = new Date();
+
+      const user = await prisma.user.findFirst({
+        where: {
+          emailChangeTokenHash: tokenHash,
+          emailChangeExpiresAt: {
+            gt: now
+          },
+          pendingEmail: {
+            not: null
+          }
+        }
+      });
+
+      if (!user || !user.pendingEmail) {
+        throw new AppError(400, 'Email change link is invalid or expired');
+      }
+
+      const pendingEmail = user.pendingEmail;
+
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          email: pendingEmail,
+          NOT: {
+            id: user.id
+          }
+        }
+      });
+
+      if (existingUser) {
+        throw new AppError(409, 'Email is already in use');
+      }
+
+      const updatedUser = await prisma.$transaction(async (tx) => {
+        const updated = await tx.user.updateMany({
+          where: {
+            id: user.id,
+            emailChangeTokenHash: tokenHash,
+            emailChangeExpiresAt: {
+              gt: now
+            },
+            pendingEmail
+          },
+          data: {
+            email: pendingEmail,
+            emailVerified: true,
+            emailVerifiedAt: now,
+            emailVerificationTokenHash: null,
+            emailVerificationExpiresAt: null,
+            pendingEmail: null,
+            emailChangeTokenHash: null,
+            emailChangeExpiresAt: null,
+            authTokenVersion: {
+              increment: 1
+            }
+          }
+        });
+
+        if (updated.count !== 1) {
+          throw new AppError(400, 'Email change link is invalid or expired');
+        }
+
+        return tx.user.findUniqueOrThrow({
+          where: {
+            id: user.id
+          }
+        });
       });
 
       res.json({

@@ -7,6 +7,8 @@ const EMAIL_VERIFICATION_TOKEN_BYTES = 32;
 const EMAIL_VERIFICATION_EXPIRY_HOURS = 24;
 const PASSWORD_RESET_TOKEN_BYTES = 32;
 const PASSWORD_RESET_EXPIRY_MINUTES = 30;
+const EMAIL_CHANGE_TOKEN_BYTES = 32;
+const EMAIL_CHANGE_EXPIRY_HOURS = 24;
 
 export type EmailVerificationChallenge = {
   token: string;
@@ -259,6 +261,128 @@ export async function deliverPasswordResetLink(input: {
   const email = buildPasswordResetEmail({
     name: input.name,
     resetUrl
+  });
+
+  await transporter.sendMail({
+    from: smtpConfig.from,
+    to: input.email,
+    subject: email.subject,
+    text: email.text,
+    html: email.html
+  });
+
+  return {
+    emailSent: true
+  };
+}
+
+export type EmailChangeChallenge = {
+  token: string;
+  tokenHash: string;
+  expiresAt: Date;
+};
+
+export type EmailChangeDelivery = {
+  emailSent: boolean;
+  devEmailChangeVerificationUrl?: string;
+};
+
+export function createEmailChangeChallenge(): EmailChangeChallenge {
+  const token = randomBytes(EMAIL_CHANGE_TOKEN_BYTES).toString('hex');
+  const tokenHash = hashEmailChangeToken(token);
+  const expiresAt = new Date(Date.now() + EMAIL_CHANGE_EXPIRY_HOURS * 60 * 60 * 1000);
+
+  return {
+    token,
+    tokenHash,
+    expiresAt
+  };
+}
+
+export function hashEmailChangeToken(token: string) {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+export function getEmailChangeVerificationUrl(token: string) {
+  return `${getFrontendBaseUrl()}/verify-email?purpose=email-change&token=${encodeURIComponent(token)}`;
+}
+
+function buildEmailChangeVerificationEmail(input: {
+  name: string;
+  oldEmail: string;
+  verificationUrl: string;
+}) {
+  const safeName = input.name.trim() || 'there';
+
+  return {
+    subject: 'Confirm your new lux.om email',
+    text: [
+      `Hi ${safeName},`,
+      '',
+      `A request was made to change your lux.om account email from ${input.oldEmail} to this email address.`,
+      '',
+      'Confirm the change by opening this link:',
+      input.verificationUrl,
+      '',
+      'This link expires in 24 hours.',
+      '',
+      'If you did not request this change, do not open the link.',
+      '',
+      'lux.om'
+    ].join('\n'),
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#07383e;max-width:620px">
+        <p>Hi ${safeName},</p>
+        <p>A request was made to change your lux.om account email from <strong>${input.oldEmail}</strong> to this email address.</p>
+        <p>
+          <a
+            href="${input.verificationUrl}"
+            style="display:inline-block;background:#07383e;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:700"
+          >
+            Confirm new email
+          </a>
+        </p>
+        <p>If the button does not work, copy and paste this link into your browser:</p>
+        <p style="word-break:break-all;color:#38585d">${input.verificationUrl}</p>
+        <p>This link expires in 24 hours.</p>
+        <p>If you did not request this change, do not open the link.</p>
+        <p>lux.om</p>
+      </div>
+    `
+  };
+}
+
+export async function deliverEmailChangeVerificationLink(input: {
+  email: string;
+  name: string;
+  oldEmail: string;
+  token: string;
+}): Promise<EmailChangeDelivery> {
+  const verificationUrl = getEmailChangeVerificationUrl(input.token);
+
+  if (!shouldUseSmtpDelivery()) {
+    console.info(
+      `[lux.om] Development email change verification link for ${input.email}: ${verificationUrl}`
+    );
+
+    return {
+      emailSent: false,
+      devEmailChangeVerificationUrl: verificationUrl
+    };
+  }
+
+  const smtpConfig = getSmtpConfig();
+  const transporter = nodemailer.createTransport({
+    host: smtpConfig.host,
+    port: smtpConfig.port,
+    secure: smtpConfig.secure,
+    auth: smtpConfig.auth
+  });
+
+  const email = buildEmailChangeVerificationEmail({
+    name: input.name,
+    oldEmail: input.oldEmail,
+    verificationUrl
   });
 
   await transporter.sendMail({

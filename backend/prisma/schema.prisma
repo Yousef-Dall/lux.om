@@ -347,6 +347,9 @@ model User {
   emailVerifiedAt             DateTime?
   emailVerificationTokenHash  String?   @unique
   emailVerificationExpiresAt  DateTime?
+  pendingEmail                String?   @unique
+  emailChangeTokenHash        String?   @unique
+  emailChangeExpiresAt        DateTime?
   passwordResetTokenHash      String?   @unique
   passwordResetExpiresAt      DateTime?
   passwordResetUsedAt         DateTime?
@@ -410,6 +413,7 @@ model User {
   @@index([googleId])
   @@index([emailVerified])
   @@index([emailVerificationExpiresAt])
+  @@index([emailChangeExpiresAt])
   @@index([passwordResetExpiresAt])
   @@index([passwordResetUsedAt])
   @@index([createdAt])

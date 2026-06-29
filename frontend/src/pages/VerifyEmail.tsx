@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, MailCheck, XCircle } from 'lucide-react';
 
 import { ApiError } from '../api/client';
-import { verifyEmail } from '../api/auth';
+import { confirmEmailChange, verifyEmail } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -13,7 +13,7 @@ const verificationRequests = new Map<string, Promise<void>>();
 
 export default function VerifyEmail() {
   const { language } = useLanguage();
-  const { isAuthenticated, refreshUser } = useAuth();
+  const { isAuthenticated, refreshUser, replaceSession } = useAuth();
   const [searchParams] = useSearchParams();
 
   useDocumentTitle('Verify email');
@@ -28,6 +28,7 @@ export default function VerifyEmail() {
           loading: 'جاري تأكيد بريدك الإلكتروني...',
           success: 'تم تأكيد البريد الإلكتروني',
           successText: 'تم تحديث حالة حسابك بنجاح.',
+          emailChanged: 'تم تحديث بريدك الإلكتروني بنجاح. تم تحديث جلسة الدخول الحالية.',
           alreadyVerified: 'تم تأكيد بريدك الإلكتروني بنجاح.',
           error: 'تعذر تأكيد البريد',
           missing: 'رابط التحقق غير مكتمل.',
@@ -40,6 +41,7 @@ export default function VerifyEmail() {
           loading: 'Verifying your email address...',
           success: 'Email verified',
           successText: 'Your account status has been updated successfully.',
+          emailChanged: 'Your email was updated successfully. Your current session was refreshed.',
           alreadyVerified: 'Your email has been verified successfully.',
           error: 'Could not verify email',
           missing: 'The verification link is missing a token.',
@@ -50,6 +52,8 @@ export default function VerifyEmail() {
 
   useEffect(() => {
     const token = searchParams.get('token');
+    const purpose =
+      searchParams.get('purpose') === 'email-change' ? 'email-change' : 'verification';
 
     if (!token) {
       setStatus('error');
@@ -58,13 +62,14 @@ export default function VerifyEmail() {
     }
 
     const verificationToken = token;
+    const verificationKey = `${purpose}:${verificationToken}`;
     let active = true;
 
     async function runVerification() {
       try {
         setStatus('loading');
 
-        if (verifiedEmailTokens.has(verificationToken)) {
+        if (verifiedEmailTokens.has(verificationKey)) {
           if (!active) return;
 
           setStatus('success');
@@ -72,18 +77,27 @@ export default function VerifyEmail() {
           return;
         }
 
-        let verificationRequest = verificationRequests.get(verificationToken);
+        let verificationRequest = verificationRequests.get(verificationKey);
 
         if (!verificationRequest) {
-          verificationRequest = verifyEmail(verificationToken).then(async () => {
-            if (isAuthenticated) {
-              await refreshUser();
-            }
+          verificationRequest =
+            purpose === 'email-change'
+              ? confirmEmailChange(verificationToken).then((response) => {
+                  if (isAuthenticated) {
+                    replaceSession(response.token, response.user);
+                  }
 
-            verifiedEmailTokens.add(verificationToken);
-          });
+                  verifiedEmailTokens.add(verificationKey);
+                })
+              : verifyEmail(verificationToken).then(async () => {
+                  if (isAuthenticated) {
+                    await refreshUser();
+                  }
 
-          verificationRequests.set(verificationToken, verificationRequest);
+                  verifiedEmailTokens.add(verificationKey);
+                });
+
+          verificationRequests.set(verificationKey, verificationRequest);
         }
 
         await verificationRequest;
@@ -91,16 +105,16 @@ export default function VerifyEmail() {
         if (!active) return;
 
         setStatus('success');
-        setMessage(copy.successText);
+        setMessage(purpose === 'email-change' ? copy.emailChanged : copy.successText);
       } catch (caughtError) {
         console.error(caughtError);
-        verificationRequests.delete(verificationToken);
+        verificationRequests.delete(verificationKey);
 
-        if (isAuthenticated) {
+        if (isAuthenticated && purpose !== 'email-change') {
           const refreshedUser = await refreshUser().catch(() => null);
 
           if (refreshedUser?.emailVerified) {
-            verifiedEmailTokens.add(verificationToken);
+            verifiedEmailTokens.add(verificationKey);
 
             if (!active) return;
 
@@ -132,8 +146,10 @@ export default function VerifyEmail() {
     copy.expired,
     copy.missing,
     copy.successText,
+    copy.emailChanged,
     isAuthenticated,
     refreshUser,
+    replaceSession,
     searchParams
   ]);
 

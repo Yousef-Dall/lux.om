@@ -147,3 +147,34 @@ export async function logoutAllSessions(token: string) {
     }
   );
 }
+
+export type RequestEmailChangeResponse = {
+  ok: true;
+  emailChange: {
+    pendingEmail: string;
+    emailSent: boolean;
+    devEmailChangeVerificationUrl?: string | null;
+  };
+};
+
+export async function requestEmailChange(
+  payload: { email: string; currentPassword?: string },
+  token: string
+) {
+  return apiClient.post<RequestEmailChangeResponse>(
+    '/api/auth/request-email-change',
+    payload,
+    {
+      token
+    }
+  );
+}
+
+export async function confirmEmailChange(token: string) {
+  return apiClient.post<{ ok: true; user: AuthUser; token: string }>(
+    '/api/auth/confirm-email-change',
+    {
+      token
+    }
+  );
+}

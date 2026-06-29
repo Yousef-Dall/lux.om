@@ -4095,3 +4095,202 @@ describe('logout all sessions security control', () => {
     expect(response.body.message).toContain('Too many session logout requests');
   });
 });
+
+describe('secure email change workflow', () => {
+  it('blocks duplicate email change requests', async () => {
+    const passwordHash = await bcrypt.hash('EmailMove2026!', 12);
+
+    await prisma.user.create({
+      data: {
+        name: 'Existing Email Owner',
+        email: 'existing-email-owner@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    const requester = await prisma.user.create({
+      data: {
+        name: 'Email Change Requester',
+        email: 'email-change-requester@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    await request(app)
+      .post('/api/auth/request-email-change')
+      .set('X-Forwarded-For', '203.0.113.60')
+      .set('Authorization', `Bearer ${signToken(requester)}`)
+      .send({
+        email: 'existing-email-owner@lux.test',
+        currentPassword: 'EmailMove2026!'
+      })
+      .expect(409);
+  });
+
+  it('rejects invalid and expired email change confirmation links', async () => {
+    const passwordHash = await bcrypt.hash('EmailExpire2026!', 12);
+
+    const requester = await prisma.user.create({
+      data: {
+        name: 'Expired Email Change',
+        email: 'expired-email-change@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    await request(app)
+      .post('/api/auth/confirm-email-change')
+      .set('X-Forwarded-For', '203.0.113.61')
+      .send({
+        token: '0'.repeat(64)
+      })
+      .expect(400);
+
+    const requestResponse = await request(app)
+      .post('/api/auth/request-email-change')
+      .set('X-Forwarded-For', '203.0.113.62')
+      .set('Authorization', `Bearer ${signToken(requester)}`)
+      .send({
+        email: 'expired-email-change-new@lux.test',
+        currentPassword: 'EmailExpire2026!'
+      })
+      .expect(200);
+
+    const expiredToken = extractTokenFromDevUrl(
+      requestResponse.body.emailChange.devEmailChangeVerificationUrl
+    );
+
+    await prisma.user.update({
+      where: {
+        id: requester.id
+      },
+      data: {
+        emailChangeExpiresAt: new Date(Date.now() - 60 * 1000)
+      }
+    });
+
+    await request(app)
+      .post('/api/auth/confirm-email-change')
+      .set('X-Forwarded-For', '203.0.113.63')
+      .send({
+        token: expiredToken
+      })
+      .expect(400);
+  });
+
+  it('confirms a new email and invalidates older sessions', async () => {
+    const passwordHash = await bcrypt.hash('EmailConfirm2026!', 12);
+
+    const requester = await prisma.user.create({
+      data: {
+        name: 'Email Confirm Account',
+        email: 'email-confirm-account@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    const oldToken = signToken(requester);
+
+    const requestResponse = await request(app)
+      .post('/api/auth/request-email-change')
+      .set('X-Forwarded-For', '203.0.113.64')
+      .set('Authorization', `Bearer ${oldToken}`)
+      .send({
+        email: 'email-confirm-account-new@lux.test',
+        currentPassword: 'EmailConfirm2026!'
+      })
+      .expect(200);
+
+    expect(requestResponse.body.emailChange.pendingEmail).toBe(
+      'email-confirm-account-new@lux.test'
+    );
+
+    const confirmationToken = extractTokenFromDevUrl(
+      requestResponse.body.emailChange.devEmailChangeVerificationUrl
+    );
+
+    const confirmResponse = await request(app)
+      .post('/api/auth/confirm-email-change')
+      .set('X-Forwarded-For', '203.0.113.65')
+      .send({
+        token: confirmationToken
+      })
+      .expect(200);
+
+    expect(confirmResponse.body.user).toMatchObject({
+      email: 'email-confirm-account-new@lux.test',
+      emailVerified: true
+    });
+    expect(confirmResponse.body.token).toBeTruthy();
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${oldToken}`)
+      .expect(401);
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${confirmResponse.body.token}`)
+      .expect(200);
+
+    await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '203.0.113.66')
+      .send({
+        email: 'email-confirm-account@lux.test',
+        password: 'EmailConfirm2026!'
+      })
+      .expect(401);
+
+    await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '203.0.113.67')
+      .send({
+        email: 'email-confirm-account-new@lux.test',
+        password: 'EmailConfirm2026!'
+      })
+      .expect(200);
+  });
+
+  it('rate limits email change confirmation attempts', async () => {
+    for (
+      let index = 0;
+      index < authAbuseRateLimitRules.emailChangeConfirm.productionLimit;
+      index += 1
+    ) {
+      await request(app)
+        .post('/api/auth/confirm-email-change')
+        .set('X-Forwarded-For', '203.0.113.68')
+        .send({
+          token: `${index}`.padStart(64, '1')
+        })
+        .expect(400);
+    }
+
+    const response = await request(app)
+      .post('/api/auth/confirm-email-change')
+      .set('X-Forwarded-For', '203.0.113.68')
+      .send({
+        token: '2'.repeat(64)
+      })
+      .expect(429);
+
+    expect(response.body.message).toContain('Too many email change confirmation attempts');
+  });
+});
