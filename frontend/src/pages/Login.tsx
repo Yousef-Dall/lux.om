@@ -38,6 +38,7 @@ export default function Login() {
           submitting: 'جاري الدخول...',
           noAccount: 'ليس لديك حساب؟',
           createAccount: 'إنشاء حساب',
+          forgotPassword: 'نسيت كلمة المرور؟',
           adminHint: '',
           error: 'تعذر تسجيل الدخول. تأكدي من البيانات وحاولي مرة أخرى.'
         }
@@ -52,6 +53,7 @@ export default function Login() {
           submitting: 'Signing in...',
           noAccount: 'No account yet?',
           createAccount: 'Create account',
+          forgotPassword: 'Forgot password?',
           adminHint: '',
           error: 'Could not sign in. Check your details and try again.'
         };
@@ -146,6 +148,12 @@ export default function Login() {
             </span>
           </label>
 
+          <p className="auth-helper auth-helper--right">
+            <Link to="/forgot-password" className="text-link">
+              {copy.forgotPassword}
+            </Link>
+          </p>
+
           {error ? (
             <p className="form-error" role="alert">
               {error}
@@ -156,8 +164,6 @@ export default function Login() {
             <LogIn size={17} aria-hidden="true" />
             {submitting ? copy.submitting : copy.submit}
           </button>
-
-          {copy.adminHint ? <p className="auth-helper">{copy.adminHint}</p> : null}
 
           <p className="auth-helper">
             {copy.noAccount}{' '}

@@ -10422,3 +10422,18 @@ transition: none;
   font-weight: 600;
   line-height: 1.45;
 }
+
+/* Pre-revision forgot password flow */
+.auth-helper--right {
+  text-align: end;
+}
+
+.auth-dev-link {
+  display: inline-flex;
+  width: fit-content;
+  color: var(--color-primary);
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}

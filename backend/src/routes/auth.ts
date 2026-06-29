@@ -8,8 +8,11 @@ import { AppError, publicUser } from '../utils/http';
 import { validatePasswordPolicy } from '../utils/passwordPolicy';
 import {
   createEmailVerificationChallenge,
+  createPasswordResetChallenge,
   deliverEmailVerificationLink,
-  hashEmailVerificationToken
+  deliverPasswordResetLink,
+  hashEmailVerificationToken,
+  hashPasswordResetToken
 } from '../services/emailVerification';
 import {
   buildGoogleAuthorizationUrl,
@@ -50,6 +53,19 @@ const loginSchema = z
   .object({
     email: z.string().trim().email().toLowerCase(),
     password: z.string().min(1)
+  })
+  .strict();
+
+const requestPasswordResetSchema = z
+  .object({
+    email: z.string().trim().email().toLowerCase()
+  })
+  .strict();
+
+const resetPasswordSchema = z
+  .object({
+    token: z.string().trim().min(32).max(256),
+    password: z.string().min(1).max(100)
   })
   .strict();
 
@@ -234,6 +250,130 @@ authRouter.post('/login', async (req, res, next) => {
     res.json({
       user: publicUser(user),
       token: signToken(user)
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+authRouter.post('/request-password-reset', async (req, res, next) => {
+  try {
+    const data = requestPasswordResetSchema.parse(req.body);
+    const user = await prisma.user.findUnique({
+      where: {
+        email: data.email
+      }
+    });
+
+    let devPasswordResetUrl: string | null = null;
+
+    if (user) {
+      const resetChallenge = createPasswordResetChallenge();
+
+      const updatedUser = await prisma.user.update({
+        where: {
+          id: user.id
+        },
+        data: {
+          passwordResetTokenHash: resetChallenge.tokenHash,
+          passwordResetExpiresAt: resetChallenge.expiresAt,
+          passwordResetUsedAt: null
+        }
+      });
+
+      try {
+        const delivery = await deliverPasswordResetLink({
+          email: updatedUser.email,
+          name: updatedUser.name,
+          token: resetChallenge.token
+        });
+
+        devPasswordResetUrl = delivery.devPasswordResetUrl ?? null;
+      } catch (deliveryError) {
+        console.error('[lux.om] Password reset email delivery failed', deliveryError);
+      }
+    }
+
+    res.json({
+      ok: true,
+      reset: {
+        devPasswordResetUrl
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+authRouter.post('/reset-password', async (req, res, next) => {
+  try {
+    const data = resetPasswordSchema.parse(req.body);
+    const tokenHash = hashPasswordResetToken(data.token);
+    const now = new Date();
+
+    const user = await prisma.user.findFirst({
+      where: {
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: {
+          gt: now
+        },
+        passwordResetUsedAt: null
+      }
+    });
+
+    if (!user) {
+      throw new AppError(400, 'Password reset link is invalid or expired');
+    }
+
+    const passwordIssues = validatePasswordPolicy({
+      password: data.password,
+      email: user.email,
+      name: user.name
+    });
+
+    if (passwordIssues.length > 0) {
+      throw new AppError(
+        400,
+        `Password does not meet security requirements: ${passwordIssues
+          .map((issue) => issue.message)
+          .join(' ')}`
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(data.password, 12);
+
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      const updated = await tx.user.updateMany({
+        where: {
+          id: user.id,
+          passwordResetTokenHash: tokenHash,
+          passwordResetExpiresAt: {
+            gt: now
+          },
+          passwordResetUsedAt: null
+        },
+        data: {
+          password: passwordHash,
+          passwordResetTokenHash: null,
+          passwordResetExpiresAt: null,
+          passwordResetUsedAt: now
+        }
+      });
+
+      if (updated.count !== 1) {
+        throw new AppError(400, 'Password reset link is invalid or expired');
+      }
+
+      return tx.user.findUniqueOrThrow({
+        where: {
+          id: user.id
+        }
+      });
+    });
+
+    res.json({
+      ok: true,
+      user: publicUser(updatedUser)
     });
   } catch (error) {
     next(error);

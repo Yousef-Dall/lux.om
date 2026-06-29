@@ -5,6 +5,8 @@ import { env, isProduction } from '../config/env';
 
 const EMAIL_VERIFICATION_TOKEN_BYTES = 32;
 const EMAIL_VERIFICATION_EXPIRY_HOURS = 24;
+const PASSWORD_RESET_TOKEN_BYTES = 32;
+const PASSWORD_RESET_EXPIRY_MINUTES = 30;
 
 export type EmailVerificationChallenge = {
   token: string;
@@ -154,3 +156,121 @@ export async function deliverEmailVerificationLink(input: {
     emailSent: true
   };
 }
+
+export type PasswordResetChallenge = {
+  token: string;
+  tokenHash: string;
+  expiresAt: Date;
+};
+
+export type PasswordResetDelivery = {
+  emailSent: boolean;
+  devPasswordResetUrl?: string;
+};
+
+export function createPasswordResetChallenge(): PasswordResetChallenge {
+  const token = randomBytes(PASSWORD_RESET_TOKEN_BYTES).toString('hex');
+  const tokenHash = hashPasswordResetToken(token);
+  const expiresAt = new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000);
+
+  return {
+    token,
+    tokenHash,
+    expiresAt
+  };
+}
+
+export function hashPasswordResetToken(token: string) {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+export function getPasswordResetUrl(token: string) {
+  return `${getFrontendBaseUrl()}/reset-password?token=${encodeURIComponent(token)}`;
+}
+
+function buildPasswordResetEmail(input: {
+  name: string;
+  resetUrl: string;
+}) {
+  const safeName = input.name.trim() || 'there';
+
+  return {
+    subject: 'Reset your lux.om password',
+    text: [
+      `Hi ${safeName},`,
+      '',
+      'We received a request to reset your lux.om password.',
+      '',
+      'Open this link to choose a new password:',
+      input.resetUrl,
+      '',
+      'This link expires in 30 minutes and can only be used once.',
+      '',
+      'If you did not request this, you can ignore this email.',
+      '',
+      'lux.om'
+    ].join('\n'),
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#07383e;max-width:620px">
+        <p>Hi ${safeName},</p>
+        <p>We received a request to reset your lux.om password.</p>
+        <p>
+          <a
+            href="${input.resetUrl}"
+            style="display:inline-block;background:#07383e;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:700"
+          >
+            Reset password
+          </a>
+        </p>
+        <p>If the button does not work, copy and paste this link into your browser:</p>
+        <p style="word-break:break-all;color:#38585d">${input.resetUrl}</p>
+        <p>This link expires in 30 minutes and can only be used once.</p>
+        <p>If you did not request this, you can ignore this email.</p>
+        <p>lux.om</p>
+      </div>
+    `
+  };
+}
+
+export async function deliverPasswordResetLink(input: {
+  email: string;
+  name: string;
+  token: string;
+}): Promise<PasswordResetDelivery> {
+  const resetUrl = getPasswordResetUrl(input.token);
+
+  if (!shouldUseSmtpDelivery()) {
+    console.info(`[lux.om] Development password reset link for ${input.email}: ${resetUrl}`);
+
+    return {
+      emailSent: false,
+      devPasswordResetUrl: resetUrl
+    };
+  }
+
+  const smtpConfig = getSmtpConfig();
+  const transporter = nodemailer.createTransport({
+    host: smtpConfig.host,
+    port: smtpConfig.port,
+    secure: smtpConfig.secure,
+    auth: smtpConfig.auth
+  });
+
+  const email = buildPasswordResetEmail({
+    name: input.name,
+    resetUrl
+  });
+
+  await transporter.sendMail({
+    from: smtpConfig.from,
+    to: input.email,
+    subject: email.subject,
+    text: email.text,
+    html: email.html
+  });
+
+  return {
+    emailSent: true
+  };
+}
+

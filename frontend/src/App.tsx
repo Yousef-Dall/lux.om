@@ -20,6 +20,8 @@ import ListingDetails from './pages/ListingDetails';
 import MarketInsights from './pages/MarketInsights';
 import Listings from './pages/Listings';
 import Login from './pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Register from './pages/Register';
 import Profile from './pages/Profile';
 import VerifyEmail from './pages/VerifyEmail';
@@ -156,7 +158,7 @@ function getSeoKey(pathname: string) {
   if (pathname.startsWith('/contact')) return 'contact';
   if (pathname.startsWith('/dashboard')) return 'dashboard';
   if (pathname.startsWith('/admin')) return 'admin';
-  if (pathname.startsWith('/login') || pathname.startsWith('/register')) return 'auth';
+  if (pathname.startsWith('/login') || pathname.startsWith('/register') || pathname.startsWith('/forgot-password') || pathname.startsWith('/reset-password')) return 'auth';
 
   return 'fallback';
 }
@@ -427,6 +429,23 @@ export default function App() {
             element={
               <RequireGuest>
                 <Register />
+              </RequireGuest>
+            }
+          />
+
+          <Route
+            path="/forgot-password"
+            element={
+              <RequireGuest>
+                <ForgotPassword />
+              </RequireGuest>
+            }
+          />
+          <Route
+            path="/reset-password"
+            element={
+              <RequireGuest>
+                <ResetPassword />
               </RequireGuest>
             }
           />

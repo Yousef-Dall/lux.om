@@ -107,3 +107,20 @@ export async function exchangeGoogleOAuthCode(code: string) {
     code
   });
 }
+
+export type PasswordResetRequestResponse = {
+  ok: true;
+  reset: {
+    devPasswordResetUrl?: string | null;
+  };
+};
+
+export async function requestPasswordReset(email: string) {
+  return apiClient.post<PasswordResetRequestResponse>('/api/auth/request-password-reset', {
+    email
+  });
+}
+
+export async function resetPassword(payload: { token: string; password: string }) {
+  return apiClient.post<{ ok: true; user: AuthUser }>('/api/auth/reset-password', payload);
+}
