@@ -11182,3 +11182,222 @@ transition: none;
     position: static;
   }
 }
+
+/* =========================================================
+   Admin operations trust and safety visibility
+   ========================================================= */
+
+.admin-operations-trust-panel {
+  overflow: hidden;
+  margin: 24px 0;
+  padding: clamp(20px, 3vw, 30px);
+  border: 1px solid rgba(7, 56, 62, 0.1);
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at 0 0, rgba(185, 28, 28, 0.08), transparent 22rem),
+    rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 46px rgba(7, 56, 62, 0.075);
+}
+
+.admin-operations-trust-panel__header {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.admin-operations-trust-panel__header h2 {
+  margin: 0;
+  color: var(--color-primary);
+  font-size: clamp(1.7rem, 3vw, 2.55rem);
+  letter-spacing: -0.045em;
+}
+
+.admin-operations-trust-panel__header p:not(.eyebrow) {
+  max-width: 760px;
+  margin: 10px 0 0;
+  color: var(--color-muted);
+  line-height: 1.7;
+}
+
+.admin-operations-trust-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.admin-operations-trust-panel__actions .button-link {
+  white-space: nowrap;
+}
+
+.admin-operations-trust-panel__loading {
+  margin: 18px 0 0;
+  color: var(--color-muted);
+  font-weight: 700;
+}
+
+.admin-operations-trust-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 22px 0;
+}
+
+.admin-operations-trust-metrics article {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.admin-operations-trust-metrics article.is-urgent {
+  border-color: rgba(185, 28, 28, 0.22);
+  background: rgba(185, 28, 28, 0.06);
+}
+
+.admin-operations-trust-metrics svg {
+  color: var(--color-gold);
+}
+
+.admin-operations-trust-metrics article.is-urgent svg {
+  color: #b91c1c;
+}
+
+.admin-operations-trust-metrics span {
+  color: var(--color-muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.admin-operations-trust-metrics strong {
+  color: var(--color-primary);
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 0.95;
+}
+
+.admin-operations-trust-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  gap: 14px;
+}
+
+.admin-operations-trust-card {
+  padding: 18px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.admin-operations-trust-card__header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.admin-operations-trust-card__header h3 {
+  margin: 0;
+  color: var(--color-primary);
+}
+
+.admin-operations-trust-card__header a {
+  color: var(--color-primary);
+  font-size: 0.9rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.admin-operations-trust-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-operations-trust-list li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(7, 56, 62, 0.08);
+}
+
+.admin-operations-trust-list li:last-child {
+  border-bottom: 0;
+}
+
+.admin-operations-trust-list strong,
+.admin-operations-trust-list span,
+.admin-operations-trust-list small {
+  display: block;
+}
+
+.admin-operations-trust-list span,
+.admin-operations-trust-list small {
+  color: var(--color-muted);
+  font-size: 0.84rem;
+}
+
+.admin-operations-trust-list--compact li {
+  align-items: center;
+}
+
+.admin-operations-verification-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.admin-operations-verification-summary span {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(7, 56, 62, 0.05);
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.admin-operations-verification-summary strong {
+  color: var(--color-primary);
+  font-size: 1.55rem;
+}
+
+@media (max-width: 980px) {
+  .admin-operations-trust-panel__header,
+  .admin-operations-trust-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-operations-trust-panel__header {
+    display: grid;
+  }
+
+  .admin-operations-trust-panel__actions {
+    justify-content: flex-start;
+  }
+
+  .admin-operations-trust-metrics,
+  .admin-operations-verification-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .admin-operations-trust-metrics,
+  .admin-operations-verification-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-operations-trust-list li {
+    display: grid;
+  }
+}

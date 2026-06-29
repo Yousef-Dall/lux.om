@@ -59,6 +59,7 @@ import type {
   Inquiry,
   ListingStatus
 } from '../types';
+import AdminOperationsTrustPanel from '../components/AdminOperationsTrustPanel';
 
 function getListingTitle(listing: ApiListing, language: 'en' | 'ar') {
   if (language === 'ar') {
@@ -1453,6 +1454,8 @@ async function deleteDeveloperCompany(developerId: string) {
 
       {!loading && !loadError ? (
         <>
+        <AdminOperationsTrustPanel />
+
           <div className="dashboard-grid">
             <article className="metric-card metric-card--accent">
               <span>
