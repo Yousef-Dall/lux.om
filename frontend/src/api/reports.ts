@@ -39,6 +39,33 @@ export type TrustReportPayload = {
   reporterPhone?: string;
 };
 
+
+export type TrustReportUserSummary = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone?: string | null;
+};
+
+export type AdminTrustReport = {
+  id: string;
+  targetType: ReportTargetType;
+  targetId: string;
+  reason: ReportReason;
+  message?: string | null;
+  status: ModerationStatus;
+  reporterName?: string | null;
+  reporterEmail?: string | null;
+  reporterPhone?: string | null;
+  reporterId?: string | null;
+  reporter?: TrustReportUserSummary | null;
+  reviewedById?: string | null;
+  reviewedBy?: TrustReportUserSummary | null;
+  reviewNotes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type UpdateTrustReportStatusPayload = {
   status: ModerationStatus;
   reviewNotes?: string;
@@ -48,7 +75,7 @@ export async function createTrustReport(
   payload: TrustReportPayload,
   token?: string | null
 ) {
-  return apiClient.post<{ report: JsonRecord }>(
+  return apiClient.post<{ report: AdminTrustReport }>(
     '/api/reports',
     payload,
     token ? { token } : undefined
@@ -56,7 +83,7 @@ export async function createTrustReport(
 }
 
 export async function getAdminReports(token: string) {
-  return apiClient.get<{ reports: JsonRecord[] }>('/api/reports/admin/all', {
+  return apiClient.get<{ reports: AdminTrustReport[] }>('/api/reports/admin/all', {
     token
   });
 }
@@ -66,7 +93,7 @@ export async function updateAdminReportStatus(
   payload: UpdateTrustReportStatusPayload,
   token: string
 ) {
-  return apiClient.patch<{ report: JsonRecord }>(
+  return apiClient.patch<{ report: Pick<AdminTrustReport, 'id' | 'targetType' | 'status' | 'reporterId'> }>(
     `/api/reports/admin/${reportId}/status`,
     payload,
     { token }

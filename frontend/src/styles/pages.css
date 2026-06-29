@@ -11004,3 +11004,181 @@ transition: none;
     align-items: stretch;
   }
 }
+
+/* =========================================================
+   Admin trust and safety reports
+   ========================================================= */
+
+.admin-trust-reports-page {
+  background:
+    radial-gradient(circle at top left, rgba(185, 28, 28, 0.08), transparent 30%),
+    var(--page-bg);
+}
+
+.admin-trust-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 24px 0;
+}
+
+.admin-trust-summary-grid article {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-trust-summary-grid span {
+  color: var(--muted-text);
+  font-size: 0.9rem;
+}
+
+.admin-trust-summary-grid strong {
+  font-size: 1.9rem;
+}
+
+.admin-trust-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.75fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.admin-trust-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-trust-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.admin-trust-table th,
+.admin-trust-table td {
+  padding: 14px 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  text-align: start;
+  vertical-align: top;
+}
+
+.admin-trust-table th {
+  color: var(--muted-text);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-trust-table__row--selected {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.trust-report-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--text-color);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.trust-report-status--pending,
+.trust-report-status--under_review {
+  background: rgba(217, 119, 6, 0.12);
+  color: #92400e;
+}
+
+.trust-report-status--resolved,
+.trust-report-status--approved {
+  background: rgba(22, 163, 74, 0.12);
+  color: #166534;
+}
+
+.trust-report-status--dismissed,
+.trust-report-status--rejected {
+  background: rgba(185, 28, 28, 0.1);
+  color: #991b1b;
+}
+
+.admin-trust-detail {
+  position: sticky;
+  top: 96px;
+  padding: 20px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-trust-detail h2,
+.admin-trust-message h3 {
+  margin-top: 0;
+}
+
+.admin-trust-detail-list {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.admin-trust-detail-list div {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-trust-detail-list dt {
+  color: var(--muted-text);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.admin-trust-detail-list dd {
+  margin: 0;
+}
+
+.admin-trust-detail-list code {
+  word-break: break-all;
+}
+
+.admin-trust-message {
+  margin: 18px 0;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.05);
+}
+
+.admin-trust-message p {
+  margin-bottom: 0;
+  white-space: pre-wrap;
+}
+
+.admin-trust-review-form {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-trust-review-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-trust-review-form textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+@media (max-width: 920px) {
+  .admin-trust-layout,
+  .admin-trust-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-trust-detail {
+    position: static;
+  }
+}

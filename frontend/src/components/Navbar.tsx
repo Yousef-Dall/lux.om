@@ -5,6 +5,7 @@ LayoutDashboard,
 LogOut,
 Menu,
 ShieldCheck,
+AlertTriangle,
 Users,
 UserCircle,
 X
@@ -75,6 +76,7 @@ dashboard: 'لوحة التحكم',
 profile: 'الملف الشخصي',
 admin: 'الأدمن',
 users: 'المستخدمون',
+reports: 'البلاغات',
 logout: 'خروج',
 signedInAs: 'مسجل باسم',
 account: 'قائمة الحساب'
@@ -91,6 +93,7 @@ dashboard: 'Dashboard',
 profile: 'Profile',
 admin: 'Admin',
 users: 'Users',
+reports: 'Reports',
 logout: 'Logout',
 signedInAs: 'Signed in as',
 account: 'Account menu'
@@ -247,6 +250,16 @@ return (
                     <Users size={17} aria-hidden="true" />
                     {accessibilityCopy.users}
                   </NavLink>
+
+                  <NavLink
+                    to="/admin/reports"
+                    className="nav-account__item"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    <AlertTriangle size={17} aria-hidden="true" />
+                    {accessibilityCopy.reports}
+                  </NavLink>
+
                 </>
               ) : null}
 

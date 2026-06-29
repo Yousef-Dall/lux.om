@@ -5279,3 +5279,117 @@ describe('public provider trust reporting', () => {
     });
   });
 });
+
+describe('admin trust and safety report review workflow', () => {
+  it('blocks non-admin report queue access and lets admins review reports', async () => {
+    const reportResponse = await request(app)
+      .post('/api/reports')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        targetType: 'OTHER',
+        targetId: 'admin-trust-review-workflow',
+        reason: 'SAFETY_CONCERN',
+        message: 'This report should appear in the admin trust queue.'
+      })
+      .expect(201);
+
+    const reportId = reportResponse.body.report.id;
+
+    await request(app)
+      .get('/api/reports/admin/all')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(403);
+
+    const queueResponse = await request(app)
+      .get('/api/reports/admin/all')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(
+      queueResponse.body.reports.some(
+        (report: { id: string; status: string }) =>
+          report.id === reportId && report.status === 'PENDING'
+      )
+    ).toBe(true);
+
+    await request(app)
+      .patch(`/api/reports/admin/${reportId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'RESOLVED',
+        reviewNotes: 'Reviewed and resolved by the admin trust workflow.'
+      })
+      .expect(200);
+
+    const reviewedReport = await prisma.trustReport.findUniqueOrThrow({
+      where: {
+        id: reportId
+      },
+      include: {
+        reviewedBy: {
+          select: {
+            email: true
+          }
+        }
+      }
+    });
+
+    expect(reviewedReport.status).toBe('RESOLVED');
+    expect(reviewedReport.reviewNotes).toBe(
+      'Reviewed and resolved by the admin trust workflow.'
+    );
+    expect(reviewedReport.reviewedBy?.email).toBe('integration-admin@lux.test');
+
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    const notification = await prisma.notification.findFirst({
+      where: {
+        userId: customer.id,
+        type: 'REVIEW_STATUS_UPDATED',
+        title: 'Trust report reviewed'
+      }
+    });
+
+    expect(notification).toBeTruthy();
+  });
+
+  it('lets admins dismiss trust reports with notes', async () => {
+    const report = await prisma.trustReport.create({
+      data: {
+        targetType: 'OTHER',
+        targetId: 'admin-trust-dismiss-workflow',
+        reason: 'OTHER',
+        message: 'This report should be dismissed during admin review.'
+      }
+    });
+
+    const response = await request(app)
+      .patch(`/api/reports/admin/${report.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'DISMISSED',
+        reviewNotes: 'Dismissed after checking the target context.'
+      })
+      .expect(200);
+
+    expect(response.body.report).toMatchObject({
+      id: report.id,
+      status: 'DISMISSED'
+    });
+
+    const dismissedReport = await prisma.trustReport.findUniqueOrThrow({
+      where: {
+        id: report.id
+      }
+    });
+
+    expect(dismissedReport.status).toBe('DISMISSED');
+    expect(dismissedReport.reviewNotes).toBe(
+      'Dismissed after checking the target context.'
+    );
+  });
+});
