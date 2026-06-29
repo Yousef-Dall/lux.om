@@ -1,11 +1,12 @@
 import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, LockKeyhole, UserPlus, Phone, User } from 'lucide-react';
+import { Mail, LockKeyhole, UserPlus, Phone, User, CheckCircle2, Circle } from 'lucide-react';
 
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import { getPasswordPolicyStatus, type PasswordPolicyRuleId } from '../utils/passwordPolicy';
 
 export default function Register() {
   const { language } = useLanguage();
@@ -34,6 +35,18 @@ export default function Register() {
           phone: 'الهاتف',
           companyName: 'اسم الشركة / الوكالة',
           password: 'كلمة المرور',
+          passwordHelp: 'يجب أن تحتوي كلمة المرور على:',
+          passwordError: 'كلمة المرور لا تستوفي شروط الأمان.',
+          passwordRules: {
+            length: 'من 10 إلى 100 حرف',
+            lowercase: 'حرف صغير واحد على الأقل',
+            uppercase: 'حرف كبير واحد على الأقل',
+            number: 'رقم واحد على الأقل',
+            symbol: 'رمز واحد على الأقل',
+            trim: 'لا تبدأ أو تنتهي بمسافة',
+            email: 'لا تحتوي على اسم البريد الإلكتروني',
+            name: 'لا تحتوي على اسمك'
+          },
           accountType: 'نوع الحساب',
           user: 'مستخدم',
           owner: 'مالك / وسيط',
@@ -52,6 +65,18 @@ export default function Register() {
           phone: 'Phone',
           companyName: 'Company / agency name',
           password: 'Password',
+          passwordHelp: 'Password must include:',
+          passwordError: 'Password does not meet the security requirements.',
+          passwordRules: {
+            length: '10 to 100 characters',
+            lowercase: 'At least one lowercase letter',
+            uppercase: 'At least one uppercase letter',
+            number: 'At least one number',
+            symbol: 'At least one symbol',
+            trim: 'No spaces at the beginning or end',
+            email: 'Does not contain the email username',
+            name: 'Does not contain your name'
+          },
           accountType: 'Account type',
           user: 'User',
           owner: 'Owner / agent',
@@ -62,8 +87,21 @@ export default function Register() {
           error: 'Could not create your account. Please try again.'
         };
 
+  const passwordPolicy = getPasswordPolicyStatus({
+    password,
+    email,
+    name
+  });
+
+  const passwordRuleLabels: Record<PasswordPolicyRuleId, string> = copy.passwordRules;
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!passwordPolicy.isValid) {
+      setError(copy.passwordError);
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -165,7 +203,7 @@ export default function Register() {
               <LockKeyhole size={17} aria-hidden="true" />
               <input
                 required
-                minLength={8}
+                minLength={10}
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -173,6 +211,25 @@ export default function Register() {
               />
             </span>
           </label>
+
+          <div className="password-policy" aria-live="polite">
+            <p>{copy.passwordHelp}</p>
+            <ul>
+              {passwordPolicy.rules.map((rule) => (
+                <li
+                  key={rule.id}
+                  className={rule.passed ? 'password-policy__item--passed' : ''}
+                >
+                  {rule.passed ? (
+                    <CheckCircle2 size={15} aria-hidden="true" />
+                  ) : (
+                    <Circle size={15} aria-hidden="true" />
+                  )}
+                  <span>{passwordRuleLabels[rule.id]}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
 
           <label>
             {copy.accountType}
@@ -188,7 +245,7 @@ export default function Register() {
             </p>
           ) : null}
 
-          <button className="button-link button-link--primary" type="submit" disabled={submitting}>
+          <button className="button-link button-link--primary" type="submit" disabled={submitting || !passwordPolicy.isValid}>
             <UserPlus size={17} aria-hidden="true" />
             {submitting ? copy.submitting : copy.submit}
           </button>

@@ -10343,3 +10343,49 @@ transition: none;
     grid-template-columns: 1fr;
   }
 }
+
+/* Pre-revision password policy checklist */
+.password-policy {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 18px;
+  background: rgba(250, 247, 240, 0.68);
+}
+
+.password-policy p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.password-policy ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.password-policy li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.password-policy li svg {
+  flex: 0 0 auto;
+  color: rgba(7, 56, 62, 0.38);
+}
+
+.password-policy__item--passed {
+  color: var(--color-primary) !important;
+}
+
+.password-policy__item--passed svg {
+  color: var(--color-success);
+}

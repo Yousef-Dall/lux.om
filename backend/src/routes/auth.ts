@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { requireAuth, signToken } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { AppError, publicUser } from '../utils/http';
+import { validatePasswordPolicy } from '../utils/passwordPolicy';
 import {
   createEmailVerificationChallenge,
   deliverEmailVerificationLink,
@@ -17,12 +18,27 @@ const registerSchema = z
   .object({
     name: z.string().trim().min(2).max(80),
     email: z.string().trim().email().toLowerCase(),
-    password: z.string().min(8).max(100),
+    password: z.string().min(1).max(100),
     role: z.enum(['USER', 'OWNER']).default('USER'),
     phone: z.string().trim().min(6).max(30).optional(),
     companyName: z.string().trim().min(2).max(120).optional()
   })
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    const passwordIssues = validatePasswordPolicy({
+      password: data.password,
+      email: data.email,
+      name: data.name
+    });
+
+    for (const issue of passwordIssues) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['password'],
+        message: issue.message
+      });
+    }
+  });
 
 const loginSchema = z
   .object({
