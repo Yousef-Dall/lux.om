@@ -50,7 +50,7 @@ const uploadRateLimiter = rateLimit({
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
-  app.set('trust proxy', 1);
+  app.set('trust proxy', env.RATE_LIMIT_TRUST_PROXY_HOPS);
 
   app.use(
     helmet({

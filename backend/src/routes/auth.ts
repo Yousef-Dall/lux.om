@@ -6,6 +6,7 @@ import { requireAuth, signToken } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { AppError, publicUser } from '../utils/http';
 import { authAbuseRateLimiters } from '../middleware/rateLimit';
+import { env } from '../config/env';
 import { validatePasswordPolicy } from '../utils/passwordPolicy';
 import {
   createEmailChangeChallenge,
@@ -129,7 +130,7 @@ const googleExchangeSchema = z
 
 
 function buildFrontendRedirect(pathname: string, params: Record<string, string>) {
-  const frontendUrl = new URL(pathname, process.env.FRONTEND_URL || 'http://localhost:5173');
+  const frontendUrl = new URL(pathname, env.FRONTEND_URL ?? env.CORS_ORIGIN[0]);
 
   for (const [key, value] of Object.entries(params)) {
     frontendUrl.searchParams.set(key, value);

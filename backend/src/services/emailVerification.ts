@@ -40,7 +40,7 @@ export function hashEmailVerificationToken(token: string) {
 }
 
 function getFrontendBaseUrl() {
-  const configuredUrl = env.FRONTEND_URL || env.CORS_ORIGIN[0] || 'http://localhost:5173';
+  const configuredUrl = env.FRONTEND_URL ?? env.CORS_ORIGIN[0];
 
   return configuredUrl.replace(/\/$/, '');
 }
