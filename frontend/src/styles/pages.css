@@ -11611,3 +11611,59 @@ transition: none;
   font-weight: 800;
   word-break: break-word;
 }
+
+/* =========================================================
+   Dashboard and admin notification deep-links
+   ========================================================= */
+
+.dashboard-deeplink-banner {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 18px 0 24px;
+  padding: 16px 18px;
+  border: 1px solid rgba(212, 175, 55, 0.34);
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgba(212, 175, 55, 0.12), rgba(255, 255, 255, 0.92));
+  box-shadow: var(--shadow-sm);
+}
+
+.dashboard-deeplink-banner--warning {
+  border-color: rgba(185, 28, 28, 0.22);
+  background:
+    linear-gradient(135deg, rgba(185, 28, 28, 0.08), rgba(255, 255, 255, 0.92));
+}
+
+.dashboard-deeplink-banner strong {
+  display: block;
+  color: var(--color-primary);
+  font-size: 1rem;
+}
+
+.dashboard-deeplink-banner p {
+  margin: 4px 0 0;
+  color: var(--color-muted);
+  line-height: 1.55;
+}
+
+.dashboard-deeplink-highlight {
+  position: relative;
+  border-color: rgba(212, 175, 55, 0.56) !important;
+  box-shadow:
+    0 0 0 3px rgba(212, 175, 55, 0.16),
+    var(--shadow-sm);
+}
+
+.admin-trust-table__row--focused {
+  outline: 3px solid rgba(212, 175, 55, 0.24);
+  outline-offset: -3px;
+  background: rgba(212, 175, 55, 0.08);
+}
+
+@media (max-width: 720px) {
+  .dashboard-deeplink-banner {
+    display: grid;
+  }
+}

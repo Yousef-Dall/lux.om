@@ -16,6 +16,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import {
   createPaymentSession,
@@ -213,6 +214,7 @@ function getTimelineStepClass(step: TimelineStep) {
 export default function Dashboard() {
   const { t, language } = useLanguage();
   const { token, user, isMarketplaceOperator } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useDocumentTitle('Dashboard');
 
@@ -320,7 +322,12 @@ export default function Dashboard() {
           contact: 'التواصل',
           preferredTime: 'الوقت المفضل',
           emptyBookings: 'لا توجد حجوزات مرتبطة بحسابك بعد.',
-          emptyReceivedBookings: 'لا توجد طلبات حجز مستلمة حالياً.'
+          emptyReceivedBookings: 'لا توجد طلبات حجز مستلمة حالياً.',
+          focusedBookingTitle: 'تم فتح الحجز المطلوب',
+          focusedBookingText: 'تم تمييز الحجز المرتبط بالتنبيه لتسهيل المتابعة.',
+          missingBookingTitle: 'لم يتم العثور على الحجز في هذه اللوحة',
+          missingBookingText: 'قد يكون الحجز مرتبطاً بحساب آخر أو لم يعد متاحاً.',
+          clearFocusedBooking: 'إزالة التمييز'
         }
       : {
           ownerWorkspace: 'Owner and partner workspace',
@@ -424,6 +431,11 @@ export default function Dashboard() {
           preferredTime: 'Preferred time',
           emptyBookings: 'No bookings are connected to your account yet.',
           emptyReceivedBookings: 'No received booking requests yet.',
+          focusedBookingTitle: 'Focused booking opened',
+          focusedBookingText: 'The booking linked from your notification is highlighted below.',
+          missingBookingTitle: 'Booking not found in this dashboard',
+          missingBookingText: 'This booking may belong to another account or may no longer be available.',
+          clearFocusedBooking: 'Clear focus',
           actions: 'Actions',
           editItem: 'Edit'
         };
@@ -742,6 +754,61 @@ export default function Dashboard() {
   };
 
   const filteredReceivedBookings = receivedBookings.filter(matchesReceivedBookingStatusFilter);
+
+  const dashboardBookingFocusId = searchParams.get('booking') ?? '';
+  const focusedDashboardBooking = dashboardBookingFocusId
+    ? [...bookings, ...receivedBookings].find(
+        (booking) => booking.id === dashboardBookingFocusId
+      )
+    : undefined;
+  const showDashboardDeepLinkNotice = Boolean(
+    dashboardBookingFocusId && !loading && dashboardData
+  );
+
+  function clearDashboardDeepLink() {
+    const nextParams = new URLSearchParams(searchParams);
+
+    nextParams.delete('booking');
+    nextParams.delete('payment');
+
+    setSearchParams(nextParams, {
+      replace: true
+    });
+  }
+
+  useEffect(() => {
+    if (!dashboardBookingFocusId) return;
+
+    const isReceivedBooking = receivedBookings.some(
+      (booking) => booking.id === dashboardBookingFocusId
+    );
+
+    const isVisibleReceivedBooking = filteredReceivedBookings.some(
+      (booking) => booking.id === dashboardBookingFocusId
+    );
+
+    if (isReceivedBooking && !isVisibleReceivedBooking) {
+      setReceivedBookingStatusFilter('ALL');
+    }
+  }, [dashboardBookingFocusId, filteredReceivedBookings, receivedBookings]);
+
+  useEffect(() => {
+    if (!dashboardBookingFocusId || loading || !dashboardData) return;
+
+    const timer = window.setTimeout(() => {
+      const target = document.querySelector<HTMLElement>(
+        `[data-dashboard-booking-id="${dashboardBookingFocusId}"]`
+      );
+
+      target?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [dashboardBookingFocusId, dashboardData, loading, receivedBookingStatusFilter]);
+
   const unreadNotifications = notifications.filter((notification) => !notification.readAt).length;
   const isOperatorDashboard = isMarketplaceOperator;
   const accountRoleLabel = user ? getAccountRoleLabel(user.role, language) : '';
@@ -870,6 +937,36 @@ export default function Dashboard() {
               )}
             </div>
           </div>
+
+          {showDashboardDeepLinkNotice ? (
+            <div
+              className={`dashboard-deeplink-banner${
+                focusedDashboardBooking ? '' : ' dashboard-deeplink-banner--warning'
+              }`}
+              role={focusedDashboardBooking ? 'status' : 'alert'}
+            >
+              <div>
+                <strong>
+                  {focusedDashboardBooking
+                    ? copy.focusedBookingTitle
+                    : copy.missingBookingTitle}
+                </strong>
+                <p>
+                  {focusedDashboardBooking
+                    ? copy.focusedBookingText
+                    : copy.missingBookingText}
+                </p>
+              </div>
+
+              <button
+                className="button-link button-link--ghost"
+                type="button"
+                onClick={clearDashboardDeepLink}
+              >
+                {copy.clearFocusedBooking}
+              </button>
+            </div>
+          ) : null}
 
           <div className="dashboard-grid">
             {isOperatorDashboard ? (
@@ -1130,7 +1227,13 @@ export default function Dashboard() {
             {filteredReceivedBookings.length > 0 ? (
               <div className="dashboard-received-bookings-list">
                 {filteredReceivedBookings.map((booking) => (
-                  <article className="dashboard-received-booking-item" key={booking.id}>
+                  <article
+                    className={`dashboard-received-booking-item ${
+                      dashboardBookingFocusId === booking.id ? 'dashboard-deeplink-highlight' : ''
+                    }`}
+                    data-dashboard-booking-id={booking.id}
+                    key={booking.id}
+                  >
                     <div>
                       <div className="dashboard-booking-kicker">
                         <span>{getBookingTypeLabel(booking, language)}</span>
@@ -1307,7 +1410,10 @@ export default function Dashboard() {
 
                   return (
                     <article
-                      className={`dashboard-booking-item dashboard-booking-item--enhanced dashboard-booking-item--${getStatusClass(paymentStatus)}`}
+                      className={`dashboard-booking-item dashboard-booking-item--enhanced dashboard-booking-item--${getStatusClass(paymentStatus)} ${
+                        dashboardBookingFocusId === booking.id ? 'dashboard-deeplink-highlight' : ''
+                      }`}
+                      data-dashboard-booking-id={booking.id}
                       key={booking.id}
                     >
                       <div className="dashboard-booking-main">

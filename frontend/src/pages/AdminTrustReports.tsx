@@ -7,6 +7,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import {
   getAdminReports,
@@ -77,8 +78,11 @@ function getContactLabel(report: AdminTrustReport) {
 export default function AdminTrustReports() {
   const { language } = useLanguage();
   const { token } = useAuth();
+  const [searchParams] = useSearchParams();
 
   useDocumentTitle('Admin trust reports');
+
+  const focusedReportId = searchParams.get('report') ?? '';
 
   const [reports, setReports] = useState<AdminTrustReport[]>([]);
   const [selectedReport, setSelectedReport] = useState<AdminTrustReport | null>(
@@ -245,6 +249,11 @@ export default function AdminTrustReports() {
       setReports(response.reports);
 
       setSelectedReport((current) => {
+        const focusedReport = focusedReportId
+          ? response.reports.find((report) => report.id === focusedReportId)
+          : null;
+
+        if (focusedReport) return focusedReport;
         if (!current) return response.reports[0] ?? null;
 
         return (
@@ -259,7 +268,7 @@ export default function AdminTrustReports() {
     } finally {
       setLoading(false);
     }
-  }, [copy.loadError, token]);
+  }, [copy.loadError, focusedReportId, token]);
 
   useEffect(() => {
     void loadReports();
@@ -304,6 +313,24 @@ export default function AdminTrustReports() {
       return haystack.includes(normalizedQuery);
     });
   }, [query, reports, statusFilter, targetFilter]);
+
+
+  useEffect(() => {
+    if (!focusedReportId || loading) return;
+
+    const timer = window.setTimeout(() => {
+      const target = document.querySelector<HTMLElement>(
+        `[data-admin-report-id="${focusedReportId}"]`
+      );
+
+      target?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [filteredReports, focusedReportId, loading]);
 
   const summary = useMemo(
     () => ({
@@ -455,10 +482,18 @@ export default function AdminTrustReports() {
                       <tr
                         key={report.id}
                         className={
-                          selectedReport?.id === report.id
-                            ? 'admin-trust-table__row--selected'
-                            : undefined
+                          [
+                            selectedReport?.id === report.id
+                              ? 'admin-trust-table__row--selected'
+                              : '',
+                            focusedReportId === report.id
+                              ? 'admin-trust-table__row--focused'
+                              : ''
+                          ]
+                            .filter(Boolean)
+                            .join(' ') || undefined
                         }
+                        data-admin-report-id={report.id}
                       >
                         <td>
                           <span className={`trust-report-status trust-report-status--${report.status.toLowerCase()}`}>
