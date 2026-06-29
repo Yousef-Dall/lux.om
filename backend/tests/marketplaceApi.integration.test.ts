@@ -4010,3 +4010,88 @@ describe('session token invalidation after password security events', () => {
       .expect(200);
   });
 });
+
+describe('logout all sessions security control', () => {
+  it('returns a replacement token and rejects older tokens', async () => {
+    const passwordHash = await bcrypt.hash('SessionExit2026!', 12);
+
+    const sessionUser = await prisma.user.create({
+      data: {
+        name: 'Logout Session Account',
+        email: 'logout-session-account@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    const oldToken = signToken(sessionUser);
+
+    const response = await request(app)
+      .post('/api/auth/logout-all-sessions')
+      .set('X-Forwarded-For', '203.0.113.50')
+      .set('Authorization', `Bearer ${oldToken}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      ok: true,
+      user: {
+        email: 'logout-session-account@lux.test'
+      }
+    });
+    expect(response.body.token).toBeTruthy();
+    expect(response.body.token).not.toBe(oldToken);
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${oldToken}`)
+      .expect(401);
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${response.body.token}`)
+      .expect(200);
+  });
+
+  it('rate limits repeated logout all sessions requests', async () => {
+    const passwordHash = await bcrypt.hash('SessionLimit2026!', 12);
+
+    const limitedUser = await prisma.user.create({
+      data: {
+        name: 'Logout Session Limit Account',
+        email: 'logout-session-limit-account@lux.test',
+        password: passwordHash,
+        passwordLoginEnabled: true,
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    let currentToken = signToken(limitedUser);
+
+    for (
+      let index = 0;
+      index < authAbuseRateLimitRules.logoutAllSessions.productionLimit;
+      index += 1
+    ) {
+      const response = await request(app)
+        .post('/api/auth/logout-all-sessions')
+        .set('X-Forwarded-For', '203.0.113.51')
+        .set('Authorization', `Bearer ${currentToken}`)
+        .expect(200);
+
+      currentToken = response.body.token;
+    }
+
+    const response = await request(app)
+      .post('/api/auth/logout-all-sessions')
+      .set('X-Forwarded-For', '203.0.113.51')
+      .set('Authorization', `Bearer ${currentToken}`)
+      .expect(429);
+
+    expect(response.body.message).toContain('Too many session logout requests');
+  });
+});

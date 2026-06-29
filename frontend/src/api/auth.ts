@@ -137,3 +137,13 @@ export async function changePassword(payload: ChangePasswordPayload, token: stri
     token
   });
 }
+
+export async function logoutAllSessions(token: string) {
+  return apiClient.post<{ ok: true; user: AuthUser; token: string }>(
+    '/api/auth/logout-all-sessions',
+    {},
+    {
+      token
+    }
+  );
+}

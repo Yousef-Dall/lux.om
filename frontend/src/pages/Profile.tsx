@@ -1,9 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Building2, CheckCircle2, Circle, KeyRound, LockKeyhole, Mail, Phone, ShieldCheck, User, XCircle } from 'lucide-react';
+import { Building2, CheckCircle2, Circle, KeyRound, LockKeyhole, LogOut, Mail, Phone, ShieldCheck, User, XCircle } from 'lucide-react';
 
 import { ApiError } from '../api/client';
-import { changePassword, resendEmailVerification } from '../api/auth';
+import { changePassword, logoutAllSessions, resendEmailVerification } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -28,6 +28,9 @@ export default function Profile() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [loggingOutSessions, setLoggingOutSessions] = useState(false);
+  const [sessionMessage, setSessionMessage] = useState('');
+  const [sessionError, setSessionError] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [devVerificationUrl, setDevVerificationUrl] = useState('');
@@ -95,6 +98,13 @@ export default function Profile() {
             'هذا الحساب متصل بـ Google. يمكنك إضافة كلمة مرور للدخول بالبريد وكلمة المرور أيضاً.',
           changePassword: 'تحديث كلمة المرور',
           changingPassword: 'جاري التحديث...',
+          sessionControlTitle: 'الجلسات النشطة',
+          sessionControlDescription:
+            'سجّلي الخروج من الجلسات القديمة على الأجهزة والمتصفحات الأخرى مع إبقاء هذه الجلسة فعّالة.',
+          logoutOtherSessions: 'تسجيل الخروج من الجلسات الأخرى',
+          loggingOutSessions: 'جاري تسجيل الخروج...',
+          sessionsLoggedOut: 'تم تسجيل الخروج من الجلسات الأخرى بنجاح.',
+          sessionLogoutError: 'تعذر تسجيل الخروج من الجلسات الأخرى.',
           passwordRules: {
             length: 'من 10 إلى 100 حرف',
             lowercase: 'حرف صغير واحد على الأقل',
@@ -144,6 +154,13 @@ export default function Profile() {
             'This account is connected with Google. You can add a password to also sign in with email and password.',
           changePassword: 'Update password',
           changingPassword: 'Updating...',
+          sessionControlTitle: 'Active sessions',
+          sessionControlDescription:
+            'Log out older sessions on other devices and browsers while keeping this session active.',
+          logoutOtherSessions: 'Log out other sessions',
+          loggingOutSessions: 'Logging out...',
+          sessionsLoggedOut: 'Other sessions were logged out successfully.',
+          sessionLogoutError: 'Could not log out other sessions.',
           passwordRules: {
             length: '10 to 100 characters',
             lowercase: 'At least one lowercase letter',
@@ -222,6 +239,31 @@ export default function Profile() {
       }
     } finally {
       setChangingPassword(false);
+    }
+  }
+
+  async function handleLogoutAllSessions() {
+    if (!token) return;
+
+    try {
+      setLoggingOutSessions(true);
+      setSessionMessage('');
+      setSessionError('');
+
+      const response = await logoutAllSessions(token);
+
+      replaceSession(response.token, response.user);
+      setSessionMessage(copy.sessionsLoggedOut);
+    } catch (caughtError) {
+      console.error(caughtError);
+
+      if (caughtError instanceof ApiError) {
+        setSessionError(caughtError.message);
+      } else {
+        setSessionError(copy.sessionLogoutError);
+      }
+    } finally {
+      setLoggingOutSessions(false);
     }
   }
 
@@ -488,6 +530,35 @@ export default function Profile() {
             <KeyRound size={17} aria-hidden="true" />
             {changingPassword ? copy.changingPassword : copy.changePassword}
           </button>
+
+          <div className="profile-session-control">
+            <div>
+              <strong>{copy.sessionControlTitle}</strong>
+              <p>{copy.sessionControlDescription}</p>
+            </div>
+
+            {sessionMessage ? (
+              <p className="form-success" role="status">
+                {sessionMessage}
+              </p>
+            ) : null}
+
+            {sessionError ? (
+              <p className="form-error" role="alert">
+                {sessionError}
+              </p>
+            ) : null}
+
+            <button
+              className="button-link button-link--secondary"
+              type="button"
+              disabled={loggingOutSessions}
+              onClick={() => void handleLogoutAllSessions()}
+            >
+              <LogOut size={17} aria-hidden="true" />
+              {loggingOutSessions ? copy.loggingOutSessions : copy.logoutOtherSessions}
+            </button>
+          </div>
         </form>
 
       </div>

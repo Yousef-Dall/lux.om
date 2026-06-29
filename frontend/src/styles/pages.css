@@ -10437,3 +10437,25 @@ transition: none;
   text-decoration: underline;
   text-underline-offset: 4px;
 }
+
+.profile-session-control {
+  display: grid;
+  gap: 12px;
+  margin-top: 6px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(7, 56, 62, 0.1);
+}
+
+.profile-session-control strong {
+  color: var(--color-primary);
+  font-weight: 900;
+}
+
+.profile-session-control p {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.profile-session-control .button-link {
+  justify-self: start;
+}

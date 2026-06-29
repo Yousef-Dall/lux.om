@@ -480,6 +480,38 @@ authRouter.post(
   }
 );
 
+authRouter.post(
+  '/logout-all-sessions',
+  authAbuseRateLimiters.logoutAllSessions,
+  requireAuth(),
+  async (req, res, next) => {
+    try {
+      if (!req.user) {
+        throw new AppError(401, 'Unauthorized');
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: {
+          id: req.user.id
+        },
+        data: {
+          authTokenVersion: {
+            increment: 1
+          }
+        }
+      });
+
+      res.json({
+        ok: true,
+        user: publicUser(updatedUser),
+        token: signToken(updatedUser)
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 authRouter.get('/me', requireAuth(), (req, res) => {
   res.json({
     user: req.user ? publicUser(req.user) : null
