@@ -15,6 +15,7 @@ import { getDeveloperBySlug, getListings } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
 import { ListingCard } from '../components/Cards';
 import SectionHeader from '../components/SectionHeader';
+import TrustBadges from '../components/TrustBadges';
 import WhatsAppActions from '../components/WhatsAppActions';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -167,6 +168,14 @@ export default function DeveloperDetails() {
             <p className="eyebrow">{copy.eyebrow}</p>
             <h1>{developer.name}</h1>
             <p>{developer.description}</p>
+            <TrustBadges
+              verificationStatus={developer.verificationStatus}
+              verificationSource={developer.verificationSource}
+              verificationDate={developer.verificationDate}
+              verificationExpiryDate={developer.verificationExpiryDate}
+              variant="full"
+              className="provider-profile-trust"
+            />
 
             <div className="developer-profile-hero__badges">
               {developer.verified ? (

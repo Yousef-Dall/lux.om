@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { getActivities, getTravelAgencyBySlug } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
+import TrustBadges from '../components/TrustBadges';
 import { ActivityCard } from '../components/Cards';
 import WhatsAppActions from '../components/WhatsAppActions';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -167,6 +168,14 @@ export default function TravelAgencyDetails() {
                 </h2>
 
                 {agency.description ? <p>{agency.description}</p> : null}
+            <TrustBadges
+              verificationStatus={agency.verificationStatus}
+              verificationSource={agency.verificationSource}
+              verificationDate={agency.verificationDate}
+              verificationExpiryDate={agency.verificationExpiryDate}
+              variant="full"
+              className="provider-profile-trust"
+            />
               </div>
             </div>
 

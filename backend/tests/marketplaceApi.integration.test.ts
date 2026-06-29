@@ -5113,3 +5113,103 @@ describe('verified discovery filters and trust sorting', () => {
     );
   });
 });
+
+describe('provider trust profiles and verification filters', () => {
+  it('filters public developer profiles to verified providers only', async () => {
+    const unverifiedDeveloper = await prisma.developerCompany.create({
+      data: {
+        slug: 'provider-trust-unverified-developer',
+        nameEn: 'Provider Trust Unverified Developer',
+        verified: false,
+        featured: false,
+        verificationStatus: 'UNVERIFIED' as const
+      }
+    });
+
+    const verifiedDeveloper = await prisma.developerCompany.create({
+      data: {
+        slug: 'provider-trust-verified-developer',
+        nameEn: 'Provider Trust Verified Developer',
+        verified: true,
+        featured: false,
+        verificationStatus: 'ADMIN_VERIFIED' as const,
+        verificationSource: 'LUX_OM_ADMIN_REVIEW' as const,
+        verificationDate: new Date('2026-05-01T00:00:00.000Z')
+      }
+    });
+
+    const response = await request(app)
+      .get('/api/developers')
+      .query({
+        search: 'Provider Trust',
+        verifiedOnly: 'true',
+        take: 50
+      })
+      .expect(200);
+
+    const ids = response.body.developers.map(
+      (developer: { id: string }) => developer.id
+    );
+
+    expect(ids).toContain(verifiedDeveloper.id);
+    expect(ids).not.toContain(unverifiedDeveloper.id);
+
+    expect(
+      response.body.developers.find(
+        (developer: { id: string }) => developer.id === verifiedDeveloper.id
+      )
+    ).toMatchObject({
+      verificationStatus: 'ADMIN_VERIFIED',
+      verificationSource: 'LUX_OM_ADMIN_REVIEW'
+    });
+  });
+
+  it('filters public travel agency profiles to verified providers only', async () => {
+    const unverifiedAgency = await prisma.travelAgency.create({
+      data: {
+        slug: 'provider-trust-unverified-agency',
+        nameEn: 'Provider Trust Unverified Agency',
+        verified: false,
+        featured: false,
+        verificationStatus: 'UNVERIFIED' as const
+      }
+    });
+
+    const verifiedAgency = await prisma.travelAgency.create({
+      data: {
+        slug: 'provider-trust-verified-agency',
+        nameEn: 'Provider Trust Verified Agency',
+        verified: true,
+        featured: false,
+        verificationStatus: 'EXTERNALLY_VERIFIED' as const,
+        verificationSource: 'FUTURE_THIRD_PARTY_PROVIDER' as const,
+        verificationDate: new Date('2026-05-01T00:00:00.000Z')
+      }
+    });
+
+    const response = await request(app)
+      .get('/api/travel-agencies')
+      .query({
+        search: 'Provider Trust',
+        verifiedOnly: 'true',
+        take: 50
+      })
+      .expect(200);
+
+    const ids = response.body.travelAgencies.map(
+      (agency: { id: string }) => agency.id
+    );
+
+    expect(ids).toContain(verifiedAgency.id);
+    expect(ids).not.toContain(unverifiedAgency.id);
+
+    expect(
+      response.body.travelAgencies.find(
+        (agency: { id: string }) => agency.id === verifiedAgency.id
+      )
+    ).toMatchObject({
+      verificationStatus: 'EXTERNALLY_VERIFIED',
+      verificationSource: 'FUTURE_THIRD_PARTY_PROVIDER'
+    });
+  });
+});

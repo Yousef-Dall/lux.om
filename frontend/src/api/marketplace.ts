@@ -139,11 +139,13 @@ type ActivityParams = ListParams & {
 type DeveloperParams = ListParams & {
   featured?: boolean;
   verified?: boolean;
+  verifiedOnly?: boolean;
 };
 
 type TravelAgencyParams = ListParams & {
   featured?: boolean;
   verified?: boolean;
+  verifiedOnly?: boolean;
 };
 
 type LandmarkParams = ListParams & {

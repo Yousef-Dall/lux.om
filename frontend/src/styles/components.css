@@ -101,3 +101,16 @@
     white-space: normal;
   }
 }
+
+/* =========================================================
+   Provider trust profile polish
+   ========================================================= */
+
+.travel-agency-card__trust {
+  margin-top: 8px;
+}
+
+.provider-profile-trust {
+  margin-top: 16px;
+  max-width: 720px;
+}

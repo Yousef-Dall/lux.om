@@ -1,3 +1,4 @@
+import { VerificationStatus } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -11,12 +12,23 @@ import {
 } from '../utils/partnerTier';
 import { slugify } from '../utils/slugify';
 
+const optionalBooleanQuerySchema = z
+  .preprocess((value) => {
+    if (value === undefined || value === '') return undefined;
+    if (value === true || value === 'true' || value === '1') return true;
+    if (value === false || value === 'false' || value === '0') return false;
+
+    return value;
+  }, z.boolean())
+  .optional();
+
 export const developersRouter = Router();
 
 const developersQuerySchema = z.object({
   search: z.string().trim().optional(),
-  featured: z.coerce.boolean().optional(),
-  verified: z.coerce.boolean().optional(),
+  featured: optionalBooleanQuerySchema,
+  verified: optionalBooleanQuerySchema,
+  verifiedOnly: optionalBooleanQuerySchema,
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0)
 });
@@ -116,11 +128,20 @@ developersRouter.get('/', async (req, res, next) => {
               featured: query.featured
             }
           : {}),
-        ...(typeof query.verified === 'boolean'
+        ...(query.verifiedOnly
           ? {
-              verified: query.verified
+              verificationStatus: {
+                in: [
+                  VerificationStatus.ADMIN_VERIFIED,
+                  VerificationStatus.EXTERNALLY_VERIFIED
+                ]
+              }
             }
-          : {}),
+          : typeof query.verified === 'boolean'
+            ? {
+                verified: query.verified
+              }
+            : {}),
         ...(search
           ? {
               OR: [
