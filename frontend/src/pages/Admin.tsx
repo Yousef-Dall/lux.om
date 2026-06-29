@@ -60,6 +60,7 @@ import type {
   ListingStatus
 } from '../types';
 import AdminOperationsTrustPanel from '../components/AdminOperationsTrustPanel';
+import AdminEmailDeliveryHealthPanel from '../components/AdminEmailDeliveryHealthPanel';
 
 function getListingTitle(listing: ApiListing, language: 'en' | 'ar') {
   if (language === 'ar') {
@@ -1455,6 +1456,8 @@ async function deleteDeveloperCompany(developerId: string) {
       {!loading && !loadError ? (
         <>
         <AdminOperationsTrustPanel />
+
+          {token ? <AdminEmailDeliveryHealthPanel token={token} /> : null}
 
           <div className="dashboard-grid">
             <article className="metric-card metric-card--accent">

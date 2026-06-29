@@ -931,6 +931,67 @@ authRouter.post(
 );
 
 
+
+authRouter.get(
+  '/admin/email-deliveries/summary',
+  requireAuth(),
+  requireRole('ADMIN'),
+  async (_req, res, next) => {
+    try {
+      const windowDays = 7;
+      const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+      const where: Prisma.EmailDeliveryEventWhereInput = {
+        createdAt: {
+          gte: since
+        }
+      };
+
+      const [statusRows, total, recentFailures] = await prisma.$transaction([
+        prisma.emailDeliveryEvent.groupBy({
+          by: ['status'],
+          where,
+          _count: {
+            _all: true
+          }
+        }),
+        prisma.emailDeliveryEvent.count({
+          where
+        }),
+        prisma.emailDeliveryEvent.findMany({
+          where: {
+            status: EmailDeliveryStatus.FAILED
+          },
+          orderBy: {
+            createdAt: 'desc'
+          },
+          take: 5
+        })
+      ]);
+
+      const statusCounts = {
+        [EmailDeliveryStatus.LOGGED]: 0,
+        [EmailDeliveryStatus.SENT]: 0,
+        [EmailDeliveryStatus.SKIPPED]: 0,
+        [EmailDeliveryStatus.FAILED]: 0
+      };
+
+      for (const row of statusRows) {
+        statusCounts[row.status] = row._count._all;
+      }
+
+      res.json({
+        windowDays,
+        since: since.toISOString(),
+        total,
+        statusCounts,
+        recentFailures
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 authRouter.get(
   '/admin/email-deliveries',
   requireAuth(),

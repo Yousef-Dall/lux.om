@@ -346,3 +346,20 @@ export async function listAdminEmailDeliveries(
     token
   });
 }
+
+export type AdminEmailDeliveryHealthSummary = {
+  windowDays: number;
+  since: string;
+  total: number;
+  statusCounts: Record<EmailDeliveryStatus, number>;
+  recentFailures: AdminEmailDeliveryEvent[];
+};
+
+export async function getAdminEmailDeliveryHealthSummary(token: string) {
+  return apiClient.get<AdminEmailDeliveryHealthSummary>(
+    '/api/auth/admin/email-deliveries/summary',
+    {
+      token
+    }
+  );
+}

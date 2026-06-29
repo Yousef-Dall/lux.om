@@ -5805,3 +5805,74 @@ describe('transactional email delivery audit trail', () => {
     expect(response.body.pagination.total).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('admin email delivery health summary', () => {
+  it('blocks non-admin users from reading delivery health', async () => {
+    await request(app)
+      .get('/api/auth/admin/email-deliveries/summary')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(403);
+  });
+
+  it('returns recent delivery status counts and failures for admins', async () => {
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-customer@lux.test'
+      }
+    });
+
+    await prisma.emailDeliveryEvent.createMany({
+      data: [
+        {
+          status: 'LOGGED',
+          deliveryMode: 'dev',
+          notificationType: 'BOOKING_OWNER_APPROVED',
+          title: 'Health summary logged email',
+          recipientUserId: customer.id,
+          recipientEmail: customer.email,
+          actionUrl: 'http://localhost:5173/dashboard',
+          preferencesUrl: 'http://localhost:5173/profile?section=email-preferences',
+          reason: 'Development email delivery was logged instead of sent.'
+        },
+        {
+          status: 'SKIPPED',
+          deliveryMode: 'dev',
+          notificationType: 'BOOKING_OWNER_APPROVED',
+          title: 'Health summary skipped email',
+          recipientUserId: customer.id,
+          recipientEmail: customer.email,
+          reason: 'Recipient disabled optional booking email updates.'
+        },
+        {
+          status: 'FAILED',
+          deliveryMode: 'smtp',
+          notificationType: 'ACCOUNT_SECURITY',
+          title: 'Health summary failed email',
+          recipientUserId: customer.id,
+          recipientEmail: customer.email,
+          errorMessage: 'SMTP test failure'
+        }
+      ]
+    });
+
+    const response = await request(app)
+      .get('/api/auth/admin/email-deliveries/summary')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body.windowDays).toBe(7);
+    expect(response.body.total).toBeGreaterThanOrEqual(3);
+    expect(response.body.statusCounts.LOGGED).toBeGreaterThanOrEqual(1);
+    expect(response.body.statusCounts.SKIPPED).toBeGreaterThanOrEqual(1);
+    expect(response.body.statusCounts.FAILED).toBeGreaterThanOrEqual(1);
+    expect(response.body.recentFailures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Health summary failed email',
+          status: 'FAILED',
+          errorMessage: 'SMTP test failure'
+        })
+      ])
+    );
+  });
+});
