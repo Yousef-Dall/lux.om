@@ -72,6 +72,7 @@ Backend backend/.env:
     CLOUDINARY_API_KEY=""
     CLOUDINARY_API_SECRET=""
     CLOUDINARY_FOLDER="lux-om"
+    EMAIL_DELIVERY_RETENTION_DAYS=180
 
 Frontend frontend/.env:
 
@@ -117,6 +118,15 @@ Seed local data:
 Open Prisma Studio locally:
 
     npm run db:studio
+
+## Production operations
+
+Production runbooks:
+
+- [Production operations runbook](docs/production-operations-runbook.md)
+- [Admin health checklist](docs/admin-health-checklist.md)
+
+Use these documents for deployment verification, SMTP setup, transactional email monitoring, admin dashboard checks, and email delivery retention cleanup.
 
 ## Production deployment checklist
 
