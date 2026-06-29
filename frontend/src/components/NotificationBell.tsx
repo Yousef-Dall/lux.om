@@ -92,7 +92,7 @@ export default function NotificationBell({
           empty: 'لا توجد إشعارات بعد.',
           markRead: 'تحديد كمقروء',
           markAll: 'تحديد الكل كمقروء',
-          openDashboard: 'عرض كل الإشعارات',
+          openDashboard: 'فتح مركز الإشعارات',
           unread: 'إشعارات غير مقروءة',
           error: 'تعذر تحميل الإشعارات حالياً.'
         }
@@ -102,7 +102,7 @@ export default function NotificationBell({
           empty: 'No notifications yet.',
           markRead: 'Mark read',
           markAll: 'Mark all read',
-          openDashboard: 'View all notifications',
+          openDashboard: 'Open notification center',
           unread: 'Unread notifications',
           error: 'Could not load notifications right now.'
         };
@@ -317,7 +317,7 @@ export default function NotificationBell({
 
           <Link
             className="notification-bell__footer"
-            to="/dashboard"
+            to="/notifications"
             onClick={() => {
               setIsOpen(false);
               onNavigate?.();

@@ -1,4 +1,5 @@
 import {
+Bell,
 ChevronDown,
 Globe2,
 LayoutDashboard,
@@ -74,6 +75,7 @@ login: 'تسجيل الدخول',
 register: 'إنشاء حساب',
 dashboard: 'لوحة التحكم',
 profile: 'الملف الشخصي',
+notifications: 'الإشعارات',
 admin: 'الأدمن',
 users: 'المستخدمون',
 reports: 'البلاغات',
@@ -91,6 +93,7 @@ login: 'Login',
 register: 'Register',
 dashboard: 'Dashboard',
 profile: 'Profile',
+notifications: 'Notifications',
 admin: 'Admin',
 users: 'Users',
 reports: 'Reports',
@@ -229,6 +232,15 @@ return (
               >
                 <UserCircle size={17} aria-hidden="true" />
                 {accessibilityCopy.profile}
+              </NavLink>
+
+              <NavLink
+                to="/notifications"
+                className="nav-account__item"
+                onClick={() => setIsOpen(false)}
+              >
+                <Bell size={17} aria-hidden="true" />
+                {accessibilityCopy.notifications}
               </NavLink>
 
               {isAdmin ? (

@@ -26,6 +26,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Register from './pages/Register';
 import Profile from './pages/Profile';
+import Notifications from './pages/Notifications';
 import VerifyEmail from './pages/VerifyEmail';
 import GoogleAuthCallback from './pages/GoogleAuthCallback';
 import TravelAgencies from './pages/TravelAgencies';
@@ -159,6 +160,7 @@ function getSeoKey(pathname: string) {
   if (pathname.startsWith('/about')) return 'about';
   if (pathname.startsWith('/contact')) return 'contact';
   if (pathname.startsWith('/dashboard')) return 'dashboard';
+  if (pathname.startsWith('/notifications')) return 'dashboard';
   if (pathname.startsWith('/admin')) return 'admin';
   if (pathname.startsWith('/login') || pathname.startsWith('/register') || pathname.startsWith('/forgot-password') || pathname.startsWith('/reset-password')) return 'auth';
 
@@ -466,6 +468,15 @@ export default function App() {
             element={
               <RequireAuth>
                 <Profile />
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="/notifications"
+            element={
+              <RequireAuth>
+                <Notifications />
               </RequireAuth>
             }
           />
