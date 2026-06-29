@@ -9,6 +9,7 @@ import {
 } from 'react';
 
 import {
+  exchangeGoogleOAuthCode,
   getCurrentUser,
   login as loginRequest,
   register as registerRequest,
@@ -126,11 +127,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(response.user);
   }, []);
 
-  const completeOAuthLogin = useCallback(async (nextToken: string) => {
-    saveToken(nextToken);
-    setToken(nextToken);
+  const completeOAuthLogin = useCallback(async (oauthCode: string) => {
+    const response = await exchangeGoogleOAuthCode(oauthCode);
 
-    const response = await getCurrentUser(nextToken);
+    saveToken(response.token);
+    setToken(response.token);
     setUser(response.user);
 
     return response.user;

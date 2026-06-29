@@ -6,6 +6,9 @@ import { useAuth } from '../auth/AuthContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 
+const completedOAuthCodes = new Set<string>();
+const oauthCodeExchangeRequests = new Map<string, Promise<void>>();
+
 function sanitizeReturnTo(returnTo: string | null) {
   if (!returnTo || !returnTo.startsWith('/') || returnTo.startsWith('//')) {
     return '/dashboard';
@@ -47,22 +50,40 @@ export default function GoogleAuthCallback() {
     let active = true;
 
     async function complete() {
-      const token = searchParams.get('token');
+      const code = searchParams.get('code');
       const returnTo = sanitizeReturnTo(searchParams.get('returnTo'));
 
-      if (!token) {
+      if (!code) {
         setError(copy.error);
         return;
       }
 
       try {
-        await completeOAuthLogin(token);
+        if (completedOAuthCodes.has(code)) {
+          if (!active) return;
+
+          navigate(returnTo, { replace: true });
+          return;
+        }
+
+        let exchangeRequest = oauthCodeExchangeRequests.get(code);
+
+        if (!exchangeRequest) {
+          exchangeRequest = completeOAuthLogin(code).then(() => {
+            completedOAuthCodes.add(code);
+          });
+
+          oauthCodeExchangeRequests.set(code, exchangeRequest);
+        }
+
+        await exchangeRequest;
 
         if (!active) return;
 
         navigate(returnTo, { replace: true });
       } catch (caughtError) {
         console.error(caughtError);
+        oauthCodeExchangeRequests.delete(code);
 
         if (!active) return;
 

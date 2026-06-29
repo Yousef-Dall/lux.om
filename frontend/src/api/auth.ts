@@ -101,3 +101,9 @@ export function getGoogleOAuthStartUrl(input: {
 
   return url.toString();
 }
+
+export async function exchangeGoogleOAuthCode(code: string) {
+  return apiClient.post<AuthResponse & { returnTo: string }>('/api/auth/google/exchange', {
+    code
+  });
+}

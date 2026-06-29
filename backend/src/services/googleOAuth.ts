@@ -23,6 +23,8 @@ type GoogleProfile = {
 };
 
 const GOOGLE_OAUTH_SCOPES = ['openid', 'email', 'profile'];
+const GOOGLE_LOGIN_CODE_TTL_MS = 5 * 60 * 1000;
+const USED_LOGIN_CODE_RETENTION_MS = 60 * 60 * 1000;
 
 function assertGoogleOAuthEnabled() {
   if (
@@ -43,6 +45,43 @@ function getGoogleClient() {
     env.GOOGLE_CLIENT_SECRET,
     env.GOOGLE_OAUTH_REDIRECT_URL
   );
+}
+
+function hashOauthLoginCode(code: string) {
+  return crypto.createHash('sha256').update(code).digest('hex');
+}
+
+function createRawOauthLoginCode() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+async function cleanupOauthLoginCodes() {
+  const now = new Date();
+  const oldUsedCodeCutoff = new Date(Date.now() - USED_LOGIN_CODE_RETENTION_MS);
+
+  await prisma.oauthLoginCode
+    .deleteMany({
+      where: {
+        OR: [
+          {
+            expiresAt: {
+              lt: now
+            }
+          },
+          {
+            usedAt: {
+              not: null
+            },
+            createdAt: {
+              lt: oldUsedCodeCutoff
+            }
+          }
+        ]
+      }
+    })
+    .catch((error) => {
+      console.error('[lux.om] Failed to clean OAuth login codes', error);
+    });
 }
 
 function sanitizeReturnTo(returnTo?: string) {
@@ -211,3 +250,67 @@ export async function signInWithGoogleCode(input: { code: string; state: string 
     returnTo: state.returnTo
   };
 }
+
+export async function createOauthLoginCode(input: { userId: string; returnTo: string }) {
+  await cleanupOauthLoginCodes();
+
+  const code = createRawOauthLoginCode();
+  const expiresAt = new Date(Date.now() + GOOGLE_LOGIN_CODE_TTL_MS);
+
+  await prisma.oauthLoginCode.create({
+    data: {
+      codeHash: hashOauthLoginCode(code),
+      userId: input.userId,
+      returnTo: sanitizeReturnTo(input.returnTo),
+      expiresAt
+    }
+  });
+
+  return {
+    code,
+    expiresAt
+  };
+}
+
+export async function consumeOauthLoginCode(code: string) {
+  const codeHash = hashOauthLoginCode(code);
+  const now = new Date();
+
+  return prisma.$transaction(async (tx) => {
+    const loginCode = await tx.oauthLoginCode.findUnique({
+      where: {
+        codeHash
+      },
+      include: {
+        user: true
+      }
+    });
+
+    if (!loginCode || loginCode.usedAt || loginCode.expiresAt <= now) {
+      throw new AppError(400, 'Google login link is invalid or expired');
+    }
+
+    const consumed = await tx.oauthLoginCode.updateMany({
+      where: {
+        id: loginCode.id,
+        usedAt: null,
+        expiresAt: {
+          gt: now
+        }
+      },
+      data: {
+        usedAt: now
+      }
+    });
+
+    if (consumed.count !== 1) {
+      throw new AppError(400, 'Google login link is invalid or expired');
+    }
+
+    return {
+      user: loginCode.user,
+      returnTo: sanitizeReturnTo(loginCode.returnTo)
+    };
+  });
+}
+

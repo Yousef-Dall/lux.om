@@ -354,6 +354,7 @@ model User {
   inquiries     Inquiry[]
   notifications Notification[] @relation("UserNotifications")
   bookingEvents BookingEvent[] @relation("BookingEventActor")
+  oauthLoginCodes OauthLoginCode[]
 
   eligibilityMarkedListings       Listing[]          @relation("ListingEligibilityMarkedBy")
   listingVerificationReviews      Listing[]          @relation("ListingVerificationReviewedBy")
@@ -1516,4 +1517,20 @@ model InvestorWatchlistItem {
   @@index([userId])
   @@index([listingId])
   @@index([valuationRequestId])
+}
+
+model OauthLoginCode {
+  id        String    @id @default(cuid())
+  codeHash  String    @unique
+  userId    String
+  returnTo  String    @default("/dashboard")
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([usedAt])
 }

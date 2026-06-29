@@ -13,6 +13,8 @@ import {
 } from '../services/emailVerification';
 import {
   buildGoogleAuthorizationUrl,
+  consumeOauthLoginCode,
+  createOauthLoginCode,
   signInWithGoogleCode
 } from '../services/googleOAuth';
 
@@ -79,6 +81,13 @@ const googleCallbackSchema = z
   })
   .strict();
 
+const googleExchangeSchema = z
+  .object({
+    code: z.string().trim().min(32).max(256)
+  })
+  .strict();
+
+
 function buildFrontendRedirect(pathname: string, params: Record<string, string>) {
   const frontendUrl = new URL(pathname, process.env.FRONTEND_URL || 'http://localhost:5173');
 
@@ -109,15 +118,18 @@ authRouter.get('/google/start', (req, res, next) => {
   }
 });
 
-authRouter.get('/google/callback', async (req, res, next) => {
+authRouter.get('/google/callback', async (req, res) => {
   try {
     const data = googleCallbackSchema.parse(req.query);
     const result = await signInWithGoogleCode(data);
-    const token = signToken(result.user);
+    const loginCode = await createOauthLoginCode({
+      userId: result.user.id,
+      returnTo: result.returnTo
+    });
 
     res.redirect(
       buildFrontendRedirect('/auth/google/callback', {
-        token,
+        code: loginCode.code,
         returnTo: result.returnTo
       })
     );
@@ -130,6 +142,21 @@ authRouter.get('/google/callback', async (req, res, next) => {
     }
 
     res.redirect(buildGoogleAuthErrorRedirect('Google login failed. Please try again.'));
+  }
+});
+
+authRouter.post('/google/exchange', async (req, res, next) => {
+  try {
+    const data = googleExchangeSchema.parse(req.body);
+    const result = await consumeOauthLoginCode(data.code);
+
+    res.json({
+      user: publicUser(result.user),
+      token: signToken(result.user),
+      returnTo: result.returnTo
+    });
+  } catch (error) {
+    next(error);
   }
 });
 
