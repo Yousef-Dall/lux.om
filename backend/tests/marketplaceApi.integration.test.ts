@@ -4,6 +4,7 @@ import request from 'supertest';
 import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
 import { signToken } from '../src/middleware/auth';
+import { createOauthLoginCode } from '../src/services/googleOAuth';
 
 const app = createApp();
 
@@ -11,6 +12,17 @@ let ownerToken = '';
 let activityProviderToken = '';
 let customerToken = '';
 let adminToken = '';
+
+function extractTokenFromDevUrl(devUrl?: string | null) {
+  expect(devUrl).toBeTruthy();
+
+  const parsedUrl = new URL(devUrl ?? '');
+  const token = parsedUrl.searchParams.get('token');
+
+  expect(token).toBeTruthy();
+
+  return token ?? '';
+}
 
 async function clearTestDatabase() {
   const databaseUrl = new URL(process.env.DATABASE_URL ?? '');
@@ -58,6 +70,7 @@ async function clearTestDatabase() {
   await prisma.travelAgency.deleteMany();
   await prisma.developerCompany.deleteMany();
   await prisma.landmark.deleteMany();
+  await prisma.oauthLoginCode.deleteMany();
   await prisma.user.deleteMany();
 }
 
@@ -366,6 +379,263 @@ beforeAll(async () => {
 afterAll(async () => {
   await clearTestDatabase();
   await prisma.$disconnect();
+});
+
+
+describe('auth and account security hardening', () => {
+  it('rejects weak registration passwords and verifies a new email once', async () => {
+    await request(app)
+      .post('/api/auth/register')
+      .send({
+        name: 'Weak Register User',
+        email: 'weak-register@lux.test',
+        password: 'weak',
+        role: 'USER'
+      })
+      .expect(400);
+
+    const registerResponse = await request(app)
+      .post('/api/auth/register')
+      .send({
+        name: 'Secure Register User',
+        email: 'secure-register@lux.test',
+        password: 'SafeMarket2026!',
+        role: 'USER'
+      })
+      .expect(201);
+
+    expect(registerResponse.body.user).toMatchObject({
+      email: 'secure-register@lux.test',
+      emailVerified: false
+    });
+
+    expect(registerResponse.body.verification.required).toBe(true);
+
+    const verificationToken = extractTokenFromDevUrl(
+      registerResponse.body.verification.devVerificationUrl
+    );
+
+    const verifyResponse = await request(app)
+      .post('/api/auth/verify-email')
+      .send({
+        token: verificationToken
+      })
+      .expect(200);
+
+    expect(verifyResponse.body.user).toMatchObject({
+      email: 'secure-register@lux.test',
+      emailVerified: true
+    });
+
+    await request(app)
+      .post('/api/auth/verify-email')
+      .send({
+        token: verificationToken
+      })
+      .expect(400);
+  });
+
+  it('resends verification for unverified users and blocks publishing until verified', async () => {
+    const unverifiedOwner = await prisma.user.create({
+      data: {
+        name: 'Unverified Owner',
+        email: 'unverified-owner@lux.test',
+        password: 'test-password',
+        role: 'OWNER',
+        emailVerified: false
+      }
+    });
+
+    const unverifiedOwnerToken = signToken(unverifiedOwner);
+
+    const resendResponse = await request(app)
+      .post('/api/auth/resend-verification')
+      .set('Authorization', `Bearer ${unverifiedOwnerToken}`)
+      .expect(200);
+
+    expect(resendResponse.body.verification.required).toBe(true);
+    expect(resendResponse.body.verification.devVerificationUrl).toContain('/verify-email');
+
+    const updatedOwner = await prisma.user.findUniqueOrThrow({
+      where: {
+        id: unverifiedOwner.id
+      }
+    });
+
+    expect(updatedOwner.emailVerificationTokenHash).toBeTruthy();
+
+    await request(app)
+      .post('/api/listings')
+      .set('Authorization', `Bearer ${unverifiedOwnerToken}`)
+      .send({
+        title: 'Blocked Unverified Listing',
+        description:
+          'This listing should not be accepted because the owner has not verified email.',
+        type: 'Apartment',
+        transaction: 'Rent',
+        location: 'Muscat, Oman',
+        price: 'OMR 500 /mo',
+        beds: 1,
+        baths: 1,
+        sqm: 80,
+        image: 'https://example.com/unverified-listing.jpg'
+      })
+      .expect(403);
+  });
+
+  it('handles password reset safely, enforces policy, and prevents token reuse', async () => {
+    await prisma.user.create({
+      data: {
+        name: 'Password Reset User',
+        email: 'password-reset-user@lux.test',
+        password: 'old-password',
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    const fakeResetResponse = await request(app)
+      .post('/api/auth/request-password-reset')
+      .send({
+        email: 'missing-reset-user@lux.test'
+      })
+      .expect(200);
+
+    expect(fakeResetResponse.body).toMatchObject({
+      ok: true,
+      reset: {
+        devPasswordResetUrl: null
+      }
+    });
+
+    const resetRequestResponse = await request(app)
+      .post('/api/auth/request-password-reset')
+      .send({
+        email: 'password-reset-user@lux.test'
+      })
+      .expect(200);
+
+    const resetToken = extractTokenFromDevUrl(
+      resetRequestResponse.body.reset.devPasswordResetUrl
+    );
+
+    await request(app)
+      .post('/api/auth/reset-password')
+      .send({
+        token: resetToken,
+        password: 'weak'
+      })
+      .expect(400);
+
+    await request(app)
+      .post('/api/auth/reset-password')
+      .send({
+        token: resetToken,
+        password: 'SafeMarket2026!'
+      })
+      .expect(200);
+
+    const loginResponse = await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: 'password-reset-user@lux.test',
+        password: 'SafeMarket2026!'
+      })
+      .expect(200);
+
+    expect(loginResponse.body.user.email).toBe('password-reset-user@lux.test');
+    expect(loginResponse.body.token).toBeTruthy();
+
+    await request(app)
+      .post('/api/auth/reset-password')
+      .send({
+        token: resetToken,
+        password: 'AnotherSafe2026!'
+      })
+      .expect(400);
+  });
+
+  it('exchanges Google OAuth login codes once only', async () => {
+    const googleUser = await prisma.user.create({
+      data: {
+        name: 'Google Exchange User',
+        email: 'google-exchange-user@lux.test',
+        password: 'test-password',
+        role: 'USER',
+        googleId: 'google-exchange-user-id',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    const loginCode = await createOauthLoginCode({
+      userId: googleUser.id,
+      returnTo: '/profile'
+    });
+
+    const exchangeResponse = await request(app)
+      .post('/api/auth/google/exchange')
+      .send({
+        code: loginCode.code
+      })
+      .expect(200);
+
+    expect(exchangeResponse.body).toMatchObject({
+      returnTo: '/profile',
+      user: {
+        email: 'google-exchange-user@lux.test',
+        emailVerified: true
+      }
+    });
+    expect(exchangeResponse.body.token).toBeTruthy();
+
+    await request(app)
+      .post('/api/auth/google/exchange')
+      .send({
+        code: loginCode.code
+      })
+      .expect(400);
+  });
+
+  it('allows safe profile updates but rejects role and email changes through profile', async () => {
+    const profileUser = await prisma.user.create({
+      data: {
+        name: 'Profile Safety User',
+        email: 'profile-safety-user@lux.test',
+        password: 'test-password',
+        role: 'USER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    const profileToken = signToken(profileUser);
+
+    await request(app)
+      .patch('/api/auth/me')
+      .set('Authorization', `Bearer ${profileToken}`)
+      .send({
+        email: 'changed-profile-safety-user@lux.test',
+        role: 'ADMIN'
+      })
+      .expect(400);
+
+    const updateResponse = await request(app)
+      .patch('/api/auth/me')
+      .set('Authorization', `Bearer ${profileToken}`)
+      .send({
+        name: 'Updated Profile Safety User',
+        phone: ''
+      })
+      .expect(200);
+
+    expect(updateResponse.body.user).toMatchObject({
+      name: 'Updated Profile Safety User',
+      email: 'profile-safety-user@lux.test',
+      role: 'USER'
+    });
+  });
 });
 
 describe('saved, reviews, and reports hardening', () => {
