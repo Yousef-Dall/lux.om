@@ -100,7 +100,10 @@ const updateProfileSchema = z
   .object({
     name: z.string().trim().min(2).max(80).optional(),
     phone: z.string().trim().min(6).max(30).or(z.literal('')).optional(),
-    companyName: z.string().trim().min(2).max(120).or(z.literal('')).optional()
+    companyName: z.string().trim().min(2).max(120).or(z.literal('')).optional(),
+    emailBookingUpdates: z.boolean().optional(),
+    emailSavedSearchUpdates: z.boolean().optional(),
+    emailMarketingUpdates: z.boolean().optional()
   })
   .strict();
 
@@ -1244,6 +1247,15 @@ authRouter.patch('/me', requireAuth(), async (req, res, next) => {
         ...(data.phone !== undefined ? { phone: data.phone.trim() || null } : {}),
         ...(data.companyName !== undefined
           ? { companyName: data.companyName.trim() || null }
+          : {}),
+        ...(data.emailBookingUpdates !== undefined
+          ? { emailBookingUpdates: data.emailBookingUpdates }
+          : {}),
+        ...(data.emailSavedSearchUpdates !== undefined
+          ? { emailSavedSearchUpdates: data.emailSavedSearchUpdates }
+          : {}),
+        ...(data.emailMarketingUpdates !== undefined
+          ? { emailMarketingUpdates: data.emailMarketingUpdates }
           : {})
       }
     });

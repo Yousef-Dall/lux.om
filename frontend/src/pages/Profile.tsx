@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Building2, CheckCircle2, Circle, KeyRound, LockKeyhole, LogOut, Mail, Phone, ShieldCheck, User, XCircle } from 'lucide-react';
+import { Bell, Building2, CheckCircle2, Circle, KeyRound, LockKeyhole, LogOut, Mail, Phone, ShieldCheck, User, XCircle } from 'lucide-react';
 
 import { ApiError } from '../api/client';
 import { changePassword, logoutAllSessions, requestEmailChange, resendEmailVerification } from '../api/auth';
@@ -20,6 +20,15 @@ export default function Profile() {
   const [name, setName] = useState(user?.name ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [companyName, setCompanyName] = useState(user?.companyName ?? '');
+  const [emailBookingUpdates, setEmailBookingUpdates] = useState(
+    user?.emailBookingUpdates ?? true
+  );
+  const [emailSavedSearchUpdates, setEmailSavedSearchUpdates] = useState(
+    user?.emailSavedSearchUpdates ?? true
+  );
+  const [emailMarketingUpdates, setEmailMarketingUpdates] = useState(
+    user?.emailMarketingUpdates ?? false
+  );
   const [saving, setSaving] = useState(false);
   const [sendingVerification, setSendingVerification] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -45,6 +54,9 @@ export default function Profile() {
     setName(user?.name ?? '');
     setPhone(user?.phone ?? '');
     setCompanyName(user?.companyName ?? '');
+    setEmailBookingUpdates(user?.emailBookingUpdates ?? true);
+    setEmailSavedSearchUpdates(user?.emailSavedSearchUpdates ?? true);
+    setEmailMarketingUpdates(user?.emailMarketingUpdates ?? false);
   }, [user]);
 
   const registered = searchParams.get('registered') === '1';
@@ -81,6 +93,14 @@ export default function Profile() {
           phone: 'الهاتف',
           companyName: 'اسم الشركة / الوكالة',
           companyHelp: 'اختياري، ومفيد لحسابات الملاك والوسطاء والشركاء.',
+          notificationPreferencesTitle: 'تفضيلات البريد والتنبيهات',
+          notificationPreferencesDescription:
+            'اختاري رسائل البريد الاختيارية التي تريدين استقبالها. رسائل الأمان والثقة والمدفوعات المهمة ستبقى مفعّلة دائماً.',
+          bookingEmails: 'تحديثات الحجوزات الاختيارية',
+          savedSearchEmails: 'نتائج البحث المحفوظة عبر البريد',
+          marketingEmails: 'رسائل تسويقية وعروض مستقبلية',
+          mandatoryEmails:
+            'رسائل أمان الحساب، التحقق، الثقة والسلامة، المدفوعات والإلغاء لا يمكن إيقافها لأنها ضرورية لحماية الحساب والمعاملات.',
           role: 'نوع الحساب',
           email: 'البريد الإلكتروني',
           verified: 'تم تأكيد البريد',
@@ -150,6 +170,14 @@ export default function Profile() {
           phone: 'Phone',
           companyName: 'Company / agency name',
           companyHelp: 'Optional, useful for owner, agent, and partner accounts.',
+          notificationPreferencesTitle: 'Email and notification preferences',
+          notificationPreferencesDescription:
+            'Choose which optional emails you want to receive. Security, trust, payment, and cancellation emails stay enabled for account and transaction protection.',
+          bookingEmails: 'Optional booking workflow emails',
+          savedSearchEmails: 'Saved-search match emails',
+          marketingEmails: 'Marketing and future promotional emails',
+          mandatoryEmails:
+            'Account security, verification, trust/safety, payment, and cancellation emails cannot be disabled because they protect your account and transactions.',
           role: 'Account type',
           email: 'Email',
           verified: 'Email verified',
@@ -223,7 +251,10 @@ export default function Profile() {
       await updateProfile({
         name,
         phone,
-        companyName
+        companyName,
+        emailBookingUpdates,
+        emailSavedSearchUpdates,
+        emailMarketingUpdates
       });
 
       setMessage(copy.saved);
@@ -506,6 +537,55 @@ export default function Profile() {
             </p>
           ) : null}
         </aside>
+
+        <form
+          className="profile-card form-card profile-card--notification-preferences"
+          onSubmit={handleSubmit}
+        >
+          <div className="form-group-heading">
+            <span className="form-section-icon">
+              <Bell size={18} aria-hidden="true" />
+            </span>
+
+            <div>
+              <h2>{copy.notificationPreferencesTitle}</h2>
+              <p>{copy.notificationPreferencesDescription}</p>
+            </div>
+          </div>
+
+          <label className="profile-preference-toggle">
+            <input
+              type="checkbox"
+              checked={emailBookingUpdates}
+              onChange={(event) => setEmailBookingUpdates(event.target.checked)}
+            />
+            <span>{copy.bookingEmails}</span>
+          </label>
+
+          <label className="profile-preference-toggle">
+            <input
+              type="checkbox"
+              checked={emailSavedSearchUpdates}
+              onChange={(event) => setEmailSavedSearchUpdates(event.target.checked)}
+            />
+            <span>{copy.savedSearchEmails}</span>
+          </label>
+
+          <label className="profile-preference-toggle">
+            <input
+              type="checkbox"
+              checked={emailMarketingUpdates}
+              onChange={(event) => setEmailMarketingUpdates(event.target.checked)}
+            />
+            <span>{copy.marketingEmails}</span>
+          </label>
+
+          <p className="trust-note">{copy.mandatoryEmails}</p>
+
+          <button className="button-link button-link--secondary" type="submit" disabled={saving}>
+            {saving ? copy.saving : copy.save}
+          </button>
+        </form>
 
         <form className="profile-card form-card profile-card--email-change" onSubmit={handleRequestEmailChange}>
           <div className="form-group-heading">

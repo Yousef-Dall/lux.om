@@ -9,6 +9,9 @@ type TransactionalEmailRecipient = {
   id?: string;
   email: string | null;
   name?: string | null;
+  emailBookingUpdates?: boolean | null;
+  emailSavedSearchUpdates?: boolean | null;
+  emailMarketingUpdates?: boolean | null;
 };
 
 type TransactionalNotificationEmailInput = {
@@ -45,6 +48,47 @@ function shouldUseSmtpDelivery() {
     isProduction ||
     (env.NODE_ENV === 'development' && env.EMAIL_DELIVERY_MODE === 'smtp')
   );
+}
+
+
+function isMandatoryTransactionalEmail(type: NotificationType) {
+  return (
+    type === NotificationType.ACCOUNT_SECURITY ||
+    type === NotificationType.VERIFICATION_STATUS_UPDATED ||
+    type === NotificationType.REVIEW_STATUS_UPDATED ||
+    type === NotificationType.RENT_PAYMENT_DUE ||
+    type === NotificationType.TRANSACTION_STATUS_UPDATED ||
+    type === NotificationType.BOOKING_PAYMENT_PAID ||
+    type === NotificationType.BOOKING_PAYMENT_FAILED ||
+    type === NotificationType.BOOKING_CANCELLATION_REQUESTED ||
+    type === NotificationType.BOOKING_CANCELLED
+  );
+}
+
+function isBookingEmail(type: NotificationType) {
+  return (
+    type === NotificationType.BOOKING_CREATED ||
+    type === NotificationType.BOOKING_OWNER_APPROVED ||
+    type === NotificationType.BOOKING_OWNER_REJECTED ||
+    type === NotificationType.BOOKING_ADMIN_CONFIRMED
+  );
+}
+
+function shouldDeliverEmailToRecipient(
+  recipient: TransactionalEmailRecipient,
+  type: NotificationType
+) {
+  if (isMandatoryTransactionalEmail(type)) return true;
+
+  if (isBookingEmail(type)) {
+    return recipient.emailBookingUpdates !== false;
+  }
+
+  if (type === NotificationType.SAVED_SEARCH_MATCH) {
+    return recipient.emailSavedSearchUpdates !== false;
+  }
+
+  return true;
 }
 
 function getSmtpConfig() {
@@ -174,7 +218,7 @@ async function safelyDeliverTransactionalNotificationEmail(
 ) {
   const recipients = input.recipients.filter(
     (recipient): recipient is TransactionalEmailRecipient & { email: string } =>
-      Boolean(recipient.email)
+      Boolean(recipient.email) && shouldDeliverEmailToRecipient(recipient, input.type)
   );
 
   if (recipients.length === 0) return;
@@ -231,7 +275,10 @@ export async function deliverTransactionalNotificationToUser(
       select: {
         id: true,
         email: true,
-        name: true
+        name: true,
+        emailBookingUpdates: true,
+        emailSavedSearchUpdates: true,
+        emailMarketingUpdates: true
       }
     });
 
@@ -264,7 +311,10 @@ export async function deliverTransactionalNotificationToUsers(
       select: {
         id: true,
         email: true,
-        name: true
+        name: true,
+        emailBookingUpdates: true,
+        emailSavedSearchUpdates: true,
+        emailMarketingUpdates: true
       }
     });
 

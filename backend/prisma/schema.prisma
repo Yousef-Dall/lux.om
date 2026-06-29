@@ -366,6 +366,9 @@ model User {
   emailVerificationTokenHash  String?   @unique
   emailVerificationExpiresAt  DateTime?
   pendingEmail                String?   @unique
+  emailBookingUpdates          Boolean   @default(true)
+  emailSavedSearchUpdates      Boolean   @default(true)
+  emailMarketingUpdates        Boolean   @default(false)
   emailChangeTokenHash        String?   @unique
   emailChangeExpiresAt        DateTime?
   passwordResetTokenHash      String?   @unique

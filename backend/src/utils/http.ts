@@ -18,6 +18,9 @@ export function publicUser(user: {
   role: string;
   phone?: string | null;
   companyName?: string | null;
+  emailBookingUpdates?: boolean | null;
+  emailSavedSearchUpdates?: boolean | null;
+  emailMarketingUpdates?: boolean | null;
   emailVerified?: boolean;
   emailVerifiedAt?: Date | string | null;
   googleId?: string | null;
@@ -30,6 +33,9 @@ export function publicUser(user: {
     role: user.role,
     phone: user.phone ?? null,
     companyName: user.companyName ?? null,
+    emailBookingUpdates: user.emailBookingUpdates ?? true,
+    emailSavedSearchUpdates: user.emailSavedSearchUpdates ?? true,
+    emailMarketingUpdates: user.emailMarketingUpdates ?? false,
     emailVerified: Boolean(user.emailVerified),
     emailVerifiedAt: user.emailVerifiedAt ?? null,
     googleConnected: Boolean(user.googleId),

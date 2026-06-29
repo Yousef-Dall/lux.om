@@ -357,6 +357,9 @@ phone?: string | null;
 companyName?: string | null;
 emailVerified?: boolean;
 emailVerifiedAt?: string | null;
+emailBookingUpdates?: boolean;
+emailSavedSearchUpdates?: boolean;
+emailMarketingUpdates?: boolean;
 };
 
 export type ApiLandmark = {

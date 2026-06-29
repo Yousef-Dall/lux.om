@@ -8,6 +8,9 @@ export type AuthUser = PublicUser & {
   emailVerifiedAt?: string | null;
   googleConnected?: boolean;
   passwordLoginEnabled?: boolean;
+  emailBookingUpdates?: boolean;
+  emailSavedSearchUpdates?: boolean;
+  emailMarketingUpdates?: boolean;
 };
 
 export type AuthVerificationResponse = {
@@ -34,12 +37,18 @@ export type RegisterPayload = {
   role?: 'USER' | 'OWNER';
   phone?: string;
   companyName?: string;
+  emailBookingUpdates?: boolean;
+  emailSavedSearchUpdates?: boolean;
+  emailMarketingUpdates?: boolean;
 };
 
 export type UpdateProfilePayload = {
   name?: string;
   phone?: string;
   companyName?: string;
+  emailBookingUpdates?: boolean;
+  emailSavedSearchUpdates?: boolean;
+  emailMarketingUpdates?: boolean;
 };
 
 export async function login(payload: LoginPayload) {

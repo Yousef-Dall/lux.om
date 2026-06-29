@@ -631,14 +631,20 @@ describe('auth and account security hardening', () => {
       .set('Authorization', `Bearer ${profileToken}`)
       .send({
         name: 'Updated Profile Safety User',
-        phone: ''
+        phone: '',
+        emailBookingUpdates: false,
+        emailSavedSearchUpdates: false,
+        emailMarketingUpdates: false
       })
       .expect(200);
 
     expect(updateResponse.body.user).toMatchObject({
       name: 'Updated Profile Safety User',
       email: 'profile-safety-user@lux.test',
-      role: 'USER'
+      role: 'USER',
+      emailBookingUpdates: false,
+      emailSavedSearchUpdates: false,
+      emailMarketingUpdates: false
     });
   });
 });
@@ -5582,6 +5588,67 @@ describe('transactional email notifications', () => {
       expect(infoSpy).toHaveBeenCalledWith(
         expect.stringContaining(`/dashboard?booking=${booking.id}`)
       );
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+});
+
+describe('notification email preferences', () => {
+  it('skips optional booking emails when the user opts out', async () => {
+    const customer = await prisma.user.update({
+      where: {
+        email: 'integration-customer@lux.test'
+      },
+      data: {
+        emailBookingUpdates: false
+      }
+    });
+
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    try {
+      await createNotification(prisma, {
+        userId: customer.id,
+        type: 'BOOKING_OWNER_APPROVED',
+        title: 'Optional booking preference email',
+        message: 'This optional booking email should be suppressed.'
+      });
+
+      expect(infoSpy).not.toHaveBeenCalled();
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
+  it('still sends mandatory account security emails even when optional emails are disabled', async () => {
+    const customer = await prisma.user.update({
+      where: {
+        email: 'integration-customer@lux.test'
+      },
+      data: {
+        emailBookingUpdates: false,
+        emailSavedSearchUpdates: false,
+        emailMarketingUpdates: false
+      }
+    });
+
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    try {
+      await recordAccountSecurityEvent(prisma, {
+        userId: customer.id,
+        type: 'PASSWORD_CHANGED',
+        title: 'Mandatory security preference email',
+        message: 'This mandatory account security email should still be delivered.'
+      });
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Development transactional email for integration-customer@lux.test: Mandatory security preference email'
+        )
+      );
+      expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('/profile'));
     } finally {
       infoSpy.mockRestore();
     }
