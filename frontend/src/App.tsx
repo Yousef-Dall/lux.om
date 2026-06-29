@@ -11,6 +11,7 @@ import ActivityDetails from './pages/ActivityDetails';
 import AddActivity from './pages/AddActivity';
 import AddListing from './pages/AddListing';
 import Admin from './pages/Admin';
+import AdminUsers from './pages/AdminUsers';
 import Contact from './pages/Contact';
 import Dashboard from './pages/Dashboard';
 import DeveloperDetails from './pages/DeveloperDetails';
@@ -476,6 +477,15 @@ export default function App() {
             element={
               <RequireAdmin>
                 <Admin />
+              </RequireAdmin>
+            }
+          />
+
+          <Route
+            path="/admin/users"
+            element={
+              <RequireAdmin>
+                <AdminUsers />
               </RequireAdmin>
             }
           />

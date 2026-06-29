@@ -5,6 +5,7 @@ LayoutDashboard,
 LogOut,
 Menu,
 ShieldCheck,
+Users,
 UserCircle,
 X
 } from 'lucide-react';
@@ -73,6 +74,7 @@ register: 'إنشاء حساب',
 dashboard: 'لوحة التحكم',
 profile: 'الملف الشخصي',
 admin: 'الأدمن',
+users: 'المستخدمون',
 logout: 'خروج',
 signedInAs: 'مسجل باسم',
 account: 'قائمة الحساب'
@@ -88,6 +90,7 @@ register: 'Register',
 dashboard: 'Dashboard',
 profile: 'Profile',
 admin: 'Admin',
+users: 'Users',
 logout: 'Logout',
 signedInAs: 'Signed in as',
 account: 'Account menu'
@@ -226,14 +229,25 @@ return (
               </NavLink>
 
               {isAdmin ? (
-                <NavLink
-                  to="/admin"
-                  className="nav-account__item"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <ShieldCheck size={17} aria-hidden="true" />
-                  {accessibilityCopy.admin}
-                </NavLink>
+                <>
+                  <NavLink
+                    to="/admin"
+                    className="nav-account__item"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    <ShieldCheck size={17} aria-hidden="true" />
+                    {accessibilityCopy.admin}
+                  </NavLink>
+
+                  <NavLink
+                    to="/admin/users"
+                    className="nav-account__item"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    <Users size={17} aria-hidden="true" />
+                    {accessibilityCopy.users}
+                  </NavLink>
+                </>
               ) : null}
 
               <button
