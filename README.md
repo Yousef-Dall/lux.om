@@ -129,6 +129,16 @@ Public SEO and crawler files live in `frontend/public`:
 
 The sitemap covers the public marketplace, discovery, contact, trust, and legal routes. Private account, auth, notification, dashboard, and admin routes are excluded from crawler indexing through robots rules and runtime `noindex` metadata.
 
+Automated SEO verification:
+
+Run:
+
+    npm run verify:seo
+
+This checks sitemap route coverage, robots private-route exclusions, footer legal route discoverability, runtime canonical/noindex metadata, manifest metadata, and launch README notes.
+
+npm run verify:production also runs this SEO verification.
+
 Before launch, confirm:
 
 - `https://lux.om/robots.txt` is reachable.
