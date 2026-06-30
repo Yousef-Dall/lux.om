@@ -119,6 +119,24 @@ Open Prisma Studio locally:
 
     npm run db:studio
 
+## Public SEO launch files
+
+Public SEO and crawler files live in `frontend/public`:
+
+- `robots.txt`
+- `sitemap.xml`
+- `site.webmanifest`
+
+The sitemap covers the public marketplace, discovery, contact, trust, and legal routes. Private account, auth, notification, dashboard, and admin routes are excluded from crawler indexing through robots rules and runtime `noindex` metadata.
+
+Before launch, confirm:
+
+- `https://lux.om/robots.txt` is reachable.
+- `https://lux.om/sitemap.xml` is reachable.
+- public routes return the correct canonical URL.
+- private/admin/auth routes set `noindex, nofollow`.
+- legal and trust policy pages are reachable from the footer.
+
 ## Public marketplace policy pages
 
 Public legal and trust policy routes:

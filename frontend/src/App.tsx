@@ -234,6 +234,34 @@ function getSeoKey(pathname: string) {
   return 'fallback';
 }
 
+
+const NO_INDEX_ROUTE_PREFIXES = [
+  '/admin',
+  '/dashboard',
+  '/profile',
+  '/notifications',
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/reset-password',
+  '/verify-email',
+  '/auth'
+] as const;
+
+function normalizeCanonicalPath(pathname: string) {
+  if (pathname === '/') return '/';
+
+  return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+}
+
+function getRobotsContent(pathname: string) {
+  const shouldNoIndex = NO_INDEX_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+
+  return shouldNoIndex ? 'noindex, nofollow' : 'index, follow';
+}
+
 function setMetaTag(attribute: 'name' | 'property', key: string, content: string) {
   let element = document.head.querySelector<HTMLMetaElement>(`meta[${attribute}="${key}"]`);
 
@@ -265,16 +293,21 @@ function SeoManager() {
   useEffect(() => {
     const key = getSeoKey(pathname);
     const meta = seoCopy[language][key];
-    const canonicalUrl = `${SITE_ORIGIN}${pathname === '/' ? '/' : pathname}`;
+    const canonicalPath = normalizeCanonicalPath(pathname);
+    const canonicalUrl = `${SITE_ORIGIN}${canonicalPath === '/' ? '/' : canonicalPath}`;
 
     document.documentElement.lang = language === 'ar' ? 'ar' : 'en';
     document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
     document.title = meta.title;
 
     setMetaTag('name', 'description', meta.description);
+    setMetaTag('name', 'robots', getRobotsContent(pathname));
     setMetaTag('property', 'og:title', meta.title);
     setMetaTag('property', 'og:description', meta.description);
+    setMetaTag('property', 'og:type', 'website');
     setMetaTag('property', 'og:url', canonicalUrl);
+    setMetaTag('property', 'og:locale', language === 'ar' ? 'ar_OM' : 'en_OM');
+    setMetaTag('name', 'twitter:card', 'summary');
     setMetaTag('name', 'twitter:title', meta.title);
     setMetaTag('name', 'twitter:description', meta.description);
     setCanonical(canonicalUrl);
