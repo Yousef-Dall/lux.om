@@ -391,6 +391,50 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+describe('production HTTP security and cache headers', () => {
+  it('sets explicit baseline security headers', async () => {
+    const response = await request(app).get('/api/health').expect(200);
+
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(response.headers['x-frame-options']).toBe('DENY');
+    expect(response.headers['referrer-policy']).toBe(
+      'strict-origin-when-cross-origin'
+    );
+    expect(response.headers['permissions-policy']).toContain('camera=()');
+    expect(response.headers['content-security-policy']).toContain(
+      "default-src 'self'"
+    );
+    expect(response.headers['content-security-policy']).toContain(
+      "object-src 'none'"
+    );
+    expect(response.headers['strict-transport-security']).toBeUndefined();
+  });
+
+  it('prevents browser and proxy caching for sensitive API responses', async () => {
+    const response = await request(app).get('/api/auth/me').expect(401);
+
+    expect(response.headers['cache-control']).toContain('no-store');
+    expect(response.headers.pragma).toBe('no-cache');
+    expect(response.headers.expires).toBe('0');
+  });
+
+  it('allows only short public caching for anonymous marketplace discovery reads', async () => {
+    const response = await request(app).get('/api/listings').expect(200);
+
+    expect(response.headers['cache-control']).toContain('public');
+    expect(response.headers['cache-control']).toContain('max-age=60');
+  });
+
+  it('does not public-cache authenticated marketplace discovery reads', async () => {
+    const response = await request(app)
+      .get('/api/listings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(200);
+
+    expect(response.headers['cache-control']).toContain('no-store');
+  });
+});
+
 
 describe('auth and account security hardening', () => {
   it('rejects weak registration passwords and verifies a new email once', async () => {

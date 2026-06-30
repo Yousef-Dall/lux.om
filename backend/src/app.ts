@@ -1,6 +1,7 @@
 import compression from 'compression';
 import cors from 'cors';
 import express from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 
@@ -32,6 +33,184 @@ import {
 } from './storage/imageStorage';
 import { prisma } from './lib/prisma';
 
+const THAWANI_CHECKOUT_ORIGINS = [
+  'https://checkout.thawani.om',
+  'https://uatcheckout.thawani.om',
+  'https://*.thawani.om'
+];
+
+const GOOGLE_AUTH_ORIGINS = [
+  'https://accounts.google.com',
+  'https://apis.google.com',
+  'https://oauth2.googleapis.com',
+  'https://www.googleapis.com'
+];
+
+const GOOGLE_IMAGE_ORIGINS = [
+  'https://lh3.googleusercontent.com',
+  'https://*.googleusercontent.com'
+];
+
+const LOCAL_DEVELOPMENT_HTTP_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173'
+];
+
+const LOCAL_DEVELOPMENT_CONNECT_ORIGINS = [
+  ...LOCAL_DEVELOPMENT_HTTP_ORIGINS,
+  'ws://localhost:5173',
+  'ws://127.0.0.1:5173'
+];
+
+const NO_STORE_CACHE_CONTROL =
+  'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0';
+const PUBLIC_API_CACHE_CONTROL =
+  'public, max-age=60, stale-while-revalidate=300';
+const PUBLIC_SEO_CACHE_CONTROL =
+  'public, max-age=3600, stale-while-revalidate=86400';
+const PUBLIC_UPLOAD_CACHE_CONTROL = 'public, max-age=604800';
+
+const SENSITIVE_API_PREFIXES = [
+  '/api/auth',
+  '/api/dashboard',
+  '/api/admin',
+  '/api/verification',
+  '/api/notifications',
+  '/api/uploads',
+  '/api/bookings',
+  '/api/contracts',
+  '/api/rent-payments',
+  '/api/transactions',
+  '/api/reports',
+  '/api/saved',
+  '/api/inquiries'
+];
+
+const PUBLIC_CACHEABLE_API_PREFIXES = [
+  '/api/listings',
+  '/api/activities',
+  '/api/developers',
+  '/api/travel-agencies',
+  '/api/landmarks',
+  '/api/market-insights',
+  '/api/reviews'
+];
+
+const PERMISSIONS_POLICY = [
+  'accelerometer=()',
+  'camera=()',
+  'geolocation=()',
+  'gyroscope=()',
+  'magnetometer=()',
+  'microphone=()',
+  'payment=()',
+  'usb=()'
+].join(', ');
+
+function parseEnvList(value?: string) {
+  return value
+    ? value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+}
+
+function uniqueValues(values: Array<string | undefined>) {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+function startsWithAny(path: string, prefixes: string[]) {
+  return prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
+
+function setNoStoreHeaders(res: Response) {
+  res.setHeader('Cache-Control', NO_STORE_CACHE_CONTROL);
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+}
+
+function createContentSecurityPolicyDirectives(): Record<string, string[] | null> {
+  const configuredAppOrigins = uniqueValues([
+    env.FRONTEND_URL,
+    ...env.CORS_ORIGIN,
+    ...(isProduction ? [] : LOCAL_DEVELOPMENT_HTTP_ORIGINS)
+  ]);
+
+  return {
+    defaultSrc: ["'self'"],
+    baseUri: ["'self'"],
+    objectSrc: ["'none'"],
+    scriptSrc: ["'self'", ...GOOGLE_AUTH_ORIGINS],
+    styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+    fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+    imgSrc: [
+      "'self'",
+      'data:',
+      'blob:',
+      ...configuredAppOrigins,
+      ...GOOGLE_IMAGE_ORIGINS,
+      'https://res.cloudinary.com',
+      ...parseEnvList(env.CSP_IMG_SRC)
+    ],
+    connectSrc: [
+      "'self'",
+      ...configuredAppOrigins,
+      ...(isProduction ? [] : LOCAL_DEVELOPMENT_CONNECT_ORIGINS),
+      ...GOOGLE_AUTH_ORIGINS,
+      ...THAWANI_CHECKOUT_ORIGINS,
+      ...parseEnvList(env.CSP_CONNECT_SRC)
+    ],
+    frameSrc: [
+      "'self'",
+      ...GOOGLE_AUTH_ORIGINS,
+      ...THAWANI_CHECKOUT_ORIGINS,
+      ...parseEnvList(env.CSP_FRAME_SRC)
+    ],
+    formAction: ["'self'", ...GOOGLE_AUTH_ORIGINS, ...THAWANI_CHECKOUT_ORIGINS],
+    frameAncestors: ["'none'"],
+    upgradeInsecureRequests: isProduction ? [] : null
+  };
+}
+
+function cacheControl(req: Request, res: Response, next: NextFunction) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    setNoStoreHeaders(res);
+    return next();
+  }
+
+  if (
+    req.path === '/robots.txt' ||
+    req.path === '/sitemap.xml' ||
+    req.path.startsWith('/sitemaps/')
+  ) {
+    res.setHeader('Cache-Control', PUBLIC_SEO_CACHE_CONTROL);
+    return next();
+  }
+
+  if (!req.path.startsWith('/api')) {
+    return next();
+  }
+
+  if (startsWithAny(req.path, SENSITIVE_API_PREFIXES) || req.headers.authorization) {
+    setNoStoreHeaders(res);
+    return next();
+  }
+
+  if (startsWithAny(req.path, PUBLIC_CACHEABLE_API_PREFIXES)) {
+    res.setHeader('Cache-Control', PUBLIC_API_CACHE_CONTROL);
+    return next();
+  }
+
+  setNoStoreHeaders(res);
+  return next();
+}
+
+function permissionsPolicy(_req: Request, res: Response, next: NextFunction) {
+  res.setHeader('Permissions-Policy', PERMISSIONS_POLICY);
+  next();
+}
+
 
 const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -54,11 +233,34 @@ export function createApp() {
 
   app.use(
     helmet({
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: createContentSecurityPolicyDirectives()
+      },
+      crossOriginEmbedderPolicy: false,
+      crossOriginOpenerPolicy: {
+        policy: 'same-origin-allow-popups'
+      },
       crossOriginResourcePolicy: {
         policy: 'cross-origin'
+      },
+      frameguard: {
+        action: 'deny'
+      },
+      hsts: isProduction
+        ? {
+            maxAge: 15552000,
+            includeSubDomains: true,
+            preload: false
+          }
+        : false,
+      referrerPolicy: {
+        policy: 'strict-origin-when-cross-origin'
       }
     })
   );
+  app.use(permissionsPolicy);
+  app.use(cacheControl);
 
   app.use(compression());
 
@@ -86,7 +288,15 @@ export function createApp() {
       '/uploads',
       express.static(getLocalUploadDirectory(), {
         maxAge: isProduction ? '7d' : 0,
-        immutable: isProduction
+        immutable: false,
+        setHeaders: (res) => {
+          res.setHeader(
+            'Cache-Control',
+            isProduction ? PUBLIC_UPLOAD_CACHE_CONTROL : 'no-cache'
+          );
+          res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+        }
       })
     );
   }
@@ -108,26 +318,26 @@ export function createApp() {
   });
 
   app.get('/api/ready', async (_req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
+    try {
+      await prisma.$queryRaw`SELECT 1`;
 
-    res.json({
-      ok: true,
-      app: 'lux.om API',
-      database: 'connected',
-      environment: env.NODE_ENV
-    });
-  } catch (error) {
-    console.error('Readiness check failed:', error);
+      res.json({
+        ok: true,
+        app: 'lux.om API',
+        database: 'connected',
+        environment: env.NODE_ENV
+      });
+    } catch (error) {
+      console.error('Readiness check failed:', error);
 
-    res.status(503).json({
-      ok: false,
-      app: 'lux.om API',
-      database: 'unavailable',
-      environment: env.NODE_ENV
-    });
-  }
-});
+      res.status(503).json({
+        ok: false,
+        app: 'lux.om API',
+        database: 'unavailable',
+        environment: env.NODE_ENV
+      });
+    }
+  });
 
   app.use('/api/auth', authRateLimiter, authRouter);
   app.use('/api/dashboard', dashboardRouter);

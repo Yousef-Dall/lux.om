@@ -169,6 +169,22 @@ Production runbooks:
 
 Use these documents for deployment verification, SMTP setup, transactional email monitoring, admin dashboard checks, and email delivery retention cleanup.
 
+## Production HTTP security and cache hardening
+
+The backend applies production-safe HTTP security headers before API routes are mounted. Helmet is configured with an explicit Content Security Policy, `X-Content-Type-Options`, `X-Frame-Options: DENY`, strict referrer policy, cross-origin settings that keep uploaded media usable from the frontend, and production-only HSTS.
+
+Sensitive API responses, including auth, account, admin, verification, notification, booking, payment, transaction, contract, report, saved, inquiry, and upload endpoints, are marked `no-store` so browsers and proxies do not keep private marketplace data. Anonymous public discovery reads can use a short cache window, while authenticated reads are forced back to `no-store`.
+
+Local uploaded media is served with a one-week public cache window and without `immutable`, because local upload filenames are not guaranteed to be content-hashed. SEO files such as `robots.txt` and `sitemap.xml` may be cached longer by the frontend host/CDN.
+
+Optional comma-separated CSP extension variables are available only for verified third-party production integrations:
+
+    CSP_CONNECT_SRC=
+    CSP_IMG_SRC=
+    CSP_FRAME_SRC=
+
+Keep these values empty unless a real integration fails CSP in production and the required origin has been verified.
+
 ## Production deployment checklist
 
 Before deployment:

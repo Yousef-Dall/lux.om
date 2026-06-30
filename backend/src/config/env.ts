@@ -161,7 +161,10 @@ function createEnvSchema(input: NodeJS.ProcessEnv) {
         .trim()
         .optional()
         .transform((value) => value || undefined),
-      CLOUDINARY_FOLDER: z.string().trim().default('lux-om')
+      CLOUDINARY_FOLDER: z.string().trim().default('lux-om'),
+      CSP_CONNECT_SRC: optionalTrimmedString,
+      CSP_IMG_SRC: optionalTrimmedString,
+      CSP_FRAME_SRC: optionalTrimmedString
     })
     .superRefine((env, ctx) => {
       const isProductionEnv = env.NODE_ENV === 'production';
