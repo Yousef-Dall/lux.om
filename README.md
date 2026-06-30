@@ -119,6 +119,19 @@ Open Prisma Studio locally:
 
     npm run db:studio
 
+## Public marketplace policy pages
+
+Public legal and trust policy routes:
+
+- `/terms`
+- `/privacy`
+- `/trust-safety`
+- `/cancellation-policy`
+- `/refund-policy`
+- `/verification-policy`
+
+These pages are linked from the public footer and explain marketplace terms, privacy, trust/safety reporting, cancellation handling, refund review, and verification rules.
+
 ## Production operations
 
 Production runbooks:

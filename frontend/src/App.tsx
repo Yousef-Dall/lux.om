@@ -15,6 +15,12 @@ import AdminUsers from './pages/AdminUsers';
 import AdminEmailDeliveries from './pages/AdminEmailDeliveries';
 import AdminTrustReports from './pages/AdminTrustReports';
 import Contact from './pages/Contact';
+import CancellationPolicy from './pages/CancellationPolicy';
+import Privacy from './pages/Privacy';
+import RefundPolicy from './pages/RefundPolicy';
+import Terms from './pages/Terms';
+import TrustSafety from './pages/TrustSafety';
+import VerificationPolicy from './pages/VerificationPolicy';
 import Dashboard from './pages/Dashboard';
 import DeveloperDetails from './pages/DeveloperDetails';
 import Developers from './pages/Developers';
@@ -79,6 +85,36 @@ const seoCopy = {
       description:
         'Contact lux.om for property, activity, development, partnership, and marketplace support.'
     },
+    terms: {
+      title: 'Terms of Use | lux.om',
+      description:
+        'Review the lux.om marketplace terms for users, providers, owners, developers, travel agencies, bookings, and platform responsibilities.'
+    },
+    privacy: {
+      title: 'Privacy Policy | lux.om',
+      description:
+        'Learn how lux.om handles account, marketplace, booking, verification, trust, and operational data.'
+    },
+    trustSafety: {
+      title: 'Trust & Safety | lux.om',
+      description:
+        'Learn how lux.om reviews reports, verification concerns, unsafe content, and marketplace abuse.'
+    },
+    cancellationPolicy: {
+      title: 'Cancellation Policy | lux.om',
+      description:
+        'Understand how cancellation requests are handled across property stays, activities, and travel packages on lux.om.'
+    },
+    refundPolicy: {
+      title: 'Refund Policy | lux.om',
+      description:
+        'Understand how refund requests are reviewed for marketplace bookings and paid activity or travel transactions.'
+    },
+    verificationPolicy: {
+      title: 'Verification Policy | lux.om',
+      description:
+        'Learn how lux.om reviews verification requests, trust badges, provider snapshots, and verification concerns.'
+    },
     dashboard: {
       title: 'Dashboard | lux.om',
       description: 'Manage your lux.om bookings, listings, activities, notifications, and account.'
@@ -127,6 +163,30 @@ const seoCopy = {
       title: 'تواصل مع lux.om',
       description: 'تواصل مع lux.om لدعم العقارات والأنشطة والشراكات والخدمات.'
     },
+    terms: {
+      title: 'شروط الاستخدام | lux.om',
+      description: 'راجع شروط سوق lux.om للمستخدمين والمزودين والملاك والمطورين ووكالات السفر والحجوزات.'
+    },
+    privacy: {
+      title: 'سياسة الخصوصية | lux.om',
+      description: 'تعرّف على كيفية تعامل lux.om مع بيانات الحساب والسوق والحجوزات والتحقق والثقة.'
+    },
+    trustSafety: {
+      title: 'الثقة والسلامة | lux.om',
+      description: 'تعرّف على كيفية مراجعة البلاغات ومخاوف التحقق والمحتوى غير الآمن وإساءة استخدام السوق.'
+    },
+    cancellationPolicy: {
+      title: 'سياسة الإلغاء | lux.om',
+      description: 'افهم كيف تتم معالجة طلبات الإلغاء في الإقامات والأنشطة وباقات السفر على lux.om.'
+    },
+    refundPolicy: {
+      title: 'سياسة الاسترداد | lux.om',
+      description: 'افهم كيف تتم مراجعة طلبات الاسترداد للحجوزات ومعاملات الأنشطة أو السفر المدفوعة.'
+    },
+    verificationPolicy: {
+      title: 'سياسة التحقق | lux.om',
+      description: 'تعرّف على كيفية مراجعة lux.om لطلبات التحقق وشارات الثقة ومخاوف التحقق.'
+    },
     dashboard: {
       title: 'لوحة التحكم | lux.om',
       description: 'إدارة حجوزاتك وإعلاناتك وأنشطتك وإشعاراتك وحسابك في lux.om.'
@@ -160,6 +220,12 @@ function getSeoKey(pathname: string) {
   if (pathname.startsWith('/travel-agencies')) return 'travelAgencies';
   if (pathname.startsWith('/about')) return 'about';
   if (pathname.startsWith('/contact')) return 'contact';
+  if (pathname.startsWith('/terms')) return 'terms';
+  if (pathname.startsWith('/privacy')) return 'privacy';
+  if (pathname.startsWith('/trust-safety')) return 'trustSafety';
+  if (pathname.startsWith('/cancellation-policy')) return 'cancellationPolicy';
+  if (pathname.startsWith('/refund-policy')) return 'refundPolicy';
+  if (pathname.startsWith('/verification-policy')) return 'verificationPolicy';
   if (pathname.startsWith('/dashboard')) return 'dashboard';
   if (pathname.startsWith('/notifications')) return 'dashboard';
   if (pathname.startsWith('/admin')) return 'admin';
@@ -420,6 +486,13 @@ export default function App() {
 
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
+
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/trust-safety" element={<TrustSafety />} />
+          <Route path="/cancellation-policy" element={<CancellationPolicy />} />
+          <Route path="/refund-policy" element={<RefundPolicy />} />
+          <Route path="/verification-policy" element={<VerificationPolicy />} />
 
           <Route
             path="/login"
