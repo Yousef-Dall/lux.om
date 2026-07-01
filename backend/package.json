@@ -21,6 +21,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "node scripts/run-with-test-env.mjs npx prisma migrate deploy && node scripts/run-with-test-env.mjs npx vitest run --config vitest.integration.config.mts",
+    "test:smoke": "node scripts/run-with-test-env.mjs npx prisma migrate deploy && node scripts/run-with-test-env.mjs npx vitest run --config vitest.integration.config.mts --testNamePattern=critical-launch-smoke",
     "test:all": "npm run test && npm run test:integration",
     "jobs:notifications:once": "tsx src/jobs/runNotificationJobs.ts",
     "verify:production-env": "tsx scripts/verifyProductionEnv.ts",

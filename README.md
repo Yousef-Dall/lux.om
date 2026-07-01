@@ -116,6 +116,12 @@ Or run each step separately:
     npm run test:integration
     npm run build
 
+Critical launch smoke tests:
+
+    npm run test:smoke
+
+The smoke suite exercises the launch-critical auth, account-security, verification, trust/safety reporting, notification routing, and transactional email preference flows as one production-readiness regression check. It is also included in the full integration test suite.
+
 ## Database commands
 
 Generate Prisma Client:

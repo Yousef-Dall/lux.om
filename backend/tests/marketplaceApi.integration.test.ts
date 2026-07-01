@@ -25,6 +25,12 @@ const app = createApp();
 let ownerToken = '';
 let activityProviderToken = '';
 let customerToken = '';
+
+let customer: Parameters<typeof signToken>[0] & { email: string } = {
+  id: '',
+  role: 'USER',
+  email: 'integration-customer@lux.test'
+};
 let adminToken = '';
 
 function extractTokenFromDevUrl(devUrl?: string | null) {
@@ -111,7 +117,7 @@ async function seedMarketplaceFixtures() {
     }
   });
 
-  const customer = await prisma.user.create({
+  customer = await prisma.user.create({
     data: {
       name: 'Integration Customer',
       email: 'integration-customer@lux.test',
@@ -1477,11 +1483,6 @@ describe('POST /api/verification', () => {
   });
 
   it('lets users submit verification for their own user profile only', async () => {
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     const response = await request(app)
       .post('/api/verification')
@@ -2065,11 +2066,6 @@ describe('POST /api/bookings', () => {
   });
 
     it('creates a listing booking request with payment not required', async () => {
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     const listing = await prisma.listing.findFirstOrThrow({
       where: {
@@ -2117,11 +2113,6 @@ describe('POST /api/bookings', () => {
   });
 
   it('rejects listing booking payloads with client-controlled payment amounts', async () => {
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     const listing = await prisma.listing.findFirstOrThrow({
       where: {
@@ -3530,11 +3521,6 @@ describe('POST /api/contracts', () => {
   });
 
   it('blocks non-admin users from linking arbitrary tenant accounts', async () => {
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     await request(app)
       .post('/api/contracts')
@@ -3554,11 +3540,6 @@ describe('POST /api/contracts', () => {
       }
     });
 
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     const listing = await prisma.listing.findFirstOrThrow({
       where: {
@@ -3633,11 +3614,6 @@ describe('POST /api/transactions', () => {
       }
     });
 
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     await request(app)
       .post('/api/transactions')
@@ -3661,11 +3637,6 @@ describe('POST /api/transactions', () => {
       }
     });
 
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     const response = await request(app)
       .post('/api/transactions')
@@ -3811,11 +3782,6 @@ describe('GET/PATCH /api/notifications', () => {
       }
     });
 
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     const providerNotification = await prisma.notification.create({
       data: {
@@ -5861,6 +5827,23 @@ describe('public provider trust reporting', () => {
 
 describe('admin trust and safety report review workflow', () => {
   it('blocks non-admin report queue access and lets admins review reports', async () => {
+    const notificationCountBefore = await prisma.notification.count({
+      where: {
+        userId: customer.id,
+        type: 'REVIEW_STATUS_UPDATED',
+        title: 'Trust report reviewed'
+      }
+    });
+
+    const emailEventCountBefore = await prisma.emailDeliveryEvent.count({
+      where: {
+        recipientUserId: customer.id,
+        notificationType: 'REVIEW_STATUS_UPDATED',
+        title: 'Trust report reviewed',
+        status: 'LOGGED'
+      }
+    });
+
     const reportResponse = await request(app)
       .post('/api/reports')
       .set('Authorization', `Bearer ${customerToken}`)
@@ -5919,11 +5902,6 @@ describe('admin trust and safety report review workflow', () => {
     );
     expect(reviewedReport.reviewedBy?.email).toBe('integration-admin@lux.test');
 
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     const notification = await prisma.notification.findFirst({
       where: {
@@ -5975,11 +5953,6 @@ describe('admin trust and safety report review workflow', () => {
 
 describe('notification action routing', () => {
   it('adds actionable routing metadata to account security and rent notifications', async () => {
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     await prisma.notification.createMany({
       data: [
@@ -6029,11 +6002,6 @@ describe('notification action routing', () => {
   });
 
   it('routes booking notifications to the related dashboard booking', async () => {
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     const listing = await prisma.listing.findFirstOrThrow({
       where: {
@@ -6089,11 +6057,6 @@ describe('notification action routing', () => {
 
 describe('transactional email notifications', () => {
   it('logs development transactional email for account security notifications', async () => {
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
 
@@ -6117,11 +6080,6 @@ describe('transactional email notifications', () => {
   });
 
   it('logs development transactional email for booking notifications with a booking deep link', async () => {
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     const listing = await prisma.listing.findFirstOrThrow({
       where: {
@@ -6385,11 +6343,6 @@ describe('admin email delivery health summary', () => {
   });
 
   it('returns recent delivery status counts and failures for admins', async () => {
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     await prisma.emailDeliveryEvent.createMany({
       data: [
@@ -6458,11 +6411,6 @@ describe('email delivery retention cleanup', () => {
   });
 
   it('dry-runs and deletes only email delivery events older than the retention cutoff', async () => {
-    const customer = await prisma.user.findUniqueOrThrow({
-      where: {
-        email: 'integration-customer@lux.test'
-      }
-    });
 
     const now = new Date('2026-06-30T12:00:00.000Z');
     const oldCreatedAt = new Date('2025-12-01T12:00:00.000Z');
@@ -6534,6 +6482,472 @@ describe('email delivery retention cleanup', () => {
 
     expect(oldCount).toBe(0);
     expect(recentCount).toBe(1);
+  });
+});
+
+
+describe('critical-launch-smoke tests', () => {
+  it('smokes registration, verification, password reset, email change, and account notifications', async () => {
+    const originalEmail = 'ba-smoke-auth@lux.test';
+    const changedEmail = 'ba-smoke-auth-new@lux.test';
+    const initialPassword = 'SafeMarket2026!';
+    const resetPassword = 'ResetMarket2026!';
+
+    const registerResponse = await request(app)
+      .post('/api/auth/register')
+      .set('X-Forwarded-For', '203.0.113.150')
+      .send({
+        name: 'BA Auth Smoke',
+        email: originalEmail,
+        password: initialPassword,
+        role: 'USER'
+      })
+      .expect(201);
+
+    expect(registerResponse.body.verification).toMatchObject({
+      required: true,
+      emailSent: false
+    });
+
+    const verificationToken = extractTokenFromDevUrl(
+      registerResponse.body.verification.devVerificationUrl
+    );
+
+    const verifyResponse = await request(app)
+      .post('/api/auth/verify-email')
+      .set('X-Forwarded-For', '203.0.113.151')
+      .send({
+        token: verificationToken
+      })
+      .expect(200);
+
+    expect(verifyResponse.body.user).toMatchObject({
+      email: originalEmail,
+      emailVerified: true
+    });
+
+    const resetRequestResponse = await request(app)
+      .post('/api/auth/request-password-reset')
+      .set('X-Forwarded-For', '203.0.113.152')
+      .send({
+        email: originalEmail
+      })
+      .expect(200);
+
+    const resetToken = extractTokenFromDevUrl(
+      resetRequestResponse.body.reset.devPasswordResetUrl
+    );
+
+    await request(app)
+      .post('/api/auth/reset-password')
+      .set('X-Forwarded-For', '203.0.113.153')
+      .send({
+        token: resetToken,
+        password: resetPassword
+      })
+      .expect(200);
+
+    const loginResponse = await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '203.0.113.154')
+      .send({
+        email: originalEmail,
+        password: resetPassword
+      })
+      .expect(200);
+
+    const emailChangeRequestResponse = await request(app)
+      .post('/api/auth/request-email-change')
+      .set('X-Forwarded-For', '203.0.113.155')
+      .set('Authorization', `Bearer ${loginResponse.body.token}`)
+      .send({
+        email: changedEmail,
+        currentPassword: resetPassword
+      })
+      .expect(200);
+
+    const emailChangeToken = extractTokenFromDevUrl(
+      emailChangeRequestResponse.body.emailChange.devEmailChangeVerificationUrl
+    );
+
+    const confirmResponse = await request(app)
+      .post('/api/auth/confirm-email-change')
+      .set('X-Forwarded-For', '203.0.113.156')
+      .send({
+        token: emailChangeToken
+      })
+      .expect(200);
+
+    expect(confirmResponse.body.user).toMatchObject({
+      email: changedEmail,
+      emailVerified: true
+    });
+
+    await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '203.0.113.157')
+      .send({
+        email: originalEmail,
+        password: resetPassword
+      })
+      .expect(401);
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${loginResponse.body.token}`)
+      .expect(401);
+
+    const changedUser = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: changedEmail
+      }
+    });
+
+    const securityNotifications = await prisma.notification.findMany({
+      where: {
+        userId: changedUser.id,
+        type: 'ACCOUNT_SECURITY',
+        title: {
+          in: [
+            'Password reset completed',
+            'Email change requested',
+            'Email changed'
+          ]
+        }
+      }
+    });
+
+    expect(securityNotifications.map((notification) => notification.title)).toEqual(
+      expect.arrayContaining([
+        'Password reset completed',
+        'Email change requested',
+        'Email changed'
+      ])
+    );
+
+    const securityEmailEvents = await prisma.emailDeliveryEvent.findMany({
+      where: {
+        recipientUserId: changedUser.id,
+        notificationType: 'ACCOUNT_SECURITY',
+        title: {
+          in: [
+            'Password reset completed',
+            'Email change requested',
+            'Email changed'
+          ]
+        }
+      }
+    });
+
+    expect(securityEmailEvents).toHaveLength(3);
+    expect(securityEmailEvents.every((event) => event.status === 'LOGGED')).toBe(
+      true
+    );
+
+    const notificationsResponse = await request(app)
+      .get('/api/notifications?take=20')
+      .set('Authorization', `Bearer ${confirmResponse.body.token}`)
+      .expect(200);
+
+    expect(notificationsResponse.body.notifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'ACCOUNT_SECURITY',
+          title: 'Email changed',
+          actionUrl: '/profile',
+          actionContext: 'ACCOUNT_SECURITY',
+          targetType: 'ACCOUNT_SECURITY'
+        })
+      ])
+    );
+  });
+
+  it('smokes owner verification submission, admin review, notifications, and email audit events', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-admin@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.create({
+      data: {
+        slug: 'ba-smoke-verification-listing',
+        title: 'BA Smoke Verification Listing',
+        description:
+          'A launch smoke listing used to verify owner document review notifications.',
+        type: 'Apartment',
+        transaction: 'Sale',
+        location: 'Muscat, Oman',
+        price: 'OMR 110,000',
+        beds: 2,
+        baths: 2,
+        sqm: 130,
+        image: 'https://example.com/ba-smoke-verification.jpg',
+        status: 'APPROVED',
+        ownerId: owner.id
+      }
+    });
+
+    const submitResponse = await request(app)
+      .post('/api/verification')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        targetType: 'LISTING',
+        targetId: listing.id,
+        source: 'OWNER_DOCUMENT_SUBMISSION',
+        submittedDocumentUrls: ['https://example.com/ba-smoke-title-deed.pdf'],
+        notes: 'Owner title deed and identity documents submitted for launch smoke review.'
+      })
+      .expect(201);
+
+    const verificationId = submitResponse.body.verification.id;
+
+    await request(app)
+      .get('/api/verification/admin/all')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .query({
+        status: 'SUBMITTED',
+        targetType: 'LISTING'
+      })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.verifications).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: verificationId,
+              targetId: listing.id,
+              submittedById: owner.id
+            })
+          ])
+        );
+      });
+
+    const reviewResponse = await request(app)
+      .patch(`/api/verification/admin/${verificationId}/review`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'ADMIN_VERIFIED',
+        notes: 'Launch smoke review accepted the owner title deed and ID documents.'
+      })
+      .expect(200);
+
+    expect(reviewResponse.body.verification).toMatchObject({
+      id: verificationId,
+      status: 'ADMIN_VERIFIED',
+      reviewedById: admin.id
+    });
+
+    const updatedListing = await prisma.listing.findUniqueOrThrow({
+      where: {
+        id: listing.id
+      }
+    });
+
+    expect(updatedListing.verificationStatus).toBe('ADMIN_VERIFIED');
+    expect(updatedListing.verificationReviewedById).toBe(admin.id);
+
+    await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: admin.id,
+        type: 'VERIFICATION_STATUS_UPDATED',
+        title: 'New verification submitted'
+      }
+    });
+
+    await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: owner.id,
+        type: 'VERIFICATION_STATUS_UPDATED',
+        title: 'Verification approved'
+      }
+    });
+
+    await prisma.emailDeliveryEvent.findFirstOrThrow({
+      where: {
+        recipientUserId: owner.id,
+        notificationType: 'VERIFICATION_STATUS_UPDATED',
+        title: 'Verification approved',
+        status: 'LOGGED'
+      }
+    });
+
+    const ownerNotificationsResponse = await request(app)
+      .get('/api/notifications?take=20')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+
+    expect(ownerNotificationsResponse.body.notifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'VERIFICATION_STATUS_UPDATED',
+          title: 'Verification approved',
+          actionUrl: '/dashboard',
+          actionContext: 'VERIFICATION',
+          targetType: 'VERIFICATION'
+        })
+      ])
+    );
+  });
+
+  it('smokes trust report review notifications and report action routing', async () => {
+
+    const notificationCountBefore = await prisma.notification.count({
+      where: {
+        userId: customer.id,
+        type: 'REVIEW_STATUS_UPDATED',
+        title: 'Trust report reviewed'
+      }
+    });
+
+    const emailEventCountBefore = await prisma.emailDeliveryEvent.count({
+      where: {
+        recipientUserId: customer.id,
+        notificationType: 'REVIEW_STATUS_UPDATED',
+        title: 'Trust report reviewed'
+      }
+    });
+
+    const reportResponse = await request(app)
+      .post('/api/reports')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        targetType: 'OTHER',
+        targetId: 'ba-smoke-trust-report',
+        reason: 'SAFETY_CONCERN',
+        message: 'Launch smoke report that should notify the reporter after admin review.'
+      })
+      .expect(201);
+
+    const reportId = reportResponse.body.report.id;
+
+    const queueResponse = await request(app)
+      .get('/api/reports/admin/all')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(queueResponse.body.reports).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: reportId,
+          status: 'PENDING'
+        })
+      ])
+    );
+
+    await request(app)
+      .patch(`/api/reports/admin/${reportId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'RESOLVED',
+        reviewNotes: 'Launch smoke review resolved the trust and safety report.'
+      })
+      .expect(200);
+
+    const reviewedReport = await prisma.trustReport.findUniqueOrThrow({
+      where: {
+        id: reportId
+      }
+    });
+
+    expect(reviewedReport.status).toBe('RESOLVED');
+    expect(reviewedReport.reviewedById).toBeTruthy();
+
+    await expect(
+      prisma.notification.count({
+        where: {
+          userId: customer.id,
+          type: 'REVIEW_STATUS_UPDATED',
+          title: 'Trust report reviewed'
+        }
+      })
+    ).resolves.toBe(notificationCountBefore + 1);
+
+    await expect(
+      prisma.emailDeliveryEvent.count({
+        where: {
+          recipientUserId: customer.id,
+          notificationType: 'REVIEW_STATUS_UPDATED',
+          title: 'Trust report reviewed',
+          status: 'LOGGED'
+        }
+      })
+    ).resolves.toBe(emailEventCountBefore + 1);
+
+    const notificationsResponse = await request(app)
+      .get('/api/notifications?take=20')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(200);
+
+    expect(notificationsResponse.body.notifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'REVIEW_STATUS_UPDATED',
+          title: 'Trust report reviewed',
+          actionUrl: '/dashboard',
+          actionContext: 'REPORT',
+          targetType: 'REPORT'
+        })
+      ])
+    );
+  });
+
+  it('smokes optional email suppression while mandatory security emails still deliver', async () => {
+
+    await request(app)
+      .patch('/api/auth/me')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        emailBookingUpdates: false,
+        emailSavedSearchUpdates: false,
+        emailMarketingUpdates: false
+      })
+      .expect(200);
+
+    await createNotification(prisma, {
+      userId: customer.id,
+      type: 'BOOKING_OWNER_APPROVED',
+      title: 'BA smoke optional booking email',
+      message: 'This optional launch smoke booking email should be skipped.'
+    });
+
+    await recordAccountSecurityEvent(prisma, {
+      userId: customer.id,
+      type: 'PASSWORD_CHANGED',
+      title: 'BA smoke mandatory security email',
+      message: 'This mandatory launch smoke security email should still be delivered.'
+    });
+
+    const optionalEvent = await prisma.emailDeliveryEvent.findFirstOrThrow({
+      where: {
+        recipientUserId: customer.id,
+        title: 'BA smoke optional booking email'
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    expect(optionalEvent.status).toBe('SKIPPED');
+    expect(optionalEvent.reason).toContain('optional booking email updates');
+
+    const mandatoryEvent = await prisma.emailDeliveryEvent.findFirstOrThrow({
+      where: {
+        recipientUserId: customer.id,
+        title: 'BA smoke mandatory security email'
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    expect(mandatoryEvent.status).toBe('LOGGED');
+    expect(mandatoryEvent.actionUrl).toContain('/profile');
   });
 });
 
