@@ -201,6 +201,16 @@ Before deployment:
 - Build the frontend with the correct VITE_API_URL.
 - Keep .env, backend/.env, and frontend/.env out of Git.
 
+
+### CORS, proxy, HTTPS, and cookies
+
+- `CORS_ORIGIN` must contain only the exact production frontend origins that are allowed to call the API.
+- Do not use wildcard CORS origins when credentials are enabled.
+- Browser requests with an untrusted `Origin` header are rejected before route handling.
+- `RATE_LIMIT_TRUST_PROXY_HOPS` must match the number of trusted reverse proxies in front of the API. In typical single-proxy hosting, use `1`.
+- TLS should terminate at the production proxy, CDN, or load balancer. The proxy must forward the original protocol and client IP correctly.
+- The API currently uses bearer JWT auth rather than auth cookies. If auth cookies are added later, they must be `HttpOnly`, `Secure` in production, use an explicit `SameSite` policy, and only be used with exact allowlisted CORS origins.
+
 ## Backend deployment
 
 Recommended backend build command:

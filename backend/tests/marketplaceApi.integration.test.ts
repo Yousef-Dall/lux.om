@@ -435,6 +435,52 @@ describe('production HTTP security and cache headers', () => {
   });
 });
 
+describe('CORS and proxy boundary hardening', () => {
+  const allowedOrigin = 'http://localhost:5173';
+  const blockedOrigin = 'https://evil.example';
+
+  it('allows configured frontend origins with credentials enabled', async () => {
+    const response = await request(app)
+      .get('/api/health')
+      .set('Origin', allowedOrigin)
+      .expect(200);
+
+    expect(response.headers['access-control-allow-origin']).toBe(allowedOrigin);
+    expect(response.headers['access-control-allow-credentials']).toBe('true');
+    expect(response.headers.vary).toContain('Origin');
+  });
+
+  it('blocks browser requests from untrusted origins before route handling', async () => {
+    const response = await request(app)
+      .get('/api/health')
+      .set('Origin', blockedOrigin)
+      .expect(403);
+
+    expect(response.body).toEqual({
+      message: 'CORS origin is not allowed'
+    });
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
+  it('answers allowed CORS preflight requests explicitly', async () => {
+    const response = await request(app)
+      .options('/api/auth/login')
+      .set('Origin', allowedOrigin)
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'Authorization, Content-Type')
+      .expect(204);
+
+    expect(response.headers['access-control-allow-origin']).toBe(allowedOrigin);
+    expect(response.headers['access-control-allow-credentials']).toBe('true');
+    expect(response.headers['access-control-allow-methods']).toContain('POST');
+    expect(response.headers['access-control-allow-headers']).toContain(
+      'Authorization'
+    );
+    expect(response.headers['access-control-allow-headers']).toContain(
+      'Content-Type'
+    );
+  });
+});
 
 describe('auth and account security hardening', () => {
   it('rejects weak registration passwords and verifies a new email once', async () => {

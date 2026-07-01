@@ -1,5 +1,5 @@
 import compression from 'compression';
-import cors from 'cors';
+import cors, { type CorsOptions } from 'cors';
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -70,6 +70,22 @@ const PUBLIC_SEO_CACHE_CONTROL =
   'public, max-age=3600, stale-while-revalidate=86400';
 const PUBLIC_UPLOAD_CACHE_CONTROL = 'public, max-age=604800';
 
+const CORS_ALLOWED_METHODS = [
+  'GET',
+  'HEAD',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'OPTIONS'
+];
+const CORS_ALLOWED_HEADERS = [
+  'Authorization',
+  'Content-Type',
+  'X-Requested-With'
+];
+const CORS_EXPOSED_HEADERS = ['RateLimit', 'RateLimit-Policy', 'Retry-After'];
+
 const SENSITIVE_API_PREFIXES = [
   '/api/auth',
   '/api/dashboard',
@@ -121,8 +137,49 @@ function uniqueValues(values: Array<string | undefined>) {
 }
 
 function startsWithAny(path: string, prefixes: string[]) {
-  return prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+  return prefixes.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`)
+  );
 }
+
+function isAllowedCorsOrigin(origin: string) {
+  return env.CORS_ORIGIN.includes(origin);
+}
+
+function rejectDisallowedCorsOrigins(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  const origin = req.headers.origin;
+
+  res.vary('Origin');
+
+  if (!origin || isAllowedCorsOrigin(origin)) {
+    return next();
+  }
+
+  return res.status(403).json({
+    message: 'CORS origin is not allowed'
+  });
+}
+
+const corsOptions: CorsOptions = {
+  origin(origin, callback) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    callback(null, isAllowedCorsOrigin(origin));
+  },
+  credentials: true,
+  methods: CORS_ALLOWED_METHODS,
+  allowedHeaders: CORS_ALLOWED_HEADERS,
+  exposedHeaders: CORS_EXPOSED_HEADERS,
+  optionsSuccessStatus: 204,
+  maxAge: isProduction ? 600 : 0
+};
 
 function setNoStoreHeaders(res: Response) {
   res.setHeader('Cache-Control', NO_STORE_CACHE_CONTROL);
@@ -211,7 +268,6 @@ function permissionsPolicy(_req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-
 const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: isProduction ? 25 : 500,
@@ -264,12 +320,8 @@ export function createApp() {
 
   app.use(compression());
 
-  app.use(
-    cors({
-      origin: env.CORS_ORIGIN,
-      credentials: true
-    })
-  );
+  app.use(rejectDisallowedCorsOrigins);
+  app.use(cors(corsOptions));
 
   app.use(
     rateLimit({
