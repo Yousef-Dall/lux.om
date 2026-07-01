@@ -30,6 +30,8 @@ import { travelAgenciesRouter } from './routes/travelAgencies';
 import { uploadsRouter } from './routes/uploads';
 import {
   getLocalUploadDirectory,
+  getStoredImageContentType,
+  isSafeLocalUploadFilename,
   usesLocalImageStorage
 } from './storage/imageStorage';
 import { prisma } from './lib/prisma';
@@ -69,7 +71,9 @@ const PUBLIC_API_CACHE_CONTROL =
   'public, max-age=60, stale-while-revalidate=300';
 const PUBLIC_SEO_CACHE_CONTROL =
   'public, max-age=3600, stale-while-revalidate=86400';
-const PUBLIC_UPLOAD_CACHE_CONTROL = 'public, max-age=604800';
+const PUBLIC_UPLOAD_CACHE_CONTROL =
+  'public, max-age=604800, stale-while-revalidate=86400';
+const DEVELOPMENT_UPLOAD_CACHE_CONTROL = 'no-cache, max-age=0';
 
 const CORS_ALLOWED_METHODS = [
   'GET',
@@ -184,6 +188,25 @@ function requireSupportedApiContentType(
   }
 
   return next(new AppError(415, 'Unsupported content type'));
+}
+
+function validateLocalUploadRequest(req: Request, res: Response, next: NextFunction) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.setHeader('Allow', 'GET, HEAD');
+    return res.status(405).json({
+      message: 'Method not allowed'
+    });
+  }
+
+  const requestedFilename = req.path.startsWith('/') ? req.path.slice(1) : req.path;
+
+  if (!isSafeLocalUploadFilename(requestedFilename)) {
+    return res.status(404).json({
+      message: 'Media not found'
+    });
+  }
+
+  return next();
 }
 
 function rejectDisallowedCorsOrigins(
@@ -390,14 +413,25 @@ export function createApp() {
   if (usesLocalImageStorage()) {
     app.use(
       '/uploads',
+      validateLocalUploadRequest,
       express.static(getLocalUploadDirectory(), {
+        dotfiles: 'deny',
+        index: false,
+        redirect: false,
         maxAge: isProduction ? '7d' : 0,
         immutable: false,
-        setHeaders: (res) => {
+        setHeaders: (res, filePath) => {
+          const contentType = getStoredImageContentType(filePath.split(/[\\/]/).pop() ?? '');
+
+          if (contentType) {
+            res.setHeader('Content-Type', contentType);
+          }
+
           res.setHeader(
             'Cache-Control',
-            isProduction ? PUBLIC_UPLOAD_CACHE_CONTROL : 'no-cache'
+            isProduction ? PUBLIC_UPLOAD_CACHE_CONTROL : DEVELOPMENT_UPLOAD_CACHE_CONTROL
           );
+          res.setHeader('Content-Disposition', 'inline');
           res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
           res.setHeader('X-Content-Type-Options', 'nosniff');
         }

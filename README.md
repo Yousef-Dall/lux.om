@@ -220,6 +220,15 @@ Before deployment:
 - Unknown API routes return a generic `Route not found` message and do not echo query strings or attempted URLs.
 - Route-level Zod validation remains responsible for domain-specific payload rules.
 
+### Static uploads and media serving
+
+- Uploads are accepted only as authenticated multipart image requests using the `image` or `file` field.
+- Allowed image formats are JPG, PNG, WEBP, and GIF. The backend validates MIME type, file extension, and binary signature before storing media.
+- The local storage driver writes generated filenames only and does not reuse user-supplied filenames for disk paths.
+- Local `/uploads` serving accepts only generated image filenames, disables directory indexes and redirects, denies dotfiles, sets `X-Content-Type-Options: nosniff`, and serves files inline with explicit image content types.
+- Local uploads use a one-week public cache window in production. Do not enable immutable caching unless filenames are guaranteed to be content-addressed.
+- Production deployments should prefer persistent object/image storage such as Cloudinary. Local uploads are suitable only when the server filesystem is persistent, backed up, and not shared with private documents.
+
 
 ## Backend deployment
 

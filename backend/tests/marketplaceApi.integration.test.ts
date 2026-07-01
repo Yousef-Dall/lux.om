@@ -1,3 +1,6 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
@@ -8,6 +11,7 @@ import { signToken } from '../src/middleware/auth';
 import { authAbuseRateLimitRules } from '../src/middleware/rateLimit';
 import { createOauthLoginCode } from '../src/services/googleOAuth';
 import { recordAccountSecurityEvent } from '../src/lib/accountSecurityEvents';
+import { getLocalUploadDirectory } from '../src/storage/imageStorage';
 import { createNotification } from '../src/lib/bookingNotifications';
 import {
   getEmailDeliveryRetentionDays,
@@ -554,6 +558,94 @@ describe('API payload validation and safe error responses', () => {
   });
 });
 
+
+
+const tinyPng = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  0x00, 0x00, 0x00, 0x0d
+]);
+const tinyGif = Buffer.from([
+  0x47, 0x49, 0x46, 0x38, 0x39, 0x61,
+  0x01, 0x00, 0x01, 0x00
+]);
+
+describe('static uploads and media serving hardening', () => {
+  const uploadedMediaFilenames: string[] = [];
+
+  afterAll(async () => {
+    await Promise.all(
+      uploadedMediaFilenames.map((filename) =>
+        fs.rm(path.join(getLocalUploadDirectory(), filename), {
+          force: true
+        })
+      )
+    );
+  });
+
+  it('stores authenticated image uploads with generated filenames and safe metadata', async () => {
+    const response = await request(app)
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .attach('image', tinyPng, {
+        filename: '../unsafe-name.png',
+        contentType: 'image/png'
+      })
+      .expect(201);
+
+    uploadedMediaFilenames.push(response.body.file.filename);
+
+    expect(response.body.file.url).toMatch(
+      /^\/uploads\/\d{13}-[a-f0-9]{24}\.png$/
+    );
+    expect(response.body.file.filename).toMatch(/^\d{13}-[a-f0-9]{24}\.png$/);
+    expect(response.body.file.originalName).toBe('unsafe-name.png');
+  });
+
+  it('serves local uploaded media with safe headers only for generated image names', async () => {
+    const uploadResponse = await request(app)
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .attach('image', tinyPng, {
+        filename: 'safe-media.png',
+        contentType: 'image/png'
+      })
+      .expect(201);
+
+    uploadedMediaFilenames.push(uploadResponse.body.file.filename);
+
+    const mediaResponse = await request(app).get(uploadResponse.body.file.url).expect(200);
+
+    expect(mediaResponse.headers['content-type']).toContain('image/png');
+    expect(mediaResponse.headers['content-disposition']).toBe('inline');
+    expect(mediaResponse.headers['x-content-type-options']).toBe('nosniff');
+    expect(mediaResponse.headers['cross-origin-resource-policy']).toBe('cross-origin');
+    expect(mediaResponse.headers['cache-control']).toContain('no-cache');
+
+    await request(app).get('/uploads/../../package.json').expect(404);
+    await request(app).get('/uploads/not-generated.png').expect(404);
+    await request(app).post(uploadResponse.body.file.url).expect(405);
+  });
+
+  it('rejects mismatched image extensions and binary content', async () => {
+    await request(app)
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .attach('image', tinyGif, {
+        filename: 'mismatch.jpg',
+        contentType: 'image/gif'
+      })
+      .expect(400);
+
+    await request(app)
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .attach('image', Buffer.from('not a png'), {
+        filename: 'fake.png',
+        contentType: 'image/png'
+      })
+      .expect(400);
+  });
+});
 
 describe('auth and account security hardening', () => {
   it('rejects weak registration passwords and verifies a new email once', async () => {

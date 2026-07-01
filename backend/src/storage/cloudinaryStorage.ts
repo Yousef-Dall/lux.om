@@ -1,7 +1,12 @@
 import { v2 as cloudinary } from 'cloudinary';
 
 import { env } from '../config/env';
-import type { StoredImage, StoreImageInput } from './imageStorage';
+import {
+  isSupportedStoredImageExtension,
+  supportedImageMimeTypes,
+  type StoredImage,
+  type StoreImageInput
+} from './imageStorage';
 
 function configureCloudinary() {
   cloudinary.config({
@@ -15,6 +20,16 @@ function configureCloudinary() {
 export function storeImageInCloudinary(
   input: StoreImageInput
 ): Promise<StoredImage> {
+  const extension = input.extension.toLowerCase();
+
+  if (!isSupportedStoredImageExtension(extension)) {
+    return Promise.reject(new Error('Unsupported Cloudinary image extension'));
+  }
+
+  if (!supportedImageMimeTypes.has(input.mimetype)) {
+    return Promise.reject(new Error('Unsupported Cloudinary image MIME type'));
+  }
+
   configureCloudinary();
 
   return new Promise((resolve, reject) => {

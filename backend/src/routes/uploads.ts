@@ -4,24 +4,21 @@ import multer from 'multer';
 
 import { env, maxUploadBytes } from '../config/env';
 import { requireAuth } from '../middleware/auth';
-import { storeImage } from '../storage/imageStorage';
+import {
+  isSupportedStoredImageExtension,
+  storeImage,
+  supportedImageMimeTypes
+} from '../storage/imageStorage';
 import { AppError } from '../utils/http';
 
 export const uploadsRouter = Router();
 
-const allowedMimeTypes = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif'
-]);
-
-const allowedExtensions = new Set([
-  '.jpg',
-  '.jpeg',
-  '.png',
-  '.webp',
-  '.gif'
+const extensionMimeTypes = new Map([
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.png', 'image/png'],
+  ['.webp', 'image/webp'],
+  ['.gif', 'image/gif']
 ]);
 
 const upload = multer({
@@ -31,7 +28,7 @@ const upload = multer({
     files: 1
   },
   fileFilter: (_req, file, callback) => {
-    if (!allowedMimeTypes.has(file.mimetype)) {
+    if (!supportedImageMimeTypes.has(file.mimetype)) {
       callback(new AppError(400, 'Only JPG, PNG, WEBP, and GIF images are allowed'));
       return;
     }
@@ -131,8 +128,12 @@ uploadsRouter.post('/', requireAuth(), (req, res, next) => {
 
       const extension = path.extname(uploadedFile.originalname).toLowerCase();
 
-      if (!allowedExtensions.has(extension)) {
+      if (!isSupportedStoredImageExtension(extension)) {
         throw new AppError(400, 'Unsupported image file extension');
+      }
+
+      if (extensionMimeTypes.get(extension) !== uploadedFile.mimetype) {
+        throw new AppError(400, 'Image file extension does not match uploaded content type');
       }
 
       if (!hasValidImageSignature(uploadedFile.buffer, uploadedFile.mimetype)) {

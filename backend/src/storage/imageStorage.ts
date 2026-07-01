@@ -12,6 +12,55 @@ export type StoreImageInput = {
   originalName: string;
 };
 
+export const supportedImageMimeTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif'
+]);
+
+export const supportedImageExtensions = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.gif'
+]);
+
+const storedImageContentTypes = new Map([
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.png', 'image/png'],
+  ['.webp', 'image/webp'],
+  ['.gif', 'image/gif']
+]);
+
+const storedImageFilenamePattern = /^\d{13}-[a-f0-9]{24}\.(?:jpg|jpeg|png|webp|gif)$/;
+
+function sanitizeOriginalName(originalName: string) {
+  const basename = path.basename(originalName).replace(/[\u0000-\u001f\u007f]/g, '').trim();
+
+  return basename.slice(0, 180) || 'upload';
+}
+
+export function isSupportedStoredImageExtension(extension: string) {
+  return supportedImageExtensions.has(extension.toLowerCase());
+}
+
+export function getStoredImageContentType(filename: string) {
+  const basename = path.basename(filename);
+
+  if (basename !== filename || !storedImageFilenamePattern.test(basename)) {
+    return null;
+  }
+
+  return storedImageContentTypes.get(path.extname(basename).toLowerCase()) ?? null;
+}
+
+export function isSafeLocalUploadFilename(filename: string) {
+  return Boolean(getStoredImageContentType(filename));
+}
+
 export type StoredImage = {
   url: string;
   filename: string;
@@ -31,15 +80,26 @@ export function getLocalUploadDirectory() {
 }
 
 async function storeImageLocally(input: StoreImageInput): Promise<StoredImage> {
+  const extension = input.extension.toLowerCase();
+
+  if (!isSupportedStoredImageExtension(extension)) {
+    throw new Error('Unsupported local image extension');
+  }
+
+  if (!supportedImageMimeTypes.has(input.mimetype)) {
+    throw new Error('Unsupported local image MIME type');
+  }
+
   await fs.mkdir(localUploadDirectory, {
     recursive: true
   });
 
-  const filename = `${Date.now()}-${crypto.randomBytes(12).toString('hex')}${input.extension}`;
+  const filename = `${Date.now()}-${crypto.randomBytes(12).toString('hex')}${extension}`;
   const destination = path.join(localUploadDirectory, filename);
 
   await fs.writeFile(destination, input.buffer, {
-    flag: 'wx'
+    flag: 'wx',
+    mode: 0o644
   });
 
   return {
@@ -47,7 +107,7 @@ async function storeImageLocally(input: StoreImageInput): Promise<StoredImage> {
     filename,
     size: input.buffer.byteLength,
     mimetype: input.mimetype,
-    originalName: input.originalName
+    originalName: sanitizeOriginalName(input.originalName)
   };
 }
 
