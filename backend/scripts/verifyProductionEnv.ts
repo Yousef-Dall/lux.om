@@ -67,46 +67,50 @@ async function main() {
   validateEnv = envModule.validateEnv;
 
   expectValid('valid production auth environment', validProductionEnv);
-  
+
   expectInvalid('weak production JWT secret', {
     JWT_SECRET: 'replace-this-with-a-long-random-secret-value'
   }, 'JWT_SECRET');
-  
+
   expectInvalid('missing production frontend URL', {
     FRONTEND_URL: ''
   }, 'FRONTEND_URL');
-  
+
   expectInvalid('localhost production frontend URL', {
     FRONTEND_URL: 'http://localhost:5173'
   }, 'FRONTEND_URL');
-  
+
   expectInvalid('localhost production CORS origin', {
     CORS_ORIGIN: 'http://localhost:5173'
   }, 'CORS_ORIGIN');
-  
+
   expectInvalid('development email mode in production', {
     EMAIL_DELIVERY_MODE: 'dev'
   }, 'EMAIL_DELIVERY_MODE');
-  
+
   expectInvalid('missing production SMTP config', {
     SMTP_HOST: '',
     SMTP_USER: '',
     SMTP_PASS: '',
     MAIL_FROM: ''
   }, 'SMTP email configuration is required in production');
-  
+
   expectInvalid('localhost Google OAuth redirect', {
     GOOGLE_OAUTH_REDIRECT_URL: 'http://localhost:4000/api/auth/google/callback'
   }, 'GOOGLE_OAUTH_REDIRECT_URL');
-  
+
   expectInvalid('wrong Google OAuth callback path', {
     GOOGLE_OAUTH_REDIRECT_URL: 'https://api.lux.om/api/auth/google/wrong'
   }, '/api/auth/google/callback');
-  
+
   expectInvalid('disabled production trust proxy hops', {
     RATE_LIMIT_TRUST_PROXY_HOPS: '0'
   }, 'RATE_LIMIT_TRUST_PROXY_HOPS');
-  
+
+  expectInvalid('production database points to test database', {
+    DATABASE_URL: 'postgresql://postgres:postgres@example.com:5432/lux_om_test?schema=public'
+  }, 'DATABASE_URL');
+
   console.log('Production auth/security environment validation passed.');
 }
 

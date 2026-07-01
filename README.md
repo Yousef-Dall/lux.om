@@ -211,6 +211,7 @@ Before deployment:
 - Set CORS_ORIGIN to the exact production frontend URL.
 - Do not use localhost values in production.
 - Use persistent image storage in production. Cloudinary is recommended with STORAGE_DRIVER=cloudinary.
+- Run npm run verify:db-safety and create a verified database backup before migrations.
 - Run npm run db:migrate:deploy before starting the backend.
 - Confirm /api/ready returns database connected.
 - Build the frontend with the correct VITE_API_URL.
@@ -253,6 +254,34 @@ Before deployment:
 - Local uploads use a one-week public cache window in production. Do not enable immutable caching unless filenames are guaranteed to be content-addressed.
 - Production deployments should prefer persistent object/image storage such as Cloudinary. Local uploads are suitable only when the server filesystem is persistent, backed up, and not shared with private documents.
 
+
+### Database migration, backup, and rollback safety
+
+Production database changes must use committed Prisma migrations only. Do not use `prisma db push`, `prisma migrate dev`, or destructive reset commands against production.
+
+Before each production deploy:
+
+1. Run `npm run verify:db-safety` to confirm Prisma migration files, migration lock provider, and production migration scripts are safe.
+2. Run `npm run db:migrate:status -w backend` against the production database to confirm what Prisma thinks is pending or applied.
+3. Create a verified database backup before applying migrations. The helper command is:
+
+       npm run ops:db:backup -w backend -- --output=../backups/lux-om-predeploy.dump
+
+   This helper uses `pg_dump` with environment variables instead of putting the database password in command arguments. The PostgreSQL client tools must be installed and `pg_dump` must be available on `PATH`; alternatively set `PG_DUMP_PATH` to the full executable path. Keep backup files outside Git and confirm the file exists before continuing.
+
+4. Apply migrations with:
+
+       npm run db:migrate:deploy
+
+5. Start or restart the backend only after migration deploy succeeds.
+6. Verify `/api/ready`, admin system health, and the critical smoke tests.
+
+Rollback policy:
+
+- Prefer application rollback first when the database migration is backward-compatible.
+- If data/schema rollback is required, stop writes, preserve the failed database state for investigation, restore from the verified pre-deploy backup into a clean database, repoint `DATABASE_URL`, run `npm run db:migrate:status -w backend`, then restart the backend.
+- Never run `prisma migrate reset` or `prisma db push --force-reset` against production.
+- Production `DATABASE_URL` must not point to a database whose name ends with `_test`.
 
 ## Backend deployment
 

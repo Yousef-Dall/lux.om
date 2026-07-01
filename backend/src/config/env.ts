@@ -59,6 +59,14 @@ function validateHttpsProductionUrl(
   }
 }
 
+function getDatabaseName(value: string) {
+  try {
+    return new URL(value).pathname.replace(/^\/+/, '');
+  } catch {
+    return '';
+  }
+}
+
 function createCorsOriginsSchema(input: NodeJS.ProcessEnv) {
   const isProductionEnv = isProductionInput(input);
 
@@ -196,6 +204,16 @@ function createEnvSchema(input: NodeJS.ProcessEnv) {
             code: z.ZodIssueCode.custom,
             path: ['JWT_SECRET'],
             message: 'JWT_SECRET must be a strong random value in production'
+          });
+        }
+
+        const productionDatabaseName = getDatabaseName(env.DATABASE_URL);
+
+        if (productionDatabaseName.endsWith('_test')) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['DATABASE_URL'],
+            message: 'DATABASE_URL must not point to a test database in production'
           });
         }
 
