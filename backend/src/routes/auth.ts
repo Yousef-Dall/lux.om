@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { AccountSecurityEventType, EmailDeliveryStatus, NotificationType, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 
-import { requireAuth, requireRole, signToken } from '../middleware/auth';
+import { requireAdmin, requireAuth, signToken } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { recordAccountSecurityEvent } from '../lib/accountSecurityEvents';
 import { AppError, publicUser } from '../utils/http';
@@ -974,7 +974,7 @@ authRouter.post(
 authRouter.get(
   '/admin/system-health',
   requireAuth(),
-  requireRole('ADMIN'),
+  requireAdmin(),
   async (_req, res, next) => {
     try {
       const checkedAt = new Date();
@@ -1163,7 +1163,7 @@ authRouter.get(
 authRouter.get(
   '/admin/email-deliveries/summary',
   requireAuth(),
-  requireRole('ADMIN'),
+  requireAdmin(),
   async (_req, res, next) => {
     try {
       const windowDays = 7;
@@ -1223,7 +1223,7 @@ authRouter.get(
 authRouter.get(
   '/admin/email-deliveries',
   requireAuth(),
-  requireRole('ADMIN'),
+  requireAdmin(),
   async (req, res, next) => {
     try {
       const query = adminEmailDeliveriesQuerySchema.parse(req.query);
@@ -1299,7 +1299,7 @@ authRouter.get(
 authRouter.get(
   '/admin/users',
   requireAuth(),
-  requireRole('ADMIN'),
+  requireAdmin(),
   async (req, res, next) => {
     try {
       const query = adminUsersQuerySchema.parse(req.query);
@@ -1373,7 +1373,7 @@ authRouter.get(
 authRouter.get(
   '/admin/users/:id/security',
   requireAuth(),
-  requireRole('ADMIN'),
+  requireAdmin(),
   async (req, res, next) => {
     try {
       const userId = getRouteParam(req.params.id, 'user id');
@@ -1446,7 +1446,7 @@ authRouter.get(
 authRouter.patch(
   '/admin/users/:id/suspension',
   requireAuth(),
-  requireRole('ADMIN'),
+  requireAdmin(),
   async (req, res, next) => {
     try {
       if (!req.user) {
@@ -1541,7 +1541,7 @@ authRouter.patch(
 authRouter.patch(
   '/admin/users/:id/email-verification',
   requireAuth(),
-  requireRole('ADMIN'),
+  requireAdmin(),
   async (req, res, next) => {
     try {
       if (!req.user) {

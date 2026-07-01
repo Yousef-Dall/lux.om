@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAdmin, requireAuth } from '../middleware/auth';
 import { AppError } from '../utils/http';
 import { deliverTransactionalNotificationToUser } from '../services/transactionalEmails';
 
@@ -175,7 +175,7 @@ reportsRouter.post('/', requireAuth(false), async (req, res, next) => {
   }
 });
 
-reportsRouter.get('/admin/all', requireAuth(), requireRole('ADMIN'), async (_req, res, next) => {
+reportsRouter.get('/admin/all', requireAuth(), requireAdmin(), async (_req, res, next) => {
   try {
     const reports = await prisma.trustReport.findMany({
       include: {
@@ -192,7 +192,7 @@ reportsRouter.get('/admin/all', requireAuth(), requireRole('ADMIN'), async (_req
   }
 });
 
-reportsRouter.patch('/admin/:id/status', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
+reportsRouter.patch('/admin/:id/status', requireAuth(), requireAdmin(), async (req, res, next) => {
   try {
     const { id } = idParamsSchema.parse(req.params);
     const data = adminStatusSchema.parse(req.body);

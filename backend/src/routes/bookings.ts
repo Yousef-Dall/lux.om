@@ -11,7 +11,7 @@ import {
   recordPaymentSync
 } from '../lib/bookingNotifications';
 import { prisma } from '../lib/prisma';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAdmin, requireAuth } from '../middleware/auth';
 import { AppError } from '../utils/http';
 
 export const bookingsRouter = Router();
@@ -1493,7 +1493,7 @@ bookingsRouter.post('/:id/payments/sync', requireAuth(), async (req, res, next) 
 
 
 
-bookingsRouter.get('/admin/finance/export.csv', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
+bookingsRouter.get('/admin/finance/export.csv', requireAuth(), requireAdmin(), async (req, res, next) => {
   try {
     const query = adminFinanceQuerySchema.parse(req.query);
 
@@ -1550,7 +1550,7 @@ bookingsRouter.get('/admin/finance/export.csv', requireAuth(), requireRole('ADMI
   }
 });
 
-bookingsRouter.get('/admin/finance', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
+bookingsRouter.get('/admin/finance', requireAuth(), requireAdmin(), async (req, res, next) => {
   try {
     const query = adminFinanceQuerySchema.parse(req.query);
 
@@ -1577,7 +1577,7 @@ bookingsRouter.get('/admin/finance', requireAuth(), requireRole('ADMIN'), async 
 });
 
 
-bookingsRouter.get('/admin/export.csv', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
+bookingsRouter.get('/admin/export.csv', requireAuth(), requireAdmin(), async (req, res, next) => {
   try {
     const query = adminBookingsQuerySchema.parse(req.query);
 
@@ -1629,7 +1629,7 @@ bookingsRouter.get('/admin/export.csv', requireAuth(), requireRole('ADMIN'), asy
   }
 });
 
-bookingsRouter.get('/admin/all', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
+bookingsRouter.get('/admin/all', requireAuth(), requireAdmin(), async (req, res, next) => {
   try {
     const query = adminBookingsQuerySchema.parse(req.query);
 
@@ -1656,7 +1656,7 @@ bookingsRouter.get('/admin/all', requireAuth(), requireRole('ADMIN'), async (req
   }
 });
 
-bookingsRouter.patch('/admin/:id/status', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
+bookingsRouter.patch('/admin/:id/status', requireAuth(), requireAdmin(), async (req, res, next) => {
   try {
     const { id } = paramsSchema.parse(req.params);
     const { status } = bookingStatusSchema.parse(req.body);
@@ -1700,7 +1700,7 @@ bookingsRouter.patch('/admin/:id/status', requireAuth(), requireRole('ADMIN'), a
   }
 });
 
-bookingsRouter.patch('/admin/payments/:id', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
+bookingsRouter.patch('/admin/payments/:id', requireAuth(), requireAdmin(), async (req, res, next) => {
   try {
     const { id } = paramsSchema.parse(req.params);
     const { status } = paymentStatusSchema.parse(req.body);

@@ -1303,6 +1303,92 @@ describe('security hardening', () => {
       .expect(403);
   });
 
+
+  it('keeps every admin read surface behind authentication and admin role checks', async () => {
+    const adminReadRoutes = [
+      '/api/auth/admin/system-health',
+      '/api/auth/admin/email-deliveries/summary',
+      '/api/auth/admin/email-deliveries',
+      '/api/auth/admin/users',
+      '/api/bookings/admin/all',
+      '/api/bookings/admin/finance',
+      '/api/contracts/admin/all',
+      '/api/rent-payments/admin/all',
+      '/api/reports/admin/all',
+      '/api/transactions/admin/all',
+      '/api/verification/admin/all'
+    ];
+
+    for (const route of adminReadRoutes) {
+      await request(app).get(route).expect(401);
+
+      await request(app)
+        .get(route)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .expect(403);
+    }
+  });
+
+  it('rejects stale admin tokens after role changes before admin route access', async () => {
+    const temporaryAdmin = await prisma.user.create({
+      data: {
+        name: 'Temporary Admin Authz Regression',
+        email: 'temporary-admin-authz@lux.test',
+        password: 'test-password',
+        role: 'ADMIN',
+        emailVerified: true
+      }
+    });
+
+    const staleAdminToken = signToken(temporaryAdmin);
+
+    await prisma.user.update({
+      where: {
+        id: temporaryAdmin.id
+      },
+      data: {
+        role: 'USER'
+      }
+    });
+
+    await request(app)
+      .get('/api/auth/admin/users')
+      .set('Authorization', `Bearer ${staleAdminToken}`)
+      .expect(401);
+  });
+
+  it('blocks suspended accounts from authenticated APIs even with an otherwise valid token', async () => {
+    const suspendedUser = await prisma.user.create({
+      data: {
+        name: 'Suspended Authz Regression User',
+        email: 'suspended-authz-regression@lux.test',
+        password: 'test-password',
+        role: 'USER',
+        emailVerified: true,
+        suspendedAt: new Date(),
+        suspendedReason: 'Integration test suspension'
+      }
+    });
+
+    const suspendedToken = signToken(suspendedUser);
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${suspendedToken}`)
+      .expect(403);
+
+    await request(app)
+      .post('/api/reports')
+      .set('Authorization', `Bearer ${suspendedToken}`)
+      .send({
+        targetType: 'OTHER',
+        targetId: 'suspended-user-report-attempt',
+        reason: 'OTHER',
+        message: 'Suspended users should not be able to create authenticated reports.'
+      })
+      .expect(403);
+  });
+
 });
 
 

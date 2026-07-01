@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAdmin, requireAuth } from '../middleware/auth';
 
 export const transactionsRouter = Router();
 
@@ -34,7 +34,7 @@ const statusSchema = z.object({
 
 const idParamsSchema = z.object({ id: z.string().trim().min(1) });
 
-transactionsRouter.post('/', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
+transactionsRouter.post('/', requireAuth(), requireAdmin(), async (req, res, next) => {
   try {
     const data = transactionSchema.parse(req.body);
 
@@ -113,7 +113,7 @@ transactionsRouter.get('/mine', requireAuth(), async (req, res, next) => {
   }
 });
 
-transactionsRouter.get('/admin/all', requireAuth(), requireRole('ADMIN'), async (_req, res, next) => {
+transactionsRouter.get('/admin/all', requireAuth(), requireAdmin(), async (_req, res, next) => {
   try {
     const transactions = await prisma.marketplaceTransaction.findMany({
       include: {
@@ -135,7 +135,7 @@ transactionsRouter.get('/admin/all', requireAuth(), requireRole('ADMIN'), async 
   }
 });
 
-transactionsRouter.patch('/admin/:id/status', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
+transactionsRouter.patch('/admin/:id/status', requireAuth(), requireAdmin(), async (req, res, next) => {
   try {
     const { id } = idParamsSchema.parse(req.params);
     const data = statusSchema.parse(req.body);

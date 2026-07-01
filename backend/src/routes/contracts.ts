@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAdmin, requireAuth } from '../middleware/auth';
 import { AppError } from '../utils/http';
 
 export const contractsRouter = Router();
@@ -247,7 +247,7 @@ contractsRouter.get('/mine', requireAuth(), async (req, res, next) => {
   }
 });
 
-contractsRouter.get('/admin/all', requireAuth(), requireRole('ADMIN'), async (_req, res, next) => {
+contractsRouter.get('/admin/all', requireAuth(), requireAdmin(), async (_req, res, next) => {
   try {
     const contracts = await prisma.rentalContractDraft.findMany({
       include: {
@@ -266,7 +266,7 @@ contractsRouter.get('/admin/all', requireAuth(), requireRole('ADMIN'), async (_r
   }
 });
 
-contractsRouter.patch('/admin/:id/registration', requireAuth(), requireRole('ADMIN'), async (req, res, next) => {
+contractsRouter.patch('/admin/:id/registration', requireAuth(), requireAdmin(), async (req, res, next) => {
   try {
     const { id } = idParamsSchema.parse(req.params);
     const data = registrationSchema.parse(req.body);

@@ -9,7 +9,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAdmin, requireAuth } from '../middleware/auth';
 import { submitVerificationRequest } from '../services/verificationAdapters';
 import { deliverTransactionalNotificationToUsers } from '../services/transactionalEmails';
 import { AppError } from '../utils/http';
@@ -766,7 +766,7 @@ verificationRouter.post('/', requireAuth(), async (req, res, next) => {
 verificationRouter.get(
   '/admin/all',
   requireAuth(),
-  requireRole('ADMIN'),
+  requireAdmin(),
   async (req, res, next) => {
     try {
       const query = adminVerificationQuerySchema.parse(req.query);
@@ -809,7 +809,7 @@ verificationRouter.get(
 verificationRouter.patch(
   '/admin/:id/review',
   requireAuth(),
-  requireRole('ADMIN'),
+  requireAdmin(),
   async (req, res, next) => {
     try {
       const { id } = idParamsSchema.parse(req.params);

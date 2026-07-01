@@ -137,6 +137,10 @@ export function requireVerifiedEmail(options: { allowAdmin?: boolean } = {}) {
   };
 }
 
+export function requireAdmin() {
+  return requireRole('ADMIN');
+}
+
 export function requireRole(...roles: Role[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user || !roles.includes(req.user.role)) {

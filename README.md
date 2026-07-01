@@ -235,6 +235,14 @@ Before deployment:
 
 
 
+### Admin authorization and role-permission regression checks
+
+- Admin surfaces use an explicit admin guard after authentication. Unauthenticated requests receive `401`, while authenticated non-admin users receive `403`.
+- JWTs are rejected when the stored user role or auth token version changes, so old admin tokens cannot continue accessing admin routes after account changes.
+- Suspended accounts are blocked by authentication middleware before protected routes, including optional-auth routes when a suspended bearer token is supplied.
+- Admin account controls keep self-protection and last-active-admin safeguards in place for suspension workflows.
+- Regression coverage locks down admin read surfaces across system health, email delivery audit, users, bookings, finance, contracts, rent payments, reports, transactions, and verification queues.
+
 ### Payment and checkout integrity
 
 - Paid activity bookings compute payment amounts on the backend from approved activity pricing and guest counts. Client-supplied payment amounts, commissions, providers, sessions, or checkout URLs are rejected.

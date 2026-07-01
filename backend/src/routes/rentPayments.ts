@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAdmin, requireAuth } from '../middleware/auth';
 import { AppError } from '../utils/http';
 
 export const rentPaymentsRouter = Router();
@@ -425,7 +425,7 @@ rentPaymentsRouter.get('/mine', requireAuth(), async (req, res, next) => {
   }
 });
 
-rentPaymentsRouter.get('/admin/all', requireAuth(), requireRole('ADMIN'), async (_req, res, next) => {
+rentPaymentsRouter.get('/admin/all', requireAuth(), requireAdmin(), async (_req, res, next) => {
   try {
     const schedules = await prisma.rentPaymentSchedule.findMany({
       include: {
