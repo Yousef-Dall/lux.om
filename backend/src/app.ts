@@ -7,6 +7,7 @@ import helmet from 'helmet';
 
 import { env, isProduction } from './config/env';
 import { errorHandler, notFoundHandler } from './middleware/error';
+import { AppError } from './utils/http';
 import { activitiesRouter } from './routes/activities';
 import { authRouter } from './routes/auth';
 import { bookingsRouter } from './routes/bookings';
@@ -85,6 +86,9 @@ const CORS_ALLOWED_HEADERS = [
   'X-Requested-With'
 ];
 const CORS_EXPOSED_HEADERS = ['RateLimit', 'RateLimit-Policy', 'Retry-After'];
+const API_JSON_BODY_LIMIT = '1mb';
+const API_FORM_BODY_LIMIT = '32kb';
+const BODY_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
 const SENSITIVE_API_PREFIXES = [
   '/api/auth',
@@ -144,6 +148,42 @@ function startsWithAny(path: string, prefixes: string[]) {
 
 function isAllowedCorsOrigin(origin: string) {
   return env.CORS_ORIGIN.includes(origin);
+}
+
+function requestHasBody(req: Request) {
+  const contentLength = req.headers['content-length'];
+
+  if (Array.isArray(contentLength)) {
+    return contentLength.some((value) => Number(value) > 0);
+  }
+
+  return Number(contentLength ?? 0) > 0 || Boolean(req.headers['transfer-encoding']);
+}
+
+function isSupportedApiContentType(req: Request) {
+  return Boolean(
+    req.is('application/json') ||
+      req.is('application/*+json') ||
+      req.is('application/x-www-form-urlencoded') ||
+      (req.path.startsWith('/api/uploads') && req.is('multipart/form-data'))
+  );
+}
+
+function requireSupportedApiContentType(
+  req: Request,
+  _res: Response,
+  next: NextFunction
+) {
+  if (
+    !req.path.startsWith('/api') ||
+    !BODY_METHODS.includes(req.method) ||
+    !requestHasBody(req) ||
+    isSupportedApiContentType(req)
+  ) {
+    return next();
+  }
+
+  return next(new AppError(415, 'Unsupported content type'));
 }
 
 function rejectDisallowedCorsOrigins(
@@ -332,8 +372,20 @@ export function createApp() {
     })
   );
 
-  app.use(express.json({ limit: '1mb' }));
-  app.use(express.urlencoded({ extended: false }));
+  app.use(requireSupportedApiContentType);
+  app.use(
+    express.json({
+      limit: API_JSON_BODY_LIMIT,
+      type: ['application/json', 'application/*+json']
+    })
+  );
+  app.use(
+    express.urlencoded({
+      extended: false,
+      limit: API_FORM_BODY_LIMIT,
+      parameterLimit: 100
+    })
+  );
 
   if (usesLocalImageStorage()) {
     app.use(

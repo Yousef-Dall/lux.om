@@ -482,6 +482,79 @@ describe('CORS and proxy boundary hardening', () => {
   });
 });
 
+
+describe('API payload validation and safe error responses', () => {
+  it('returns a safe 400 response for malformed JSON bodies', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .set('Content-Type', 'application/json')
+      .send('{"email":"broken"')
+      .expect(400);
+
+    expect(response.body).toEqual({
+      message: 'Malformed JSON request body'
+    });
+    expect(response.body.detail).toBeUndefined();
+  });
+
+  it('returns a safe 413 response for oversized JSON bodies', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .set('Content-Type', 'application/json')
+      .send(
+        JSON.stringify({
+          email: 'oversized-body@lux.test',
+          password: 'A'.repeat(1024 * 1024 + 1)
+        })
+      )
+      .expect(413);
+
+    expect(response.body).toEqual({
+      message: 'Request body is too large'
+    });
+    expect(response.body.detail).toBeUndefined();
+  });
+
+  it('rejects unsupported content types before route validation', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .set('Content-Type', 'text/plain')
+      .send('email=user@lux.test&password=password')
+      .expect(415);
+
+    expect(response.body).toEqual({
+      message: 'Unsupported content type'
+    });
+  });
+
+  it('keeps urlencoded form requests bounded but supported for legacy clients', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .type('form')
+      .send({
+        email: 'missing-user@lux.test',
+        password: 'NotARealPassword2026!'
+      })
+      .expect(401);
+
+    expect(response.body).toEqual({
+      message: 'Invalid credentials'
+    });
+  });
+
+  it('does not echo unknown API paths or query strings in 404 responses', async () => {
+    const response = await request(app)
+      .get('/api/not-real?token=secret-value')
+      .expect(404);
+
+    expect(response.body).toEqual({
+      message: 'Route not found'
+    });
+    expect(JSON.stringify(response.body)).not.toContain('secret-value');
+  });
+});
+
+
 describe('auth and account security hardening', () => {
   it('rejects weak registration passwords and verifies a new email once', async () => {
     await request(app)

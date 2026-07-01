@@ -211,6 +211,16 @@ Before deployment:
 - TLS should terminate at the production proxy, CDN, or load balancer. The proxy must forward the original protocol and client IP correctly.
 - The API currently uses bearer JWT auth rather than auth cookies. If auth cookies are added later, they must be `HttpOnly`, `Secure` in production, use an explicit `SameSite` policy, and only be used with exact allowlisted CORS origins.
 
+
+### API payload limits, validation, and safe errors
+
+- JSON API bodies are capped at `1mb` and URL-encoded form bodies are capped at `32kb`.
+- API requests with unsupported body content types are rejected before route validation.
+- Malformed JSON and oversized request bodies return safe `400`/`413` responses without parser internals or stack details.
+- Unknown API routes return a generic `Route not found` message and do not echo query strings or attempted URLs.
+- Route-level Zod validation remains responsible for domain-specific payload rules.
+
+
 ## Backend deployment
 
 Recommended backend build command:

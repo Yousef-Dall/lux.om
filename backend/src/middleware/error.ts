@@ -4,8 +4,60 @@ import { ZodError } from 'zod';
 import { isProduction } from '../config/env';
 import { AppError } from '../utils/http';
 
-export const notFoundHandler: RequestHandler = (req, _res, next) => {
-  next(new AppError(404, `Route not found: ${req.method} ${req.originalUrl}`));
+type RequestBodyError = Error & {
+  status?: number;
+  statusCode?: number;
+  type?: string;
+};
+
+function getRequestBodyErrorStatus(error: RequestBodyError) {
+  return error.statusCode ?? error.status;
+}
+
+function isRequestBodyError(error: unknown): error is RequestBodyError {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const candidate = error as RequestBodyError;
+  const statusCode = getRequestBodyErrorStatus(candidate);
+
+  return (
+    typeof statusCode === 'number' &&
+    statusCode >= 400 &&
+    statusCode < 500 &&
+    typeof candidate.type === 'string'
+  );
+}
+
+function getSafeRequestBodyError(error: RequestBodyError) {
+  switch (error.type) {
+    case 'entity.parse.failed':
+      return {
+        statusCode: 400,
+        message: 'Malformed JSON request body'
+      };
+    case 'entity.too.large':
+      return {
+        statusCode: 413,
+        message: 'Request body is too large'
+      };
+    case 'charset.unsupported':
+    case 'encoding.unsupported':
+      return {
+        statusCode: 415,
+        message: 'Unsupported request body encoding'
+      };
+    default:
+      return {
+        statusCode: getRequestBodyErrorStatus(error) ?? 400,
+        message: 'Invalid request body'
+      };
+  }
+}
+
+export const notFoundHandler: RequestHandler = (_req, _res, next) => {
+  next(new AppError(404, 'Route not found'));
 };
 
 export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
@@ -23,6 +75,15 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
         path: issue.path.join('.'),
         message: issue.message
       }))
+    });
+    return;
+  }
+
+  if (isRequestBodyError(error)) {
+    const safeError = getSafeRequestBodyError(error);
+
+    res.status(safeError.statusCode).json({
+      message: safeError.message
     });
     return;
   }
