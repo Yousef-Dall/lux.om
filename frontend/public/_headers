@@ -1,0 +1,24 @@
+# Static-host cache contract for lux.om frontend builds.
+# Hosts that support _headers files should revalidate the SPA document while
+# caching Vite's hashed assets immutably.
+
+/
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/index.html
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/*.html
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/robots.txt
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/sitemap.xml
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/site.webmanifest
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400

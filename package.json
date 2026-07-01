@@ -20,7 +20,8 @@
     "test:watch": "npm run test:watch -w backend",
     "test:integration": "npm run test:integration -w backend",
     "test:all": "npm run test:all -w backend",
-    "verify:production": "npm run verify:production-env -w backend && npm run typecheck && npm run verify:seo && npm run test:integration && npm run build",
+    "verify:production": "npm run verify:production-env -w backend && npm run typecheck && npm run verify:seo && npm run test:integration && npm run build && npm run verify:frontend-cache",
+    "verify:frontend-cache": "npm run verify:cache -w frontend",
     "ops:email-deliveries:prune:dry-run": "npm run jobs:email-deliveries:prune -w backend -- --days=180 --dry-run",
     "ops:email-deliveries:prune": "npm run jobs:email-deliveries:prune -w backend -- --days=180 --execute",
     "verify:seo": "npm run verify:seo -w frontend"

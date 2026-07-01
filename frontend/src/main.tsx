@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 import App from './App';
 import { AuthProvider } from './auth/AuthContext';
+import { exposeBuildInfo } from './config/buildInfo';
 import { LanguageProvider } from './i18n/LanguageContext';
 import './styles/legacy.css';
 import './styles/foundation.css';
@@ -23,6 +24,8 @@ function Root() {
     </React.StrictMode>
   );
 }
+
+exposeBuildInfo();
 
 const rootElement = document.getElementById('root');
 

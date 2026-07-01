@@ -83,6 +83,21 @@ For production, set VITE_API_URL to the public backend API origin, for example:
 
     VITE_API_URL="https://api.your-domain.com"
 
+Production frontend cache/versioning policy:
+
+- `index.html` and HTML fallback responses must be served with `Cache-Control: no-cache, max-age=0, must-revalidate` so users receive the newest deployment entry point.
+- Vite hashed assets under `/assets/*` should be served with `Cache-Control: public, max-age=31536000, immutable`.
+- `robots.txt`, `sitemap.xml`, and `site.webmanifest` may use a short public cache window such as one hour plus stale revalidation.
+- The frontend build injects `lux:app-version`, `lux:build-id`, `lux:build-time`, and `lux:cache-policy` metadata into `index.html` for deployment diagnosis.
+- `frontend/public/_headers` documents the static-host cache contract for hosts that support `_headers` files. For Hostinger or Apache-style hosting, mirror the same rules in the hosting cache/header panel or `.htaccess`. For Vercel, Netlify, Cloudflare Pages, or a CDN, configure equivalent rules there if `_headers` is not honored.
+- Do not cache `index.html` immutably. Stale HTML can point users at old asset URLs after deployment.
+
+Frontend cache verification:
+
+    npm run verify:frontend-cache
+
+`npm run verify:production` runs this after the frontend build.
+
 Leave VITE_API_URL empty only when frontend and backend share the same origin.
 
 ## Quality checks
