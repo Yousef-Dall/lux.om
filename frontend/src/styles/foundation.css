@@ -877,3 +877,51 @@ html[dir='rtl'] .lux-floating-rating {
     transition: none;
   }
 }
+
+/* Pre-revision accessibility and mobile polish */
+#main-content:focus {
+  outline: none;
+}
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid rgba(194, 154, 82, 0.45);
+  outline-offset: 3px;
+}
+
+:where(button, input, select, textarea) {
+  font: inherit;
+}
+
+:where(button, .button-link, input, select, textarea, summary) {
+  min-height: 44px;
+}
+
+:where(button, .button-link)[disabled],
+:where(button, .button-link)[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .container {
+    width: min(100% - 24px, var(--container));
+  }
+
+  :where(.button-link, button, input, select, textarea, summary) {
+    min-height: 46px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

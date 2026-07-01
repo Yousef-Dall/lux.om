@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { useAuth } from './auth/AuthContext';
@@ -318,9 +318,14 @@ function SeoManager() {
 
 function LoadingPage() {
   return (
-    <section className="page-section container not-found">
+    <section
+      aria-labelledby="app-loading-title"
+      aria-live="polite"
+      className="page-section container not-found"
+      role="status"
+    >
       <p className="eyebrow">lux.om</p>
-      <h1>Loading...</h1>
+      <h1 id="app-loading-title">Loading...</h1>
     </section>
   );
 }
@@ -329,10 +334,31 @@ function ScrollToTop() {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
   }, [pathname]);
 
   return null;
+}
+
+function RouteAnnouncer() {
+  const { pathname } = useLocation();
+  const { language } = useLanguage();
+  const [announcement, setAnnouncement] = useState('');
+
+  useEffect(() => {
+    const key = getSeoKey(pathname);
+    const title = seoCopy[language][key].title.split('|')[0].trim();
+
+    setAnnouncement(language === 'ar' ? `تم الانتقال إلى ${title}` : `Navigated to ${title}`);
+  }, [language, pathname]);
+
+  return (
+    <div aria-atomic="true" aria-live="polite" className="sr-only" role="status">
+      {announcement}
+    </div>
+  );
 }
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -481,9 +507,10 @@ export default function App() {
     <div className="app-shell">
       <ScrollToTop />
       <SeoManager />
+      <RouteAnnouncer />
       <Navbar />
 
-      <main id="main-content">
+      <main id="main-content" tabIndex={-1}>
         <Routes>
           <Route path="/" element={<Home />} />
 

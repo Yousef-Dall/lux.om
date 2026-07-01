@@ -110,6 +110,20 @@ useEffect(() => {
 setIsOpen(false);
 }, [pathname]);
 
+useEffect(() => {
+if (!isOpen) return;
+
+function handleKeyDown(event: KeyboardEvent) {
+if (event.key === 'Escape') {
+setIsOpen(false);
+}
+}
+
+document.addEventListener('keydown', handleKeyDown);
+
+return () => document.removeEventListener('keydown', handleKeyDown);
+}, [isOpen]);
+
 
 useEffect(() => {
 if (!isAuthenticated) {

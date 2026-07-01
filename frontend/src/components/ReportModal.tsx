@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   createTrustReport,
@@ -80,6 +80,8 @@ export default function ReportModal({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const copy = useMemo(
     () =>
@@ -132,7 +134,31 @@ export default function ReportModal({
 
     setIsOpen(false);
     setSubmitError('');
+    window.setTimeout(() => triggerRef.current?.focus(), 0);
   }
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !submitting) {
+        setIsOpen(false);
+        setSubmitError('');
+        window.setTimeout(() => triggerRef.current?.focus(), 0);
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, submitting]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -173,6 +199,7 @@ export default function ReportModal({
     <>
       <button
         className="button-link button-link--secondary"
+        ref={triggerRef}
         type="button"
         onClick={() => {
           setIsOpen(true);
@@ -184,7 +211,15 @@ export default function ReportModal({
       </button>
 
       {isOpen ? (
-        <div className="report-modal__backdrop" role="presentation">
+        <div
+          className="report-modal__backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeModal();
+            }
+          }}
+          role="presentation"
+        >
           <div
             aria-labelledby="report-modal-title"
             aria-modal="true"
@@ -200,6 +235,7 @@ export default function ReportModal({
               <button
                 aria-label={copy.cancel}
                 className="report-modal__close"
+                ref={closeButtonRef}
                 type="button"
                 onClick={closeModal}
               >

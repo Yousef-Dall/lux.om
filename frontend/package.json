@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify:seo": "tsx scripts/verifyPublicSeo.ts",
-    "verify:cache": "tsx scripts/verifyBuildCachePolicy.ts"
+    "verify:cache": "tsx scripts/verifyBuildCachePolicy.ts",
+    "verify:polish": "tsx scripts/verifyFrontendPolish.ts"
   },
   "dependencies": {
     "lucide-react": "1.14.0",

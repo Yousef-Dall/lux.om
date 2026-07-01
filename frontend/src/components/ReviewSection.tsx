@@ -28,18 +28,29 @@ export default function ReviewSection({ targetType, targetId }: ReviewSectionPro
   const [rating, setRating] = useState(5);
   const [body, setBody] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [loadingReviews, setLoadingReviews] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
     let active = true;
 
+    setLoadingReviews(true);
+    setLoadError('');
+
     getReviews({ targetType, targetId })
       .then((response) => {
         if (active) setReviews(response.reviews);
       })
       .catch(() => {
-        if (active) setReviews([]);
+        if (active) {
+          setReviews([]);
+          setLoadError('Could not load approved reviews right now.');
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingReviews(false);
       });
 
     return () => {
@@ -115,8 +126,18 @@ export default function ReviewSection({ targetType, targetId }: ReviewSectionPro
         </div>
       </div>
 
-      <div className="review-list">
-        {reviews.length ? (
+      <div className="review-list" aria-live="polite" aria-busy={loadingReviews}>
+        {loadingReviews ? (
+          <div className="review-empty-state" role="status">
+            <strong>Loading approved reviews...</strong>
+            <p>Customer feedback will appear here after moderation.</p>
+          </div>
+        ) : loadError ? (
+          <div className="review-empty-state" role="alert">
+            <strong>Reviews could not be loaded.</strong>
+            <p>{loadError}</p>
+          </div>
+        ) : reviews.length ? (
           reviews.map((review, index) => {
             const safeRating = getSafeRating(review.rating);
 

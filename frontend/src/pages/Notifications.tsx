@@ -312,7 +312,7 @@ export default function Notifications() {
   }
 
   return (
-    <section className="page-section notifications-page">
+    <section className="page-section notifications-page" aria-busy={loading}>
       <div className="container">
         <SectionHeader eyebrow={copy.eyebrow} title={copy.title} />
         <p className="notifications-page__intro">{copy.text}</p>
@@ -381,13 +381,13 @@ export default function Notifications() {
           </button>
         </div>
 
-        {error ? <div className="form-error">{error}</div> : null}
-        {actionMessage ? <div className="form-success">{actionMessage}</div> : null}
+        {error ? <div className="form-error" role="alert">{error}</div> : null}
+        {actionMessage ? <div className="form-success" role="status">{actionMessage}</div> : null}
 
-        {loading ? <p className="notifications-page__state">{copy.loading}</p> : null}
+        {loading ? <p className="notifications-page__state" role="status">{copy.loading}</p> : null}
 
         {!loading && filteredNotifications.length === 0 ? (
-          <p className="notifications-page__state">{copy.empty}</p>
+          <p className="notifications-page__state" role="status">{copy.empty}</p>
         ) : null}
 
         {!loading && filteredNotifications.length > 0 ? (

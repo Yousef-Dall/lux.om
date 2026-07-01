@@ -382,3 +382,15 @@ The backend includes Helmet security headers, CORS allowlisting, request IDs, pr
 The repository ignores dependencies, production builds, local env files, runtime uploads, logs, coverage, and editor files.
 
 Never commit real production secrets.
+
+## Frontend accessibility and mobile polish verification
+
+Pre-revision frontend polish now includes a lightweight static verification step for keyboard access, route announcements, reduced-motion behavior, dialog/popover semantics, saved-toggle accessibility, and status/error announcements on notification and review surfaces.
+
+Run the focused check before frontend release review:
+
+```bash
+npm run verify:frontend-polish
+```
+
+The production verification chain also runs this check so launch builds fail if core accessibility and mobile polish guardrails regress.

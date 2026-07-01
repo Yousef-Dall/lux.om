@@ -12228,3 +12228,36 @@ transition: none;
     position: static;
   }
 }
+
+/* Pre-revision dialog and notification polish */
+.report-modal__backdrop {
+  align-items: center;
+  overflow: auto;
+  padding-block: 1rem;
+}
+
+.report-modal {
+  max-height: min(92vh, 760px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.notification-bell__panel {
+  overscroll-behavior: contain;
+}
+
+.notification-bell__list {
+  scrollbar-gutter: stable;
+}
+
+@media (max-width: 640px) {
+  .report-modal {
+    width: min(100%, calc(100vw - 1rem));
+    max-height: calc(100vh - 1rem);
+    border-radius: 1rem;
+  }
+
+  .notification-bell__list {
+    max-height: min(55vh, 360px);
+  }
+}

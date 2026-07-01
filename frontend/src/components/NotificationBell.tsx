@@ -149,6 +149,7 @@ export default function NotificationBell({
   const [actionId, setActionId] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const panelId = 'notification-bell-panel';
 
 
   function syncUnreadCount(nextCount: number, options?: { broadcast?: boolean }) {
@@ -231,6 +232,20 @@ export default function NotificationBell({
   useEffect(() => {
     if (!isOpen) return;
 
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
     function handlePointerDown(event: MouseEvent) {
       if (!rootRef.current?.contains(event.target as Node)) {
         setIsOpen(false);
@@ -284,6 +299,7 @@ export default function NotificationBell({
   return (
     <div className="notification-bell" ref={rootRef}>
       <button
+        aria-controls={isOpen ? panelId : undefined}
         aria-expanded={isOpen}
         aria-label={`${copy.label}${unreadCount > 0 ? `, ${unreadCount} ${copy.unread}` : ''}`}
         className="notification-bell__trigger"
@@ -299,7 +315,14 @@ export default function NotificationBell({
       </button>
 
       {isOpen ? (
-        <div className="notification-bell__panel">
+        <div
+          aria-busy={loading}
+          aria-label={copy.label}
+          aria-modal="false"
+          className="notification-bell__panel"
+          id={panelId}
+          role="dialog"
+        >
           <div className="notification-bell__header">
             <div>
               <strong>{copy.label}</strong>
@@ -326,7 +349,7 @@ export default function NotificationBell({
           </div>
 
           {loading ? (
-            <p className="notification-bell__state">{copy.loading}</p>
+            <p className="notification-bell__state" role="status">{copy.loading}</p>
           ) : null}
 
           {errorMessage ? (
@@ -336,10 +359,10 @@ export default function NotificationBell({
           ) : null}
 
           {!loading && notifications.length === 0 ? (
-            <p className="notification-bell__state">{copy.empty}</p>
+            <p className="notification-bell__state" role="status">{copy.empty}</p>
           ) : null}
 
-          <div className="notification-bell__list">
+          <div aria-live="polite" className="notification-bell__list">
             {notifications.map((notification) => {
               const isUnread = !notification.readAt;
 
