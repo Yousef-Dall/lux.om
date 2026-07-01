@@ -227,6 +227,15 @@ Before deployment:
 - The API currently uses bearer JWT auth rather than auth cookies. If auth cookies are added later, they must be `HttpOnly`, `Secure` in production, use an explicit `SameSite` policy, and only be used with exact allowlisted CORS origins.
 
 
+
+### Production logging, request IDs, and redaction
+
+- Every API response includes an `X-Request-Id` header. Safe caller-provided request IDs are preserved; unsafe values are replaced with generated IDs.
+- Production request logging is structured JSON and records method, path, status, duration, origin, IP, user agent, and request ID.
+- Logs redact sensitive keys and URL query parameters such as tokens, passwords, authorization headers, cookies, API keys, SMTP credentials, reset links, and verification links.
+- Development email links returned by API responses remain usable for local/testing flows, but token-bearing URLs are redacted before they are written to logs.
+- Production error responses stay generic and never expose stack traces. Use the request ID to correlate a user-visible failure with backend logs.
+
 ### API payload limits, validation, and safe errors
 
 - JSON API bodies are capped at `1mb` and URL-encoded form bodies are capped at `32kb`.
@@ -302,7 +311,7 @@ After creating the first admin account, verify:
 
 ## Security notes
 
-The backend includes Helmet security headers, CORS allowlisting, JSON body size limits, global API rate limiting, stricter auth/upload rate limiting, JWT verification, database-backed user validation, stale-role token rejection, role-based admin route protection, and image MIME/extension/signature validation.
+The backend includes Helmet security headers, CORS allowlisting, request IDs, production-safe structured logging with redaction, JSON body size limits, global API rate limiting, stricter auth/upload rate limiting, JWT verification, database-backed user validation, stale-role token rejection, role-based admin route protection, and image MIME/extension/signature validation.
 
 ## Git hygiene
 

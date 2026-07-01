@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 
 import { isProduction } from '../config/env';
 import { AppError } from '../utils/http';
+import { logError } from '../utils/logging';
 
 type RequestBodyError = Error & {
   status?: number;
@@ -60,7 +61,11 @@ export const notFoundHandler: RequestHandler = (_req, _res, next) => {
   next(new AppError(404, 'Route not found'));
 };
 
-export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
+  if (!res.getHeader('X-Request-Id') && req.requestId) {
+    res.setHeader('X-Request-Id', req.requestId);
+  }
+
   if (error instanceof AppError) {
     res.status(error.statusCode).json({
       message: error.message
@@ -88,7 +93,12 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     return;
   }
 
-  console.error(error);
+  logError('Unhandled API error', error, {
+    requestId: req.requestId,
+    method: req.method,
+    path: req.path,
+    statusCode: 500
+  });
 
   res.status(500).json({
     message: 'Server error',

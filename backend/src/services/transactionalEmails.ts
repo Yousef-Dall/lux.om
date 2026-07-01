@@ -2,6 +2,7 @@ import { EmailDeliveryStatus, NotificationType, type Prisma, type PrismaClient }
 import * as nodemailer from 'nodemailer';
 
 import { env, isProduction } from '../config/env';
+import { logError, redactUrl } from '../utils/logging';
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
 
@@ -324,7 +325,7 @@ async function recordEmailDeliveryEvent(
       }
     });
   } catch (error) {
-    console.error('[lux.om] Failed to record email delivery event', error);
+    logError('[lux.om] Failed to record email delivery event', error);
   }
 }
 
@@ -370,7 +371,7 @@ async function safelyDeliverTransactionalNotificationEmail(
   if (!shouldUseSmtpDelivery()) {
     for (const recipient of recipients) {
       console.info(
-        `[lux.om] Development transactional email for ${recipient.email}: ${input.title} -> ${actionUrl} | preferences: ${preferencesUrl}`
+        `[lux.om] Development transactional email for ${recipient.email}: ${input.title} -> ${redactUrl(actionUrl)} | preferences: ${redactUrl(preferencesUrl)}`
       );
     }
 
@@ -499,7 +500,7 @@ export async function deliverTransactionalNotificationToUser(
       recipients: [user]
     });
   } catch (error) {
-    console.error('[lux.om] Failed to deliver transactional notification email', error);
+    logError('[lux.om] Failed to deliver transactional notification email', error);
   }
 }
 
@@ -533,6 +534,6 @@ export async function deliverTransactionalNotificationToUsers(
       recipients: users
     });
   } catch (error) {
-    console.error('[lux.om] Failed to deliver transactional notification emails', error);
+    logError('[lux.om] Failed to deliver transactional notification emails', error);
   }
 }

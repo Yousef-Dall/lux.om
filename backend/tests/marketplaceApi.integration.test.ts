@@ -17,6 +17,7 @@ import {
   getEmailDeliveryRetentionDays,
   pruneOldEmailDeliveryEvents
 } from '../src/services/emailDeliveryRetention';
+import { deliverPasswordResetLink } from '../src/services/emailVerification';
 
 const app = createApp();
 
@@ -483,6 +484,64 @@ describe('CORS and proxy boundary hardening', () => {
     expect(response.headers['access-control-allow-headers']).toContain(
       'Content-Type'
     );
+  });
+});
+
+
+describe('production logging and request ID hardening', () => {
+  it('sets a request ID header on every API response', async () => {
+    const response = await request(app).get('/api/health').expect(200);
+
+    expect(response.headers['x-request-id']).toMatch(
+      /^[A-Za-z0-9._:-]{8,128}$/
+    );
+  });
+
+  it('preserves safe caller-provided request IDs for tracing', async () => {
+    const requestId = 'lux-test-request-1234';
+
+    const response = await request(app)
+      .get('/api/health')
+      .set('X-Request-Id', requestId)
+      .expect(200);
+
+    expect(response.headers['x-request-id']).toBe(requestId);
+  });
+
+  it('replaces unsafe caller-provided request IDs', async () => {
+    const unsafeRequestId = 'short';
+
+    const response = await request(app)
+      .get('/api/health')
+      .set('X-Request-Id', unsafeRequestId)
+      .expect(200);
+
+    expect(response.headers['x-request-id']).not.toBe(unsafeRequestId);
+    expect(response.headers['x-request-id']).toMatch(
+      /^[A-Za-z0-9._:-]{8,128}$/
+    );
+  });
+
+  it('keeps development email links usable while redacting tokens in logs', async () => {
+    const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const token = 'sensitive-reset-token-for-log-test';
+
+    try {
+      const delivery = await deliverPasswordResetLink({
+        email: 'redaction-user@lux.test',
+        name: 'Redaction User',
+        token
+      });
+
+      expect(delivery.devPasswordResetUrl).toContain(token);
+
+      const loggedOutput = consoleSpy.mock.calls.flat().join('\n');
+
+      expect(loggedOutput).not.toContain(token);
+      expect(loggedOutput).toContain('token=%5Bredacted%5D');
+    } finally {
+      consoleSpy.mockRestore();
+    }
   });
 });
 

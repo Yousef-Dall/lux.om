@@ -7,6 +7,11 @@ import helmet from 'helmet';
 
 import { env, isProduction } from './config/env';
 import { errorHandler, notFoundHandler } from './middleware/error';
+import {
+  logError,
+  requestIdMiddleware,
+  requestLogger
+} from './utils/logging';
 import { AppError } from './utils/http';
 import { activitiesRouter } from './routes/activities';
 import { authRouter } from './routes/auth';
@@ -348,6 +353,8 @@ const uploadRateLimiter = rateLimit({
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
+  app.use(requestIdMiddleware);
+  app.use(requestLogger({ enabled: isProduction }));
   app.set('trust proxy', env.RATE_LIMIT_TRUST_PROXY_HOPS);
 
   app.use(
@@ -466,7 +473,7 @@ export function createApp() {
         environment: env.NODE_ENV
       });
     } catch (error) {
-      console.error('Readiness check failed:', error);
+      logError('Readiness check failed', error);
 
       res.status(503).json({
         ok: false,

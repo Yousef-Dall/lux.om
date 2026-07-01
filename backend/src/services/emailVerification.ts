@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'crypto';
 import * as nodemailer from 'nodemailer';
 
 import { env, isProduction } from '../config/env';
+import { redactUrl } from '../utils/logging';
 
 const EMAIL_VERIFICATION_TOKEN_BYTES = 32;
 const EMAIL_VERIFICATION_EXPIRY_HOURS = 24;
@@ -124,7 +125,7 @@ export async function deliverEmailVerificationLink(input: {
 
   if (!shouldUseSmtpDelivery()) {
     console.info(
-      `[lux.om] Development email verification link for ${input.email}: ${verificationUrl}`
+      `[lux.om] Development email verification link for ${input.email}: ${redactUrl(verificationUrl)}`
     );
 
     return {
@@ -242,7 +243,9 @@ export async function deliverPasswordResetLink(input: {
   const resetUrl = getPasswordResetUrl(input.token);
 
   if (!shouldUseSmtpDelivery()) {
-    console.info(`[lux.om] Development password reset link for ${input.email}: ${resetUrl}`);
+    console.info(
+      `[lux.om] Development password reset link for ${input.email}: ${redactUrl(resetUrl)}`
+    );
 
     return {
       emailSent: false,
@@ -362,7 +365,7 @@ export async function deliverEmailChangeVerificationLink(input: {
 
   if (!shouldUseSmtpDelivery()) {
     console.info(
-      `[lux.om] Development email change verification link for ${input.email}: ${verificationUrl}`
+      `[lux.om] Development email change verification link for ${input.email}: ${redactUrl(verificationUrl)}`
     );
 
     return {
