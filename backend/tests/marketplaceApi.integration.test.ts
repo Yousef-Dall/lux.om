@@ -6951,6 +6951,530 @@ describe('critical-launch-smoke tests', () => {
   });
 });
 
+
+describe('critical-marketplace-smoke tests', () => {
+  it('smokes listing discovery, booking request, owner approval, and notification routing', async () => {
+    const discoveryResponse = await request(app)
+      .get('/api/listings')
+      .query({
+        search: 'Villa Heights',
+        sort: 'recommended'
+      })
+      .expect(200);
+
+    const discoveredListing = discoveryResponse.body.listings.find(
+      (listing: { slug: string }) => listing.slug === 'integration-villa-heights'
+    );
+
+    expect(discoveredListing).toMatchObject({
+      slug: 'integration-villa-heights'
+    });
+
+    const bookingResponse = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        listingId: discoveredListing.id,
+        scheduledDate: '2026-09-01',
+        preferredTime: '12:00',
+        guests: 1,
+        message: 'BB smoke listing viewing request.'
+      })
+      .expect(201);
+
+    const bookingId = bookingResponse.body.booking.id;
+
+    expect(bookingResponse.body.booking).toMatchObject({
+      listingId: discoveredListing.id,
+      activityId: null,
+      status: 'PENDING'
+    });
+    expect(bookingResponse.body.booking.payment).toMatchObject({
+      status: 'NOT_REQUIRED',
+      provider: null
+    });
+
+    await request(app)
+      .patch(`/api/bookings/${bookingId}/owner-status`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        status: 'OWNER_APPROVED'
+      })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.booking).toMatchObject({
+          id: bookingId,
+          status: 'OWNER_APPROVED'
+        });
+      });
+
+    const adminBookingsResponse = await request(app)
+      .get('/api/bookings/admin/all')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .query({
+        status: 'OWNER_APPROVED'
+      })
+      .expect(200);
+
+    const adminBooking = adminBookingsResponse.body.bookings.find(
+      (booking: { id: string }) => booking.id === bookingId
+    );
+
+    expect(adminBooking.events.map((event: { type: string }) => event.type)).toEqual(
+      expect.arrayContaining(['BOOKING_CREATED', 'OWNER_APPROVED'])
+    );
+
+    const notificationsResponse = await request(app)
+      .get('/api/notifications?take=20')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(200);
+
+    expect(notificationsResponse.body.notifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'BOOKING_OWNER_APPROVED',
+          title: 'Booking approved by provider',
+          actionUrl: `/dashboard?booking=${bookingId}`,
+          actionContext: 'BOOKING',
+          targetType: 'BOOKING',
+          targetId: bookingId
+        })
+      ])
+    );
+  });
+
+  it('smokes activity discovery, payable checkout, paid sync, receipt, and finance ledger visibility', async () => {
+    const previousFetch = globalThis.fetch;
+    const previousSecret = process.env.THAWANI_SECRET_KEY;
+    const previousPublishable = process.env.THAWANI_PUBLISHABLE_KEY;
+
+    process.env.THAWANI_SECRET_KEY = 'test_secret';
+    process.env.THAWANI_PUBLISHABLE_KEY = 'test_publishable';
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            session_id: 'bb_smoke_checkout_session',
+            payment_status: 'unpaid'
+          }
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            session_id: 'bb_smoke_checkout_session',
+            payment_status: 'paid'
+          }
+        })
+      });
+
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const discoveryResponse = await request(app)
+        .get('/api/activities')
+        .query({
+          search: 'City Walk',
+          sort: 'recommended'
+        })
+        .expect(200);
+
+      const discoveredActivity = discoveryResponse.body.activities.find(
+        (activity: { slug: string }) => activity.slug === 'integration-city-walk'
+      );
+
+      expect(discoveredActivity).toMatchObject({
+        slug: 'integration-city-walk'
+      });
+
+      const bookingResponse = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          activityId: discoveredActivity.id,
+          scheduledDate: '2026-09-02',
+          guests: 2,
+          message: 'BB smoke payable activity booking.'
+        })
+        .expect(201);
+
+      const bookingId = bookingResponse.body.booking.id;
+
+      expect(Number(bookingResponse.body.booking.payment.amount)).toBe(40);
+      expect(bookingResponse.body.booking.payment.status).toBe('PENDING');
+
+      await request(app)
+        .patch(`/api/bookings/${bookingId}/owner-status`)
+        .set('Authorization', `Bearer ${activityProviderToken}`)
+        .send({
+          status: 'OWNER_APPROVED'
+        })
+        .expect(200);
+
+      const sessionResponse = await request(app)
+        .post(`/api/bookings/${bookingId}/payments/session`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .expect(200);
+
+      expect(sessionResponse.body.payment).toMatchObject({
+        status: 'PENDING',
+        provider: 'THAWANI',
+        providerSessionId: 'bb_smoke_checkout_session',
+        checkoutUrl:
+          'https://uatcheckout.thawani.om/pay/bb_smoke_checkout_session?key=test_publishable'
+      });
+
+      const syncResponse = await request(app)
+        .post(`/api/bookings/${bookingId}/payments/sync`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .expect(200);
+
+      expect(syncResponse.body.payment).toMatchObject({
+        status: 'PAID',
+        provider: 'THAWANI',
+        providerSessionId: 'bb_smoke_checkout_session'
+      });
+      expect(Number(syncResponse.body.payment.amount)).toBe(40);
+      expect(Number(syncResponse.body.payment.commission)).toBe(4);
+
+      await request(app)
+        .patch(`/api/bookings/admin/${bookingId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          status: 'ADMIN_CONFIRMED'
+        })
+        .expect(200);
+
+      const receiptResponse = await request(app)
+        .get(`/api/bookings/${bookingId}/receipt`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .expect(200);
+
+      expect(receiptResponse.body.receipt).toMatchObject({
+        bookingId,
+        bookingStatus: 'ADMIN_CONFIRMED',
+        bookingType: 'Activity',
+        status: 'PAID',
+        providerName: 'THAWANI'
+      });
+      expect(receiptResponse.body.receipt.amount).toBe(40);
+      expect(receiptResponse.body.receipt.commission).toBe(4);
+
+      const financeResponse = await request(app)
+        .get('/api/bookings/admin/finance')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .query({
+          paymentStatus: 'PAID',
+          payout: 'READY'
+        })
+        .expect(200);
+
+      expect(financeResponse.body.finance.ledger).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            bookingId,
+            status: 'PAID',
+            payoutReady: true,
+            amount: 40,
+            commission: 4,
+            providerPayoutAmount: 36
+          })
+        ])
+      );
+
+      const notificationsResponse = await request(app)
+        .get('/api/notifications?take=20')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .expect(200);
+
+      expect(notificationsResponse.body.notifications).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'BOOKING_PAYMENT_PAID',
+            title: 'Payment completed',
+            actionUrl: `/dashboard?booking=${bookingId}`,
+            actionContext: 'BOOKING'
+          })
+        ])
+      );
+    } finally {
+      globalThis.fetch = previousFetch;
+      process.env.THAWANI_SECRET_KEY = previousSecret;
+      process.env.THAWANI_PUBLISHABLE_KEY = previousPublishable;
+    }
+  });
+
+  it('smokes paid-booking cancellation guardrails, refund state, and cancellation notifications', async () => {
+    const activity = await prisma.activity.findUniqueOrThrow({
+      where: {
+        slug: 'integration-city-walk'
+      }
+    });
+
+    const bookingResponse = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        activityId: activity.id,
+        scheduledDate: '2026-09-03',
+        preferredTime: '14:00',
+        guests: 1,
+        message: 'BB smoke cancellation flow.'
+      })
+      .expect(201);
+
+    const bookingId = bookingResponse.body.booking.id;
+
+    await request(app)
+      .patch(`/api/bookings/${bookingId}/owner-status`)
+      .set('Authorization', `Bearer ${activityProviderToken}`)
+      .send({
+        status: 'OWNER_APPROVED'
+      })
+      .expect(200);
+
+    const payment = await prisma.payment.update({
+      where: {
+        bookingId
+      },
+      data: {
+        status: 'PAID',
+        paidAt: new Date()
+      }
+    });
+
+    await request(app)
+      .patch(`/api/bookings/${bookingId}/cancellation-request`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        reason: 'BB smoke customer requested cancellation after payment.'
+      })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.booking).toMatchObject({
+          id: bookingId,
+          status: 'CANCELLATION_REQUESTED',
+          cancellationReason: 'BB smoke customer requested cancellation after payment.'
+        });
+      });
+
+    await request(app)
+      .patch(`/api/bookings/admin/${bookingId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'CANCELLED'
+      })
+      .expect(400)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          message: 'Paid bookings must be refunded before cancellation can be completed'
+        });
+      });
+
+    await request(app)
+      .patch(`/api/bookings/admin/payments/${payment.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'REFUNDED'
+      })
+      .expect(200);
+
+    await request(app)
+      .patch(`/api/bookings/admin/${bookingId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'CANCELLED'
+      })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.booking).toMatchObject({
+          id: bookingId,
+          status: 'CANCELLED'
+        });
+      });
+
+    const refundedPayment = await prisma.payment.findUniqueOrThrow({
+      where: {
+        id: payment.id
+      }
+    });
+
+    expect(refundedPayment.status).toBe('REFUNDED');
+
+    const notificationsResponse = await request(app)
+      .get('/api/notifications?take=20')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(200);
+
+    expect(notificationsResponse.body.notifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'BOOKING_CANCELLED',
+          title: 'Booking cancelled',
+          actionUrl: `/dashboard?booking=${bookingId}`,
+          actionContext: 'BOOKING'
+        })
+      ])
+    );
+  });
+
+  it('smokes saved listing, watchlist, review moderation, and marketplace trust report review', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+
+    const listing = await prisma.listing.create({
+      data: {
+        slug: 'bb-smoke-marketplace-record',
+        title: 'BB Smoke Marketplace Record',
+        titleEn: 'BB Smoke Marketplace Record',
+        description:
+          'A critical marketplace smoke listing used for saved items, reviews, and trust reports.',
+        type: 'Apartment',
+        typeEn: 'Apartment',
+        transaction: 'Sale',
+        location: 'Muscat, Oman',
+        price: 'OMR 125,000',
+        priceAmount: '125000',
+        priceCurrency: 'OMR',
+        priceQualifier: 'FIXED',
+        priceUnit: 'TOTAL',
+        beds: 2,
+        baths: 2,
+        sqm: 145,
+        image: 'https://example.com/bb-smoke-marketplace-record.jpg',
+        status: 'APPROVED',
+        ownerId: owner.id
+      }
+    });
+
+    await request(app)
+      .post(`/api/saved/listings/${listing.id}`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(201);
+
+    await request(app)
+      .post('/api/saved/watchlist')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        listingId: listing.id,
+        notes: 'BB smoke watchlist target.',
+        targetPrice: 120000,
+        alertOnPriceChange: true,
+        alertOnNewComparables: true
+      })
+      .expect(201);
+
+    const savedResponse = await request(app)
+      .get('/api/saved')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(200);
+
+    expect(savedResponse.body.listings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          listingId: listing.id
+        })
+      ])
+    );
+    expect(savedResponse.body.watchlist).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          listingId: listing.id
+        })
+      ])
+    );
+
+    const reviewResponse = await request(app)
+      .post('/api/reviews')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        targetType: 'LISTING',
+        targetId: listing.id,
+        rating: 5,
+        title: 'BB smoke review',
+        body: 'This review exercises the marketplace review moderation smoke path.'
+      })
+      .expect(201);
+
+    const reviewId = reviewResponse.body.review.id;
+
+    await request(app)
+      .patch(`/api/reviews/admin/${reviewId}/moderate`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'APPROVED',
+        moderationNotes: 'BB smoke review approved.'
+      })
+      .expect(200);
+
+    const publicReviewsResponse = await request(app)
+      .get('/api/reviews')
+      .query({
+        targetType: 'LISTING',
+        targetId: listing.id
+      })
+      .expect(200);
+
+    expect(publicReviewsResponse.body.reviews).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: reviewId,
+          status: 'APPROVED',
+          rating: 5
+        })
+      ])
+    );
+
+    const reportResponse = await request(app)
+      .post('/api/reports')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        targetType: 'LISTING',
+        targetId: listing.id,
+        reason: 'MISLEADING_INFO',
+        message: 'BB smoke trust report for a marketplace listing.'
+      })
+      .expect(201);
+
+    const reportId = reportResponse.body.report.id;
+
+    await request(app)
+      .patch(`/api/reports/admin/${reportId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'RESOLVED',
+        reviewNotes: 'BB smoke marketplace trust report resolved.'
+      })
+      .expect(200);
+
+    const notificationsResponse = await request(app)
+      .get('/api/notifications?take=20')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(200);
+
+    expect(notificationsResponse.body.notifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'REVIEW_STATUS_UPDATED',
+          title: 'Trust report reviewed',
+          actionUrl: '/dashboard',
+          actionContext: 'REPORT',
+          targetType: 'REPORT'
+        })
+      ])
+    );
+  });
+});
+
 describe('admin production system health', () => {
   it('blocks non-admin users from reading system health', async () => {
     await request(app)

@@ -28,7 +28,8 @@
     "verify:frontend-cache": "npm run verify:cache -w frontend",
     "ops:email-deliveries:prune:dry-run": "npm run jobs:email-deliveries:prune -w backend -- --days=180 --dry-run",
     "ops:email-deliveries:prune": "npm run jobs:email-deliveries:prune -w backend -- --days=180 --execute",
-    "verify:seo": "npm run verify:seo -w frontend"
+    "verify:seo": "npm run verify:seo -w frontend",
+    "test:marketplace-smoke": "npm run test:marketplace-smoke -w backend"
   },
   "workspaces": [
     "backend",

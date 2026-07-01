@@ -25,7 +25,8 @@
     "test:all": "npm run test && npm run test:integration",
     "jobs:notifications:once": "tsx src/jobs/runNotificationJobs.ts",
     "verify:production-env": "tsx scripts/verifyProductionEnv.ts",
-    "jobs:email-deliveries:prune": "tsx scripts/pruneEmailDeliveryEvents.ts"
+    "jobs:email-deliveries:prune": "tsx scripts/pruneEmailDeliveryEvents.ts",
+    "test:marketplace-smoke": "node scripts/run-with-test-env.mjs npx prisma migrate deploy && node scripts/run-with-test-env.mjs npx vitest run --config vitest.integration.config.mts --testNamePattern=critical-marketplace-smoke"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

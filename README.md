@@ -120,7 +120,13 @@ Critical launch smoke tests:
 
     npm run test:smoke
 
-The smoke suite exercises the launch-critical auth, account-security, verification, trust/safety reporting, notification routing, and transactional email preference flows as one production-readiness regression check. It is also included in the full integration test suite.
+The launch smoke suite exercises the launch-critical auth, account-security, verification, trust/safety reporting, notification routing, and transactional email preference flows as one production-readiness regression check. It is also included in the full integration test suite.
+
+Critical marketplace flow smoke tests:
+
+    npm run test:marketplace-smoke
+
+The marketplace smoke suite exercises public discovery, listing booking requests, provider approvals, payable activity checkout, payment sync, receipts, cancellation/refund handling, saved/watchlist/review flows, trust reports, and notification deep links. It is also included in the full integration test suite.
 
 ## Database commands
 
