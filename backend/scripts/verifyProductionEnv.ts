@@ -24,7 +24,11 @@ const validProductionEnv: NodeJS.ProcessEnv = {
   CLOUDINARY_CLOUD_NAME: 'lux-om-fixture',
   CLOUDINARY_API_KEY: 'cloudinary-key-fixture',
   CLOUDINARY_API_SECRET: 'cloudinary-secret-fixture',
-  CLOUDINARY_FOLDER: 'lux-om'
+  CLOUDINARY_FOLDER: 'lux-om',
+  THAWANI_SECRET_KEY: 'thawani-secret-fixture',
+  THAWANI_PUBLISHABLE_KEY: 'thawani-publishable-fixture',
+  THAWANI_API_BASE_URL: 'https://checkout.thawani.om/api/v1',
+  THAWANI_CHECKOUT_BASE_URL: 'https://checkout.thawani.om'
 };
 
 Object.assign(process.env, validProductionEnv);
@@ -110,6 +114,20 @@ async function main() {
   expectInvalid('production database points to test database', {
     DATABASE_URL: 'postgresql://postgres:postgres@example.com:5432/lux_om_test?schema=public'
   }, 'DATABASE_URL');
+
+  expectInvalid('missing production Thawani credentials', {
+    THAWANI_SECRET_KEY: '',
+    THAWANI_PUBLISHABLE_KEY: ''
+  }, 'Thawani payment credentials are required in production');
+
+  expectInvalid('missing production Thawani URLs', {
+    THAWANI_API_BASE_URL: '',
+    THAWANI_CHECKOUT_BASE_URL: ''
+  }, 'Thawani payment URLs are required in production');
+
+  expectInvalid('localhost production Thawani checkout URL', {
+    THAWANI_CHECKOUT_BASE_URL: 'http://localhost:3000'
+  }, 'THAWANI_CHECKOUT_BASE_URL');
 
   console.log('Production auth/security environment validation passed.');
 }

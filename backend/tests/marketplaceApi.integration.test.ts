@@ -6,6 +6,7 @@ import request from 'supertest';
 import bcrypt from 'bcryptjs';
 
 import { createApp } from '../src/app';
+import { validateEnv } from '../src/config/env';
 import { prisma } from '../src/lib/prisma';
 import { signToken } from '../src/middleware/auth';
 import { authAbuseRateLimitRules } from '../src/middleware/rateLimit';
@@ -394,6 +395,56 @@ beforeAll(async () => {
 afterAll(async () => {
   await clearTestDatabase();
   await prisma.$disconnect();
+});
+
+
+describe('payment environment validation', () => {
+  const productionEnv = {
+    NODE_ENV: 'production',
+    PORT: '4000',
+    DATABASE_URL: 'postgresql://postgres:postgres@db.example.com:5432/lux_om?schema=public',
+    JWT_SECRET: 'a'.repeat(64),
+    CORS_ORIGIN: 'https://lux.om',
+    FRONTEND_URL: 'https://lux.om',
+    EMAIL_DELIVERY_MODE: 'smtp',
+    SMTP_HOST: 'smtp.example.com',
+    SMTP_PORT: '587',
+    SMTP_SECURE: 'false',
+    SMTP_USER: 'smtp-user',
+    SMTP_PASS: 'smtp-pass',
+    MAIL_FROM: 'Lux <noreply@lux.om>',
+    RATE_LIMIT_TRUST_PROXY_HOPS: '1'
+  } as NodeJS.ProcessEnv;
+
+  it('requires Thawani credentials and production-safe payment URLs in production', () => {
+    expect(() =>
+      validateEnv({
+        ...productionEnv,
+        THAWANI_API_BASE_URL: 'http://localhost:3000/api/v1',
+        THAWANI_CHECKOUT_BASE_URL: 'http://localhost:3000'
+      })
+    ).toThrow(/Thawani payment credentials are required in production/);
+
+    expect(() =>
+      validateEnv({
+        ...productionEnv,
+        THAWANI_SECRET_KEY: 'live_secret',
+        THAWANI_PUBLISHABLE_KEY: 'live_publishable',
+        THAWANI_API_BASE_URL: 'http://localhost:3000/api/v1',
+        THAWANI_CHECKOUT_BASE_URL: 'http://localhost:3000'
+      })
+    ).toThrow(/THAWANI_API_BASE_URL must use HTTPS in production/);
+
+    expect(
+      validateEnv({
+        ...productionEnv,
+        THAWANI_SECRET_KEY: 'live_secret',
+        THAWANI_PUBLISHABLE_KEY: 'live_publishable',
+        THAWANI_API_BASE_URL: 'https://checkout.thawani.om/api/v1',
+        THAWANI_CHECKOUT_BASE_URL: 'https://checkout.thawani.om'
+      }).THAWANI_SECRET_KEY
+    ).toBe('live_secret');
+  });
 });
 
 describe('production HTTP security and cache headers', () => {
@@ -2707,6 +2758,20 @@ describe('POST /api/bookings', () => {
       expect(response.body.payment.checkoutUrl).toBe(
         'https://uatcheckout.thawani.om/pay/checkout_test_session?key=test_publishable'
       );
+
+      const repeatResponse = await request(app)
+        .post(`/api/bookings/${bookingId}/payments/session`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .expect(200);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(repeatResponse.body.payment).toMatchObject({
+        status: 'PENDING',
+        provider: 'THAWANI',
+        providerSessionId: 'checkout_test_session',
+        checkoutUrl:
+          'https://uatcheckout.thawani.om/pay/checkout_test_session?key=test_publishable'
+      });
     } finally {
       globalThis.fetch = previousFetch;
       process.env.THAWANI_SECRET_KEY = previousSecret;
@@ -2802,6 +2867,18 @@ describe('POST /api/bookings', () => {
       expect(response.body.payment.paidAt).toEqual(expect.any(String));
       expect(response.body.booking.payment.status).toBe('PAID');
 
+      const callsAfterPaidSync = fetchMock.mock.calls.length;
+      const repeatSyncResponse = await request(app)
+        .post(`/api/bookings/${bookingId}/payments/sync`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .expect(200);
+
+      expect(fetchMock).toHaveBeenCalledTimes(callsAfterPaidSync);
+      expect(repeatSyncResponse.body.payment.status).toBe('PAID');
+      expect(repeatSyncResponse.body.payment.providerSessionId).toBe(
+        'checkout_paid_session'
+      );
+
       const paymentEvent = await prisma.bookingEvent.findFirst({
         where: {
           bookingId,
@@ -2863,6 +2940,95 @@ describe('POST /api/bookings', () => {
       expect(rejectionResponse.body).toMatchObject({
         message: 'Paid bookings cannot be rejected by the provider'
       });
+    } finally {
+      globalThis.fetch = previousFetch;
+      process.env.THAWANI_SECRET_KEY = previousSecret;
+      process.env.THAWANI_PUBLISHABLE_KEY = previousPublishable;
+    }
+  });
+
+  it('rejects payment sync when Thawani returns a mismatched session id', async () => {
+    const previousFetch = globalThis.fetch;
+    const previousSecret = process.env.THAWANI_SECRET_KEY;
+    const previousPublishable = process.env.THAWANI_PUBLISHABLE_KEY;
+
+    process.env.THAWANI_SECRET_KEY = 'test_secret';
+    process.env.THAWANI_PUBLISHABLE_KEY = 'test_publishable';
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            session_id: 'checkout_integrity_session',
+            payment_status: 'unpaid'
+          }
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            session_id: 'tampered_session',
+            payment_status: 'paid'
+          }
+        })
+      });
+
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const activity = await prisma.activity.findUniqueOrThrow({
+        where: {
+          slug: 'integration-city-walk'
+        }
+      });
+
+      const bookingResponse = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          activityId: activity.id,
+          scheduledDate: '2026-07-18',
+          guests: 1
+        })
+        .expect(201);
+
+      const bookingId = bookingResponse.body.booking.id;
+
+      await request(app)
+        .patch(`/api/bookings/${bookingId}/owner-status`)
+        .set('Authorization', `Bearer ${activityProviderToken}`)
+        .send({
+          status: 'OWNER_APPROVED'
+        })
+        .expect(200);
+
+      await request(app)
+        .post(`/api/bookings/${bookingId}/payments/session`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .expect(200);
+
+      const response = await request(app)
+        .post(`/api/bookings/${bookingId}/payments/sync`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .expect(502);
+
+      expect(response.body).toMatchObject({
+        message: 'Thawani payment session mismatch'
+      });
+
+      const payment = await prisma.payment.findFirstOrThrow({
+        where: {
+          bookingId
+        }
+      });
+
+      expect(payment.status).toBe('PENDING');
+      expect(payment.providerSessionId).toBe('checkout_integrity_session');
     } finally {
       globalThis.fetch = previousFetch;
       process.env.THAWANI_SECRET_KEY = previousSecret;

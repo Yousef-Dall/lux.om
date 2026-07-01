@@ -170,6 +170,10 @@ function createEnvSchema(input: NodeJS.ProcessEnv) {
         .optional()
         .transform((value) => value || undefined),
       CLOUDINARY_FOLDER: z.string().trim().default('lux-om'),
+      THAWANI_SECRET_KEY: optionalTrimmedString,
+      THAWANI_PUBLISHABLE_KEY: optionalTrimmedString,
+      THAWANI_API_BASE_URL: optionalTrimmedString,
+      THAWANI_CHECKOUT_BASE_URL: optionalTrimmedString,
       CSP_CONNECT_SRC: optionalTrimmedString,
       CSP_IMG_SRC: optionalTrimmedString,
       CSP_FRAME_SRC: optionalTrimmedString
@@ -242,6 +246,48 @@ function createEnvSchema(input: NodeJS.ProcessEnv) {
             message:
               'RATE_LIMIT_TRUST_PROXY_HOPS must be at least 1 in production so rate limits use the real client IP behind a proxy'
           });
+        }
+
+        const requiredThawaniCredentialFields = [
+          ['THAWANI_SECRET_KEY', env.THAWANI_SECRET_KEY],
+          ['THAWANI_PUBLISHABLE_KEY', env.THAWANI_PUBLISHABLE_KEY]
+        ] as const;
+
+        for (const [field, value] of requiredThawaniCredentialFields) {
+          if (!value) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [field],
+              message: 'Thawani payment credentials are required in production'
+            });
+          }
+        }
+
+        const requiredThawaniUrlFields = [
+          ['THAWANI_API_BASE_URL', env.THAWANI_API_BASE_URL],
+          ['THAWANI_CHECKOUT_BASE_URL', env.THAWANI_CHECKOUT_BASE_URL]
+        ] as const;
+
+        for (const [field, value] of requiredThawaniUrlFields) {
+          if (!value) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [field],
+              message: 'Thawani payment URLs are required in production'
+            });
+          }
+        }
+
+        if (env.THAWANI_API_BASE_URL) {
+          validateHttpsProductionUrl(env.THAWANI_API_BASE_URL, 'THAWANI_API_BASE_URL', ctx);
+        }
+
+        if (env.THAWANI_CHECKOUT_BASE_URL) {
+          validateHttpsProductionUrl(
+            env.THAWANI_CHECKOUT_BASE_URL,
+            'THAWANI_CHECKOUT_BASE_URL',
+            ctx
+          );
         }
       } else if (env.FRONTEND_URL) {
         try {

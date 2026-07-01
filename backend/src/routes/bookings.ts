@@ -20,6 +20,7 @@ const CHECKOUT_PROVIDER = 'THAWANI';
 const DEFAULT_COMMISSION_RATE = 0.1;
 const DEFAULT_THAWANI_API_BASE_URL = 'https://uatcheckout.thawani.om/api/v1';
 const DEFAULT_THAWANI_CHECKOUT_BASE_URL = 'https://uatcheckout.thawani.om';
+const TERMINAL_PAYMENT_STATUSES = ['PAID', 'REFUNDED'] as const;
 
 type BookingWithPayment = NonNullable<
   Awaited<ReturnType<typeof prisma.booking.findUnique>>
@@ -40,6 +41,11 @@ type ThawaniCreateSessionData = {
 type ThawaniRetrieveSessionData = {
   session_id: string;
   payment_status: 'paid' | 'unpaid' | 'cancelled';
+  client_reference_id?: string;
+  metadata?: {
+    booking_id?: string;
+    payment_id?: string;
+  };
 };
 
 const timeSchema = z
@@ -878,6 +884,12 @@ function isPaidBooking(booking: { payment?: { status: string } | null }) {
   return booking.payment?.status === 'PAID';
 }
 
+function isTerminalPaymentStatus(status: string) {
+  return TERMINAL_PAYMENT_STATUSES.includes(
+    status as (typeof TERMINAL_PAYMENT_STATUSES)[number]
+  );
+}
+
 function assertBookingCanStartPayment(booking: { status: string }) {
   if (booking.status === 'OWNER_APPROVED' || booking.status === 'ADMIN_CONFIRMED') {
     return;
@@ -1010,6 +1022,38 @@ async function createThawaniCheckoutSession(booking: any) {
 
 async function retrieveThawaniSession(sessionId: string) {
   return callThawani<ThawaniRetrieveSessionData>(`/checkout/session/${sessionId}`);
+}
+
+function assertRetrievedThawaniSessionMatchesPayment(
+  thawaniSession: ThawaniRetrieveSessionData,
+  payment: { providerSessionId: string | null; reference: string | null; id: string },
+  bookingId: string
+) {
+  if (thawaniSession.session_id !== payment.providerSessionId) {
+    throw new AppError(502, 'Thawani payment session mismatch');
+  }
+
+  if (
+    thawaniSession.client_reference_id &&
+    payment.reference &&
+    thawaniSession.client_reference_id !== payment.reference
+  ) {
+    throw new AppError(502, 'Thawani payment reference mismatch');
+  }
+
+  if (
+    thawaniSession.metadata?.booking_id &&
+    thawaniSession.metadata.booking_id !== bookingId
+  ) {
+    throw new AppError(502, 'Thawani booking metadata mismatch');
+  }
+
+  if (
+    thawaniSession.metadata?.payment_id &&
+    thawaniSession.metadata.payment_id !== payment.id
+  ) {
+    throw new AppError(502, 'Thawani payment metadata mismatch');
+  }
 }
 
 function mapThawaniPaymentStatus(status: string) {
@@ -1319,7 +1363,19 @@ bookingsRouter.post('/:id/payments/session', requireAuth(), async (req, res, nex
       );
     }
 
-    if (booking.payment.status === 'PAID') {
+    if (isTerminalPaymentStatus(booking.payment.status)) {
+      res.json({
+        booking,
+        payment: booking.payment
+      });
+      return;
+    }
+
+    if (
+      booking.payment.status === 'PENDING' &&
+      booking.payment.providerSessionId &&
+      booking.payment.checkoutUrl
+    ) {
       res.json({
         booking,
         payment: booking.payment
@@ -1385,7 +1441,20 @@ bookingsRouter.post('/:id/payments/sync', requireAuth(), async (req, res, next) 
       throw new AppError(400, 'Payment session has not been created yet');
     }
 
+    if (isTerminalPaymentStatus(booking.payment.status)) {
+      res.json({
+        booking,
+        payment: booking.payment
+      });
+      return;
+    }
+
     const thawaniSession = await retrieveThawaniSession(booking.payment.providerSessionId);
+    assertRetrievedThawaniSessionMatchesPayment(
+      thawaniSession,
+      booking.payment,
+      booking.id
+    );
     const status = mapThawaniPaymentStatus(thawaniSession.payment_status);
 
     const payment = await prisma.payment.update({

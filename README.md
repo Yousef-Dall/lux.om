@@ -73,6 +73,10 @@ Backend backend/.env:
     CLOUDINARY_API_SECRET=""
     CLOUDINARY_FOLDER="lux-om"
     EMAIL_DELIVERY_RETENTION_DAYS=180
+    THAWANI_SECRET_KEY=""
+    THAWANI_PUBLISHABLE_KEY=""
+    THAWANI_API_BASE_URL="https://uatcheckout.thawani.om/api/v1"
+    THAWANI_CHECKOUT_BASE_URL="https://uatcheckout.thawani.om"
 
 Frontend frontend/.env:
 
@@ -215,6 +219,7 @@ Before deployment:
 - Run npm run db:migrate:deploy before starting the backend.
 - Confirm /api/ready returns database connected.
 - Build the frontend with the correct VITE_API_URL.
+- Configure production Thawani credentials and production HTTPS checkout/API URLs before enabling paid activity bookings.
 - Keep .env, backend/.env, and frontend/.env out of Git.
 
 
@@ -228,6 +233,16 @@ Before deployment:
 - The API currently uses bearer JWT auth rather than auth cookies. If auth cookies are added later, they must be `HttpOnly`, `Secure` in production, use an explicit `SameSite` policy, and only be used with exact allowlisted CORS origins.
 
 
+
+
+### Payment and checkout integrity
+
+- Paid activity bookings compute payment amounts on the backend from approved activity pricing and guest counts. Client-supplied payment amounts, commissions, providers, sessions, or checkout URLs are rejected.
+- Thawani checkout session creation is idempotent while a pending session already exists, so repeated button clicks do not mint multiple active hosted checkout sessions for the same booking payment.
+- Payment sync validates that the retrieved Thawani session matches the stored provider session, client reference, and metadata when Thawani returns those fields. Mismatched gateway responses are rejected instead of updating local payment state.
+- `PAID` and `REFUNDED` payments are terminal for customer-facing sync and checkout-session creation. A later gateway response must not downgrade a completed or refunded payment.
+- Production requires `THAWANI_SECRET_KEY`, `THAWANI_PUBLISHABLE_KEY`, `THAWANI_API_BASE_URL`, and `THAWANI_CHECKOUT_BASE_URL`. Use the live Thawani HTTPS URLs in production; keep UAT URLs for development/testing only.
+- Store booking/payment audit events for checkout session creation and completed/failed payment syncs. Use those records for operations review rather than trusting client redirects alone.
 
 ### Production logging, request IDs, and redaction
 
