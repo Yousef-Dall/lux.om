@@ -813,7 +813,61 @@ verifiedDevelopers: 'Verified developers',
         };
 
 
-  const adminReportFilters = useMemo<AdminReportFilters>(
+    const adminOperationsCopy =
+    language === 'ar'
+      ? {
+          aria: 'خريطة عمليات الإدارة',
+          approvalsTitle: 'الموافقات',
+          approvalsText: 'راجع العقارات والأنشطة المعلقة قبل النشر.',
+          commandTitle: 'مركز التشغيل',
+          commandText: 'تابع قوائم الجودة والمهام التشغيلية السريعة.',
+          healthTitle: 'صحة النظام',
+          healthText: 'راجع النظام، البريد، والثقة قبل فتح السوق للعامة.',
+          metricsTitle: 'ملخص السوق',
+          metricsText: 'أرقام النشر، الحجوزات، الشركاء، والعناصر التي تحتاج متابعة.',
+          financeTitle: 'المالية',
+          financeText: 'فلاتر التقارير، المدفوعات، العمولات، وجاهزية الصرف.',
+          bookingsTitle: 'الحجوزات',
+          bookingsText: 'حالات الحجز، الدفع، الإلغاء، وسجل التدقيق.',
+          partnersTitle: 'الشركاء',
+          partnersText: 'شركات التطوير ووكالات السفر المرتبطة بالسوق.',
+          open: 'فتح القسم'
+        }
+      : {
+          aria: 'Admin operations map',
+          approvalsTitle: 'Approvals',
+          approvalsText: 'Review pending listings and activities before publishing.',
+          commandTitle: 'Command center',
+          commandText: 'Track quality queues and fast operational tasks.',
+          healthTitle: 'System health',
+          healthText: 'Review system, email, and trust readiness before launch.',
+          metricsTitle: 'Marketplace summary',
+          metricsText: 'Publishing, booking, partner, and attention metrics.',
+          financeTitle: 'Finance',
+          financeText: 'Report filters, payments, commissions, and payout readiness.',
+          bookingsTitle: 'Bookings',
+          bookingsText: 'Booking status, payment state, cancellation, and audit history.',
+          partnersTitle: 'Partners',
+          partnersText: 'Developer companies and travel agencies connected to the marketplace.',
+          open: 'Open section'
+        };
+
+  function scrollToAdminSection(sectionId: string) {
+    const section = document.getElementById(sectionId);
+
+    if (!section) return;
+
+    section.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+
+    section.focus({
+      preventScroll: true
+    });
+  }
+
+const adminReportFilters = useMemo<AdminReportFilters>(
     () => ({
       status: adminBookingStatusFilter,
       paymentStatus: adminPaymentStatusFilter,
@@ -963,7 +1017,59 @@ const metrics = useMemo(() => {
   };
 }, [activities, bookings, developers, listings, travelAgencies]);
 
-  const filteredListings = useMemo(
+    const adminOperationCards = [
+    {
+      title: adminOperationsCopy.approvalsTitle,
+      text: adminOperationsCopy.approvalsText,
+      metric: metrics.needsAttention,
+      sectionId: 'admin-approvals',
+      icon: ShieldCheck
+    },
+    {
+      title: adminOperationsCopy.commandTitle,
+      text: adminOperationsCopy.commandText,
+      metric: metrics.pendingListings + metrics.pendingActivities,
+      sectionId: 'admin-command-center',
+      icon: Inbox
+    },
+    {
+      title: adminOperationsCopy.healthTitle,
+      text: adminOperationsCopy.healthText,
+      metric: metrics.pendingBookings,
+      sectionId: 'admin-health',
+      icon: AlertCircle
+    },
+    {
+      title: adminOperationsCopy.metricsTitle,
+      text: adminOperationsCopy.metricsText,
+      metric: listings.length + activities.length,
+      sectionId: 'admin-overview-metrics',
+      icon: Sparkles
+    },
+    {
+      title: adminOperationsCopy.financeTitle,
+      text: adminOperationsCopy.financeText,
+      metric: finance?.ledger.length ?? 0,
+      sectionId: 'admin-finance-section',
+      icon: CreditCard
+    },
+    {
+      title: adminOperationsCopy.bookingsTitle,
+      text: adminOperationsCopy.bookingsText,
+      metric: bookings.length,
+      sectionId: 'admin-bookings-section',
+      icon: CalendarDays
+    },
+    {
+      title: adminOperationsCopy.partnersTitle,
+      text: adminOperationsCopy.partnersText,
+      metric: travelAgencies.length + developers.length,
+      sectionId: 'admin-partners-section',
+      icon: Building2
+    }
+  ];
+
+const filteredListings = useMemo(
     () =>
       listings.filter((listing) =>
         matchesReviewStatus(listing.status, reviewStatusFilter)
@@ -1422,6 +1528,39 @@ async function deleteDeveloperCompany(developerId: string) {
     );
   }
 
+        {!loading && !loadError ? (
+          <div className="admin-operations-map" aria-label={adminOperationsCopy.aria}>
+            {adminOperationCards.map((card) => {
+              const Icon = card.icon;
+
+              return (
+                <article className="admin-operations-map__card" key={card.sectionId}>
+                  <div className="admin-operations-map__icon" aria-hidden="true">
+                    <Icon size={18} />
+                  </div>
+
+                  <div>
+                    <h3>{card.title}</h3>
+                    <p>{card.text}</p>
+                  </div>
+
+                  <div className="admin-operations-map__footer">
+                    <strong>{card.metric}</strong>
+
+                    <button
+                      className="button-link button-link--ghost"
+                      type="button"
+                      onClick={() => scrollToAdminSection(card.sectionId)}
+                    >
+                      {adminOperationsCopy.open}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : null}
+
   function renderPublishingApprovalCockpit() {
     const pendingListings = listings
       .filter((listing) => isPendingStatus(listing.status))
@@ -1449,6 +1588,11 @@ async function deleteDeveloperCompany(developerId: string) {
     return (
       <section
         className="publishing-approval-cockpit"
+
+        id="admin-approvals"
+
+        tabIndex={-1}
+
         aria-labelledby="publishing-approval-title"
       >
         <div className="publishing-approval-cockpit__header">
@@ -1638,7 +1782,13 @@ async function deleteDeveloperCompany(developerId: string) {
 
       {!loading && !loadError ? renderPublishingApprovalCockpit() : null}
 
-      <Stage8AdminCommandCenter token={token} />
+      <div id="admin-command-center" className="admin-anchor-section" tabIndex={-1}>
+
+
+        <Stage8AdminCommandCenter token={token} />
+
+
+      </div>
 
       {loading ? (
         <div className="empty-state empty-state--premium">
@@ -1659,13 +1809,15 @@ async function deleteDeveloperCompany(developerId: string) {
 
       {!loading && !loadError ? (
         <>
+        <div id="admin-health" className="admin-anchor-section" tabIndex={-1}>
         {token ? <AdminSystemHealthPanel token={token} /> : null}
 
         <AdminOperationsTrustPanel />
 
           {token ? <AdminEmailDeliveryHealthPanel token={token} /> : null}
+        </div>
 
-          <div className="dashboard-grid">
+          <div id="admin-overview-metrics" className="dashboard-grid admin-overview-metrics" tabIndex={-1}>
             <article className="metric-card metric-card--accent">
               <span>
                 <CheckCircle2 size={18} aria-hidden="true" />
@@ -1742,7 +1894,11 @@ async function deleteDeveloperCompany(developerId: string) {
           </div>
 
 
-          <div className="table-card table-card--premium admin-report-filters-card">
+          <div
+              id="admin-finance-section"
+              className="table-card table-card--premium admin-report-filters-card"
+              tabIndex={-1}
+            >
             <div className="table-card__header">
               <div>
                 <p className="eyebrow">{adminFinanceCopy.filters}</p>
@@ -1947,7 +2103,11 @@ async function deleteDeveloperCompany(developerId: string) {
           ) : null}
 
 
-          <div className="table-card table-card--premium admin-bookings-card">
+          <div
+              id="admin-bookings-section"
+              className="table-card table-card--premium admin-bookings-card"
+              tabIndex={-1}
+            >
             <div className="table-card__header">
               <div>
                 <p className="eyebrow">{bookingCopy.bookingManagement}</p>
@@ -2164,7 +2324,7 @@ async function deleteDeveloperCompany(developerId: string) {
             </div>
           </div>
 
-          <div className="table-card table-card--premium">
+          <div id="admin-partners-section" className="table-card table-card--premium" tabIndex={-1}>
   <div className="table-card__header">
     <div>
       <p className="eyebrow">{copy.developerManagement}</p>

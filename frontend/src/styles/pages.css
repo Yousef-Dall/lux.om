@@ -12907,3 +12907,114 @@ transition: none;
     padding: 0.9rem;
   }
 }
+
+/* =========================================================
+   Admin operations map
+   ========================================================= */
+
+.admin-operations-map {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 1.25rem 0;
+}
+
+.admin-operations-map__card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 253, 248, 0.84)),
+    radial-gradient(circle at 14% 0, rgba(224, 187, 109, 0.16), transparent 15rem);
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 1.25rem;
+  box-shadow: 0 18px 48px rgba(7, 56, 62, 0.07);
+  display: grid;
+  gap: 0.85rem;
+  min-height: 15.25rem;
+  padding: 1rem;
+}
+
+.admin-operations-map__icon {
+  align-items: center;
+  background: rgba(7, 56, 62, 0.08);
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 1rem;
+  color: var(--color-primary);
+  display: inline-flex;
+  height: 2.45rem;
+  justify-content: center;
+  width: 2.45rem;
+}
+
+.admin-operations-map__card h3 {
+  color: var(--color-primary);
+  font-size: 1.02rem;
+  letter-spacing: -0.025em;
+  margin: 0;
+}
+
+.admin-operations-map__card p {
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  font-weight: 750;
+  line-height: 1.55;
+  margin: 0.35rem 0 0;
+}
+
+.admin-operations-map__footer {
+  align-items: end;
+  display: grid;
+  gap: 0.75rem;
+  margin-top: auto;
+}
+
+.admin-operations-map__footer strong {
+  color: var(--color-primary);
+  font-size: 1.9rem;
+  letter-spacing: -0.06em;
+  line-height: 1;
+}
+
+.admin-operations-map__footer button.button-link {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  justify-content: center;
+  min-height: 2.35rem;
+  width: 100%;
+}
+
+.admin-anchor-section,
+.publishing-approval-cockpit,
+.admin-overview-metrics,
+.admin-report-filters-card,
+.admin-bookings-card,
+#admin-partners-section {
+  scroll-margin-top: 7.5rem;
+}
+
+.admin-anchor-section:focus,
+.publishing-approval-cockpit:focus,
+.admin-overview-metrics:focus,
+.admin-report-filters-card:focus,
+.admin-bookings-card:focus,
+#admin-partners-section:focus {
+  box-shadow:
+    0 0 0 3px rgba(224, 187, 109, 0.24),
+    0 14px 36px rgba(7, 56, 62, 0.08);
+  outline: none;
+}
+
+@media (max-width: 1180px) {
+  .admin-operations-map {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-operations-map {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-operations-map__card {
+    min-height: auto;
+  }
+}
