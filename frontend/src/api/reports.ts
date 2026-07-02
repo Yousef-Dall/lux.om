@@ -93,7 +93,7 @@ export async function updateAdminReportStatus(
   payload: UpdateTrustReportStatusPayload,
   token: string
 ) {
-  return apiClient.patch<{ report: Pick<AdminTrustReport, 'id' | 'targetType' | 'status' | 'reporterId'> }>(
+  return apiClient.patch<{ report: AdminTrustReport }>(
     `/api/reports/admin/${reportId}/status`,
     payload,
     { token }

@@ -116,8 +116,6 @@ export type CreateBookingPayload = {
   contactEmail?: string;
   contactPhone?: string;
   message?: string;
-  amount?: number;
-  commission?: number;
 };
 
 export type UpdateOwnerBookingStatusPayload = {

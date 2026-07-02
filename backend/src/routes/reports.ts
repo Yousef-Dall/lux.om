@@ -34,6 +34,11 @@ const adminStatusSchema = z.object({
 
 const idParamsSchema = z.object({ id: z.string().trim().min(1) });
 
+const adminReportInclude = {
+  reporter: { select: { id: true, name: true, email: true, phone: true } },
+  reviewedBy: { select: { id: true, name: true, email: true } }
+} as const;
+
 async function assertReportTargetExists(targetType: string, targetId: string) {
   if (targetType === 'OTHER') return;
 
@@ -178,10 +183,7 @@ reportsRouter.post('/', requireAuth(false), async (req, res, next) => {
 reportsRouter.get('/admin/all', requireAuth(), requireAdmin(), async (_req, res, next) => {
   try {
     const reports = await prisma.trustReport.findMany({
-      include: {
-        reporter: { select: { id: true, name: true, email: true, phone: true } },
-        reviewedBy: { select: { id: true, name: true, email: true } }
-      },
+      include: adminReportInclude,
       orderBy: { createdAt: 'desc' },
       take: 100
     });
@@ -204,12 +206,7 @@ reportsRouter.patch('/admin/:id/status', requireAuth(), requireAdmin(), async (r
         reviewNotes: data.reviewNotes,
         reviewedById: req.user!.id
       },
-      select: {
-        id: true,
-        targetType: true,
-        status: true,
-        reporterId: true
-      }
+      include: adminReportInclude
     });
 
     await notifyTrustReportReviewed(report);
