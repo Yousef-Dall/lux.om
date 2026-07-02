@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, Suspense, lazy, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { useAuth } from './auth/AuthContext';
@@ -8,12 +8,6 @@ import Navbar from './components/Navbar';
 import About from './pages/About';
 import Activities from './pages/Activities';
 import ActivityDetails from './pages/ActivityDetails';
-import AddActivity from './pages/AddActivity';
-import AddListing from './pages/AddListing';
-import Admin from './pages/Admin';
-import AdminUsers from './pages/AdminUsers';
-import AdminEmailDeliveries from './pages/AdminEmailDeliveries';
-import AdminTrustReports from './pages/AdminTrustReports';
 import Contact from './pages/Contact';
 import CancellationPolicy from './pages/CancellationPolicy';
 import Privacy from './pages/Privacy';
@@ -21,7 +15,6 @@ import RefundPolicy from './pages/RefundPolicy';
 import Terms from './pages/Terms';
 import TrustSafety from './pages/TrustSafety';
 import VerificationPolicy from './pages/VerificationPolicy';
-import Dashboard from './pages/Dashboard';
 import DeveloperDetails from './pages/DeveloperDetails';
 import Developers from './pages/Developers';
 import Home from './pages/Home';
@@ -32,15 +25,31 @@ import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Register from './pages/Register';
-import Profile from './pages/Profile';
-import Notifications from './pages/Notifications';
 import VerifyEmail from './pages/VerifyEmail';
-import GoogleAuthCallback from './pages/GoogleAuthCallback';
 import TravelAgencies from './pages/TravelAgencies';
 import TravelAgencyDetails from './pages/TravelAgencyDetails';
 
 import { useLanguage } from './i18n/LanguageContext';
 
+
+const AddActivity = lazy(() => import('./pages/AddActivity'));
+const AddListing = lazy(() => import('./pages/AddListing'));
+const Admin = lazy(() => import('./pages/Admin'));
+const AdminUsers = lazy(() => import('./pages/AdminUsers'));
+const AdminEmailDeliveries = lazy(() => import('./pages/AdminEmailDeliveries'));
+const AdminTrustReports = lazy(() => import('./pages/AdminTrustReports'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const GoogleAuthCallback = lazy(() => import('./pages/GoogleAuthCallback'));
+
+function RouteFallback() {
+  return (
+    <div className="route-loading" role="status" aria-live="polite">
+      <span>Loading lux.om…</span>
+    </div>
+  );
+}
 
 const SITE_ORIGIN = 'https://lux.om';
 
@@ -511,8 +520,9 @@ export default function App() {
       <Navbar />
 
       <main id="main-content" tabIndex={-1}>
-        <Routes>
-          <Route path="/" element={<Home />} />
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
 
           <Route path="/listings" element={<Listings />} />
           <Route path="/listings/:slug" element={<ListingDetails />} />
@@ -654,8 +664,9 @@ export default function App() {
             }
           />
 
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </Suspense>
       </main>
 
       <Footer />
