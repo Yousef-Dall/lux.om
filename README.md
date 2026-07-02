@@ -114,6 +114,10 @@ Run the deployment checklist verifier only:
 
     npm run verify:deployment-checklist
 
+Run the release candidate verifier only:
+
+    npm run verify:release-candidate
+
 Or run common steps separately:
 
     npm run typecheck
@@ -200,6 +204,7 @@ These pages are linked from the public footer and explain marketplace terms, pri
 Production runbooks:
 
 - [Production deployment checklist](docs/production-deployment-checklist.md)
+- [Release candidate launch readiness report](docs/release-candidate-launch-readiness.md)
 - [Production operations runbook](docs/production-operations-runbook.md)
 - [Admin health checklist](docs/admin-health-checklist.md)
 
@@ -251,6 +256,17 @@ Post-deployment smoke verification:
 - Run npm run test:marketplace-smoke for discovery, booking, checkout/payment, cancellation/refund, saved/review, and report flows.
 - Verify /health, /api/health, and /api/ready on the live backend.
 - Verify /robots.txt, /sitemap.xml, and /site.webmanifest on the live frontend.
+
+
+## Release candidate launch readiness
+
+The final launch readiness report lives in [docs/release-candidate-launch-readiness.md](docs/release-candidate-launch-readiness.md). It summarizes completed hardening patches, automated verification commands, GO/NO-GO criteria, deployment sign-off sequence, and known post-launch limitations.
+
+Run the release candidate verifier directly with:
+
+    npm run verify:release-candidate
+
+`npm run verify:production` also runs this verifier so the release report stays linked to the enforced production check chain.
 
 
 ### CORS, proxy, HTTPS, and cookies

@@ -40,17 +40,24 @@ The production verification chain must include:
 1. production environment validation fixtures
 2. Prisma migration safety validation
 3. this deployment checklist verifier
-4. backend and frontend typechecks
-5. public SEO verification
-6. frontend accessibility/mobile polish verification
-7. backend integration and smoke coverage
-8. backend and frontend production builds
-9. frontend build cache/version verification
+4. release candidate launch readiness verifier
+5. backend and frontend typechecks
+6. public SEO verification
+7. frontend accessibility/mobile polish verification
+8. backend integration and smoke coverage
+9. backend and frontend production builds
+10. frontend build cache/version verification
 
 The deployment checklist verifier can also be run directly:
 
 ```bash
 npm run verify:deployment-checklist
+```
+
+The release candidate launch readiness verifier can also be run directly:
+
+```bash
+npm run verify:release-candidate
 ```
 
 ## Database migration and backup sequence
@@ -82,12 +89,13 @@ npx prisma db push --force-reset
 1. Confirm the release commit is pushed to `main` and matches the commit being deployed.
 2. Confirm required backend, frontend, database, SMTP, Cloudinary, Google OAuth, and Thawani environment variables are set in the hosting provider.
 3. Run `npm run verify:production` from the release checkout.
-4. Run the database migration and backup sequence.
-5. Deploy or restart the backend only after `npm run db:migrate:deploy` succeeds.
-6. Check backend readiness with `/api/ready` before sending traffic.
-7. Build and deploy the frontend with the production `VITE_API_URL`.
-8. Confirm static host/CDN cache rules match `frontend/public/_headers`.
-9. Confirm `index.html` is revalidated and hashed assets under `/assets/*` are immutable.
+4. Confirm `npm run verify:release-candidate` passes and the GO/NO-GO owner is named.
+5. Run the database migration and backup sequence.
+6. Deploy or restart the backend only after `npm run db:migrate:deploy` succeeds.
+7. Check backend readiness with `/api/ready` before sending traffic.
+8. Build and deploy the frontend with the production `VITE_API_URL`.
+9. Confirm static host/CDN cache rules match `frontend/public/_headers`.
+10. Confirm `index.html` is revalidated and hashed assets under `/assets/*` are immutable.
 
 ## Post-deployment smoke verification
 
