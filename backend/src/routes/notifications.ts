@@ -45,6 +45,7 @@ type NotificationWithActionSource = Prisma.NotificationGetPayload<{
 type NotificationActionContext =
   | 'ACCOUNT_SECURITY'
   | 'BOOKING'
+  | 'PUBLISHING'
   | 'REPORT'
   | 'VERIFICATION'
   | 'RENT_PAYMENT'
@@ -58,6 +59,18 @@ function dashboardAction(actionContext: NotificationActionContext) {
     actionLabel: 'Open dashboard',
     actionContext
   };
+}
+
+function isPublishingReviewNotification(notification: NotificationWithActionSource) {
+  const title = notification.title.toLowerCase();
+  const message = notification.message?.toLowerCase() ?? '';
+
+  return (
+    title.includes('listing awaiting review') ||
+    title.includes('activity awaiting review') ||
+    message.includes('needs admin review') ||
+    message.includes('awaiting review')
+  );
 }
 
 function getNotificationAction(
@@ -98,6 +111,16 @@ function getNotificationAction(
   }
 
   if (notification.type === NotificationType.REVIEW_STATUS_UPDATED) {
+    if (isAdmin && isPublishingReviewNotification(notification)) {
+      return {
+        actionUrl: '/admin',
+        actionLabel: 'Open approval workflow',
+        actionContext: 'PUBLISHING' as const,
+        targetType: 'PUBLISHING',
+        targetId: notification.id
+      };
+    }
+
     return {
       actionUrl: isAdmin ? '/admin/reports' : '/dashboard',
       actionLabel: isAdmin ? 'Open report queue' : 'View dashboard',

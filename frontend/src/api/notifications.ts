@@ -4,6 +4,7 @@ import type { ApiNotification } from './dashboard';
 export type NotificationActionContext =
   | 'ACCOUNT_SECURITY'
   | 'BOOKING'
+  | 'PUBLISHING'
   | 'REPORT'
   | 'VERIFICATION'
   | 'RENT_PAYMENT'
