@@ -12731,3 +12731,118 @@ transition: none;
     transform: none;
   }
 }
+
+/* =========================================================
+   Dashboard role-section architecture
+   ========================================================= */
+
+.dashboard-role-sections {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 1.25rem 0;
+}
+
+.dashboard-role-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 253, 248, 0.82)),
+    radial-gradient(circle at 18% 0, rgba(224, 187, 109, 0.14), transparent 16rem);
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 1.25rem;
+  box-shadow: 0 18px 48px rgba(7, 56, 62, 0.07);
+  display: grid;
+  gap: 0.95rem;
+  grid-template-rows: auto 1fr;
+  min-height: 17.5rem;
+  overflow: hidden;
+  padding: 1rem;
+  position: relative;
+}
+
+.dashboard-role-card::after {
+  background: linear-gradient(90deg, rgba(224, 187, 109, 0), rgba(224, 187, 109, 0.5), rgba(224, 187, 109, 0));
+  content: '';
+  height: 1px;
+  inset: auto 1rem 0;
+  opacity: 0.55;
+  position: absolute;
+}
+
+.dashboard-role-card__icon {
+  align-items: center;
+  background: rgba(7, 56, 62, 0.08);
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 1rem;
+  color: var(--color-primary);
+  display: inline-flex;
+  height: 2.6rem;
+  justify-content: center;
+  width: 2.6rem;
+}
+
+.dashboard-role-card__body {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.dashboard-role-card h3 {
+  color: var(--color-primary);
+  font-size: 1.05rem;
+  letter-spacing: -0.025em;
+  margin: 0;
+}
+
+.dashboard-role-card p {
+  color: var(--color-muted);
+  font-size: 0.86rem;
+  font-weight: 750;
+  line-height: 1.55;
+  margin: 0.35rem 0 0;
+}
+
+.dashboard-role-card__footer {
+  align-items: flex-end;
+  display: grid;
+  gap: 0.85rem;
+  margin-top: auto;
+}
+
+.dashboard-role-card__footer > span {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.dashboard-role-card__footer strong {
+  color: var(--color-primary);
+  font-size: 2rem;
+  letter-spacing: -0.06em;
+  line-height: 1;
+}
+
+.dashboard-role-card__footer small {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.dashboard-role-card__footer .button-link {
+  justify-content: center;
+  min-height: 2.35rem;
+  width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .dashboard-role-sections {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-role-sections {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-role-card {
+    min-height: auto;
+  }
+}

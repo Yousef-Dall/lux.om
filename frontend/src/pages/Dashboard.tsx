@@ -851,6 +851,145 @@ export default function Dashboard() {
           roleSummary: 'Account type'
         };
 
+  const dashboardWorkspaceCopy =
+    language === 'ar'
+      ? {
+          aria: 'أقسام لوحة التحكم',
+          ownerListingsTitle: 'عقارات المالك',
+          ownerListingsText: 'راجع حالة النشر، جودة الوسائط، والتحديثات المطلوبة لعقاراتك.',
+          ownerListingsAction: 'إدارة العقارات',
+          providerActivitiesTitle: 'أنشطة المزود',
+          providerActivitiesText: 'تابع الأنشطة، الصور، الطلبات، وحالة الموافقة قبل النشر.',
+          providerActivitiesAction: 'إدارة الأنشطة',
+          receivedBookingsTitle: 'طلبات الحجز',
+          receivedBookingsText: 'راجع الطلبات المستلمة، الموافقات، الإلغاءات، وحالة الدفع.',
+          receivedBookingsAction: 'راجع الطلبات',
+          operationsTitle: 'تنبيهات التشغيل',
+          operationsText: 'تابع التنبيهات غير المقروءة والإجراءات التي تحتاج متابعة.',
+          operationsAction: 'فتح التنبيهات',
+          buyerBookingsTitle: 'حجوزاتي',
+          buyerBookingsText: 'تابع طلباتك، الدفع، الإلغاء، وإيصالات الحجز من مكان واحد.',
+          buyerBookingsAction: 'راجع حجوزاتي',
+          buyerPaymentsTitle: 'المدفوعات',
+          buyerPaymentsText: 'راجع أي مدفوعات معلقة أو حجوزات تحتاج متابعة دفع.',
+          buyerPaymentsAction: 'استكشف الأنشطة',
+          buyerNotificationsTitle: 'التنبيهات',
+          buyerNotificationsText: 'تابع تحديثات الحجز والدفع والمراسلات المهمة.',
+          buyerNotificationsAction: 'فتح التنبيهات',
+          buyerExploreTitle: 'فرص جديدة',
+          buyerExploreText: 'استكشف عقارات وأنشطة وفرص استثمارية جديدة في السوق.',
+          buyerExploreAction: 'تصفح السوق',
+          items: 'عنصر',
+          pending: 'قيد المتابعة'
+        }
+      : {
+          aria: 'Dashboard workspace sections',
+          ownerListingsTitle: 'Owner listings',
+          ownerListingsText: 'Review publishing status, media quality, and required updates for your properties.',
+          ownerListingsAction: 'Manage listings',
+          providerActivitiesTitle: 'Provider activities',
+          providerActivitiesText: 'Track activities, media, booking requests, and approval status before publishing.',
+          providerActivitiesAction: 'Manage activities',
+          receivedBookingsTitle: 'Booking requests',
+          receivedBookingsText: 'Review incoming requests, approvals, cancellations, and payment status.',
+          receivedBookingsAction: 'Review requests',
+          operationsTitle: 'Operational alerts',
+          operationsText: 'Follow unread notifications and workflow items that need attention.',
+          operationsAction: 'Open notifications',
+          buyerBookingsTitle: 'My bookings',
+          buyerBookingsText: 'Track your requests, payment, cancellation, and booking receipts from one place.',
+          buyerBookingsAction: 'Review bookings',
+          buyerPaymentsTitle: 'Payments',
+          buyerPaymentsText: 'Review pending payments or bookings that need payment follow-up.',
+          buyerPaymentsAction: 'Explore activities',
+          buyerNotificationsTitle: 'Notifications',
+          buyerNotificationsText: 'Follow booking, payment, and important marketplace updates.',
+          buyerNotificationsAction: 'Open notifications',
+          buyerExploreTitle: 'New opportunities',
+          buyerExploreText: 'Explore new properties, activities, and investment opportunities in the marketplace.',
+          buyerExploreAction: 'Browse marketplace',
+          items: 'items',
+          pending: 'pending'
+        };
+
+  const dashboardWorkspaceCards = isOperatorDashboard
+    ? [
+        {
+          title: dashboardWorkspaceCopy.ownerListingsTitle,
+          text: dashboardWorkspaceCopy.ownerListingsText,
+          action: dashboardWorkspaceCopy.ownerListingsAction,
+          metric: listings.length,
+          meta: `${stats?.pendingListings ?? 0} ${dashboardWorkspaceCopy.pending}`,
+          to: '/dashboard',
+          icon: Home
+        },
+        {
+          title: dashboardWorkspaceCopy.providerActivitiesTitle,
+          text: dashboardWorkspaceCopy.providerActivitiesText,
+          action: dashboardWorkspaceCopy.providerActivitiesAction,
+          metric: activities.length,
+          meta: `${stats?.pendingActivities ?? 0} ${dashboardWorkspaceCopy.pending}`,
+          to: '/dashboard',
+          icon: Sparkles
+        },
+        {
+          title: dashboardWorkspaceCopy.receivedBookingsTitle,
+          text: dashboardWorkspaceCopy.receivedBookingsText,
+          action: dashboardWorkspaceCopy.receivedBookingsAction,
+          metric: receivedBookings.length,
+          meta: `${stats?.receivedPendingBookings ?? 0} ${dashboardWorkspaceCopy.pending}`,
+          to: '/dashboard',
+          icon: CalendarDays
+        },
+        {
+          title: dashboardWorkspaceCopy.operationsTitle,
+          text: dashboardWorkspaceCopy.operationsText,
+          action: dashboardWorkspaceCopy.operationsAction,
+          metric: unreadNotifications,
+          meta: `${notifications.length} ${dashboardWorkspaceCopy.items}`,
+          to: '/notifications',
+          icon: Bell
+        }
+      ]
+    : [
+        {
+          title: dashboardWorkspaceCopy.buyerBookingsTitle,
+          text: dashboardWorkspaceCopy.buyerBookingsText,
+          action: dashboardWorkspaceCopy.buyerBookingsAction,
+          metric: bookings.length,
+          meta: `${stats?.submittedBookings ?? 0} ${dashboardWorkspaceCopy.items}`,
+          to: '/dashboard',
+          icon: CalendarDays
+        },
+        {
+          title: dashboardWorkspaceCopy.buyerPaymentsTitle,
+          text: dashboardWorkspaceCopy.buyerPaymentsText,
+          action: dashboardWorkspaceCopy.buyerPaymentsAction,
+          metric: stats?.pendingPayments ?? 0,
+          meta: dashboardWorkspaceCopy.pending,
+          to: '/activities',
+          icon: CreditCard
+        },
+        {
+          title: dashboardWorkspaceCopy.buyerNotificationsTitle,
+          text: dashboardWorkspaceCopy.buyerNotificationsText,
+          action: dashboardWorkspaceCopy.buyerNotificationsAction,
+          metric: unreadNotifications,
+          meta: `${notifications.length} ${dashboardWorkspaceCopy.items}`,
+          to: '/notifications',
+          icon: Bell
+        },
+        {
+          title: dashboardWorkspaceCopy.buyerExploreTitle,
+          text: dashboardWorkspaceCopy.buyerExploreText,
+          action: dashboardWorkspaceCopy.buyerExploreAction,
+          metric: stats?.submittedInquiries ?? 0,
+          meta: accountDashboardCopy.inquiriesSent,
+          to: '/listings',
+          icon: Eye
+        }
+      ];
+
   return (
     <section className="page-section container dashboard-page">
       <SectionHeader
@@ -967,6 +1106,39 @@ export default function Dashboard() {
               </button>
             </div>
           ) : null}
+
+            <div className="dashboard-role-sections" aria-label={dashboardWorkspaceCopy.aria}>
+              {dashboardWorkspaceCards.map((card) => {
+                const Icon = card.icon;
+
+                return (
+                  <article className="dashboard-role-card" key={card.title}>
+                    <div className="dashboard-role-card__icon" aria-hidden="true">
+                      <Icon size={19} />
+                    </div>
+
+                    <div className="dashboard-role-card__body">
+                      <div>
+                        <h3>{card.title}</h3>
+                        <p>{card.text}</p>
+                      </div>
+
+                      <div className="dashboard-role-card__footer">
+                        <span>
+                          <strong>{card.metric}</strong>
+                          <small>{card.meta}</small>
+                        </span>
+
+                        <ButtonLink to={card.to} variant="ghost">
+                          {card.action}
+                          <ArrowUpRight size={15} aria-hidden="true" />
+                        </ButtonLink>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
 
           <div className="dashboard-grid">
             {isOperatorDashboard ? (
