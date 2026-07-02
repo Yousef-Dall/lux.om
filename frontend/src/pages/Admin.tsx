@@ -213,6 +213,14 @@ function matchesReviewStatus(status: string | undefined, filter: ReviewStatusFil
   return status === filter;
 }
 
+function getPublishingStatusPriority(status?: string) {
+  if (isPendingStatus(status)) return 0;
+  if (status === 'REJECTED') return 1;
+  if (status === 'APPROVED') return 2;
+
+  return 3;
+}
+
 
 
 function getAdminBookingTitle(booking: ApiBooking, language: 'en' | 'ar') {
@@ -1414,6 +1422,199 @@ async function deleteDeveloperCompany(developerId: string) {
     );
   }
 
+  function renderPublishingApprovalCockpit() {
+    const pendingListings = listings
+      .filter((listing) => isPendingStatus(listing.status))
+      .sort((first, second) =>
+        getPublishingStatusPriority(first.status) -
+        getPublishingStatusPriority(second.status)
+      )
+      .slice(0, 4);
+    const pendingActivities = activities
+      .filter((activity) => isPendingStatus(activity.status))
+      .sort((first, second) =>
+        getPublishingStatusPriority(first.status) -
+        getPublishingStatusPriority(second.status)
+      )
+      .slice(0, 4);
+    const pendingListingCount = listings.filter((listing) => isPendingStatus(listing.status)).length;
+    const pendingActivityCount = activities.filter((activity) => isPendingStatus(activity.status)).length;
+    const approvedPublishingCount =
+      listings.filter((listing) => listing.status === 'APPROVED').length +
+      activities.filter((activity) => activity.status === 'APPROVED').length;
+    const rejectedPublishingCount =
+      listings.filter((listing) => listing.status === 'REJECTED').length +
+      activities.filter((activity) => activity.status === 'REJECTED').length;
+
+    return (
+      <section
+        className="publishing-approval-cockpit"
+        aria-labelledby="publishing-approval-title"
+      >
+        <div className="publishing-approval-cockpit__header">
+          <div>
+            <p className="eyebrow">Publishing approvals</p>
+            <h2 id="publishing-approval-title">Manual approval cockpit</h2>
+            <p>
+              Prioritize pending listings and activities before they appear in the
+              public marketplace. Decisions here are manual lux.om publishing
+              approvals, not government or external verification.
+            </p>
+          </div>
+
+          <div className="publishing-approval-cockpit__badge">
+            <ShieldCheck size={22} aria-hidden="true" />
+            <span>{pendingListingCount + pendingActivityCount} pending</span>
+          </div>
+        </div>
+
+        <div className="publishing-approval-metrics">
+          <article>
+            <span>Pending listings</span>
+            <strong>{pendingListingCount}</strong>
+          </article>
+          <article>
+            <span>Pending activities</span>
+            <strong>{pendingActivityCount}</strong>
+          </article>
+          <article>
+            <span>Approved public items</span>
+            <strong>{approvedPublishingCount}</strong>
+          </article>
+          <article>
+            <span>Rejected items</span>
+            <strong>{rejectedPublishingCount}</strong>
+          </article>
+        </div>
+
+        <div className="publishing-approval-columns">
+          <div className="publishing-approval-column">
+            <div className="publishing-approval-column__title">
+              <Building2 size={18} aria-hidden="true" />
+              <h3>Listings needing decision</h3>
+            </div>
+
+            {pendingListings.length ? (
+              pendingListings.map((listing, index) => {
+                const owner = listing.developer
+                  ? language === 'ar'
+                    ? listing.developer.nameAr || listing.developer.nameEn
+                    : listing.developer.nameEn || listing.developer.nameAr
+                  : language === 'ar'
+                    ? listing.developerNameAr ||
+                      listing.developerNameEn ||
+                      listing.owner?.name ||
+                      copy.privateOwner
+                    : listing.developerNameEn ||
+                      listing.developerNameAr ||
+                      listing.owner?.name ||
+                      copy.privateOwner;
+                const qualityScore = getListingQualityScore(listing, index);
+
+                return (
+                  <article key={listing.id} className="publishing-approval-item">
+                    <div>
+                      <strong>{getListingTitle(listing, language)}</strong>
+                      <span>
+                        {getListingLocation(listing, language)} · {getListingType(listing, language)}
+                      </span>
+                      <small>Owner: {owner}</small>
+                      <small>Readiness score: {qualityScore}%</small>
+                    </div>
+
+                    <div className="publishing-approval-item__status">
+                      {renderStatus(listing.status)}
+                    </div>
+
+                    <div className="publishing-approval-item__actions">
+                      <ButtonLink to={`/listings/${listing.slug}`} variant="ghost">
+                        <Eye size={15} aria-hidden="true" />
+                        Open
+                      </ButtonLink>
+                      <button
+                        type="button"
+                        className="button-link button-link--secondary"
+                        disabled={updatingId === listing.id}
+                        onClick={() => updateListingStatus(listing.id, 'APPROVED')}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="button-link button-link--secondary"
+                        disabled={updatingId === listing.id}
+                        onClick={() => rejectListing(listing.id)}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </article>
+                );
+              })
+            ) : (
+              <p className="trust-note">No listing approvals are currently pending.</p>
+            )}
+          </div>
+
+          <div className="publishing-approval-column">
+            <div className="publishing-approval-column__title">
+              <CalendarDays size={18} aria-hidden="true" />
+              <h3>Activities needing decision</h3>
+            </div>
+
+            {pendingActivities.length ? (
+              pendingActivities.map((activity, index) => {
+                const qualityScore = getActivityQualityScore(activity, index);
+
+                return (
+                  <article key={activity.id} className="publishing-approval-item">
+                    <div>
+                      <strong>{getActivityTitle(activity, language)}</strong>
+                      <span>
+                        {getActivityLocation(activity, language)} · {getActivityCategory(activity, language)}
+                      </span>
+                      <small>Provider: {getActivityProvider(activity, language)}</small>
+                      <small>Readiness score: {qualityScore}%</small>
+                    </div>
+
+                    <div className="publishing-approval-item__status">
+                      {renderStatus(activity.status)}
+                    </div>
+
+                    <div className="publishing-approval-item__actions">
+                      <ButtonLink to={`/activities/${activity.slug}`} variant="ghost">
+                        <Eye size={15} aria-hidden="true" />
+                        Open
+                      </ButtonLink>
+                      <button
+                        type="button"
+                        className="button-link button-link--secondary"
+                        disabled={updatingId === activity.id}
+                        onClick={() => updateActivityStatus(activity.id, 'APPROVED')}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="button-link button-link--secondary"
+                        disabled={updatingId === activity.id}
+                        onClick={() => rejectActivity(activity.id)}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </article>
+                );
+              })
+            ) : (
+              <p className="trust-note">No activity approvals are currently pending.</p>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
   <section className="page-section container admin-page">
       <SectionHeader
@@ -1434,6 +1635,8 @@ async function deleteDeveloperCompany(developerId: string) {
           <span>{copy.qualityGate}</span>
         </div>
       </div>
+
+      {!loading && !loadError ? renderPublishingApprovalCockpit() : null}
 
       <Stage8AdminCommandCenter token={token} />
 
