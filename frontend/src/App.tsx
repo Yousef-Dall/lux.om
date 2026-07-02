@@ -3,6 +3,7 @@ import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { useAuth } from './auth/AuthContext';
 import Footer from './components/Footer';
+import AdminWorkspaceNav from './components/AdminWorkspaceNav';
 import Navbar from './components/Navbar';
 
 import About from './pages/About';
@@ -512,15 +513,31 @@ function NotFoundPage() {
 }
 
 export default function App() {
+  const { pathname } = useLocation();
+  const isAdminRoute = pathname.startsWith('/admin');
+  const isWorkspaceRoute =
+    isAdminRoute ||
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/profile') ||
+    pathname.startsWith('/notifications') ||
+    pathname.startsWith('/add-listing') ||
+    pathname.startsWith('/add-activity');
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${isWorkspaceRoute ? 'app-shell--workspace' : ''}`}>
       <ScrollToTop />
       <SeoManager />
       <RouteAnnouncer />
       <Navbar />
 
-      <main id="main-content" tabIndex={-1}>
-        <Suspense fallback={<RouteFallback />}>
+      <main
+          id="main-content"
+          className={isWorkspaceRoute ? 'app-main app-main--workspace' : 'app-main'}
+          tabIndex={-1}
+        >
+          {isAdminRoute ? <AdminWorkspaceNav /> : null}
+
+          <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/" element={<Home />} />
 
@@ -669,7 +686,7 @@ export default function App() {
         </Suspense>
       </main>
 
-      <Footer />
+      {!isWorkspaceRoute ? <Footer /> : null}
     </div>
   );
 }
