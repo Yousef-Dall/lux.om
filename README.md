@@ -110,7 +110,11 @@ Run all production readiness checks:
 
     npm run verify:production
 
-Or run each step separately:
+Run the deployment checklist verifier only:
+
+    npm run verify:deployment-checklist
+
+Or run common steps separately:
 
     npm run typecheck
     npm run test:integration
@@ -195,6 +199,7 @@ These pages are linked from the public footer and explain marketplace terms, pri
 
 Production runbooks:
 
+- [Production deployment checklist](docs/production-deployment-checklist.md)
 - [Production operations runbook](docs/production-operations-runbook.md)
 - [Admin health checklist](docs/admin-health-checklist.md)
 
@@ -218,6 +223,10 @@ Keep these values empty unless a real integration fails CSP in production and th
 
 ## Production deployment checklist
 
+The full release checklist lives in [docs/production-deployment-checklist.md](docs/production-deployment-checklist.md). The static checklist verifier is part of `npm run verify:production` and can be run directly with:
+
+    npm run verify:deployment-checklist
+
 Before deployment:
 
 - Use Node.js 20+.
@@ -227,12 +236,21 @@ Before deployment:
 - Set CORS_ORIGIN to the exact production frontend URL.
 - Do not use localhost values in production.
 - Use persistent image storage in production. Cloudinary is recommended with STORAGE_DRIVER=cloudinary.
+- Configure production SMTP, Cloudinary, Google OAuth, and Thawani values in the hosting provider secret/environment panel.
+- Run npm run verify:production from a clean release checkout.
 - Run npm run verify:db-safety and create a verified database backup before migrations.
 - Run npm run db:migrate:deploy before starting the backend.
 - Confirm /api/ready returns database connected.
 - Build the frontend with the correct VITE_API_URL.
 - Configure production Thawani credentials and production HTTPS checkout/API URLs before enabling paid activity bookings.
-- Keep .env, backend/.env, and frontend/.env out of Git.
+- Keep .env, backend/.env, frontend/.env, and database backup dumps out of Git.
+
+Post-deployment smoke verification:
+
+- Run npm run test:smoke for auth, account, verification, trust/safety, notification, and email preference flows.
+- Run npm run test:marketplace-smoke for discovery, booking, checkout/payment, cancellation/refund, saved/review, and report flows.
+- Verify /health, /api/health, and /api/ready on the live backend.
+- Verify /robots.txt, /sitemap.xml, and /site.webmanifest on the live frontend.
 
 
 ### CORS, proxy, HTTPS, and cookies
