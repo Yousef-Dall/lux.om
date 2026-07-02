@@ -921,6 +921,7 @@ export default function Dashboard() {
           metric: listings.length,
           meta: `${stats?.pendingListings ?? 0} ${dashboardWorkspaceCopy.pending}`,
           to: '/dashboard',
+          sectionId: 'dashboard-portfolio',
           icon: Home
         },
         {
@@ -930,6 +931,7 @@ export default function Dashboard() {
           metric: activities.length,
           meta: `${stats?.pendingActivities ?? 0} ${dashboardWorkspaceCopy.pending}`,
           to: '/dashboard',
+          sectionId: 'dashboard-portfolio',
           icon: Sparkles
         },
         {
@@ -939,6 +941,7 @@ export default function Dashboard() {
           metric: receivedBookings.length,
           meta: `${stats?.receivedPendingBookings ?? 0} ${dashboardWorkspaceCopy.pending}`,
           to: '/dashboard',
+          sectionId: 'dashboard-received-bookings',
           icon: CalendarDays
         },
         {
@@ -947,7 +950,8 @@ export default function Dashboard() {
           action: dashboardWorkspaceCopy.operationsAction,
           metric: unreadNotifications,
           meta: `${notifications.length} ${dashboardWorkspaceCopy.items}`,
-          to: '/notifications',
+          to: '/dashboard',
+          sectionId: 'dashboard-notifications',
           icon: Bell
         }
       ]
@@ -959,6 +963,7 @@ export default function Dashboard() {
           metric: bookings.length,
           meta: `${stats?.submittedBookings ?? 0} ${dashboardWorkspaceCopy.items}`,
           to: '/dashboard',
+          sectionId: 'dashboard-my-bookings',
           icon: CalendarDays
         },
         {
@@ -967,7 +972,8 @@ export default function Dashboard() {
           action: dashboardWorkspaceCopy.buyerPaymentsAction,
           metric: stats?.pendingPayments ?? 0,
           meta: dashboardWorkspaceCopy.pending,
-          to: '/activities',
+          to: '/dashboard',
+          sectionId: 'dashboard-my-bookings',
           icon: CreditCard
         },
         {
@@ -977,6 +983,7 @@ export default function Dashboard() {
           metric: unreadNotifications,
           meta: `${notifications.length} ${dashboardWorkspaceCopy.items}`,
           to: '/notifications',
+          sectionId: '',
           icon: Bell
         },
         {
@@ -986,9 +993,70 @@ export default function Dashboard() {
           metric: stats?.submittedInquiries ?? 0,
           meta: accountDashboardCopy.inquiriesSent,
           to: '/listings',
+          sectionId: '',
           icon: Eye
         }
       ];
+
+  const dashboardSectionCopy =
+    language === 'ar'
+      ? {
+          overviewTitle: 'ملخص سريع',
+          overviewText: 'أرقام الحساب والحالة الحالية قبل الدخول في تفاصيل الحجوزات والمحفظة.',
+          operationsTitle: 'تشغيل الحجوزات',
+          operationsText: 'متابعة ضغط الحجوزات، الطلبات المستلمة، وحالات الدفع.',
+          bookingsTitle: 'حجوزاتي ومدفوعاتي',
+          bookingsText: 'طلباتك الشخصية، حالة الدفع، الإلغاء، والإيصالات.',
+          portfolioTitle: 'محفظة المالك والمزود',
+          portfolioText: 'العقارات والأنشطة المرتبطة بحسابك مع حالة النشر وجودة الوسائط.'
+        }
+      : {
+          overviewTitle: 'Quick overview',
+          overviewText: 'Account numbers and current state before the detailed booking and portfolio sections.',
+          operationsTitle: 'Booking operations',
+          operationsText: 'Track booking pressure, received requests, cancellations, and payment state.',
+          bookingsTitle: 'My bookings and payments',
+          bookingsText: 'Your personal requests, payment state, cancellation flow, and receipts.',
+          portfolioTitle: 'Owner and provider portfolio',
+          portfolioText: 'Listings and activities connected to your account with publishing and media-quality status.'
+        };
+
+  function scrollToDashboardSection(sectionId: string) {
+    const section = document.getElementById(sectionId);
+
+    if (!section) return;
+
+    section.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+
+    section.focus({
+      preventScroll: true
+    });
+  }
+
+  useEffect(() => {
+    const focus = searchParams.get('focus') ?? '';
+    const sectionIdByFocus: Record<string, string> = {
+      overview: 'dashboard-overview',
+      operations: 'dashboard-operations',
+      'received-bookings': 'dashboard-received-bookings',
+      'my-bookings': 'dashboard-my-bookings',
+      portfolio: 'dashboard-portfolio',
+      notifications: 'dashboard-notifications'
+    };
+
+    const sectionId = sectionIdByFocus[focus];
+
+    if (!sectionId || loading || !dashboardData) return;
+
+    const timer = window.setTimeout(() => {
+      scrollToDashboardSection(sectionId);
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [dashboardData, loading, searchParams]);
 
   return (
     <section className="page-section container dashboard-page">
@@ -1129,15 +1197,36 @@ export default function Dashboard() {
                           <small>{card.meta}</small>
                         </span>
 
-                        <ButtonLink to={card.to} variant="ghost">
-                          {card.action}
-                          <ArrowUpRight size={15} aria-hidden="true" />
-                        </ButtonLink>
+                        {card.sectionId ? (
+                          <button
+                            className="button-link button-link--ghost"
+                            type="button"
+                            onClick={() => scrollToDashboardSection(card.sectionId)}
+                          >
+                            {card.action}
+                            <ArrowUpRight size={15} aria-hidden="true" />
+                          </button>
+                        ) : (
+                          <ButtonLink to={card.to} variant="ghost">
+                            {card.action}
+                            <ArrowUpRight size={15} aria-hidden="true" />
+                          </ButtonLink>
+                        )}
                       </div>
                     </div>
                   </article>
                 );
               })}
+            </div>
+
+            <div
+              className="dashboard-section-heading"
+              id="dashboard-overview"
+              tabIndex={-1}
+            >
+              <p className="eyebrow">{dashboardSectionCopy.overviewTitle}</p>
+              <h2>{dashboardSectionCopy.overviewTitle}</h2>
+              <p>{dashboardSectionCopy.overviewText}</p>
             </div>
 
           <div className="dashboard-grid">
@@ -1276,6 +1365,25 @@ export default function Dashboard() {
 
           {isOperatorDashboard ? (
             <>
+          <div
+
+            className="dashboard-section-heading"
+
+            id="dashboard-operations"
+
+            tabIndex={-1}
+
+          >
+
+            <p className="eyebrow">{dashboardSectionCopy.operationsTitle}</p>
+
+            <h2>{dashboardSectionCopy.operationsTitle}</h2>
+
+            <p>{dashboardSectionCopy.operationsText}</p>
+
+          </div>
+
+
           <div className="table-card table-card--premium dashboard-operations-card">
             <div className="table-card__header">
               <div>
@@ -1375,7 +1483,11 @@ export default function Dashboard() {
           </div>
 
 
-          <div className="table-card table-card--premium dashboard-received-bookings-card">
+          <div
+              id="dashboard-received-bookings"
+              tabIndex={-1}
+              className="table-card table-card--premium dashboard-received-bookings-card"
+            >
             <div className="table-card__header">
               <div>
                 <p className="eyebrow">{copy.receivedBookingsTitle}</p>
@@ -1507,6 +1619,34 @@ export default function Dashboard() {
 
             </>
           ) : null}
+
+          <div
+
+
+            className="dashboard-section-heading"
+
+
+            id="dashboard-my-bookings"
+
+
+            tabIndex={-1}
+
+
+          >
+
+
+            <p className="eyebrow">{dashboardSectionCopy.bookingsTitle}</p>
+
+
+            <h2>{dashboardSectionCopy.bookingsTitle}</h2>
+
+
+            <p>{dashboardSectionCopy.bookingsText}</p>
+
+
+          </div>
+
+
 
           <div className="table-card table-card--premium dashboard-bookings-card dashboard-bookings-card--enhanced">
             <div className="table-card__header">
@@ -1717,6 +1857,25 @@ export default function Dashboard() {
 
           {isOperatorDashboard ? (
             <>
+          <div
+
+            className="dashboard-section-heading"
+
+            id="dashboard-portfolio"
+
+            tabIndex={-1}
+
+          >
+
+            <p className="eyebrow">{dashboardSectionCopy.portfolioTitle}</p>
+
+            <h2>{dashboardSectionCopy.portfolioTitle}</h2>
+
+            <p>{dashboardSectionCopy.portfolioText}</p>
+
+          </div>
+
+
           <div className="dashboard-split">
             <div className="table-card table-card--premium">
               <div className="table-card__header">
@@ -1864,7 +2023,11 @@ export default function Dashboard() {
               )}
 
 
-              <div className="dashboard-notifications-card">
+              <div
+                  id="dashboard-notifications"
+                  tabIndex={-1}
+                  className="dashboard-notifications-card"
+                >
                 <div className="dashboard-notifications-header">
                   <div>
                     <p className="eyebrow">{copy.notifications}</p>
