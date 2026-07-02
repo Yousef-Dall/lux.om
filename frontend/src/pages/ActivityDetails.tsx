@@ -120,6 +120,14 @@ packageDisclaimer:
 'تفاصيل الباقة مقدمة من المنظم ويجب تأكيد الطيران والفندق والتأشيرة والتوفر قبل الحجز.',
 premiumMedia: 'الوسائط المميزة',
 report: 'الإبلاغ عن هذا النشاط',
+reviewedByLux: 'تمت مراجعته قبل النشر',
+reviewedByLuxText:
+'يعرض lux.om الأنشطة المنشورة بعد مراجعة أساسية للمحتوى والوسائط قبل ظهورها للعامة.',
+bookingPath: 'طلب حجز واضح',
+bookingPathText:
+'أرسلي طلب الحجز من النموذج، ثم تتم مراجعة الطلب مع المزود قبل التأكيد النهائي أو الدفع.',
+safeBookingNote:
+'لا يتم اعتبار الطلب مؤكداً إلا بعد مراجعة المزود والتأكيد داخل lux.om.',
 bookingTitle: 'اطلبي الحجز مباشرة',
 bookingText:
 'اختاري التاريخ والوقت وعدد الضيوف، وسيراجع فريق lux.om الطلب مع منظم النشاط.',
@@ -194,6 +202,14 @@ packageDisclaimer:
 'Package details are provided by the organizer and should be confirmed before booking, including flight, hotel, visa, and availability details.',
 premiumMedia: 'Premium media',
 report: 'Report this activity',
+reviewedByLux: 'Reviewed before publishing',
+reviewedByLuxText:
+'lux.om shows published activities after a basic content and media review before they appear publicly.',
+bookingPath: 'Clear booking path',
+bookingPathText:
+'Send the booking request from the form, then the provider reviews it before final confirmation or payment.',
+safeBookingNote:
+'Your request is not final until the provider reviews it and confirmation happens inside lux.om.',
 bookingTitle: 'Book this activity directly',
 bookingText:
 'Choose your date, preferred time, and guest count. lux.om will route the request to the activity provider.',
@@ -647,6 +663,24 @@ return ( <article className="details-page details-page--activity-detail"> <secti
               />
         </div>
 
+          <div className="detail-conversion-strip" aria-label={copy.reviewedByLux}>
+            <article>
+              <ShieldCheck size={18} aria-hidden="true" />
+              <div>
+                <strong>{copy.reviewedByLux}</strong>
+                <span>{copy.reviewedByLuxText}</span>
+              </div>
+            </article>
+
+            <article>
+              <Send size={18} aria-hidden="true" />
+              <div>
+                <strong>{copy.bookingPath}</strong>
+                <span>{copy.bookingPathText}</span>
+              </div>
+            </article>
+          </div>
+
         <div className="details-highlight-strip">
           <span>
             <Clock size={17} aria-hidden="true" />
@@ -1008,9 +1042,14 @@ return ( <article className="details-page details-page--activity-detail"> <secti
         ))}
       </div>
 
-      <div className="activity-booking-card">
+      <div className="activity-booking-card" id="activity-booking-card">
         <h2>{copy.bookingTitle}</h2>
         <p>{copy.bookingText}</p>
+
+        <div className="booking-panel-trust-note">
+          <ShieldCheck size={18} aria-hidden="true" />
+          <span>{copy.safeBookingNote}</span>
+        </div>
 
         {isAuthenticated ? (
           <form className="activity-booking-form" onSubmit={handleBookingSubmit}>

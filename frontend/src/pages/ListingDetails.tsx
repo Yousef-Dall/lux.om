@@ -69,6 +69,12 @@ notSpecified: 'غير محدد',
           premiumMedia: 'الوسائط المميزة',
           floorPlan: 'مخطط العقار',
           report: 'الإبلاغ عن هذا العقار',
+            reviewedByLux: 'تمت مراجعته قبل النشر',
+            reviewedByLuxText:
+              'يعرض lux.om العقارات المنشورة بعد مراجعة أساسية للمحتوى والوسائط قبل ظهورها للعامة.',
+            fastInquiry: 'استفسار سريع',
+            fastInquiryText: 'اختاري واتساب أو نموذج التواصل وسيساعدك فريق lux.om في توجيه الطلب للطرف المناسب.',
+            safeNextStepText: 'اطلبي التفاصيل، راجعي الأهلية والمستندات، ولا تحولي أي مبالغ خارج القنوات المتفق عليها.',
           loading: 'جاري تحميل العقار...',
           error: 'تعذر تحميل تفاصيل العقار. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
@@ -98,6 +104,12 @@ notSpecified: 'Not specified',
           premiumMedia: 'Premium media',
           floorPlan: 'Floor plan',
           report: 'Report this listing',
+            reviewedByLux: 'Reviewed before publishing',
+            reviewedByLuxText:
+              'lux.om shows published listings after a basic content and media review before they appear publicly.',
+            fastInquiry: 'Fast inquiry path',
+            fastInquiryText: 'Use WhatsApp or the contact form and lux.om will help route the request to the right party.',
+            safeNextStepText: 'Request details, review eligibility and documents, and avoid sending money outside agreed channels.',
           loading: 'Loading listing...',
           error: 'Could not load listing details. Make sure the backend is running and try again.'
         };
@@ -390,6 +402,24 @@ notSpecified: 'Not specified',
               />
             </div>
 
+              <div className="detail-conversion-strip" aria-label={copy.reviewedByLux}>
+                <article>
+                  <ShieldCheck size={18} aria-hidden="true" />
+                  <div>
+                    <strong>{copy.reviewedByLux}</strong>
+                    <span>{copy.reviewedByLuxText}</span>
+                  </div>
+                </article>
+
+                <article>
+                  <MoveRight size={18} aria-hidden="true" />
+                  <div>
+                    <strong>{copy.fastInquiry}</strong>
+                    <span>{copy.fastInquiryText}</span>
+                  </div>
+                </article>
+              </div>
+
             <div className="details-highlight-strip">
               <span>
                 <BedDouble size={17} aria-hidden="true" />
@@ -624,16 +654,30 @@ notSpecified: 'Not specified',
             </div>
           ) : null}
 
-          <ButtonLink to="/contact" isFullWidth>
-            {t.common.requestDetails}
-            <MoveRight size={16} aria-hidden="true" />
-          </ButtonLink>
+            <div className="booking-panel-trust-note">
+              <ShieldCheck size={18} aria-hidden="true" />
+              <span>{copy.safeNextStepText}</span>
+            </div>
 
-          <ButtonLink to="/contact" variant="secondary" isFullWidth>
-            {t.common.contactOwner}
-          </ButtonLink>
+            <div className="booking-panel-actions">
+              <ButtonLink to="/contact" isFullWidth>
+                {t.common.requestDetails}
+                <MoveRight size={16} aria-hidden="true" />
+              </ButtonLink>
 
-          <p>{t.listings.contactHint}</p>
+              <WhatsAppActions
+                phone={listing.owner?.phone}
+                title={listing.title}
+                location={listing.location}
+                label={language === 'ar' ? 'استفسار واتساب' : 'WhatsApp inquiry'}
+              />
+
+              <ButtonLink to="/contact" variant="secondary" isFullWidth>
+                {t.common.contactOwner}
+              </ButtonLink>
+            </div>
+
+            <p>{t.listings.contactHint}</p>
         </aside>
       </section>
 
