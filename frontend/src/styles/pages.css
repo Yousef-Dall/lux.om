@@ -12261,3 +12261,69 @@ transition: none;
     max-height: min(55vh, 360px);
   }
 }
+
+.media-quality-admin-queue .stage8-operations-row {
+  align-items: stretch;
+  gap: 1.25rem;
+}
+
+.media-quality-admin-queue .stage8-operations-actions {
+  min-width: min(100%, 26rem);
+}
+
+.media-quality-admin-queue .stage8-operations-actions label {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--muted-text, #667085);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.media-quality-admin-queue .stage8-operations-actions select,
+.media-quality-admin-queue .stage8-operations-actions textarea {
+  width: 100%;
+  border: 1px solid var(--border-subtle, rgba(15, 23, 42, 0.12));
+  border-radius: 0.9rem;
+  background: var(--surface-elevated, #fff);
+  color: var(--text-primary, #172033);
+  font: inherit;
+  line-height: 1.45;
+  padding: 0.72rem 0.85rem;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.media-quality-admin-queue .stage8-operations-actions textarea {
+  min-height: 6.5rem;
+  resize: vertical;
+}
+
+.media-quality-admin-queue .stage8-operations-actions select:focus,
+.media-quality-admin-queue .stage8-operations-actions textarea:focus {
+  border-color: var(--accent, #b8893b);
+  box-shadow: 0 0 0 3px rgba(184, 137, 59, 0.16);
+  outline: none;
+}
+
+.media-quality-admin-queue .stage8-operations-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.media-quality-admin-queue small {
+  display: block;
+  margin-top: 0.55rem;
+  color: var(--muted-text, #667085);
+}
+
+@media (max-width: 760px) {
+  .media-quality-admin-queue .stage8-operations-actions {
+    min-width: 100%;
+  }
+
+  .media-quality-admin-queue .stage8-operations-actions-row .button-link {
+    width: 100%;
+    justify-content: center;
+  }
+}

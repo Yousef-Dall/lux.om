@@ -18,6 +18,7 @@ import { authRouter } from './routes/auth';
 import { bookingsRouter } from './routes/bookings';
 import { contractsRouter } from './routes/contracts';
 import { marketInsightsRouter } from './routes/marketInsights';
+import { mediaQualityRouter } from './routes/mediaQuality';
 import { rentPaymentsRouter } from './routes/rentPayments';
 import { reportsRouter } from './routes/reports';
 import { reviewsRouter } from './routes/reviews';
@@ -112,7 +113,8 @@ const SENSITIVE_API_PREFIXES = [
   '/api/transactions',
   '/api/reports',
   '/api/saved',
-  '/api/inquiries'
+  '/api/inquiries',
+  '/api/media-quality'
 ];
 
 const PUBLIC_CACHEABLE_API_PREFIXES = [
@@ -499,6 +501,7 @@ export function createApp() {
   app.use('/api/rent-payments', rentPaymentsRouter);
   app.use('/api/transactions', transactionsRouter);
   app.use('/api/market-insights', marketInsightsRouter);
+  app.use('/api/media-quality', mediaQualityRouter);
   app.use('/api/valuations', valuationsRouter);
   app.use('/api/verification', verificationRouter);
   app.use('/api/reports', reportsRouter);

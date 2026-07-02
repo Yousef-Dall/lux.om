@@ -2,8 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { getAdminContractDrafts, type JsonRecord } from '../api/contracts';
-import { getActivities, getListings } from '../api/marketplace';
 import { getMarketInsights, refreshMarketInsightSnapshots } from '../api/marketInsights';
+import {
+  getAdminMediaQualityQueue,
+  updateAdminMediaQualityItem,
+  type AdminMediaQualityItem,
+  type AdminMediaQualityStatus,
+  type UpdateAdminMediaQualityPayload
+} from '../api/mediaQuality';
 import {
   getAdminReports,
   updateAdminReportStatus,
@@ -46,29 +52,34 @@ function getDate(record: JsonRecord, key: string) {
   }).format(date);
 }
 
-const mediaReviewStatuses = new Set(['NOT_CHECKED', 'NEEDS_REVIEW', 'BLOCKED']);
+const activeMediaQueueStatuses = new Set<AdminMediaQualityStatus>([
+  'NOT_CHECKED',
+  'NEEDS_REVIEW',
+  'BLOCKED'
+]);
 
-function toMediaQueueItem(item: unknown, itemType: 'LISTING' | 'ACTIVITY'): JsonRecord {
-  const record = item as JsonRecord;
+const mediaQualityStatusOptions: AdminMediaQualityStatus[] = [
+  'NOT_CHECKED',
+  'NEEDS_REVIEW',
+  'ACCEPTABLE',
+  'EXCELLENT',
+  'BLOCKED'
+];
 
-  return {
-    ...record,
-    mediaItemType: itemType
-  };
+function isActiveMediaQueueItem(item: AdminMediaQualityItem) {
+  return activeMediaQueueStatuses.has(item.mediaQualityStatus);
 }
 
-function isMediaReviewItem(item: JsonRecord) {
-  return mediaReviewStatuses.has(getText(item, 'mediaQualityStatus', 'NOT_CHECKED'));
+function getMediaQueueKey(item: AdminMediaQualityItem) {
+  return `${item.itemType}-${item.id}`;
 }
 
-function getMediaItemPath(item: JsonRecord) {
-  const slug = getText(item, 'slug', '');
+function getMediaItemPath(item: AdminMediaQualityItem) {
+  return item.publicPath || (item.itemType === 'ACTIVITY' ? `/activities/${item.slug}` : `/listings/${item.slug}`);
+}
 
-  if (!slug) return '';
-
-  return getText(item, 'mediaItemType', 'LISTING') === 'ACTIVITY'
-    ? `/activities/${slug}`
-    : `/listings/${slug}`;
+function formatMediaStatus(value: string) {
+  return value.replace(/_/g, ' ').toLowerCase();
 }
 
 function getReportPriority(status: string) {
@@ -94,10 +105,12 @@ export default function Stage8AdminCommandCenter({
     insights: 0
   });
   const [reports, setReports] = useState<JsonRecord[]>([]);
-  const [mediaQueue, setMediaQueue] = useState<JsonRecord[]>([]);
+  const [mediaQueue, setMediaQueue] = useState<AdminMediaQualityItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [updatingReportId, setUpdatingReportId] = useState('');
+  const [updatingMediaItemId, setUpdatingMediaItemId] = useState('');
+  const [mediaNotesById, setMediaNotesById] = useState<Record<string, string>>({});
   const [refreshingInsights, setRefreshingInsights] = useState(false);
   const [insightsMessage, setInsightsMessage] = useState('');
 
@@ -110,37 +123,36 @@ export default function Stage8AdminCommandCenter({
       try {
         setLoadError('');
 
-        const [
-          contracts,
-          verifications,
-          reportResponse,
-          reviews,
-          transactions,
-          valuations,
-          insights,
-          listings,
-          activities
-        ] = await Promise.all([
-          getAdminContractDrafts(token!),
-          getAdminVerifications(token!),
-          getAdminReports(token!),
-          getAdminReviews(token!),
-          getAdminMarketplaceTransactions(token!),
-          getAdminValuations(token!),
-          getMarketInsights(),
-          getListings('en', { take: 100 }),
-          getActivities('en', { take: 100 })
-        ]);
+          const [
+            contracts,
+            verifications,
+            reportResponse,
+            reviews,
+            transactions,
+            valuations,
+            insights,
+            mediaQualityResponse
+          ] = await Promise.all([
+            getAdminContractDrafts(token!),
+            getAdminVerifications(token!),
+            getAdminReports(token!),
+            getAdminReviews(token!),
+            getAdminMarketplaceTransactions(token!),
+            getAdminValuations(token!),
+            getMarketInsights(),
+            getAdminMediaQualityQueue(token!, { take: 12 })
+          ]);
 
         if (!active) return;
 
-        const mediaItems = [
-          ...(listings ?? []).map((listing) => toMediaQueueItem(listing, 'LISTING')),
-          ...(activities ?? []).map((activity) => toMediaQueueItem(activity, 'ACTIVITY'))
-        ].filter(isMediaReviewItem);
+          const mediaItems = mediaQualityResponse.items ?? [];
+          const mediaNotes = Object.fromEntries(
+            mediaItems.map((item) => [getMediaQueueKey(item), item.mediaQualityNotes ?? ''])
+          );
 
         setReports(reportResponse.reports ?? []);
         setMediaQueue(mediaItems.slice(0, 8));
+          setMediaNotesById(mediaNotes);
         setSummary({
           contracts: count(contracts.contracts),
           verifications: count(verifications.verifications),
@@ -148,7 +160,7 @@ export default function Stage8AdminCommandCenter({
           reviews: count(reviews.reviews),
           transactions: count(transactions.transactions),
           valuations: count(valuations.valuations),
-          mediaQuality: count(mediaItems),
+            mediaQuality: mediaQualityResponse.total ?? mediaItems.length,
           insights: count(insights.insights)
         });
       } catch (error) {
@@ -214,6 +226,59 @@ export default function Stage8AdminCommandCenter({
   }
 
 
+  async function handleUpdateMediaQuality(
+    item: AdminMediaQualityItem,
+    payload: UpdateAdminMediaQualityPayload
+  ) {
+    if (!token || updatingMediaItemId) return;
+
+    const itemKey = getMediaQueueKey(item);
+
+    try {
+      setUpdatingMediaItemId(itemKey);
+      setLoadError('');
+
+      const response = await updateAdminMediaQualityItem(
+        token,
+        item.itemType,
+        item.id,
+        payload
+      );
+      const nextItem = response.item;
+      const nextItemKey = getMediaQueueKey(nextItem);
+      const shouldRemoveFromActiveQueue = !isActiveMediaQueueItem(nextItem);
+
+      setMediaQueue((currentItems) => {
+        if (shouldRemoveFromActiveQueue) {
+          return currentItems.filter(
+            (currentItem) => getMediaQueueKey(currentItem) !== itemKey
+          );
+        }
+
+        return currentItems.map((currentItem) =>
+          getMediaQueueKey(currentItem) === itemKey ? nextItem : currentItem
+        );
+      });
+
+      if (shouldRemoveFromActiveQueue) {
+        setSummary((current) => ({
+          ...current,
+          mediaQuality: Math.max(0, current.mediaQuality - 1)
+        }));
+      }
+
+      setMediaNotesById((currentNotes) => ({
+        ...currentNotes,
+        [nextItemKey]: nextItem.mediaQualityNotes ?? ''
+      }));
+    } catch (error) {
+      console.error(error);
+      setLoadError('Could not update this media quality item.');
+    } finally {
+      setUpdatingMediaItemId('');
+    }
+  }
+
   async function handleRefreshMarketInsights() {
     if (!token || refreshingInsights) return;
 
@@ -248,7 +313,7 @@ export default function Stage8AdminCommandCenter({
     ['Review moderation', summary.reviews],
     ['Transactions', summary.transactions],
     ['Valuation review', summary.valuations],
-    ['Media quality review', summary.mediaQuality],
+      ['Media quality operations', summary.mediaQuality],
     ['Market insight locations', summary.insights]
   ] as const;
 
@@ -313,53 +378,135 @@ export default function Stage8AdminCommandCenter({
       <div className="stage8-operations-queue media-quality-admin-queue">
         <div className="details-section-heading">
           <p className="eyebrow">8.3 Media quality</p>
-          <h3>Media quality review queue</h3>
+          <h3>Media quality operations queue</h3>
           <p>
-            Items here need manual image/media review or improvement before they
-            should be treated as premium-ready.
+            Review and update listing/activity media readiness using the real
+            admin media-quality workflow.
           </p>
         </div>
 
         {mediaQueue.length ? (
-          <div className="stage8-operations-list">
-            {mediaQueue.map((item) => {
-              const itemId = getText(item, 'id');
-              const path = getMediaItemPath(item);
-              const status = getText(item, 'mediaQualityStatus', 'NOT_CHECKED');
-              const enhancementStatus = getText(item, 'enhancementStatus', 'NOT_REQUESTED');
-              const title = getText(item, 'title', getText(item, 'titleEn', 'Marketplace item'));
+            <div className="stage8-operations-list">
+              {mediaQueue.map((item) => {
+                const itemKey = getMediaQueueKey(item);
+                const path = getMediaItemPath(item);
+                const notes = mediaNotesById[itemKey] ?? item.mediaQualityNotes ?? '';
+                const isUpdating = updatingMediaItemId === itemKey;
 
-              return (
-                <article key={`${getText(item, 'mediaItemType')}-${itemId}`} className="stage8-operations-row">
-                  <div>
-                    <strong>
-                      {getText(item, 'mediaItemType')} · {title}
-                    </strong>
-                    <span>
-                      Quality: {status.replace(/_/g, ' ').toLowerCase()} · Enhancement: {enhancementStatus.replace(/_/g, ' ').toLowerCase()}
-                    </span>
-                    {getText(item, 'mediaQualityNotes', '') ? (
-                      <p>{getText(item, 'mediaQualityNotes', '')}</p>
-                    ) : (
-                      <p>Review images, missing media, and premium tour assets.</p>
-                    )}
-                  </div>
+                return (
+                  <article key={itemKey} className="stage8-operations-row">
+                    <div>
+                      <strong>
+                        {item.itemType} · {item.title}
+                      </strong>
+                      <span>
+                        Quality: {formatMediaStatus(item.mediaQualityStatus)} · Enhancement: {formatMediaStatus(item.enhancementStatus)}
+                      </span>
+                      <p>
+                        {item.imageCount} image{item.imageCount === 1 ? '' : 's'} · Main image: {item.hasMainImage ? 'yes' : 'missing'} · Video/tour: {item.hasVideoOrTour ? 'yes' : 'missing'}
+                        {item.itemType === 'LISTING' ? (
+                          <> · Floor plan: {item.hasFloorPlan ? 'yes' : 'missing'}</>
+                        ) : null}
+                      </p>
+                      {item.owner ? (
+                        <small>
+                          Owner: {item.owner.name || 'Unknown owner'} · {item.owner.email}
+                        </small>
+                      ) : null}
+                    </div>
 
-                  {path ? (
-                    <Link className="button-link button-link--secondary" to={path}>
-                      Open item
-                    </Link>
-                  ) : null}
-                </article>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="trust-note">
-            No public items currently need media quality review.
-          </p>
-        )}
-      </div>
+                    <div className="stage8-operations-actions">
+                      <label>
+                        Media status
+                        <select
+                          value={item.mediaQualityStatus}
+                          onChange={(event) =>
+                            void handleUpdateMediaQuality(item, {
+                              mediaQualityStatus: event.target.value as AdminMediaQualityStatus
+                            })
+                          }
+                          disabled={isUpdating}
+                        >
+                          {mediaQualityStatusOptions.map((statusOption) => (
+                            <option key={statusOption} value={statusOption}>
+                              {formatMediaStatus(statusOption)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label>
+                        Admin notes
+                        <textarea
+                          rows={3}
+                          value={notes}
+                          onChange={(event) =>
+                            setMediaNotesById((currentNotes) => ({
+                              ...currentNotes,
+                              [itemKey]: event.target.value
+                            }))
+                          }
+                          disabled={isUpdating}
+                          placeholder="Add a short media review note"
+                        />
+                      </label>
+
+                      <div className="stage8-operations-actions-row">
+                        <button
+                          className="button-link button-link--secondary"
+                          type="button"
+                          disabled={isUpdating}
+                          onClick={() =>
+                            void handleUpdateMediaQuality(item, {
+                              mediaQualityNotes: notes.trim() || null
+                            })
+                          }
+                        >
+                          Save notes
+                        </button>
+                        <button
+                          className="button-link button-link--secondary"
+                          type="button"
+                          disabled={isUpdating}
+                          onClick={() =>
+                            void handleUpdateMediaQuality(item, {
+                              mediaQualityStatus: 'EXCELLENT',
+                              mediaQualityNotes: notes.trim() || item.mediaQualityNotes || null
+                            })
+                          }
+                        >
+                          Mark excellent
+                        </button>
+                        <button
+                          className="button-link button-link--secondary"
+                          type="button"
+                          disabled={isUpdating}
+                          onClick={() =>
+                            void handleUpdateMediaQuality(item, {
+                              mediaQualityStatus: 'BLOCKED',
+                              mediaQualityNotes: notes.trim() || 'Blocked pending better media.'
+                            })
+                          }
+                        >
+                          Block media
+                        </button>
+                        {path ? (
+                          <Link className="button-link button-link--secondary" to={path}>
+                            Open item
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="trust-note">
+              No public items currently need media quality review.
+            </p>
+          )}
+        </div>
 
       <ContractRegistrationAdminPanel token={token} />
 
