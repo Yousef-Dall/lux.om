@@ -13135,3 +13135,37 @@ transition: none;
     0 0 0 3px rgba(224, 187, 109, 0.24),
     0 14px 36px rgba(7, 56, 62, 0.08);
 }
+
+/* =========================================================
+   Dashboard workspace tab intro
+   ========================================================= */
+
+.dashboard-tab-nav__intro {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0.2rem 0.6rem;
+}
+
+.dashboard-tab-nav__intro span {
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.dashboard-tab-nav__intro small {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+@media (max-width: 640px) {
+  .dashboard-tab-nav__intro {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+}

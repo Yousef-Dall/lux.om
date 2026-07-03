@@ -926,7 +926,7 @@ export default function Dashboard() {
           metric: listings.length,
           meta: `${stats?.pendingListings ?? 0} ${dashboardWorkspaceCopy.pending}`,
           to: '/dashboard',
-          sectionId: 'dashboard-portfolio',
+          sectionId: 'dashboard-listings',
           icon: Home
         },
         {
@@ -936,7 +936,7 @@ export default function Dashboard() {
           metric: activities.length,
           meta: `${stats?.pendingActivities ?? 0} ${dashboardWorkspaceCopy.pending}`,
           to: '/dashboard',
-          sectionId: 'dashboard-portfolio',
+          sectionId: 'dashboard-activities',
           icon: Sparkles
         },
         {
@@ -987,8 +987,8 @@ export default function Dashboard() {
           action: dashboardWorkspaceCopy.buyerNotificationsAction,
           metric: unreadNotifications,
           meta: `${notifications.length} ${dashboardWorkspaceCopy.items}`,
-          to: '/notifications',
-          sectionId: '',
+          to: '/dashboard',
+          sectionId: 'dashboard-notifications',
           icon: Bell
         },
         {
@@ -1122,6 +1122,12 @@ export default function Dashboard() {
           icon: CreditCard
         },
         {
+          id: 'notifications',
+          label: dashboardTabCopy.notifications,
+          sectionId: 'dashboard-notifications',
+          icon: Bell
+        },
+        {
           id: 'advanced',
           label: dashboardTabCopy.advanced,
           sectionId: 'dashboard-advanced-tools',
@@ -1157,10 +1163,11 @@ export default function Dashboard() {
       operations: 'dashboard-operations',
       'received-bookings': 'dashboard-received-bookings',
       'my-bookings': 'dashboard-my-bookings',
-      portfolio: 'dashboard-portfolio',
+      portfolio: 'dashboard-listings',
       listings: 'dashboard-listings',
       activities: 'dashboard-activities',
-      notifications: 'dashboard-notifications'
+      notifications: 'dashboard-notifications',
+      advanced: 'dashboard-advanced-tools'
     };
 
     const sectionId = sectionIdByFocus[focus];
