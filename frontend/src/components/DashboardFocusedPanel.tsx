@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 export type DashboardFocusedPanelMetric = {
   label: string;
@@ -20,9 +21,14 @@ export type DashboardFocusedPanelConfig = {
 type DashboardFocusedPanelProps = {
   panel: DashboardFocusedPanelConfig;
   onAction: () => void;
+  children?: ReactNode;
 };
 
-export default function DashboardFocusedPanel({ panel, onAction }: DashboardFocusedPanelProps) {
+export default function DashboardFocusedPanel({
+  panel,
+  onAction,
+  children
+}: DashboardFocusedPanelProps) {
   return (
     <section className="dashboard-focused-panel" aria-labelledby={`dashboard-focused-${panel.id}`}>
       <div className="dashboard-focused-panel__content">
@@ -47,6 +53,8 @@ export default function DashboardFocusedPanel({ panel, onAction }: DashboardFocu
           );
         })}
       </div>
+
+      {children ? <div className="dashboard-focused-panel__detail">{children}</div> : null}
 
       <button className="button-link button-link--primary" type="button" onClick={onAction}>
         {panel.actionLabel}

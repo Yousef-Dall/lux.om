@@ -1451,6 +1451,192 @@ export default function Dashboard() {
   const activeDashboardFocusedPanel =
     dashboardFocusedPanels[activeDashboardTab] ?? dashboardFocusedPanels.overview;
 
+  function renderDashboardFocusedPanelDetail() {
+    if (activeDashboardTab === 'listings' && isOperatorDashboard) {
+      return listings.length > 0 ? (
+        <div className="dashboard-focused-preview-list" role="list">
+          {listings.slice(0, 3).map((listing) => (
+            <article className="dashboard-focused-preview-card" key={listing.id} role="listitem">
+              <div>
+                <span className="dashboard-focused-preview-card__kicker">{listing.transaction}</span>
+                <h3>{listing.title}</h3>
+                <p>{listing.location}</p>
+              </div>
+
+              <div className="dashboard-focused-preview-card__meta">
+                <span className={`status-pill ${getStatusClass(listing.status)}`}>
+                  <StatusIcon status={listing.status} />
+                  {listing.status === 'APPROVED'
+                    ? copy.approved
+                    : listing.status === 'REJECTED'
+                      ? copy.rejected
+                      : copy.pending}
+                </span>
+
+                <strong>
+                  {formatMarketplacePrice({
+                    price: listing.price,
+                    priceAmount: listing.priceAmount,
+                    priceCurrency: listing.priceCurrency,
+                    priceQualifier: listing.priceQualifier,
+                    priceUnit: listing.priceUnit,
+                    language
+                  })}
+                </strong>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="dashboard-focused-preview-empty">
+          <p>{copy.emptyListings}</p>
+          <ButtonLink to="/add-listing" variant="soft">
+            <Plus size={16} aria-hidden="true" />
+            {copy.addFirstListing}
+          </ButtonLink>
+        </div>
+      );
+    }
+
+    if (activeDashboardTab === 'activities' && isOperatorDashboard) {
+      return activities.length > 0 ? (
+        <div className="dashboard-focused-preview-list" role="list">
+          {activities.slice(0, 3).map((activity) => (
+            <article className="dashboard-focused-preview-card" key={activity.id} role="listitem">
+              <div>
+                <span className="dashboard-focused-preview-card__kicker">
+                  {activity.travelRegion === 'OUTSIDE_OMAN'
+                    ? dashboardTabCopy.advanced
+                    : dashboardTabCopy.activities}
+                </span>
+                <h3>{activity.title}</h3>
+                <p>{activity.location}</p>
+              </div>
+
+              <div className="dashboard-focused-preview-card__meta">
+                <span className={`status-pill ${getStatusClass(activity.status)}`}>
+                  <StatusIcon status={activity.status} />
+                  {activity.status === 'APPROVED'
+                    ? copy.approved
+                    : activity.status === 'REJECTED'
+                      ? copy.rejected
+                      : copy.pending}
+                </span>
+
+                <strong>
+                  {formatMarketplacePrice({
+                    price: activity.price,
+                    priceAmount: activity.priceAmount,
+                    priceCurrency: activity.priceCurrency,
+                    priceQualifier: activity.priceQualifier,
+                    priceUnit: activity.priceUnit,
+                    language
+                  })}
+                </strong>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="dashboard-focused-preview-empty">
+          <p>{copy.emptyActivities}</p>
+          <ButtonLink to="/add-activity" variant="soft">
+            <Plus size={16} aria-hidden="true" />
+            {copy.addFirstActivity}
+          </ButtonLink>
+        </div>
+      );
+    }
+
+    if (activeDashboardTab === 'received-bookings' && isOperatorDashboard) {
+      return filteredReceivedBookings.length > 0 ? (
+        <div className="dashboard-focused-preview-list" role="list">
+          {filteredReceivedBookings.slice(0, 3).map((booking) => (
+            <article className="dashboard-focused-preview-card" key={booking.id} role="listitem">
+              <div>
+                <span className="dashboard-focused-preview-card__kicker">
+                  {getBookingTypeLabel(booking, language)}
+                </span>
+                <h3>{getBookingTitle(booking, language)}</h3>
+                <p>{getBookingSubtitle(booking, language) || booking.contactName || '—'}</p>
+              </div>
+
+              <div className="dashboard-focused-preview-card__meta">
+                <span className={`status-pill ${getStatusClass(booking.status)}`}>
+                  <StatusIcon status={booking.status} />
+                  {getBookingStatusLabel(booking.status, language)}
+                </span>
+
+                <strong>{formatBookingDate(booking.scheduledDate, language)}</strong>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null;
+    }
+
+    if (activeDashboardTab === 'notifications') {
+      return notifications.length > 0 ? (
+        <div className="dashboard-focused-preview-list" role="list">
+          {notifications.slice(0, 3).map((notification) => (
+            <article className="dashboard-focused-preview-card" key={notification.id} role="listitem">
+              <div>
+                <span className="dashboard-focused-preview-card__kicker">
+                  {notification.readAt ? copy.notifications : dashboardFocusedPanelCopy.unread}
+                </span>
+                <h3>{notification.title}</h3>
+                <p>{notification.message}</p>
+              </div>
+
+              <div className="dashboard-focused-preview-card__meta">
+                <strong>{formatBookingDate(notification.createdAt, language)}</strong>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null;
+    }
+
+    if (activeDashboardTab === 'my-bookings') {
+      return bookings.length > 0 ? (
+        <div className="dashboard-focused-preview-list" role="list">
+          {bookings.slice(0, 3).map((booking) => {
+            const paymentStatus = booking.payment?.status ?? 'NOT_REQUIRED';
+
+            return (
+              <article className="dashboard-focused-preview-card" key={booking.id} role="listitem">
+                <div>
+                  <span className="dashboard-focused-preview-card__kicker">
+                    {getBookingTypeLabel(booking, language)}
+                  </span>
+                  <h3>{getBookingTitle(booking, language)}</h3>
+                  <p>{getBookingSubtitle(booking, language)}</p>
+                </div>
+
+                <div className="dashboard-focused-preview-card__meta">
+                  <span className={`status-pill ${getStatusClass(paymentStatus)}`}>
+                    <StatusIcon status={paymentStatus} />
+                    {paymentStatus === 'PAID'
+                      ? copy.paymentPaid
+                      : paymentStatus === 'PENDING'
+                        ? copy.paymentPending
+                        : paymentStatus === 'FAILED'
+                          ? copy.paymentFailed
+                          : copy.paymentNotRequired}
+                  </span>
+
+                  <strong>{formatPaymentAmount(booking, copy.paymentNotRequired)}</strong>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : null;
+    }
+
+    return null;
+  }
+
   function scrollToDashboardSection(sectionId: string) {
     const matchingDashboardTab = dashboardTabs.find((tab) => tab.sectionId === sectionId);
 
@@ -1670,7 +1856,9 @@ export default function Dashboard() {
               <DashboardFocusedPanel
                 panel={activeDashboardFocusedPanel}
                 onAction={() => scrollToDashboardSection(activeDashboardFocusedPanel.sectionId)}
-              />
+              >
+                {renderDashboardFocusedPanelDetail()}
+              </DashboardFocusedPanel>
 
                         <DashboardSectionHeading
               id="dashboard-overview"
