@@ -2469,8 +2469,8 @@ export default function Dashboard() {
           />
 
 
-          <div className="dashboard-split">
-            <div id="dashboard-listings" className="table-card table-card--premium dashboard-listings-card" tabIndex={-1}>
+          <div className="dashboard-split dashboard-portfolio-records">
+            <div id="dashboard-listings" className="table-card table-card--premium dashboard-listings-card dashboard-listings-card--records" tabIndex={-1}>
               <div className="table-card__header">
                 <div>
                   <p className="eyebrow">{copy.portfolio}</p>
@@ -2568,7 +2568,7 @@ export default function Dashboard() {
               )}
             </div>
 
-            <aside id="dashboard-activities" className="dashboard-side-card dashboard-activities-card" tabIndex={-1}>
+            <aside id="dashboard-activities" className="dashboard-side-card dashboard-activities-card dashboard-activities-card--records" tabIndex={-1}>
               <div>
                 <p className="eyebrow">{copy.recentActivities}</p>
                 <h2>{copy.activities}</h2>
