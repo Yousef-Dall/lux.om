@@ -39,6 +39,7 @@ import DashboardWhatsAppActions from '../components/DashboardWhatsAppActions';
 import DashboardWorkspaceTabs, {
   type DashboardWorkspaceTabItem
 } from '../components/DashboardWorkspaceTabs';
+import DashboardSectionHeading from '../components/DashboardSectionHeading';
 import EmailVerificationBanner from '../components/EmailVerificationBanner';
 import MediaQualityGuidance from '../components/MediaQualityGuidance';
 import VerificationRequestWorkspace from '../components/VerificationRequestWorkspace';
@@ -1343,15 +1344,11 @@ export default function Dashboard() {
                 onSelect={(tab) => scrollToDashboardSection(tab.sectionId)}
               />
 
-            <div
-              className="dashboard-section-heading"
+                        <DashboardSectionHeading
               id="dashboard-overview"
-              tabIndex={-1}
-            >
-              <p className="eyebrow">{dashboardSectionCopy.overviewTitle}</p>
-              <h2>{dashboardSectionCopy.overviewTitle}</h2>
-              <p>{dashboardSectionCopy.overviewText}</p>
-            </div>
+              eyebrow={dashboardSectionCopy.overviewTitle}
+              description={dashboardSectionCopy.overviewText}
+            />
 
           <div className="dashboard-grid">
             {isOperatorDashboard ? (
@@ -1489,23 +1486,11 @@ export default function Dashboard() {
 
           {isOperatorDashboard ? (
             <>
-          <div
-
-            className="dashboard-section-heading"
-
+                    <DashboardSectionHeading
             id="dashboard-operations"
-
-            tabIndex={-1}
-
-          >
-
-            <p className="eyebrow">{dashboardSectionCopy.operationsTitle}</p>
-
-            <h2>{dashboardSectionCopy.operationsTitle}</h2>
-
-            <p>{dashboardSectionCopy.operationsText}</p>
-
-          </div>
+            eyebrow={dashboardSectionCopy.operationsTitle}
+            description={dashboardSectionCopy.operationsText}
+          />
 
 
           <div className="table-card table-card--premium dashboard-operations-card">
@@ -1744,31 +1729,11 @@ export default function Dashboard() {
             </>
           ) : null}
 
-          <div
-
-
-            className="dashboard-section-heading"
-
-
+                    <DashboardSectionHeading
             id="dashboard-my-bookings"
-
-
-            tabIndex={-1}
-
-
-          >
-
-
-            <p className="eyebrow">{dashboardSectionCopy.bookingsTitle}</p>
-
-
-            <h2>{dashboardSectionCopy.bookingsTitle}</h2>
-
-
-            <p>{dashboardSectionCopy.bookingsText}</p>
-
-
-          </div>
+            eyebrow={dashboardSectionCopy.bookingsTitle}
+            description={dashboardSectionCopy.bookingsText}
+          />
 
 
 
@@ -1981,23 +1946,11 @@ export default function Dashboard() {
 
           {isOperatorDashboard ? (
             <>
-          <div
-
-            className="dashboard-section-heading"
-
+                    <DashboardSectionHeading
             id="dashboard-portfolio"
-
-            tabIndex={-1}
-
-          >
-
-            <p className="eyebrow">{dashboardSectionCopy.portfolioTitle}</p>
-
-            <h2>{dashboardSectionCopy.portfolioTitle}</h2>
-
-            <p>{dashboardSectionCopy.portfolioText}</p>
-
-          </div>
+            eyebrow={dashboardSectionCopy.portfolioTitle}
+            description={dashboardSectionCopy.portfolioText}
+          />
 
 
           <div className="dashboard-split">
