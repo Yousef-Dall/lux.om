@@ -1029,6 +1029,8 @@ export default function Dashboard() {
     language === 'ar'
       ? {
           aria: 'تبويبات لوحة التحكم',
+          tabIntro: 'أقسام مساحة العمل',
+          sections: 'أقسام',
           overview: 'نظرة عامة',
           operations: 'التشغيل',
           receivedBookings: 'طلبات الحجز',
@@ -1041,6 +1043,8 @@ export default function Dashboard() {
         }
       : {
           aria: 'Dashboard workspace tabs',
+          tabIntro: 'Workspace sections',
+          sections: 'sections',
           overview: 'Overview',
           operations: 'Operations',
           receivedBookings: 'Booking requests',
@@ -1332,6 +1336,8 @@ export default function Dashboard() {
 
               <DashboardWorkspaceTabs
                 ariaLabel={dashboardTabCopy.aria}
+                introLabel={dashboardTabCopy.tabIntro}
+                sectionCountLabel={`${dashboardTabs.length} ${dashboardTabCopy.sections}`}
                 activeTabId={activeDashboardTab}
                 tabs={dashboardTabs}
                 onSelect={(tab) => scrollToDashboardSection(tab.sectionId)}

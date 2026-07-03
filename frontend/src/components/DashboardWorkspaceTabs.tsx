@@ -9,6 +9,8 @@ export type DashboardWorkspaceTabItem = {
 
 type DashboardWorkspaceTabsProps = {
   ariaLabel: string;
+  introLabel: string;
+  sectionCountLabel: string;
   activeTabId: string;
   tabs: DashboardWorkspaceTabItem[];
   onSelect: (tab: DashboardWorkspaceTabItem) => void;
@@ -16,12 +18,19 @@ type DashboardWorkspaceTabsProps = {
 
 export default function DashboardWorkspaceTabs({
   ariaLabel,
+  introLabel,
+  sectionCountLabel,
   activeTabId,
   tabs,
   onSelect
 }: DashboardWorkspaceTabsProps) {
   return (
     <nav className="dashboard-tab-nav" aria-label={ariaLabel}>
+      <div className="dashboard-tab-nav__intro">
+        <span>{introLabel}</span>
+        <small>{sectionCountLabel}</small>
+      </div>
+
       <div className="dashboard-tab-nav__track" role="tablist">
         {tabs.map((tab) => {
           const Icon = tab.icon;
