@@ -1036,6 +1036,7 @@ export default function Dashboard() {
           portfolio: 'المحفظة',
           listings: 'العقارات',
           activities: 'الأنشطة',
+          notifications: 'التنبيهات',
           advanced: 'الأدوات المتقدمة'
         }
       : {
@@ -1047,6 +1048,7 @@ export default function Dashboard() {
           portfolio: 'Portfolio',
           listings: 'Listings',
           activities: 'Activities',
+          notifications: 'Notifications',
           advanced: 'Advanced tools'
         };
 
@@ -1087,6 +1089,12 @@ export default function Dashboard() {
           label: dashboardTabCopy.activities,
           sectionId: 'dashboard-activities',
           icon: Sparkles
+        },
+        {
+          id: 'notifications',
+          label: dashboardTabCopy.notifications,
+          sectionId: 'dashboard-notifications',
+          icon: Bell
         },
         {
           id: 'advanced',
@@ -2133,10 +2141,37 @@ export default function Dashboard() {
               )}
 
 
-              <div
+              
+
+              <div>
+                <p className="eyebrow">{copy.nextActions}</p>
+                <h2>{copy.improveDiscovery}</h2>
+                <p>{copy.improveText}</p>
+              </div>
+
+              <div className="action-checklist">
+                <span>
+                  <CheckCircle2 size={16} aria-hidden="true" />
+                  {copy.addImages}
+                </span>
+
+                <span>
+                  <CheckCircle2 size={16} aria-hidden="true" />
+                  {copy.completeSpecs}
+                </span>
+
+                <span>
+                  <BarChart3 size={16} aria-hidden="true" />
+                  {copy.reviewPerformance}
+                </span>
+              </div>
+            </aside>
+          </div>
+
+<div
                   id="dashboard-notifications"
                   tabIndex={-1}
-                  className="dashboard-notifications-card"
+                  className="dashboard-notifications-card dashboard-notifications-card--standalone"
                 >
                 <div className="dashboard-notifications-header">
                   <div>
@@ -2202,30 +2237,6 @@ export default function Dashboard() {
                 )}
               </div>
 
-              <div>
-                <p className="eyebrow">{copy.nextActions}</p>
-                <h2>{copy.improveDiscovery}</h2>
-                <p>{copy.improveText}</p>
-              </div>
-
-              <div className="action-checklist">
-                <span>
-                  <CheckCircle2 size={16} aria-hidden="true" />
-                  {copy.addImages}
-                </span>
-
-                <span>
-                  <CheckCircle2 size={16} aria-hidden="true" />
-                  {copy.completeSpecs}
-                </span>
-
-                <span>
-                  <BarChart3 size={16} aria-hidden="true" />
-                  {copy.reviewPerformance}
-                </span>
-              </div>
-            </aside>
-          </div>
 
           <VerificationRequestWorkspace
             token={token}

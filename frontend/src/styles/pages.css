@@ -13119,3 +13119,19 @@ transition: none;
     0 0 0 3px rgba(224, 187, 109, 0.24),
     0 14px 36px rgba(7, 56, 62, 0.08);
 }
+
+/* =========================================================
+   Dashboard standalone notifications tab target
+   ========================================================= */
+
+.dashboard-notifications-card--standalone {
+  margin-top: 1rem;
+  outline: none;
+  scroll-margin-top: 7.5rem;
+}
+
+.dashboard-notifications-card--standalone:focus {
+  box-shadow:
+    0 0 0 3px rgba(224, 187, 109, 0.24),
+    0 14px 36px rgba(7, 56, 62, 0.08);
+}
