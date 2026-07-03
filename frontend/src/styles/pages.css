@@ -13102,3 +13102,20 @@ transition: none;
     padding: 0.5rem 0.72rem;
   }
 }
+
+/* =========================================================
+   Dashboard listing activity tab anchors
+   ========================================================= */
+
+.dashboard-listings-card,
+.dashboard-activities-card {
+  outline: none;
+  scroll-margin-top: 7.5rem;
+}
+
+.dashboard-listings-card:focus,
+.dashboard-activities-card:focus {
+  box-shadow:
+    0 0 0 3px rgba(224, 187, 109, 0.24),
+    0 14px 36px rgba(7, 56, 62, 0.08);
+}

@@ -1034,6 +1034,8 @@ export default function Dashboard() {
           receivedBookings: 'طلبات الحجز',
           myBookings: 'حجوزاتي',
           portfolio: 'المحفظة',
+          listings: 'العقارات',
+          activities: 'الأنشطة',
           advanced: 'الأدوات المتقدمة'
         }
       : {
@@ -1043,6 +1045,8 @@ export default function Dashboard() {
           receivedBookings: 'Booking requests',
           myBookings: 'My bookings',
           portfolio: 'Portfolio',
+          listings: 'Listings',
+          activities: 'Activities',
           advanced: 'Advanced tools'
         };
 
@@ -1073,10 +1077,16 @@ export default function Dashboard() {
           icon: CreditCard
         },
         {
-          id: 'portfolio',
-          label: dashboardTabCopy.portfolio,
-          sectionId: 'dashboard-portfolio',
+          id: 'listings',
+          label: dashboardTabCopy.listings,
+          sectionId: 'dashboard-listings',
           icon: Home
+        },
+        {
+          id: 'activities',
+          label: dashboardTabCopy.activities,
+          sectionId: 'dashboard-activities',
+          icon: Sparkles
         },
         {
           id: 'advanced',
@@ -1135,6 +1145,8 @@ export default function Dashboard() {
       'received-bookings': 'dashboard-received-bookings',
       'my-bookings': 'dashboard-my-bookings',
       portfolio: 'dashboard-portfolio',
+      listings: 'dashboard-listings',
+      activities: 'dashboard-activities',
       notifications: 'dashboard-notifications'
     };
 
@@ -1975,7 +1987,7 @@ export default function Dashboard() {
 
 
           <div className="dashboard-split">
-            <div className="table-card table-card--premium">
+            <div id="dashboard-listings" className="table-card table-card--premium dashboard-listings-card" tabIndex={-1}>
               <div className="table-card__header">
                 <div>
                   <p className="eyebrow">{copy.portfolio}</p>
@@ -2073,7 +2085,7 @@ export default function Dashboard() {
               )}
             </div>
 
-            <aside className="dashboard-side-card">
+            <aside id="dashboard-activities" className="dashboard-side-card dashboard-activities-card" tabIndex={-1}>
               <div>
                 <p className="eyebrow">{copy.recentActivities}</p>
                 <h2>{copy.activities}</h2>
