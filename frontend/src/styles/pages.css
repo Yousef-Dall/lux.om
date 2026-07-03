@@ -13018,3 +13018,87 @@ transition: none;
     min-height: auto;
   }
 }
+
+/* =========================================================
+   Dashboard workspace tabs
+   ========================================================= */
+
+.dashboard-tab-nav {
+  margin: 1rem 0 1.2rem;
+  position: relative;
+  z-index: 2;
+}
+
+.dashboard-tab-nav__track {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(255, 253, 248, 0.84)),
+    rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 999px;
+  box-shadow: 0 16px 42px rgba(7, 56, 62, 0.08);
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding: 0.45rem;
+  scrollbar-width: thin;
+}
+
+.dashboard-tab-nav__button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--color-muted);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 850;
+  gap: 0.4rem;
+  min-height: 2.35rem;
+  padding: 0.55rem 0.85rem;
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.dashboard-tab-nav__button:hover,
+.dashboard-tab-nav__button--active {
+  background: var(--color-primary);
+  box-shadow: 0 12px 28px rgba(7, 56, 62, 0.16);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.dashboard-tab-nav__button svg {
+  flex: 0 0 auto;
+}
+
+.dashboard-advanced-tools-anchor {
+  outline: none;
+  scroll-margin-top: 7.5rem;
+}
+
+.dashboard-advanced-tools-anchor:focus {
+  box-shadow:
+    0 0 0 3px rgba(224, 187, 109, 0.24),
+    0 14px 36px rgba(7, 56, 62, 0.08);
+}
+
+@media (max-width: 640px) {
+  .dashboard-tab-nav {
+    margin: 0.85rem 0 1rem;
+  }
+
+  .dashboard-tab-nav__track {
+    border-radius: 1rem;
+  }
+
+  .dashboard-tab-nav__button {
+    font-size: 0.78rem;
+    padding: 0.5rem 0.72rem;
+  }
+}

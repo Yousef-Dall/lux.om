@@ -36,6 +36,9 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
 import DashboardWhatsAppActions from '../components/DashboardWhatsAppActions';
+import DashboardWorkspaceTabs, {
+  type DashboardWorkspaceTabItem
+} from '../components/DashboardWorkspaceTabs';
 import EmailVerificationBanner from '../components/EmailVerificationBanner';
 import MediaQualityGuidance from '../components/MediaQualityGuidance';
 import VerificationRequestWorkspace from '../components/VerificationRequestWorkspace';
@@ -215,6 +218,7 @@ export default function Dashboard() {
   const { t, language } = useLanguage();
   const { token, user, isMarketplaceOperator } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [activeDashboardTab, setActiveDashboardTab] = useState('overview');
 
   useDocumentTitle('Dashboard');
 
@@ -1021,7 +1025,94 @@ export default function Dashboard() {
           portfolioText: 'Listings and activities connected to your account with publishing and media-quality status.'
         };
 
+  const dashboardTabCopy =
+    language === 'ar'
+      ? {
+          aria: 'تبويبات لوحة التحكم',
+          overview: 'نظرة عامة',
+          operations: 'التشغيل',
+          receivedBookings: 'طلبات الحجز',
+          myBookings: 'حجوزاتي',
+          portfolio: 'المحفظة',
+          advanced: 'الأدوات المتقدمة'
+        }
+      : {
+          aria: 'Dashboard workspace tabs',
+          overview: 'Overview',
+          operations: 'Operations',
+          receivedBookings: 'Booking requests',
+          myBookings: 'My bookings',
+          portfolio: 'Portfolio',
+          advanced: 'Advanced tools'
+        };
+
+  const dashboardTabs: DashboardWorkspaceTabItem[] = isOperatorDashboard
+    ? [
+        {
+          id: 'overview',
+          label: dashboardTabCopy.overview,
+          sectionId: 'dashboard-overview',
+          icon: BarChart3
+        },
+        {
+          id: 'operations',
+          label: dashboardTabCopy.operations,
+          sectionId: 'dashboard-operations',
+          icon: CalendarDays
+        },
+        {
+          id: 'received-bookings',
+          label: dashboardTabCopy.receivedBookings,
+          sectionId: 'dashboard-received-bookings',
+          icon: MessageCircle
+        },
+        {
+          id: 'my-bookings',
+          label: dashboardTabCopy.myBookings,
+          sectionId: 'dashboard-my-bookings',
+          icon: CreditCard
+        },
+        {
+          id: 'portfolio',
+          label: dashboardTabCopy.portfolio,
+          sectionId: 'dashboard-portfolio',
+          icon: Home
+        },
+        {
+          id: 'advanced',
+          label: dashboardTabCopy.advanced,
+          sectionId: 'dashboard-advanced-tools',
+          icon: ShieldCheck
+        }
+      ]
+    : [
+        {
+          id: 'overview',
+          label: dashboardTabCopy.overview,
+          sectionId: 'dashboard-overview',
+          icon: BarChart3
+        },
+        {
+          id: 'my-bookings',
+          label: dashboardTabCopy.myBookings,
+          sectionId: 'dashboard-my-bookings',
+          icon: CreditCard
+        },
+        {
+          id: 'advanced',
+          label: dashboardTabCopy.advanced,
+          sectionId: 'dashboard-advanced-tools',
+          icon: ShieldCheck
+        }
+      ];
+
   function scrollToDashboardSection(sectionId: string) {
+    const matchingDashboardTab = dashboardTabs.find((tab) => tab.sectionId === sectionId);
+
+    if (matchingDashboardTab) {
+      setActiveDashboardTab(matchingDashboardTab.id);
+    }
+
     const section = document.getElementById(sectionId);
 
     if (!section) return;
@@ -1218,6 +1309,13 @@ export default function Dashboard() {
                 );
               })}
             </div>
+
+              <DashboardWorkspaceTabs
+                ariaLabel={dashboardTabCopy.aria}
+                activeTabId={activeDashboardTab}
+                tabs={dashboardTabs}
+                onSelect={(tab) => scrollToDashboardSection(tab.sectionId)}
+              />
 
             <div
               className="dashboard-section-heading"
@@ -2127,7 +2225,9 @@ export default function Dashboard() {
             </>
           ) : null}
 
-          <Stage8DashboardPanel token={token} />
+          <div id="dashboard-advanced-tools" className="dashboard-advanced-tools-anchor" tabIndex={-1}>
+            <Stage8DashboardPanel token={token} />
+          </div>
 
           {editingListing ? (
             <OwnerMarketplaceEditModal
