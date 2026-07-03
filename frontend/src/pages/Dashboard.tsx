@@ -40,6 +40,9 @@ import DashboardWorkspaceTabs, {
   type DashboardWorkspaceTabItem
 } from '../components/DashboardWorkspaceTabs';
 import DashboardSectionHeading from '../components/DashboardSectionHeading';
+import DashboardFocusedPanel, {
+  type DashboardFocusedPanelConfig
+} from '../components/DashboardFocusedPanel';
 import EmailVerificationBanner from '../components/EmailVerificationBanner';
 import MediaQualityGuidance from '../components/MediaQualityGuidance';
 import VerificationRequestWorkspace from '../components/VerificationRequestWorkspace';
@@ -1135,6 +1138,319 @@ export default function Dashboard() {
         }
       ];
 
+  const dashboardFocusedPanelCopy =
+    language === 'ar'
+      ? {
+          eyebrow: 'مساحة العمل المختارة',
+          jumpToSection: 'فتح القسم الكامل',
+          overviewTitle: 'نظرة مركزة على الحساب',
+          overviewText: 'ملخص سريع لأهم الأرقام والحالة الحالية قبل الدخول في التفاصيل.',
+          operationsTitle: 'تشغيل الحجوزات',
+          operationsText: 'تابع ضغط الحجوزات والطلبات التي تحتاج إجراء من المزود.',
+          requestsTitle: 'طلبات الحجز',
+          requestsText: 'راجع الطلبات المستلمة والمعلقة قبل الموافقة أو الرفض.',
+          myBookingsTitle: 'حجوزاتي ومدفوعاتي',
+          myBookingsText: 'تابع طلباتك الشخصية، الدفع، الإلغاء، والإيصالات.',
+          listingsTitle: 'إدارة العقارات',
+          listingsText: 'راجع حالة عقاراتك، الموافقات، وجودة الوسائط المرتبطة بها.',
+          activitiesTitle: 'إدارة الأنشطة',
+          activitiesText: 'تابع الأنشطة والباقات المرتبطة بحسابك وجودة عرضها.',
+          notificationsTitle: 'مركز التنبيهات',
+          notificationsText: 'تابع تنبيهات الحجز والدفع والمراجعة من مكان واحد.',
+          advancedTitle: 'الأدوات المتقدمة',
+          advancedText: 'أدوات الحفظ، العقود، الإيجارات، المعاملات، والتقييمات.',
+          totalListings: 'العقارات',
+          totalActivities: 'الأنشطة',
+          pendingPayments: 'مدفوعات معلقة',
+          notifications: 'التنبيهات',
+          bookings: 'الحجوزات',
+          pending: 'قيد المراجعة',
+          approved: 'مقبول',
+          rejected: 'مرفوض',
+          received: 'مستلمة',
+          unread: 'غير مقروء',
+          role: 'الدور'
+        }
+      : {
+          eyebrow: 'Selected workspace',
+          jumpToSection: 'Open full section',
+          overviewTitle: 'Focused account overview',
+          overviewText: 'A quick read of the account numbers and current state before the detailed workspace.',
+          operationsTitle: 'Booking operations',
+          operationsText: 'Track booking pressure and provider-side items that need action.',
+          requestsTitle: 'Booking requests',
+          requestsText: 'Review received requests before approving or rejecting them.',
+          myBookingsTitle: 'My bookings and payments',
+          myBookingsText: 'Track your requests, payment state, cancellations, and receipts.',
+          listingsTitle: 'Listing management',
+          listingsText: 'Review your listings, approval state, and connected media quality.',
+          activitiesTitle: 'Activity management',
+          activitiesText: 'Track activities and travel packages connected to your account.',
+          notificationsTitle: 'Notification center',
+          notificationsText: 'Follow booking, payment, publishing, and review updates from one place.',
+          advancedTitle: 'Advanced tools',
+          advancedText: 'Saved items, contracts, rent, transactions, valuation, and account readiness tools.',
+          totalListings: 'Listings',
+          totalActivities: 'Activities',
+          pendingPayments: 'Pending payments',
+          notifications: 'Notifications',
+          bookings: 'Bookings',
+          pending: 'Pending',
+          approved: 'Approved',
+          rejected: 'Rejected',
+          received: 'Received',
+          unread: 'Unread',
+          role: 'Role'
+        };
+
+  const dashboardFocusedPanels: Record<string, DashboardFocusedPanelConfig> = {
+    overview: {
+      id: 'overview',
+      eyebrow: dashboardFocusedPanelCopy.eyebrow,
+      title: dashboardFocusedPanelCopy.overviewTitle,
+      description: dashboardFocusedPanelCopy.overviewText,
+      sectionId: 'dashboard-overview',
+      actionLabel: dashboardFocusedPanelCopy.jumpToSection,
+      metrics: isOperatorDashboard
+        ? [
+            {
+              label: dashboardFocusedPanelCopy.totalListings,
+              value: listings.length,
+              helper: `${stats?.pendingListings ?? 0} ${dashboardFocusedPanelCopy.pending}`,
+              icon: Home
+            },
+            {
+              label: dashboardFocusedPanelCopy.totalActivities,
+              value: activities.length,
+              helper: `${stats?.pendingActivities ?? 0} ${dashboardFocusedPanelCopy.pending}`,
+              icon: Sparkles
+            },
+            {
+              label: dashboardFocusedPanelCopy.pendingPayments,
+              value: stats?.pendingPayments ?? 0,
+              icon: CreditCard
+            },
+            {
+              label: dashboardFocusedPanelCopy.notifications,
+              value: notifications.length,
+              helper: `${unreadNotifications} ${dashboardFocusedPanelCopy.unread}`,
+              icon: Bell
+            }
+          ]
+        : [
+            {
+              label: dashboardFocusedPanelCopy.bookings,
+              value: bookings.length,
+              helper: `${stats?.submittedBookings ?? 0} ${dashboardFocusedPanelCopy.received}`,
+              icon: CalendarDays
+            },
+            {
+              label: dashboardFocusedPanelCopy.pendingPayments,
+              value: stats?.pendingPayments ?? 0,
+              icon: CreditCard
+            },
+            {
+              label: dashboardFocusedPanelCopy.notifications,
+              value: notifications.length,
+              helper: `${unreadNotifications} ${dashboardFocusedPanelCopy.unread}`,
+              icon: Bell
+            },
+            {
+              label: dashboardFocusedPanelCopy.role,
+              value: accountRoleLabel,
+              helper: accountRoleDescription,
+              icon: ShieldCheck
+            }
+          ]
+    },
+    operations: {
+      id: 'operations',
+      eyebrow: dashboardFocusedPanelCopy.eyebrow,
+      title: dashboardFocusedPanelCopy.operationsTitle,
+      description: dashboardFocusedPanelCopy.operationsText,
+      sectionId: 'dashboard-operations',
+      actionLabel: dashboardFocusedPanelCopy.jumpToSection,
+      metrics: [
+        {
+          label: dashboardFocusedPanelCopy.received,
+          value: receivedBookings.length,
+          icon: CalendarDays
+        },
+        {
+          label: dashboardFocusedPanelCopy.pending,
+          value: stats?.receivedPendingBookings ?? 0,
+          icon: Clock3
+        },
+        {
+          label: dashboardFocusedPanelCopy.notifications,
+          value: unreadNotifications,
+          helper: dashboardFocusedPanelCopy.unread,
+          icon: Bell
+        }
+      ]
+    },
+    'received-bookings': {
+      id: 'received-bookings',
+      eyebrow: dashboardFocusedPanelCopy.eyebrow,
+      title: dashboardFocusedPanelCopy.requestsTitle,
+      description: dashboardFocusedPanelCopy.requestsText,
+      sectionId: 'dashboard-received-bookings',
+      actionLabel: dashboardFocusedPanelCopy.jumpToSection,
+      metrics: [
+        {
+          label: dashboardFocusedPanelCopy.received,
+          value: receivedBookings.length,
+          icon: MessageCircle
+        },
+        {
+          label: dashboardFocusedPanelCopy.pending,
+          value: stats?.receivedPendingBookings ?? 0,
+          icon: Clock3
+        },
+        {
+          label: dashboardFocusedPanelCopy.approved,
+          value: receivedBookings.filter((booking) =>
+            booking.status === 'OWNER_APPROVED' || booking.status === 'ADMIN_CONFIRMED'
+          ).length,
+          icon: CheckCircle2
+        }
+      ]
+    },
+    'my-bookings': {
+      id: 'my-bookings',
+      eyebrow: dashboardFocusedPanelCopy.eyebrow,
+      title: dashboardFocusedPanelCopy.myBookingsTitle,
+      description: dashboardFocusedPanelCopy.myBookingsText,
+      sectionId: 'dashboard-my-bookings',
+      actionLabel: dashboardFocusedPanelCopy.jumpToSection,
+      metrics: [
+        {
+          label: dashboardFocusedPanelCopy.bookings,
+          value: bookings.length,
+          icon: CalendarDays
+        },
+        {
+          label: dashboardFocusedPanelCopy.pendingPayments,
+          value: stats?.pendingPayments ?? 0,
+          icon: CreditCard
+        },
+        {
+          label: dashboardFocusedPanelCopy.notifications,
+          value: notifications.length,
+          icon: Bell
+        }
+      ]
+    },
+    listings: {
+      id: 'listings',
+      eyebrow: dashboardFocusedPanelCopy.eyebrow,
+      title: dashboardFocusedPanelCopy.listingsTitle,
+      description: dashboardFocusedPanelCopy.listingsText,
+      sectionId: 'dashboard-listings',
+      actionLabel: dashboardFocusedPanelCopy.jumpToSection,
+      metrics: [
+        {
+          label: dashboardFocusedPanelCopy.totalListings,
+          value: listings.length,
+          icon: Home
+        },
+        {
+          label: dashboardFocusedPanelCopy.approved,
+          value: stats?.approvedListings ?? 0,
+          icon: CheckCircle2
+        },
+        {
+          label: dashboardFocusedPanelCopy.pending,
+          value: stats?.pendingListings ?? 0,
+          icon: Clock3
+        },
+        {
+          label: dashboardFocusedPanelCopy.rejected,
+          value: stats?.rejectedListings ?? 0,
+          icon: XCircle
+        }
+      ]
+    },
+    activities: {
+      id: 'activities',
+      eyebrow: dashboardFocusedPanelCopy.eyebrow,
+      title: dashboardFocusedPanelCopy.activitiesTitle,
+      description: dashboardFocusedPanelCopy.activitiesText,
+      sectionId: 'dashboard-activities',
+      actionLabel: dashboardFocusedPanelCopy.jumpToSection,
+      metrics: [
+        {
+          label: dashboardFocusedPanelCopy.totalActivities,
+          value: activities.length,
+          icon: Sparkles
+        },
+        {
+          label: dashboardFocusedPanelCopy.approved,
+          value: stats?.approvedActivities ?? 0,
+          icon: CheckCircle2
+        },
+        {
+          label: dashboardFocusedPanelCopy.pending,
+          value: stats?.pendingActivities ?? 0,
+          icon: Clock3
+        }
+      ]
+    },
+    notifications: {
+      id: 'notifications',
+      eyebrow: dashboardFocusedPanelCopy.eyebrow,
+      title: dashboardFocusedPanelCopy.notificationsTitle,
+      description: dashboardFocusedPanelCopy.notificationsText,
+      sectionId: 'dashboard-notifications',
+      actionLabel: dashboardFocusedPanelCopy.jumpToSection,
+      metrics: [
+        {
+          label: dashboardFocusedPanelCopy.notifications,
+          value: notifications.length,
+          icon: Bell
+        },
+        {
+          label: dashboardFocusedPanelCopy.unread,
+          value: unreadNotifications,
+          icon: Clock3
+        }
+      ]
+    },
+    advanced: {
+      id: 'advanced',
+      eyebrow: dashboardFocusedPanelCopy.eyebrow,
+      title: dashboardFocusedPanelCopy.advancedTitle,
+      description: dashboardFocusedPanelCopy.advancedText,
+      sectionId: 'dashboard-advanced-tools',
+      actionLabel: dashboardFocusedPanelCopy.jumpToSection,
+      metrics: [
+        {
+          label: dashboardFocusedPanelCopy.bookings,
+          value: bookings.length,
+          icon: CalendarDays
+        },
+        {
+          label: dashboardFocusedPanelCopy.totalListings,
+          value: listings.length,
+          icon: Home
+        },
+        {
+          label: dashboardFocusedPanelCopy.totalActivities,
+          value: activities.length,
+          icon: Sparkles
+        },
+        {
+          label: dashboardFocusedPanelCopy.notifications,
+          value: notifications.length,
+          icon: Bell
+        }
+      ]
+    }
+  };
+
+  const activeDashboardFocusedPanel =
+    dashboardFocusedPanels[activeDashboardTab] ?? dashboardFocusedPanels.overview;
+
   function scrollToDashboardSection(sectionId: string) {
     const matchingDashboardTab = dashboardTabs.find((tab) => tab.sectionId === sectionId);
 
@@ -1348,7 +1664,12 @@ export default function Dashboard() {
                 sectionCountLabel={`${dashboardTabs.length} ${dashboardTabCopy.sections}`}
                 activeTabId={activeDashboardTab}
                 tabs={dashboardTabs}
-                onSelect={(tab) => scrollToDashboardSection(tab.sectionId)}
+                onSelect={(tab) => setActiveDashboardTab(tab.id)}
+              />
+
+              <DashboardFocusedPanel
+                panel={activeDashboardFocusedPanel}
+                onAction={() => scrollToDashboardSection(activeDashboardFocusedPanel.sectionId)}
               />
 
                         <DashboardSectionHeading
