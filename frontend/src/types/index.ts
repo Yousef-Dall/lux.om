@@ -9,7 +9,13 @@ export type DayName =
 | 'Friday'
 | 'Saturday';
 
-export type UserRole = 'USER' | 'OWNER' | 'ACTIVITY_PROVIDER' | 'DEVELOPER' | 'ADMIN';
+export type UserRole =
+| 'USER'
+| 'OWNER'
+| 'ACTIVITY_PROVIDER'
+| 'TRAVEL_AGENCY'
+| 'DEVELOPER'
+| 'ADMIN';
 
 export type ListingTransaction = 'Sale' | 'Rent' | 'Short stay';
 

@@ -8,12 +8,31 @@ import { env } from '../config/env';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/http';
 
+type PublicGoogleOAuthRole =
+  | 'USER'
+  | 'OWNER'
+  | 'ACTIVITY_PROVIDER'
+  | 'TRAVEL_AGENCY'
+  | 'DEVELOPER';
+
+const publicGoogleOAuthRoles = new Set<string>([
+  'USER',
+  'OWNER',
+  'ACTIVITY_PROVIDER',
+  'TRAVEL_AGENCY',
+  'DEVELOPER'
+]);
+
 type GoogleOAuthState = {
   purpose: 'google_oauth';
-  role: 'USER' | 'OWNER';
+  role: PublicGoogleOAuthRole;
   returnTo: string;
   nonce: string;
 };
+
+function normalizeGoogleOAuthRole(role?: string): PublicGoogleOAuthRole {
+  return publicGoogleOAuthRoles.has(role ?? '') ? (role as PublicGoogleOAuthRole) : 'USER';
+}
 
 type GoogleProfile = {
   googleId: string;
@@ -97,7 +116,7 @@ function sanitizeReturnTo(returnTo?: string) {
 }
 
 export function createGoogleOAuthState(input: { role?: string; returnTo?: string }) {
-  const role = input.role === 'OWNER' ? 'OWNER' : 'USER';
+  const role = normalizeGoogleOAuthRole(input.role);
 
   return jwt.sign(
     {
@@ -127,7 +146,7 @@ export function verifyGoogleOAuthState(state: string): GoogleOAuthState {
 
   if (
     candidate.purpose !== 'google_oauth' ||
-    (candidate.role !== 'USER' && candidate.role !== 'OWNER') ||
+    !publicGoogleOAuthRoles.has(candidate.role ?? '') ||
     typeof candidate.returnTo !== 'string' ||
     typeof candidate.nonce !== 'string'
   ) {
@@ -136,7 +155,7 @@ export function verifyGoogleOAuthState(state: string): GoogleOAuthState {
 
   return {
     purpose: 'google_oauth',
-    role: candidate.role,
+    role: normalizeGoogleOAuthRole(candidate.role),
     returnTo: sanitizeReturnTo(candidate.returnTo),
     nonce: candidate.nonce
   };

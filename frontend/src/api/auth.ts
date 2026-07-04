@@ -1,6 +1,8 @@
 import { apiClient } from './client';
 import type { PublicUser, UserRole } from '../types';
 
+export type PublicRegistrationRole = Exclude<UserRole, 'ADMIN'>;
+
 export type AuthUser = PublicUser & {
   role: UserRole;
   companyName?: string | null;
@@ -34,7 +36,7 @@ export type RegisterPayload = {
   name: string;
   email: string;
   password: string;
-  role?: 'USER' | 'OWNER';
+  role?: PublicRegistrationRole;
   phone?: string;
   companyName?: string;
   emailBookingUpdates?: boolean;
@@ -97,7 +99,7 @@ function getApiBaseUrl() {
 }
 
 export function getGoogleOAuthStartUrl(input: {
-  role?: 'USER' | 'OWNER';
+  role?: PublicRegistrationRole;
   returnTo?: string;
 } = {}) {
   const url = new URL('/api/auth/google/start', getApiBaseUrl());

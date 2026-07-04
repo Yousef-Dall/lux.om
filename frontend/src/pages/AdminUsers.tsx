@@ -38,6 +38,7 @@ const roleOptions: UserRole[] = [
   'USER',
   'OWNER',
   'ACTIVITY_PROVIDER',
+  'TRAVEL_AGENCY',
   'DEVELOPER',
   'ADMIN'
 ];
@@ -57,6 +58,7 @@ function getRoleLabel(role: UserRole, language: 'en' | 'ar') {
       USER: 'Customer',
       OWNER: 'Owner',
       ACTIVITY_PROVIDER: 'Activity provider',
+      TRAVEL_AGENCY: 'Travel agency',
       DEVELOPER: 'Developer',
       ADMIN: 'Admin'
     },
@@ -64,6 +66,7 @@ function getRoleLabel(role: UserRole, language: 'en' | 'ar') {
       USER: 'عميل',
       OWNER: 'مالك',
       ACTIVITY_PROVIDER: 'مزود أنشطة',
+      TRAVEL_AGENCY: 'وكالة سفر',
       DEVELOPER: 'مطور',
       ADMIN: 'أدمن'
     }

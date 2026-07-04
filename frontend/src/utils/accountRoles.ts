@@ -36,6 +36,16 @@ const roleCopy: Record<
       description: 'يمكنه إضافة الأنشطة وإدارة التجارب وقبول أو رفض طلبات حجز الأنشطة.'
     }
   },
+  TRAVEL_AGENCY: {
+    en: {
+      label: 'Travel agency account',
+      description: 'Can manage travel packages, itineraries, group booking requests, and package payments.'
+    },
+    ar: {
+      label: 'حساب وكالة سفر',
+      description: 'يمكنه إدارة باقات السفر والبرامج وطلبات المجموعات ومدفوعات الباقات.'
+    }
+  },
   DEVELOPER: {
     en: {
       label: 'Developer account',
@@ -66,6 +76,7 @@ function normalizeRole(role?: UserRole | string | null): UserRole {
   if (
     role === 'OWNER' ||
     role === 'ACTIVITY_PROVIDER' ||
+    role === 'TRAVEL_AGENCY' ||
     role === 'DEVELOPER' ||
     role === 'ADMIN'
   ) {
@@ -84,5 +95,11 @@ export function getAccountRoleDescription(role?: UserRole | string | null, langu
 }
 
 export function isMarketplaceOperatorRole(role?: UserRole | string | null) {
-  return role === 'OWNER' || role === 'ACTIVITY_PROVIDER' || role === 'ADMIN';
+  return (
+    role === 'OWNER' ||
+    role === 'ACTIVITY_PROVIDER' ||
+    role === 'TRAVEL_AGENCY' ||
+    role === 'DEVELOPER' ||
+    role === 'ADMIN'
+  );
 }

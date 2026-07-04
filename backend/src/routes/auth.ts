@@ -36,7 +36,7 @@ const registerSchema = z
     name: z.string().trim().min(2).max(80),
     email: z.string().trim().email().toLowerCase(),
     password: z.string().min(1).max(100),
-    role: z.enum(['USER', 'OWNER']).default('USER'),
+    role: z.enum(['USER', 'OWNER', 'ACTIVITY_PROVIDER', 'TRAVEL_AGENCY', 'DEVELOPER']).default('USER'),
     phone: z.string().trim().min(6).max(30).optional(),
     companyName: z.string().trim().min(2).max(120).optional()
   })
@@ -168,7 +168,7 @@ const adminEmailDeliveriesQuerySchema = z
 const adminUsersQuerySchema = z
   .object({
     query: z.string().trim().max(120).optional(),
-    role: z.enum(['USER', 'OWNER', 'ACTIVITY_PROVIDER', 'DEVELOPER', 'ADMIN']).optional(),
+    role: z.enum(['USER', 'OWNER', 'ACTIVITY_PROVIDER', 'TRAVEL_AGENCY', 'DEVELOPER', 'ADMIN']).optional(),
     status: z
       .enum(['all', 'active', 'suspended', 'verified', 'unverified'])
       .default('all'),
@@ -208,7 +208,7 @@ const verifyEmailSchema = z
 
 const googleStartSchema = z
   .object({
-    role: z.enum(['USER', 'OWNER']).optional(),
+    role: z.enum(['USER', 'OWNER', 'ACTIVITY_PROVIDER', 'TRAVEL_AGENCY', 'DEVELOPER']).optional(),
     returnTo: z.string().trim().max(200).optional()
   })
   .strict();

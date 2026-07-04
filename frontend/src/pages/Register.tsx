@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Mail, LockKeyhole, UserPlus, Phone, User, CheckCircle2, Circle } from 'lucide-react';
 
 import { ApiError } from '../api/client';
-import { getGoogleOAuthStartUrl } from '../api/auth';
+import { getGoogleOAuthStartUrl, type PublicRegistrationRole } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -21,7 +21,7 @@ export default function Register() {
   const [phone, setPhone] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'USER' | 'OWNER'>('USER');
+  const [role, setRole] = useState<PublicRegistrationRole>('USER');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -51,8 +51,14 @@ export default function Register() {
           accountType: 'نوع الحساب',
           user: 'مستخدم',
           owner: 'مالك / وسيط',
+          activityProvider: 'مزود أنشطة',
+          travelAgency: 'وكالة سفر',
+          developer: 'شركة تطوير عقاري',
           userHelp: 'حساب المستخدم مناسب للتصفح، الاستفسارات، الحجز، والدفع.',
-          ownerHelp: 'حساب المالك / الوسيط مناسب لإضافة العقارات والأنشطة واستقبال الطلبات.',
+          ownerHelp: 'حساب المالك / الوسيط مناسب لإضافة العقارات واستقبال العملاء المحتملين وطلبات الزيارة.',
+          activityProviderHelp: 'حساب مزود الأنشطة مناسب لإدارة التجارب والحجوزات والسعة والمدفوعات.',
+          travelAgencyHelp: 'حساب وكالة السفر مناسب لإدارة باقات السفر والبرامج وطلبات المجموعات.',
+          developerHelp: 'حساب شركة التطوير مناسب لإدارة المشاريع والوحدات وجاهزية الإطلاق.',
           submit: 'إنشاء الحساب',
           googleUser: 'المتابعة مع Google كمستخدم',
           googleOwner: 'المتابعة مع Google كمالك / وسيط',
@@ -85,8 +91,14 @@ export default function Register() {
           accountType: 'Account type',
           user: 'User',
           owner: 'Owner / agent',
+          activityProvider: 'Activity provider',
+          travelAgency: 'Travel agency',
+          developer: 'Developer company',
           userHelp: 'User accounts are for browsing, inquiries, bookings, and payments.',
-          ownerHelp: 'Owner / agent accounts are for submitting listings and activities and receiving requests.',
+          ownerHelp: 'Owner / agent accounts are for submitting real-estate listings and receiving leads or viewing requests.',
+          activityProviderHelp: 'Activity provider accounts are for managing experiences, bookings, capacity, and payments.',
+          travelAgencyHelp: 'Travel agency accounts are for managing travel packages, itineraries, and group requests.',
+          developerHelp: 'Developer company accounts are for managing projects, units, and launch readiness.',
           submit: 'Create account',
           googleUser: 'Continue with Google as user',
           googleOwner: 'Continue with Google as owner / agent',
@@ -104,13 +116,47 @@ export default function Register() {
 
   const passwordRuleLabels: Record<PasswordPolicyRuleId, string> = copy.passwordRules;
 
+  const accountTypeOptions: Array<{
+    value: PublicRegistrationRole;
+    label: string;
+    help: string;
+  }> = [
+    {
+      value: 'USER',
+      label: copy.user,
+      help: copy.userHelp
+    },
+    {
+      value: 'OWNER',
+      label: copy.owner,
+      help: copy.ownerHelp
+    },
+    {
+      value: 'ACTIVITY_PROVIDER',
+      label: copy.activityProvider,
+      help: copy.activityProviderHelp
+    },
+    {
+      value: 'TRAVEL_AGENCY',
+      label: copy.travelAgency,
+      help: copy.travelAgencyHelp
+    },
+    {
+      value: 'DEVELOPER',
+      label: copy.developer,
+      help: copy.developerHelp
+    }
+  ];
+
+  const selectedAccountType = accountTypeOptions.find((option) => option.value === role);
+
   useEffect(() => {
     if (role === 'USER' && companyName) {
       setCompanyName('');
     }
   }, [companyName, role]);
 
-  function handleGoogleRegister(nextRole: 'USER' | 'OWNER') {
+  function handleGoogleRegister(nextRole: PublicRegistrationRole) {
     window.location.href = getGoogleOAuthStartUrl({
       role: nextRole,
       returnTo: '/dashboard'
@@ -231,7 +277,7 @@ export default function Register() {
             </span>
           </label>
 
-          {role === 'OWNER' ? (
+          {role !== 'USER' ? (
             <label>
               {copy.companyName}
               <span className="input-with-icon">
@@ -281,11 +327,17 @@ export default function Register() {
 
           <label>
             {copy.accountType}
-            <select value={role} onChange={(event) => setRole(event.target.value as 'USER' | 'OWNER')}>
-              <option value="USER">{copy.user}</option>
-              <option value="OWNER">{copy.owner}</option>
+            <select
+              value={role}
+              onChange={(event) => setRole(event.target.value as PublicRegistrationRole)}
+            >
+              {accountTypeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
-            <small>{role === 'OWNER' ? copy.ownerHelp : copy.userHelp}</small>
+            <small>{selectedAccountType?.help ?? copy.userHelp}</small>
           </label>
 
           {error ? (
