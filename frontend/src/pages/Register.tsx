@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, LockKeyhole, UserPlus, Phone, User, CheckCircle2, Circle } from 'lucide-react';
 
 import { ApiError } from '../api/client';
@@ -13,6 +13,7 @@ export default function Register() {
   const { language } = useLanguage();
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   useDocumentTitle('Register');
 
@@ -62,6 +63,7 @@ export default function Register() {
           submit: 'إنشاء الحساب',
           googleUser: 'المتابعة مع Google كمستخدم',
           googleOwner: 'المتابعة مع Google كمالك / وسيط',
+          googleSelected: 'المتابعة مع Google كـ',
           submitting: 'جاري إنشاء الحساب...',
           hasAccount: 'لديك حساب بالفعل؟',
           login: 'تسجيل الدخول',
@@ -102,6 +104,7 @@ export default function Register() {
           submit: 'Create account',
           googleUser: 'Continue with Google as user',
           googleOwner: 'Continue with Google as owner / agent',
+          googleSelected: 'Continue with Google as',
           submitting: 'Creating account...',
           hasAccount: 'Already have an account?',
           login: 'Login',
@@ -149,6 +152,19 @@ export default function Register() {
   ];
 
   const selectedAccountType = accountTypeOptions.find((option) => option.value === role);
+  const requestedRole = searchParams.get('role');
+
+  useEffect(() => {
+    if (
+      requestedRole === 'USER' ||
+      requestedRole === 'OWNER' ||
+      requestedRole === 'ACTIVITY_PROVIDER' ||
+      requestedRole === 'TRAVEL_AGENCY' ||
+      requestedRole === 'DEVELOPER'
+    ) {
+      setRole(requestedRole);
+    }
+  }, [requestedRole]);
 
   useEffect(() => {
     if (role === 'USER' && companyName) {
@@ -224,14 +240,16 @@ export default function Register() {
               {copy.googleUser}
             </button>
 
-            <button
-              className="button-link button-link--secondary auth-provider-button"
-              type="button"
-              onClick={() => handleGoogleRegister(role)}
-            >
-              G
-              {copy.googleOwner}
-            </button>
+            {role !== 'USER' ? (
+              <button
+                className="button-link button-link--secondary auth-provider-button"
+                type="button"
+                onClick={() => handleGoogleRegister(role)}
+              >
+                G
+                {copy.googleSelected} {selectedAccountType?.label ?? copy.user}
+              </button>
+            ) : null}
           </div>
 
           <div className="auth-divider" aria-hidden="true">

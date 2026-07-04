@@ -662,3 +662,105 @@ export function getMarketplacePersonaDescription(
 ) {
   return getMarketplacePersonaDefinition(role).description[language];
 }
+
+export type MarketplacePersonaPrimaryAction = {
+  key:
+    | 'explore-marketplace'
+    | 'add-listing'
+    | 'add-activity'
+    | 'add-travel-package'
+    | 'developer-profile'
+    | 'admin-cockpit';
+  to: string;
+  label: {
+    en: string;
+    ar: string;
+  };
+  description: {
+    en: string;
+    ar: string;
+  };
+};
+
+const marketplacePersonaPrimaryActions: Record<MarketplacePersona, MarketplacePersonaPrimaryAction[]> = {
+  customer: [
+    {
+      key: 'explore-marketplace',
+      to: '/listings',
+      label: { en: 'Explore marketplace', ar: 'استكشاف السوق' },
+      description: {
+        en: 'Browse listings, activities, developers, travel agencies, and investor opportunities.',
+        ar: 'تصفح العقارات والأنشطة والمطورين ووكالات السفر وفرص المستثمرين.'
+      }
+    }
+  ],
+  owner: [
+    {
+      key: 'add-listing',
+      to: '/add-listing',
+      label: { en: 'Add listing', ar: 'إضافة عقار' },
+      description: {
+        en: 'Publish and manage real-estate inventory, leads, verification, and readiness.',
+        ar: 'نشر وإدارة العقارات والعملاء المحتملين والتحقق والجاهزية.'
+      }
+    }
+  ],
+  activityProvider: [
+    {
+      key: 'add-activity',
+      to: '/add-activity',
+      label: { en: 'Add activity', ar: 'إضافة نشاط' },
+      description: {
+        en: 'Create and manage local experiences, booking requests, capacity, and media quality.',
+        ar: 'إنشاء وإدارة التجارب المحلية وطلبات الحجز والسعة وجودة الوسائط.'
+      }
+    }
+  ],
+  travelAgency: [
+    {
+      key: 'add-travel-package',
+      to: '/add-activity',
+      label: { en: 'Add travel package', ar: 'إضافة باقة سفر' },
+      description: {
+        en: 'Create outside-Oman packages, itineraries, group requests, and package payments.',
+        ar: 'إنشاء باقات خارج عمان والبرامج وطلبات المجموعات ومدفوعات الباقات.'
+      }
+    }
+  ],
+  developer: [
+    {
+      key: 'developer-profile',
+      to: '/dashboard',
+      label: { en: 'Developer workspace', ar: 'مساحة المطور' },
+      description: {
+        en: 'Manage developer profile, projects, units, documents, leads, and launch readiness.',
+        ar: 'إدارة ملف المطور والمشاريع والوحدات والمستندات والعملاء وجاهزية الإطلاق.'
+      }
+    }
+  ],
+  admin: [
+    {
+      key: 'admin-cockpit',
+      to: '/admin',
+      label: { en: 'Admin cockpit', ar: 'مركز الإدارة' },
+      description: {
+        en: 'Review marketplace operations, approvals, trust, payments, users, and system health.',
+        ar: 'مراجعة عمليات السوق والموافقات والثقة والمدفوعات والمستخدمين وصحة النظام.'
+      }
+    }
+  ]
+};
+
+export function getMarketplacePersonaPrimaryActions(
+  role?: UserRole | string | null,
+  language: 'en' | 'ar' = 'en'
+) {
+  const actions = marketplacePersonaPrimaryActions[getMarketplacePersona(role)];
+
+  return actions.map((action) => ({
+    ...action,
+    text: action.label[language],
+    helper: action.description[language]
+  }));
+}
+

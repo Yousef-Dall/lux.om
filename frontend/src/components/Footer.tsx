@@ -63,22 +63,22 @@ export default function Footer() {
         </div>
 
         <div className="footer-cta__actions">
-          <Link to="/add-listing" className="footer-cta__link">
+          <Link to="/register?role=OWNER" className="footer-cta__link">
             {t.common.listProperty}
             <ArrowUpRight size={18} aria-hidden="true" />
           </Link>
 
-          <Link to="/add-activity" className="footer-cta__link footer-cta__link--secondary">
+          <Link to="/register?role=ACTIVITY_PROVIDER" className="footer-cta__link footer-cta__link--secondary">
             <Sparkles size={18} aria-hidden="true" />
             {t.common.listActivity}
           </Link>
 
-          <Link to="/travel-agencies" className="footer-cta__link footer-cta__link--secondary">
+          <Link to="/register?role=TRAVEL_AGENCY" className="footer-cta__link footer-cta__link--secondary">
             <Building2 size={18} aria-hidden="true" />
             {copy.partnerAgencies}
           </Link>
 
-          <Link to="/developers" className="footer-cta__link footer-cta__link--secondary">
+          <Link to="/register?role=DEVELOPER" className="footer-cta__link footer-cta__link--secondary">
             <Building2 size={18} aria-hidden="true" />
             {t.footer.partnerWithLux}
           </Link>
@@ -114,10 +114,10 @@ export default function Footer() {
 
         <nav aria-label={aria.owners}>
           <h2>{t.footer.owners}</h2>
-          <Link to="/add-listing">{t.common.listProperty}</Link>
-          <Link to="/add-activity">{t.common.listActivity}</Link>
-          <Link to="/travel-agencies">{copy.listAgency}</Link>
-          <Link to="/developers">{t.footer.partnerWithLux}</Link>
+          <Link to="/register?role=OWNER">{t.common.listProperty}</Link>
+          <Link to="/register?role=ACTIVITY_PROVIDER">{t.common.listActivity}</Link>
+          <Link to="/register?role=TRAVEL_AGENCY">{copy.listAgency}</Link>
+          <Link to="/register?role=DEVELOPER">{t.footer.partnerWithLux}</Link>
           <Link to="/dashboard">{t.footer.dashboard}</Link>
         </nav>
 

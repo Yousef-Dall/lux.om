@@ -8,6 +8,7 @@ Mail,
 Menu,
 ShieldCheck,
 AlertTriangle,
+ArrowUpRight,
 Users,
 UserCircle,
 X
@@ -18,7 +19,10 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { cn } from '../utils/format';
-import { getAccountRoleLabel } from '../utils/accountRoles';
+import {
+  getMarketplacePersonaLabel,
+  getMarketplacePersonaPrimaryActions
+} from '../utils/marketplacePersona';
 import ButtonLink from './ButtonLink';
 import NotificationBell from './NotificationBell';
 
@@ -31,7 +35,8 @@ const { pathname } = useLocation();
 const navigate = useNavigate();
 const { t, toggleLanguage, language } = useLanguage();
 const { user, token, isAuthenticated, isAdmin, logout } = useAuth();
-const accountRoleLabel = user ? getAccountRoleLabel(user.role, language) : '';
+const accountRoleLabel = user ? getMarketplacePersonaLabel(user.role, language) : '';
+const accountPersonaActions = user ? getMarketplacePersonaPrimaryActions(user.role, language) : [];
 
 const navCopy =
 language === 'ar'
@@ -250,6 +255,18 @@ return (
                 <LayoutDashboard size={17} aria-hidden="true" />
                 {accessibilityCopy.dashboard}
               </NavLink>
+
+              {accountPersonaActions.map((action) => (
+                <NavLink
+                  key={action.key}
+                  to={action.to}
+                  className="nav-account__item"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <ArrowUpRight size={17} aria-hidden="true" />
+                  {action.text}
+                </NavLink>
+              ))}
 
               <NavLink
                 to="/profile"
