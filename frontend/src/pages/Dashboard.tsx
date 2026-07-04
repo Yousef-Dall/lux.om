@@ -589,16 +589,24 @@ export default function Dashboard() {
   const readinessScore = dashboardHealth?.readinessScore ?? (user?.emailVerified ? 70 : 45);
   const attentionCount = dashboardHealth?.attentionCount ?? urgentActions.length;
   const nextBestAction = dashboardHealth?.nextBestAction;
+  const heroNextBestAction = nextBestAction
+    ? {
+        key: nextBestAction.key,
+        label: language === 'ar' ? nextBestAction.labelAr : nextBestAction.labelEn,
+        description: language === 'ar' ? nextBestAction.descriptionAr : nextBestAction.descriptionEn,
+        actionTo: nextBestAction.actionTo
+      }
+    : urgentActions[0]
+      ? {
+          key: urgentActions[0].id,
+          label: urgentActions[0].label,
+          description: urgentActions[0].helper,
+          actionTo: urgentActions[0].to
+        }
+      : null;
   const dashboardScoreStyle = {
     '--dashboard-score': `${Math.max(0, Math.min(100, readinessScore))}%`
   } as CSSProperties;
-
-  function localizeDashboardAttention(item: NonNullable<typeof nextBestAction>) {
-    return {
-      label: language === 'ar' ? item.labelAr : item.labelEn,
-      description: language === 'ar' ? item.descriptionAr : item.descriptionEn
-    };
-  }
 
   useEffect(() => {
     if (!dashboardTabs.some((tab) => tab.id === activeDashboardTab)) {
@@ -1416,22 +1424,16 @@ export default function Dashboard() {
 
           <div className="dashboard-v2-next-action">
             <p className="eyebrow">{copy.nextBestAction}</p>
-            {nextBestAction ? (
-              (() => {
-                const localizedAction = localizeDashboardAttention(nextBestAction);
-
-                return (
-                  <>
-                    <strong>{localizedAction.label}</strong>
-                    <p>{localizedAction.description}</p>
-                    {nextBestAction.actionTo ? (
-                      <ButtonLink to={nextBestAction.actionTo} variant="soft">
-                        {localizedAction.label}
-                      </ButtonLink>
-                    ) : null}
-                  </>
-                );
-              })()
+            {heroNextBestAction ? (
+              <>
+                <strong>{heroNextBestAction.label}</strong>
+                <p>{heroNextBestAction.description}</p>
+                {heroNextBestAction.actionTo ? (
+                  <ButtonLink to={heroNextBestAction.actionTo} variant="soft">
+                    {heroNextBestAction.label}
+                  </ButtonLink>
+                ) : null}
+              </>
             ) : (
               <>
                 <strong>{copy.allClear}</strong>
