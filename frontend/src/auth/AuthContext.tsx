@@ -20,6 +20,8 @@ import {
   type UpdateProfilePayload
 } from '../api/auth';
 
+import { getMarketplacePersonaCapabilities } from '../utils/marketplacePersona';
+
 const TOKEN_STORAGE_KEY = 'lux_om_auth_token';
 
 type AuthContextValue = {
@@ -34,6 +36,15 @@ type AuthContextValue = {
   isDeveloper: boolean;
   isBusinessAccount: boolean;
   isMarketplaceOperator: boolean;
+  canManageListings: boolean;
+  canManageActivities: boolean;
+  canManageTravelPackages: boolean;
+  canManageDeveloperProjects: boolean;
+  canReviewBookingRequests: boolean;
+  canUseMediaQuality: boolean;
+  canUseVerification: boolean;
+  canUsePerformance: boolean;
+  canAccessAdmin: boolean;
   loading: boolean;
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
@@ -163,30 +174,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [token]
   );
 
+  const marketplaceCapabilities = getMarketplacePersonaCapabilities(user?.role);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       token,
       isAuthenticated: Boolean(user && token),
-      isAdmin: user?.role === 'ADMIN',
-      isOwner: user?.role === 'OWNER' || user?.role === 'ADMIN',
-      isActivityProvider:
-        user?.role === 'ACTIVITY_PROVIDER' ||
-        user?.role === 'TRAVEL_AGENCY' ||
-        user?.role === 'ADMIN',
-      isTravelAgency: user?.role === 'TRAVEL_AGENCY',
-      isCustomer: user?.role === 'USER',
-      isDeveloper: user?.role === 'DEVELOPER',
+      isAdmin: marketplaceCapabilities.canAccessAdmin,
+      isOwner: marketplaceCapabilities.canManageListings,
+      isActivityProvider: marketplaceCapabilities.canManageActivities,
+      isTravelAgency: marketplaceCapabilities.canManageTravelPackages,
+      isCustomer:
+        marketplaceCapabilities.canUseCustomerTools &&
+        !marketplaceCapabilities.canManageListings &&
+        !marketplaceCapabilities.canManageActivities &&
+        !marketplaceCapabilities.canManageTravelPackages &&
+        !marketplaceCapabilities.canManageDeveloperProjects &&
+        !marketplaceCapabilities.canAccessAdmin,
+      isDeveloper: marketplaceCapabilities.canManageDeveloperProjects,
       isBusinessAccount:
-        user?.role === 'OWNER' ||
-        user?.role === 'ACTIVITY_PROVIDER' ||
-        user?.role === 'TRAVEL_AGENCY' ||
-        user?.role === 'DEVELOPER' ||
-        user?.role === 'ADMIN',
+        marketplaceCapabilities.canManageListings ||
+        marketplaceCapabilities.canManageActivities ||
+        marketplaceCapabilities.canManageTravelPackages ||
+        marketplaceCapabilities.canManageDeveloperProjects ||
+        marketplaceCapabilities.canAccessAdmin,
       isMarketplaceOperator:
-        user?.role === 'OWNER' ||
-        user?.role === 'ACTIVITY_PROVIDER' ||
-        user?.role === 'ADMIN',
+        marketplaceCapabilities.canManageListings ||
+        marketplaceCapabilities.canManageActivities ||
+        marketplaceCapabilities.canManageTravelPackages ||
+        marketplaceCapabilities.canAccessAdmin,
+      canManageListings: marketplaceCapabilities.canManageListings,
+      canManageActivities: marketplaceCapabilities.canManageActivities,
+      canManageTravelPackages: marketplaceCapabilities.canManageTravelPackages,
+      canManageDeveloperProjects: marketplaceCapabilities.canManageDeveloperProjects,
+      canReviewBookingRequests: marketplaceCapabilities.canReviewBookingRequests,
+      canUseMediaQuality: marketplaceCapabilities.canUseMediaQuality,
+      canUseVerification: marketplaceCapabilities.canUseVerification,
+      canUsePerformance: marketplaceCapabilities.canUsePerformance,
+      canAccessAdmin: marketplaceCapabilities.canAccessAdmin,
       loading,
       login,
       register,

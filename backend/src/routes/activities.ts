@@ -2578,7 +2578,7 @@ activitiesRouter.get('/:slug', async (req, res, next) => {
 activitiesRouter.post(
   '/',
   requireAuth(),
-  requireRole('ACTIVITY_PROVIDER', 'OWNER', 'ADMIN'),
+  requireRole('ACTIVITY_PROVIDER', 'TRAVEL_AGENCY', 'ADMIN'),
   requireVerifiedEmail({ allowAdmin: true }),
   async (req, res, next) => {
     try {

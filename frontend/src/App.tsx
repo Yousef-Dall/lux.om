@@ -401,7 +401,7 @@ function RequireGuest({ children }: { children: ReactNode }) {
 }
 
 function RequireOwner({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isOwner, loading } = useAuth();
+  const { isAuthenticated, canManageListings, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -412,7 +412,7 @@ function RequireOwner({ children }: { children: ReactNode }) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  if (!isOwner) {
+  if (!canManageListings) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -420,7 +420,7 @@ function RequireOwner({ children }: { children: ReactNode }) {
 }
 
 function RequireActivityProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isActivityProvider, loading } = useAuth();
+  const { isAuthenticated, canManageActivities, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -431,7 +431,7 @@ function RequireActivityProvider({ children }: { children: ReactNode }) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  if (!isActivityProvider) {
+  if (!canManageActivities) {
     return <Navigate to="/dashboard" replace />;
   }
 

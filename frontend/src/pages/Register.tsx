@@ -227,7 +227,7 @@ export default function Register() {
             <button
               className="button-link button-link--secondary auth-provider-button"
               type="button"
-              onClick={() => handleGoogleRegister('OWNER')}
+              onClick={() => handleGoogleRegister(role)}
             >
               G
               {copy.googleOwner}
