@@ -17,7 +17,6 @@ import {
   MessageCircle,
   PackageCheck,
   Plane,
-  Plus,
   Receipt,
   ShieldCheck,
   Sparkles,
@@ -323,7 +322,6 @@ export default function Dashboard() {
     token,
     user,
     canManageListings,
-    canManageActivities,
     canManageTravelPackages,
     canAccessAdmin,
     canUseMediaQuality,
@@ -1385,18 +1383,6 @@ export default function Dashboard() {
           {canAccessAdmin ? (
             <ButtonLink to="/admin" variant="secondary">
               {copy.openAdmin}
-            </ButtonLink>
-          ) : null}
-          {canManageListings ? (
-            <ButtonLink to="/add-listing" variant="soft">
-              <Plus size={16} aria-hidden="true" />
-              {copy.addListing}
-            </ButtonLink>
-          ) : null}
-          {canManageActivities || canManageTravelPackages ? (
-            <ButtonLink to="/add-activity" variant="soft">
-              <Plus size={16} aria-hidden="true" />
-              {canManageTravelPackages ? copy.addPackage : copy.addActivity}
             </ButtonLink>
           ) : null}
         </div>

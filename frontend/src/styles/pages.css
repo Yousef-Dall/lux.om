@@ -14006,3 +14006,216 @@ transition: none;
     flex-direction: column;
   }
 }
+
+/* Dashboard V2 mobile polish */
+.dashboard-v2-page,
+.dashboard-v2-page * {
+  min-width: 0;
+}
+
+.dashboard-v2-page.container {
+  max-width: min(var(--container), calc(100vw - 48px));
+}
+
+.dashboard-v2-hero,
+.dashboard-v2-metrics,
+.dashboard-v2-shell,
+.dashboard-v2-sidebar,
+.dashboard-v2-workspace {
+  max-width: 100%;
+}
+
+.dashboard-v2-sidebar .dashboard-tab-nav {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.dashboard-v2-sidebar .dashboard-tab-nav__track {
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
+  .dashboard-v2-page.container {
+    width: 100%;
+    max-width: 100%;
+    margin-inline: 0;
+    padding-inline: 0.75rem;
+  }
+
+  .dashboard-v2-page {
+    gap: 1rem;
+    overflow: hidden;
+  }
+
+  .dashboard-v2-hero {
+    border-radius: 24px;
+    gap: 1.25rem;
+    padding: 1.25rem;
+  }
+
+  .dashboard-v2-hero h1 {
+    font-size: clamp(2.05rem, 10vw, 2.8rem);
+    letter-spacing: -0.06em;
+    line-height: 0.98;
+    margin-block: 0.55rem 0.8rem;
+  }
+
+  .dashboard-v2-hero p {
+    font-size: 0.95rem;
+    line-height: 1.65;
+  }
+
+  .dashboard-v2-hero__meta {
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .dashboard-v2-hero__meta span {
+    font-size: 0.72rem;
+    padding: 0.42rem 0.65rem;
+  }
+
+  .dashboard-v2-hero__actions {
+    gap: 0.65rem;
+  }
+
+  .dashboard-v2-hero__actions .button-link {
+    width: 100%;
+  }
+
+  .dashboard-v2-metrics {
+    gap: 0.75rem;
+  }
+
+  .dashboard-v2-metric-card {
+    border-radius: 20px;
+    padding: 1rem;
+  }
+
+  .dashboard-v2-shell {
+    gap: 1rem;
+  }
+
+  .dashboard-v2-sidebar {
+    position: static;
+    width: 100%;
+  }
+
+  .dashboard-v2-sidebar .dashboard-tab-nav {
+    border-radius: 22px;
+    padding: 0.75rem;
+    width: 100%;
+  }
+
+  .dashboard-v2-sidebar .dashboard-tab-nav__track {
+    display: flex;
+    gap: 0.45rem;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    padding-bottom: 0.25rem;
+    scrollbar-width: thin;
+    width: 100%;
+  }
+
+  .dashboard-v2-sidebar .dashboard-tab-nav__button {
+    flex: 0 0 auto;
+    max-width: 82vw;
+    white-space: nowrap;
+  }
+
+  .dashboard-v2-refresh {
+    width: 100%;
+  }
+
+  .dashboard-v2-workspace {
+    border-radius: 24px;
+    padding: 1rem;
+    width: 100%;
+  }
+
+  .dashboard-v2-workspace__header h2 {
+    font-size: clamp(1.8rem, 9vw, 2.4rem);
+  }
+
+  .dashboard-v2-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-v2-action-item,
+  .dashboard-v2-readiness-item,
+  .dashboard-v2-notification-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .dashboard-v2-record-card,
+  .dashboard-v2-booking-card,
+  .dashboard-v2-command-card,
+  .dashboard-v2-readiness-panel,
+  .dashboard-v2-empty-state,
+  .dashboard-v2-admin-route-card {
+    border-radius: 20px;
+  }
+
+  .dashboard-v2-section-heading {
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 380px) {
+  .dashboard-v2-page.container {
+    padding-inline: 0.55rem;
+  }
+
+  .dashboard-v2-hero,
+  .dashboard-v2-workspace,
+  .dashboard-v2-command-card,
+  .dashboard-v2-readiness-panel {
+    padding: 0.9rem;
+  }
+
+  .dashboard-v2-hero h1 {
+    font-size: clamp(1.85rem, 10vw, 2.35rem);
+  }
+}
+
+/* Dashboard V2 sidebar final polish */
+.dashboard-v2-sidebar .dashboard-tab-nav__intro {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0 0 0.85rem;
+}
+
+.dashboard-v2-sidebar .dashboard-tab-nav__intro span,
+.dashboard-v2-sidebar .dashboard-tab-nav__intro small {
+  display: block;
+  line-height: 1.25;
+  max-width: 100%;
+}
+
+.dashboard-v2-sidebar .dashboard-tab-nav__intro small {
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+}
+
+.dashboard-v2-sidebar .dashboard-tab-nav__button {
+  min-height: 2.75rem;
+  text-align: start;
+}
+
+.dashboard-v2-sidebar .dashboard-tab-nav__button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 720px) {
+  .dashboard-v2-sidebar .dashboard-tab-nav__intro {
+    margin-bottom: 0.65rem;
+  }
+
+  .dashboard-v2-sidebar .dashboard-tab-nav__button {
+    max-width: 72vw;
+    min-height: 2.45rem;
+  }
+}
