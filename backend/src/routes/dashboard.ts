@@ -83,6 +83,213 @@ function getBookingOperationSortValue(booking: { scheduledDate?: Date | null }) 
   return booking.scheduledDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
 }
 
+
+type DashboardAttentionPriority = 'critical' | 'high' | 'medium' | 'low';
+
+type DashboardAttentionItem = {
+  key: string;
+  priority: DashboardAttentionPriority;
+  labelEn: string;
+  labelAr: string;
+  descriptionEn: string;
+  descriptionAr: string;
+  actionTo?: string;
+};
+
+type DashboardHealthInput = {
+  user: {
+    role: string;
+    emailVerified: boolean;
+    phone?: string | null;
+    companyName?: string | null;
+  };
+  totalListings: number;
+  totalActivities: number;
+  pendingReviewCount: number;
+  pendingPayments: number;
+  receivedPendingBookings: number;
+  unreadNotifications: number;
+  verificationGaps: number;
+  mediaGaps: number;
+  submittedInquiries: number;
+  submittedBookings: number;
+  receivedInquiries: number;
+  receivedBookingsCount: number;
+};
+
+function getPersonaHealthWeights(role: string) {
+  if (role === 'ADMIN') {
+    return {
+      inventory: 0,
+      trust: 20,
+      media: 20,
+      demand: 20,
+      payments: 20,
+      attention: 20
+    };
+  }
+
+  if (role === 'USER') {
+    return {
+      inventory: 0,
+      trust: 25,
+      media: 0,
+      demand: 25,
+      payments: 25,
+      attention: 25
+    };
+  }
+
+  return {
+    inventory: 20,
+    trust: 25,
+    media: 15,
+    demand: 15,
+    payments: 10,
+    attention: 15
+  };
+}
+
+function createDashboardHealth(input: DashboardHealthInput) {
+  const weights = getPersonaHealthWeights(input.user.role);
+  const hasInventory = input.totalListings + input.totalActivities > 0;
+  const hasDemand =
+    input.submittedInquiries +
+      input.submittedBookings +
+      input.receivedInquiries +
+      input.receivedBookingsCount >
+    0;
+
+  const attentionItems: DashboardAttentionItem[] = [];
+  const addAttention = (item: DashboardAttentionItem) => attentionItems.push(item);
+
+  if (!input.user.emailVerified) {
+    addAttention({
+      key: 'email-verification',
+      priority: 'critical',
+      labelEn: 'Verify your email',
+      labelAr: 'فعّل بريدك الإلكتروني',
+      descriptionEn: 'Email verification protects account actions, payments, and publishing workflows.',
+      descriptionAr: 'تفعيل البريد يحمي إجراءات الحساب والمدفوعات ومسارات النشر.',
+      actionTo: '/profile'
+    });
+  }
+
+  if (input.user.role !== 'USER' && !hasInventory) {
+    addAttention({
+      key: 'first-inventory',
+      priority: 'high',
+      labelEn: input.user.role === 'DEVELOPER' ? 'Prepare project inventory' : 'Add your first marketplace record',
+      labelAr: input.user.role === 'DEVELOPER' ? 'جهّز مخزون المشاريع' : 'أضف أول عنصر في السوق',
+      descriptionEn: 'A complete inventory is the foundation for leads, bookings, trust, and performance.',
+      descriptionAr: 'المخزون المكتمل هو أساس العملاء والحجوزات والثقة والأداء.',
+      actionTo: input.user.role === 'OWNER' || input.user.role === 'DEVELOPER' ? '/add-listing' : '/add-activity'
+    });
+  }
+
+  if (input.pendingReviewCount > 0) {
+    addAttention({
+      key: 'pending-review',
+      priority: 'medium',
+      labelEn: `${input.pendingReviewCount} item${input.pendingReviewCount === 1 ? '' : 's'} pending marketplace review`,
+      labelAr: `${input.pendingReviewCount} عنصر بانتظار مراجعة السوق`,
+      descriptionEn: 'Follow publishing requirements so pending records can move toward approval faster.',
+      descriptionAr: 'تابع متطلبات النشر حتى تنتقل العناصر المعلقة نحو الاعتماد بشكل أسرع.'
+    });
+  }
+
+  if (input.receivedPendingBookings > 0) {
+    addAttention({
+      key: 'received-bookings',
+      priority: 'critical',
+      labelEn: `${input.receivedPendingBookings} request${input.receivedPendingBookings === 1 ? '' : 's'} need a decision`,
+      labelAr: `${input.receivedPendingBookings} طلب يحتاج قراراً`,
+      descriptionEn: 'Fast decisions improve customer confidence and conversion.',
+      descriptionAr: 'القرارات السريعة تحسن ثقة العملاء والتحويل.'
+    });
+  }
+
+  if (input.pendingPayments > 0) {
+    addAttention({
+      key: 'pending-payments',
+      priority: 'high',
+      labelEn: `${input.pendingPayments} payment${input.pendingPayments === 1 ? '' : 's'} pending`,
+      labelAr: `${input.pendingPayments} دفعة معلقة`,
+      descriptionEn: 'Complete or sync payment status to keep active bookings moving.',
+      descriptionAr: 'أكمل الدفع أو حدّث حالته للحفاظ على سير الحجوزات النشطة.'
+    });
+  }
+
+  if (input.verificationGaps > 0) {
+    addAttention({
+      key: 'verification-gaps',
+      priority: 'high',
+      labelEn: `${input.verificationGaps} verification gap${input.verificationGaps === 1 ? '' : 's'}`,
+      labelAr: `${input.verificationGaps} فجوة تحقق`,
+      descriptionEn: 'Verified records build trust and reduce friction in high-value workflows.',
+      descriptionAr: 'العناصر الموثقة تبني الثقة وتقلل الاحتكاك في المسارات عالية القيمة.'
+    });
+  }
+
+  if (input.mediaGaps > 0) {
+    addAttention({
+      key: 'media-gaps',
+      priority: 'medium',
+      labelEn: `${input.mediaGaps} media quality item${input.mediaGaps === 1 ? '' : 's'}`,
+      labelAr: `${input.mediaGaps} عنصر يحتاج تحسين الوسائط`,
+      descriptionEn: 'Premium media helps marketplace records feel more trustworthy and complete.',
+      descriptionAr: 'الوسائط الممتازة تجعل عناصر السوق أكثر موثوقية واكتمالاً.'
+    });
+  }
+
+  if (input.unreadNotifications > 0) {
+    addAttention({
+      key: 'unread-notifications',
+      priority: 'low',
+      labelEn: `${input.unreadNotifications} unread notification${input.unreadNotifications === 1 ? '' : 's'}`,
+      labelAr: `${input.unreadNotifications} تنبيه غير مقروء`,
+      descriptionEn: 'Review recent account, booking, and marketplace updates.',
+      descriptionAr: 'راجع آخر تحديثات الحساب والحجوزات والسوق.'
+    });
+  }
+
+  let readinessScore = 0;
+
+  readinessScore += input.user.emailVerified ? weights.trust : 0;
+  readinessScore += hasInventory || weights.inventory === 0 ? weights.inventory : 0;
+  readinessScore += input.mediaGaps === 0 ? weights.media : 0;
+  readinessScore += hasDemand || input.user.role !== 'USER' ? weights.demand : 0;
+  readinessScore += input.pendingPayments === 0 ? weights.payments : 0;
+  readinessScore += input.receivedPendingBookings === 0 && input.unreadNotifications === 0
+    ? weights.attention
+    : Math.floor(weights.attention / 2);
+
+  if (input.user.role === 'ADMIN') {
+    readinessScore = Math.max(55, 100 - Math.min(attentionItems.length * 10, 45));
+  }
+
+  readinessScore = Math.max(0, Math.min(100, readinessScore));
+
+  return {
+    readinessScore,
+    attentionCount: attentionItems.length,
+    urgentCount: attentionItems.filter((item) => item.priority === 'critical' || item.priority === 'high').length,
+    nextBestAction: attentionItems[0] ?? null,
+    attentionItems,
+    breakdown: {
+      emailVerified: input.user.emailVerified,
+      hasInventory,
+      hasDemand,
+      pendingReviewCount: input.pendingReviewCount,
+      pendingPayments: input.pendingPayments,
+      receivedPendingBookings: input.receivedPendingBookings,
+      unreadNotifications: input.unreadNotifications,
+      verificationGaps: input.verificationGaps,
+      mediaGaps: input.mediaGaps
+    }
+  };
+}
+
 function createReceivedBookingOperations(bookings: any[]) {
   const operationDays = new Map<string, any>();
 
@@ -208,7 +415,12 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
       submittedBookings,
       receivedBookingsCount,
       receivedPendingBookings,
-      pendingPayments
+      pendingPayments,
+      unreadNotificationsCount,
+      verificationGapListings,
+      verificationGapActivities,
+      mediaGapListings,
+      mediaGapActivities
     ] = await Promise.all([
       prisma.listing.findMany({
         where: {
@@ -376,10 +588,75 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
             status: 'PENDING'
           }
         }
+      }),
+
+      prisma.notification.count({
+        where: {
+          userId,
+          readAt: null
+        }
+      }),
+
+      prisma.listing.count({
+        where: {
+          ownerId: userId,
+          NOT: {
+            verificationStatus: 'ADMIN_VERIFIED'
+          }
+        }
+      }),
+
+      prisma.activity.count({
+        where: {
+          ownerId: userId,
+          NOT: {
+            verificationStatus: 'ADMIN_VERIFIED'
+          }
+        }
+      }),
+
+      prisma.listing.count({
+        where: {
+          ownerId: userId,
+          mediaQualityStatus: {
+            in: ['NOT_CHECKED', 'NEEDS_REVIEW', 'BLOCKED']
+          }
+        }
+      }),
+
+      prisma.activity.count({
+        where: {
+          ownerId: userId,
+          mediaQualityStatus: {
+            in: ['NOT_CHECKED', 'NEEDS_REVIEW', 'BLOCKED']
+          }
+        }
       })
     ]);
 
+    const pendingReviewCount = pendingListings + pendingActivities;
+    const receivedInquiries = receivedListingInquiries + receivedActivityInquiries;
+    const verificationGaps = verificationGapListings + verificationGapActivities;
+    const mediaGaps = mediaGapListings + mediaGapActivities;
+
+    const health = createDashboardHealth({
+      user: req.user!,
+      totalListings,
+      totalActivities,
+      pendingReviewCount,
+      pendingPayments,
+      receivedPendingBookings,
+      unreadNotifications: unreadNotificationsCount,
+      verificationGaps,
+      mediaGaps,
+      submittedInquiries,
+      submittedBookings,
+      receivedInquiries,
+      receivedBookingsCount
+    });
+
     res.json({
+      health,
       stats: {
         totalListings,
         pendingListings,
@@ -390,7 +667,7 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
         approvedActivities,
         rejectedActivities,
         submittedInquiries,
-        receivedInquiries: receivedListingInquiries + receivedActivityInquiries,
+        receivedInquiries,
         submittedBookings,
         receivedBookings: receivedBookingsCount,
         receivedPendingBookings,

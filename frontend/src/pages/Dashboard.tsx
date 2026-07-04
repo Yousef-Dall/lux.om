@@ -25,7 +25,7 @@ import {
   WalletCards,
   XCircle
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 
@@ -406,6 +406,11 @@ export default function Dashboard() {
           noRecords: 'لا توجد سجلات حتى الآن.',
           refresh: 'تحديث البيانات',
           clearDeepLink: 'إغلاق',
+          readinessScore: 'درجة الجاهزية',
+          attentionNeeded: 'يحتاج انتباهاً',
+          allClear: 'كل شيء جاهز',
+          nextBestAction: 'أفضل خطوة تالية',
+          excellentShape: 'حسابك في حالة ممتازة، تابع النشاط والفرص الجديدة.',
           focusedBookingFound: 'تم فتح الحجز المطلوب داخل لوحة التحكم.',
           focusedBookingMissing: 'لم يتم العثور على الحجز المطلوب أو لم يعد متاحاً لهذا الحساب.'
         }
@@ -465,6 +470,11 @@ export default function Dashboard() {
           noRecords: 'No records yet.',
           refresh: 'Refresh data',
           clearDeepLink: 'Dismiss',
+          readinessScore: 'Readiness score',
+          attentionNeeded: 'Needs attention',
+          allClear: 'All clear',
+          nextBestAction: 'Next best action',
+          excellentShape: 'Your workspace is in excellent shape. Keep watching new activity and opportunities.',
           focusedBookingFound: 'The requested booking is open in your dashboard.',
           focusedBookingMissing: 'That booking was not found or is no longer available to this account.'
         };
@@ -574,6 +584,21 @@ export default function Dashboard() {
 
     return actions.slice(0, 4);
   }, [language, pendingPayments.length, pendingReceivedBookings.length, unreadNotifications.length, user]);
+
+  const dashboardHealth = data?.health;
+  const readinessScore = dashboardHealth?.readinessScore ?? (user?.emailVerified ? 70 : 45);
+  const attentionCount = dashboardHealth?.attentionCount ?? urgentActions.length;
+  const nextBestAction = dashboardHealth?.nextBestAction;
+  const dashboardScoreStyle = {
+    '--dashboard-score': `${Math.max(0, Math.min(100, readinessScore))}%`
+  } as CSSProperties;
+
+  function localizeDashboardAttention(item: NonNullable<typeof nextBestAction>) {
+    return {
+      label: language === 'ar' ? item.labelAr : item.labelEn,
+      description: language === 'ar' ? item.descriptionAr : item.descriptionEn
+    };
+  }
 
   useEffect(() => {
     if (!dashboardTabs.some((tab) => tab.id === activeDashboardTab)) {
@@ -1373,19 +1398,62 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="dashboard-v2-hero__actions">
-          {personaContent.primaryActions.map((action) => (
-            <ButtonLink key={action.key} to={action.to} variant={action.key === 'open-admin' ? 'dark' : 'primary'}>
-              {action.text}
-              <ArrowRight size={16} aria-hidden="true" />
-            </ButtonLink>
-          ))}
-          {canAccessAdmin ? (
-            <ButtonLink to="/admin" variant="secondary">
-              {copy.openAdmin}
-            </ButtonLink>
-          ) : null}
-        </div>
+        <aside className="dashboard-v2-hero__panel">
+          <div className="dashboard-v2-score-card">
+            <div className="dashboard-v2-score-ring" style={dashboardScoreStyle}>
+              <strong>{readinessScore}</strong>
+              <span>%</span>
+            </div>
+            <div>
+              <span>{copy.readinessScore}</span>
+              <p>
+                {attentionCount > 0
+                  ? `${attentionCount} ${copy.attentionNeeded}`
+                  : copy.allClear}
+              </p>
+            </div>
+          </div>
+
+          <div className="dashboard-v2-next-action">
+            <p className="eyebrow">{copy.nextBestAction}</p>
+            {nextBestAction ? (
+              (() => {
+                const localizedAction = localizeDashboardAttention(nextBestAction);
+
+                return (
+                  <>
+                    <strong>{localizedAction.label}</strong>
+                    <p>{localizedAction.description}</p>
+                    {nextBestAction.actionTo ? (
+                      <ButtonLink to={nextBestAction.actionTo} variant="soft">
+                        {localizedAction.label}
+                      </ButtonLink>
+                    ) : null}
+                  </>
+                );
+              })()
+            ) : (
+              <>
+                <strong>{copy.allClear}</strong>
+                <p>{copy.excellentShape}</p>
+              </>
+            )}
+          </div>
+
+          <div className="dashboard-v2-hero__actions">
+            {personaContent.primaryActions.map((action) => (
+              <ButtonLink key={action.key} to={action.to} variant="primary">
+                {action.text}
+                <ArrowRight size={16} aria-hidden="true" />
+              </ButtonLink>
+            ))}
+            {canAccessAdmin ? (
+              <ButtonLink to="/admin" variant="secondary">
+                {copy.openAdmin}
+              </ButtonLink>
+            ) : null}
+          </div>
+        </aside>
       </header>
 
       <section className="dashboard-v2-metrics" aria-label={copy.metrics}>
