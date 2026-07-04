@@ -95,6 +95,16 @@ export type DashboardStats = {
   receivedBookings: number;
   receivedPendingBookings: number;
   pendingPayments: number;
+  pendingReviewCount: number;
+  verificationGaps: number;
+  mediaGaps: number;
+  unreadNotifications: number;
+  savedListings: number;
+  savedActivities: number;
+  savedSearches: number;
+  savedItems: number;
+  totalTravelPackages: number;
+  totalLocalActivities: number;
 };
 
 type ApiDashboardResponse = {

@@ -420,7 +420,12 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
       verificationGapListings,
       verificationGapActivities,
       mediaGapListings,
-      mediaGapActivities
+      mediaGapActivities,
+      savedListingsCount,
+      savedActivitiesCount,
+      savedSearchesCount,
+      totalTravelPackages,
+      totalLocalActivities
     ] = await Promise.all([
       prisma.listing.findMany({
         where: {
@@ -631,6 +636,38 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
             in: ['NOT_CHECKED', 'NEEDS_REVIEW', 'BLOCKED']
           }
         }
+      }),
+
+      prisma.savedListing.count({
+        where: {
+          userId
+        }
+      }),
+
+      prisma.savedActivity.count({
+        where: {
+          userId
+        }
+      }),
+
+      prisma.savedSearch.count({
+        where: {
+          userId
+        }
+      }),
+
+      prisma.activity.count({
+        where: {
+          ownerId: userId,
+          travelRegion: 'OUTSIDE_OMAN'
+        }
+      }),
+
+      prisma.activity.count({
+        where: {
+          ownerId: userId,
+          travelRegion: 'INSIDE_OMAN'
+        }
       })
     ]);
 
@@ -638,6 +675,7 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
     const receivedInquiries = receivedListingInquiries + receivedActivityInquiries;
     const verificationGaps = verificationGapListings + verificationGapActivities;
     const mediaGaps = mediaGapListings + mediaGapActivities;
+    const savedItemsCount = savedListingsCount + savedActivitiesCount + savedSearchesCount;
 
     const health = createDashboardHealth({
       user: req.user!,
@@ -671,7 +709,17 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
         submittedBookings,
         receivedBookings: receivedBookingsCount,
         receivedPendingBookings,
-        pendingPayments
+        pendingPayments,
+        pendingReviewCount,
+        verificationGaps,
+        mediaGaps,
+        unreadNotifications: unreadNotificationsCount,
+        savedListings: savedListingsCount,
+        savedActivities: savedActivitiesCount,
+        savedSearches: savedSearchesCount,
+        savedItems: savedItemsCount,
+        totalTravelPackages,
+        totalLocalActivities
       },
       listings,
       activities,

@@ -248,17 +248,21 @@ function getDashboardMetricValue(key: PersonaDashboardMetricKey, data: Dashboard
   const activities = data?.activities ?? [];
   const notifications = data?.notifications ?? [];
 
-  const mediaIssues = [...listings, ...activities].filter((item) => {
+  const sampleMediaIssues = [...listings, ...activities].filter((item) => {
     const status = item.mediaQualityStatus;
 
     return status === 'NEEDS_REVIEW' || status === 'BLOCKED' || status === 'NOT_CHECKED';
   }).length;
 
-  const documentGaps = [...listings, ...activities].filter((item) => {
+  const sampleDocumentGaps = [...listings, ...activities].filter((item) => {
     const status = item.verificationStatus;
 
     return status !== 'ADMIN_VERIFIED';
   }).length;
+
+  const savedItems =
+    stats?.savedItems ??
+    (stats?.savedListings ?? 0) + (stats?.savedActivities ?? 0) + (stats?.savedSearches ?? 0);
 
   switch (key) {
     case 'requests':
@@ -268,13 +272,13 @@ function getDashboardMetricValue(key: PersonaDashboardMetricKey, data: Dashboard
     case 'payments':
       return stats?.pendingPayments ?? 0;
     case 'saved':
-      return '—';
+      return savedItems;
     case 'listings':
       return stats?.totalListings ?? 0;
     case 'activities':
-      return stats?.totalActivities ?? 0;
+      return stats?.totalLocalActivities ?? stats?.totalActivities ?? 0;
     case 'packages':
-      return activities.filter(isTravelPackage).length;
+      return stats?.totalTravelPackages ?? activities.filter(isTravelPackage).length;
     case 'projects':
       return stats?.totalListings ?? 0;
     case 'units':
@@ -282,15 +286,15 @@ function getDashboardMetricValue(key: PersonaDashboardMetricKey, data: Dashboard
     case 'leads':
       return (stats?.receivedInquiries ?? 0) + (stats?.receivedBookings ?? 0);
     case 'documents':
-      return documentGaps;
+      return stats?.verificationGaps ?? sampleDocumentGaps;
     case 'media':
-      return mediaIssues;
+      return stats?.mediaGaps ?? sampleMediaIssues;
     case 'verification':
-      return documentGaps;
+      return stats?.verificationGaps ?? sampleDocumentGaps;
     case 'performance':
       return (stats?.approvedListings ?? 0) + (stats?.approvedActivities ?? 0);
     case 'notifications':
-      return notifications.filter((notification) => !notification.readAt).length;
+      return stats?.unreadNotifications ?? notifications.filter((notification) => !notification.readAt).length;
     default:
       return 0;
   }
@@ -821,6 +825,107 @@ export default function Dashboard() {
     );
   }
 
+  function renderWorkspaceDataSignals() {
+    const signals: Array<{ label: string; value: number | string; helper: string }> = [];
+
+    switch (activeTabContent.key) {
+      case 'listings-command':
+      case 'projects-developments':
+      case 'units-inventory':
+      case 'developer-profile':
+      case 'launch-readiness':
+        signals.push(
+          {
+            label: language === 'ar' ? 'إجمالي السجلات' : 'Total records',
+            value: stats?.totalListings ?? listings.length,
+            helper: language === 'ar' ? 'كل العقارات والمشاريع المرتبطة بالحساب' : 'All property and project records on this account'
+          },
+          {
+            label: language === 'ar' ? 'جاهز للجمهور' : 'Public-ready',
+            value: stats?.approvedListings ?? 0,
+            helper: language === 'ar' ? 'سجلات معتمدة وقابلة للظهور' : 'Approved records ready for marketplace visibility'
+          },
+          {
+            label: language === 'ar' ? 'قيد المراجعة' : 'Pending review',
+            value: stats?.pendingListings ?? 0,
+            helper: language === 'ar' ? 'سجلات تنتظر مراجعة السوق' : 'Records waiting for marketplace review'
+          }
+        );
+        break;
+      case 'activities-command':
+      case 'travel-packages':
+      case 'itineraries':
+        signals.push(
+          {
+            label: language === 'ar' ? 'الأنشطة المحلية' : 'Local activities',
+            value: stats?.totalLocalActivities ?? localActivities.length,
+            helper: language === 'ar' ? 'تجارب داخل عمان' : 'Inside-Oman experience inventory'
+          },
+          {
+            label: language === 'ar' ? 'باقات السفر' : 'Travel packages',
+            value: stats?.totalTravelPackages ?? travelPackages.length,
+            helper: language === 'ar' ? 'باقات خارج عمان' : 'Outside-Oman package inventory'
+          },
+          {
+            label: language === 'ar' ? 'قيد المراجعة' : 'Pending review',
+            value: stats?.pendingActivities ?? 0,
+            helper: language === 'ar' ? 'أنشطة أو باقات تنتظر الاعتماد' : 'Activities or packages waiting for approval'
+          }
+        );
+        break;
+      case 'lead-inbox':
+      case 'buyer-investor-leads':
+      case 'viewing-requests':
+      case 'booking-requests':
+      case 'group-bookings':
+        signals.push(
+          {
+            label: language === 'ar' ? 'الطلب المستلم' : 'Received demand',
+            value: (stats?.receivedInquiries ?? 0) + (stats?.receivedBookings ?? 0),
+            helper: language === 'ar' ? 'استفسارات وحجوزات من العملاء' : 'Customer inquiries and booking requests'
+          },
+          {
+            label: language === 'ar' ? 'بانتظار قرار' : 'Needs decision',
+            value: stats?.receivedPendingBookings ?? 0,
+            helper: language === 'ar' ? 'طلبات تحتاج قبولاً أو رفضاً' : 'Requests waiting for approval or rejection'
+          }
+        );
+        break;
+      case 'media-quality':
+        signals.push({
+          label: language === 'ar' ? 'فجوات الوسائط' : 'Media gaps',
+          value: stats?.mediaGaps ?? 0,
+          helper: language === 'ar' ? 'سجلات تحتاج صوراً أو مراجعة جودة' : 'Records needing better media or quality review'
+        });
+        break;
+      case 'verification':
+      case 'documents-verification':
+      case 'supplier-documents':
+        signals.push({
+          label: language === 'ar' ? 'فجوات التحقق' : 'Verification gaps',
+          value: stats?.verificationGaps ?? 0,
+          helper: language === 'ar' ? 'سجلات تحتاج مستندات أو اعتماد ثقة' : 'Records needing documents or trust approval'
+        });
+        break;
+      default:
+        break;
+    }
+
+    if (!signals.length) return null;
+
+    return (
+      <div className="dashboard-v2-signal-grid" aria-label={language === 'ar' ? 'مؤشرات مساحة العمل' : 'Workspace data signals'}>
+        {signals.map((signal) => (
+          <article key={signal.label}>
+            <span>{signal.label}</span>
+            <strong>{signal.value}</strong>
+            <p>{signal.helper}</p>
+          </article>
+        ))}
+      </div>
+    );
+  }
+
   function renderRecordCard(record: Listing | Activity) {
     const isActivity = isActivityRecord(record);
     const detailRoute = isActivity ? `/activities/${record.slug}` : `/listings/${record.slug}`;
@@ -1159,6 +1264,7 @@ export default function Dashboard() {
           </div>
           {action ? <ButtonLink to={action.to}>{action.label}</ButtonLink> : null}
         </div>
+        {renderWorkspaceDataSignals()}
         {records.length ? (
           <div className="dashboard-v2-record-grid">{records.map((record) => renderRecordCard(record))}</div>
         ) : (
