@@ -205,7 +205,7 @@ export default function AddActivity() {
 const { t, language } = useLanguage();
 const { token, user, isAdmin } = useAuth();
 
-useDocumentTitle('Add activity');
+useDocumentTitle(user?.role === 'TRAVEL_AGENCY' ? 'Add travel package' : 'Add activity');
 
 const [form, setForm] = useState(initialForm);
 const [selectedDays, setSelectedDays] = useState<DayName[]>([
@@ -227,8 +227,63 @@ const [travelAgencies, setTravelAgencies] = useState<TravelAgency[]>([]);
 
 const isOutsideOman = form.travelRegion === 'OUTSIDE_OMAN';
 const isInsideOman = form.travelRegion === 'INSIDE_OMAN';
+const isTravelAgencyCreation = user?.role === 'TRAVEL_AGENCY';
 
 const addActivityCopy = t.addActivity ?? t.addExperience;
+
+const activityFlowCopy =
+language === 'ar'
+? {
+activity: {
+eyebrow: 'نشاط داخل عمان',
+title: 'أضف تجربة أو نشاطاً',
+description: 'أنشئ تجربة داخل عمان مع الجدول، السعة، السعر، الصور، ومعايير الثقة.',
+cardTitle: 'مسار مزود الأنشطة',
+cardText: 'هذا المسار مناسب للتجارب المحلية مثل الصحراء، البحر، الجبال، الطعام، والعائلات.',
+points: ['تجربة داخل عمان', 'سعة وجدول واضح', 'صور ومزايا التجربة']
+},
+package: {
+eyebrow: 'باقة سفر',
+title: 'أضف باقة سفر خارج عمان',
+description: 'جهّز باقة سفر كاملة مع الوجهة، الطيران، الفندق، التأشيرة، البرنامج، والمستندات المطلوبة.',
+cardTitle: 'مسار وكالة السفر',
+cardText: 'هذا المسار يبدأ كباقة خارج عمان لأن وكالة السفر تحتاج بيانات الطيران والفندق والبرنامج من البداية.',
+points: ['وجهة خارج عمان', 'طيران وفندق وبرنامج', 'مستندات ودعم سفر']
+}
+}
+: {
+activity: {
+eyebrow: 'Inside-Oman activity',
+title: 'Add an experience or activity',
+description: 'Create an inside-Oman experience with schedule, capacity, pricing, media, and trust details.',
+cardTitle: 'Activity provider flow',
+cardText: 'Use this flow for local experiences such as desert, sea, mountain, dining, wellness, and family activities.',
+points: ['Inside-Oman experience', 'Capacity and schedule', 'Media and highlights']
+},
+package: {
+eyebrow: 'Travel package',
+title: 'Add an outside-Oman travel package',
+description: 'Prepare a complete travel package with destination, flights, hotel, visa support, itinerary, and required documents.',
+cardTitle: 'Travel agency flow',
+cardText: 'This flow starts as an outside-Oman package because agencies need flight, hotel, itinerary, and document details from the beginning.',
+points: ['Outside-Oman destination', 'Flight, hotel, itinerary', 'Travel documents and support']
+}
+};
+
+const activityFlow = isTravelAgencyCreation ? activityFlowCopy.package : activityFlowCopy.activity;
+
+useEffect(() => {
+if (!isTravelAgencyCreation) return;
+
+setForm((current) => ({
+...current,
+travelRegion: 'OUTSIDE_OMAN',
+category: current.category === 'Desert' ? 'Luxury' : current.category,
+durationType: 'Overnight',
+priceUnit: current.priceUnit === 'PERSON' ? 'PERSON' : current.priceUnit,
+outdoor: false
+}));
+}, [isTravelAgencyCreation]);
 
 const pricingCopy =
 language === 'ar'
@@ -898,6 +953,22 @@ eyebrow={addActivityCopy.eyebrow}
 title={addActivityCopy.title ?? copy.addActivityTitle}
 description={addActivityCopy.description ?? copy.addActivityDescription}
 />
+
+      <div className="persona-flow-card persona-flow-card--activity">
+        <div>
+          <p className="eyebrow">{activityFlow.cardTitle}</p>
+          <h2>{activityFlow.title}</h2>
+          <p>{activityFlow.cardText}</p>
+        </div>
+        <ul>
+          {activityFlow.points.map((point) => (
+            <li key={point}>
+              <CheckCircle2 size={16} aria-hidden="true" />
+              <span>{point}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
 
 <EmailVerificationBanner mode="blocking" />
 </section>

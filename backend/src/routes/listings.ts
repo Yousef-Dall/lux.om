@@ -2741,7 +2741,7 @@ listingsRouter.get('/:slug', async (req, res, next) => {
 listingsRouter.post(
   '/',
   requireAuth(),
-  requireRole('OWNER', 'ADMIN'),
+  requireRole('OWNER', 'DEVELOPER', 'ADMIN'),
   requireVerifiedEmail({ allowAdmin: true }),
   async (req, res, next) => {
   try {

@@ -401,7 +401,7 @@ function RequireGuest({ children }: { children: ReactNode }) {
 }
 
 function RequireOwner({ children }: { children: ReactNode }) {
-  const { isAuthenticated, canManageListings, loading } = useAuth();
+  const { isAuthenticated, canManageListings, canManageDeveloperProjects, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -412,7 +412,7 @@ function RequireOwner({ children }: { children: ReactNode }) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  if (!canManageListings) {
+  if (!canManageListings && !canManageDeveloperProjects) {
     return <Navigate to="/dashboard" replace />;
   }
 

@@ -184,6 +184,48 @@ export default function AddListing() {
   >([]);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
   const emailVerificationRequired = Boolean(user && !user.emailVerified && !isAdmin);
+  const isDeveloperCreation = user?.role === 'DEVELOPER';
+
+  const listingFlowCopy =
+    language === 'ar'
+      ? {
+          owner: {
+            eyebrow: 'إضافة عقار',
+            title: 'أضف عقاراً إلى السوق',
+            description: 'أنشئ إعلاناً واضحاً للمالك أو الوسيط مع السعر والموقع والوسائط ومعلومات الثقة.',
+            cardTitle: 'مسار المالك / الوسيط',
+            cardText: 'ركز على السعر، التوفر، الصور، الموقع، وأي تفاصيل تساعد العميل على اتخاذ قرار سريع.',
+            points: ['تفاصيل العقار والسعر', 'صور عالية الجودة', 'موقع ومعلم قريب']
+          },
+          developer: {
+            eyebrow: 'مخزون المطور',
+            title: 'أضف مشروعاً أو وحدة تطوير',
+            description: 'جهّز سجل مشروع أو وحدة للمشترين والمستثمرين مع المطور، المستندات، الوسائط، وجاهزية الإطلاق.',
+            cardTitle: 'مسار المطور العقاري',
+            cardText: 'هذا المسار مناسب للمشاريع والوحدات الجديدة، مع إبراز المطور، أهلية الشراء، وخطوط الاستثمار.',
+            points: ['مشروع أو وحدة للبيع', 'ربط بالمطور', 'جاهزية المستثمرين']
+          }
+        }
+      : {
+          owner: {
+            eyebrow: 'Add listing',
+            title: 'Add a marketplace property',
+            description: 'Create a clear owner or agent listing with pricing, location, media, and trust context.',
+            cardTitle: 'Owner / agent flow',
+            cardText: 'Focus on pricing, availability, photos, location, and the details that help customers decide quickly.',
+            points: ['Property and price', 'Premium media', 'Location context']
+          },
+          developer: {
+            eyebrow: 'Developer inventory',
+            title: 'Add a project or development unit',
+            description: 'Prepare a project or unit record for buyers and investors with developer context, launch readiness, and media.',
+            cardTitle: 'Developer project flow',
+            cardText: 'Use this flow for new developments, project units, investor-facing launches, and sale-ready inventory.',
+            points: ['Project or unit record', 'Developer context', 'Investor readiness']
+          }
+        };
+
+  const listingFlow = isDeveloperCreation ? listingFlowCopy.developer : listingFlowCopy.owner;
 
   const copy =
     language === 'ar'
@@ -335,6 +377,18 @@ export default function AddListing() {
       isMounted = false;
     };
   }, [language]);
+
+  useEffect(() => {
+    if (!isDeveloperCreation) return;
+
+    setForm((current) => ({
+      ...current,
+      transaction: current.transaction === 'Rent' ? 'Sale' : current.transaction,
+      priceUnit: current.transaction === 'Rent' ? 'TOTAL' : current.priceUnit,
+      developerMode: current.developerMode === 'none' ? 'manual' : current.developerMode,
+      developerName: current.developerName || user?.name || ''
+    }));
+  }, [isDeveloperCreation, user?.name]);
 
   useEffect(() => {
     if (imageFiles.length === 0) {
@@ -594,10 +648,26 @@ export default function AddListing() {
     return (
       <section className="page-section container add-listing-page">
         <SectionHeader
-          eyebrow={t.addListing.eyebrow}
-          title={t.addListing.title}
-          description={t.addListing.description}
+          eyebrow={listingFlow.eyebrow}
+          title={listingFlow.title}
+          description={listingFlow.description}
         />
+
+        <div className="persona-flow-card persona-flow-card--listing">
+          <div>
+            <p className="eyebrow">{listingFlow.cardTitle}</p>
+            <h2>{listingFlow.title}</h2>
+            <p>{listingFlow.cardText}</p>
+          </div>
+          <ul>
+            {listingFlow.points.map((point) => (
+              <li key={point}>
+                <CheckCircle2 size={16} aria-hidden="true" />
+                <span>{point}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
 
         <EmailVerificationBanner mode="blocking" />
       </section>

@@ -326,6 +326,7 @@ export default function Dashboard() {
     token,
     user,
     canManageListings,
+    canManageDeveloperProjects,
     canManageTravelPackages,
     canAccessAdmin,
     canUseMediaQuality,
@@ -1478,7 +1479,13 @@ export default function Dashboard() {
       case 'units-inventory':
       case 'developer-profile':
       case 'launch-readiness':
-        return renderRecords(listings, activeTabContent.text, canManageListings ? { to: '/add-listing', label: copy.addListing } : undefined);
+        return renderRecords(
+          listings,
+          activeTabContent.text,
+          canManageListings || canManageDeveloperProjects
+            ? { to: '/add-listing', label: copy.addListing }
+            : undefined
+        );
       case 'activities-command':
         return renderRecords(localActivities, activeTabContent.text, { to: '/add-activity', label: copy.addActivity });
       case 'travel-packages':
