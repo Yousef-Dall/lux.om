@@ -1,9 +1,9 @@
-import { VerificationStatus } from '@prisma/client';
+import { VerificationStatus, type User } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth, requireRole, requireVerifiedEmail } from '../middleware/auth';
 import { AppError } from '../utils/http';
 import {
   getLinkedPartnerTier,
@@ -22,6 +22,37 @@ const optionalBooleanQuerySchema = z
   }, z.boolean())
   .optional();
 
+const optionalProjectNumberSchema = z.preprocess((value) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  return value;
+}, z.coerce.number().finite().min(0).optional());
+
+const optionalProjectDateSchema = z.preprocess((value) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  return value;
+}, z.coerce.date().optional());
+
+const safeProjectUrlSchema = z
+  .string()
+  .trim()
+  .max(1000)
+  .refine(
+    (value) =>
+      value.startsWith('/uploads/') ||
+      value.startsWith('/assets/') ||
+      value.startsWith('http://') ||
+      value.startsWith('https://'),
+    'Use an uploaded path or an http(s) URL'
+  );
+
+const optionalSafeProjectUrlSchema = z.preprocess((value) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  return value;
+}, safeProjectUrlSchema.optional());
+
+const priceQualifierValues = ['FIXED', 'FROM', 'ON_REQUEST'] as const;
+const projectStatusValues = ['PENDING', 'APPROVED', 'REJECTED'] as const;
+
 export const developersRouter = Router();
 
 const developersQuerySchema = z.object({
@@ -29,6 +60,13 @@ const developersQuerySchema = z.object({
   featured: optionalBooleanQuerySchema,
   verified: optionalBooleanQuerySchema,
   verifiedOnly: optionalBooleanQuerySchema,
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  skip: z.coerce.number().int().min(0).default(0)
+});
+
+const developerProjectsQuerySchema = z.object({
+  developerId: z.string().trim().optional(),
+  status: z.enum(projectStatusValues).optional(),
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0)
 });
@@ -63,6 +101,7 @@ const developerCreateSchema = z
     featured: z.coerce.boolean().default(false)
   })
   .strict();
+
 const developerUpdateSchema = z
   .object({
     nameEn: z.string().trim().min(2).max(140).optional(),
@@ -88,33 +127,203 @@ const developerUpdateSchema = z
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field is required'
   });
+
+const developerProjectImageSchema = z.object({
+  url: safeProjectUrlSchema,
+  altEn: z.string().trim().max(160).optional(),
+  altAr: z.string().trim().max(160).optional(),
+  sortOrder: z.coerce.number().int().min(0).default(0)
+});
+
+const developerProjectCreateSchema = z
+  .object({
+    nameEn: z.string().trim().min(2).max(160),
+    nameAr: z.string().trim().max(160).optional(),
+    descriptionEn: z.string().trim().max(5000).optional(),
+    descriptionAr: z.string().trim().max(5000).optional(),
+    locationEn: z.string().trim().min(2).max(180),
+    locationAr: z.string().trim().max(180).optional(),
+    completionStatus: z.string().trim().max(120).optional(),
+    handoverDate: optionalProjectDateSchema,
+    totalUnits: z.coerce.number().int().min(0).max(10000).optional(),
+    availableUnits: z.coerce.number().int().min(0).max(10000).optional(),
+    bedroomsSummary: z.string().trim().max(180).optional(),
+    amenities: z.array(z.string().trim().min(1).max(80)).max(40).default([]),
+    paymentPlan: z.string().trim().max(3000).optional(),
+    brochureUrl: optionalSafeProjectUrlSchema,
+    masterplanUrl: optionalSafeProjectUrlSchema,
+    videoWalkthroughUrl: optionalSafeProjectUrlSchema,
+    image: optionalSafeProjectUrlSchema,
+    images: z.array(developerProjectImageSchema).max(20).default([]),
+    startingPriceAmount: optionalProjectNumberSchema,
+    priceCurrency: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{3}$/)
+      .transform((value) => value.toUpperCase())
+      .optional(),
+    priceQualifier: z.enum(priceQualifierValues).default('FROM'),
+    developerId: z.string().trim().optional(),
+    developerNameEn: z.string().trim().max(140).optional(),
+    developerNameAr: z.string().trim().max(140).optional(),
+    nearestLandmarkId: z.string().trim().optional(),
+    status: z.enum(projectStatusValues).optional()
+  })
+  .strict()
+  .superRefine((data, context) => {
+    if (data.developerId && (data.developerNameEn || data.developerNameAr)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['developerId'],
+        message: 'Choose either a listed development company or enter a developer name'
+      });
+    }
+
+    if (data.availableUnits !== undefined && data.totalUnits !== undefined && data.availableUnits > data.totalUnits) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['availableUnits'],
+        message: 'Available units cannot exceed total units'
+      });
+    }
+  });
+
+type DeveloperProjectCreateData = z.infer<typeof developerProjectCreateSchema>;
+
+const listingUnitInclude = {
+  amenities: true,
+  images: {
+    orderBy: {
+      sortOrder: 'asc' as const
+    }
+  },
+  developer: true,
+  nearestLandmark: true,
+  owner: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true
+    }
+  }
+};
+
+const developerProjectInclude = {
+  developer: true,
+  nearestLandmark: true,
+  owner: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true
+    }
+  },
+  images: {
+    orderBy: {
+      sortOrder: 'asc' as const
+    }
+  },
+  listings: {
+    where: {
+      status: 'APPROVED' as const
+    },
+    include: listingUnitInclude,
+    orderBy: {
+      createdAt: 'desc' as const
+    }
+  },
+  _count: {
+    select: {
+      listings: true
+    }
+  }
+};
+
 const developerDetailsInclude = {
   listings: {
     where: {
       status: 'APPROVED' as const
     },
-    include: {
-      amenities: true,
-      images: {
-        orderBy: {
-          sortOrder: 'asc' as const
-        }
-      },
-      nearestLandmark: true,
-      owner: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true
-        }
-      }
+    include: listingUnitInclude,
+    orderBy: {
+      createdAt: 'desc' as const
+    }
+  },
+  projects: {
+    where: {
+      status: 'APPROVED' as const
     },
+    include: developerProjectInclude,
     orderBy: {
       createdAt: 'desc' as const
     }
   }
 };
+
+function createProjectImageData(data: DeveloperProjectCreateData) {
+  const images = data.images.length
+    ? data.images
+    : data.image
+      ? [
+          {
+            url: data.image,
+            altEn: data.nameEn,
+            sortOrder: 0
+          }
+        ]
+      : [];
+
+  return images.map((image) => ({
+    url: image.url,
+    altEn: image.altEn ?? data.nameEn,
+    altAr: image.altAr ?? data.nameAr,
+    sortOrder: image.sortOrder ?? 0
+  }));
+}
+
+async function resolveDeveloperCompanyForProject(data: DeveloperProjectCreateData, user: User) {
+  if (data.developerId) {
+    const developer = await prisma.developerCompany.findUnique({
+      where: {
+        id: data.developerId
+      }
+    });
+
+    if (!developer) {
+      throw new AppError(400, 'Selected development company was not found');
+    }
+
+    return developer;
+  }
+
+  const companyName = data.developerNameEn || user.companyName || user.name;
+  const existingDeveloper = await prisma.developerCompany.findFirst({
+    where: {
+      nameEn: {
+        equals: companyName,
+        mode: 'insensitive'
+      }
+    }
+  });
+
+  if (existingDeveloper) {
+    return existingDeveloper;
+  }
+
+  return prisma.developerCompany.create({
+    data: {
+      slug: slugify(companyName) + '-' + Date.now().toString(36),
+      nameEn: companyName,
+      nameAr: data.developerNameAr,
+      headquartersEn: data.locationEn,
+      headquartersAr: data.locationAr,
+      verified: false,
+      featured: false
+    }
+  });
+}
 
 developersRouter.get('/', async (req, res, next) => {
   try {
@@ -188,7 +397,8 @@ developersRouter.get('/', async (req, res, next) => {
       include: {
         _count: {
           select: {
-            listings: true
+            listings: true,
+            projects: true
           }
         }
       },
@@ -227,7 +437,7 @@ developersRouter.post(
   async (req, res, next) => {
     try {
       const data = developerCreateSchema.parse(req.body);
-      const slug = `${slugify(data.nameEn)}-${Date.now().toString(36)}`;
+      const slug = slugify(data.nameEn) + '-' + Date.now().toString(36);
       const partnerStatus = resolvePartnerStatus(
         {
           verified: false,
@@ -256,7 +466,8 @@ developersRouter.post(
         include: {
           _count: {
             select: {
-              listings: true
+              listings: true,
+              projects: true
             }
           }
         }
@@ -270,6 +481,209 @@ developersRouter.post(
     }
   }
 );
+
+developersRouter.get('/projects', async (req, res, next) => {
+  try {
+    const query = developerProjectsQuerySchema.parse(req.query);
+
+    const projects = await prisma.developerProject.findMany({
+      where: {
+        status: 'APPROVED',
+        ...(query.developerId
+          ? {
+              developerId: query.developerId
+            }
+          : {})
+      },
+      include: developerProjectInclude,
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: query.take,
+      skip: query.skip
+    });
+
+    res.json({
+      projects,
+      pagination: {
+        take: query.take,
+        skip: query.skip,
+        count: projects.length
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+developersRouter.get(
+  '/projects/mine',
+  requireAuth(),
+  requireRole('DEVELOPER', 'ADMIN'),
+  async (req, res, next) => {
+    try {
+      const query = developerProjectsQuerySchema.parse(req.query);
+
+      const projects = await prisma.developerProject.findMany({
+        where: {
+          ownerId: req.user!.id,
+          ...(query.status
+            ? {
+                status: query.status
+              }
+            : {})
+        },
+        include: developerProjectInclude,
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: query.take,
+        skip: query.skip
+      });
+
+      res.json({
+        projects,
+        pagination: {
+          take: query.take,
+          skip: query.skip,
+          count: projects.length
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+developersRouter.post(
+  '/projects',
+  requireAuth(),
+  requireRole('DEVELOPER', 'ADMIN'),
+  requireVerifiedEmail({ allowAdmin: true }),
+  async (req, res, next) => {
+    try {
+      const data = developerProjectCreateSchema.parse(req.body);
+      const developer = await resolveDeveloperCompanyForProject(data, req.user!);
+      const nearestLandmark = data.nearestLandmarkId
+        ? await prisma.landmark.findUnique({
+            where: {
+              id: data.nearestLandmarkId
+            }
+          })
+        : null;
+
+      if (data.nearestLandmarkId && !nearestLandmark) {
+        throw new AppError(400, 'Selected landmark was not found');
+      }
+
+      const imageData = createProjectImageData(data);
+      const project = await prisma.developerProject.create({
+        data: {
+          slug: slugify(data.nameEn) + '-' + Date.now().toString(36),
+          nameEn: data.nameEn,
+          nameAr: data.nameAr,
+          descriptionEn: data.descriptionEn,
+          descriptionAr: data.descriptionAr,
+          locationEn: data.locationEn,
+          locationAr: data.locationAr,
+          completionStatus: data.completionStatus,
+          handoverDate: data.handoverDate,
+          totalUnits: data.totalUnits,
+          availableUnits: data.availableUnits,
+          bedroomsSummary: data.bedroomsSummary,
+          amenities: data.amenities,
+          paymentPlan: data.paymentPlan,
+          brochureUrl: data.brochureUrl,
+          masterplanUrl: data.masterplanUrl,
+          videoWalkthroughUrl: data.videoWalkthroughUrl,
+          image: data.image ?? imageData[0]?.url,
+          startingPriceAmount: data.startingPriceAmount,
+          priceCurrency: data.priceCurrency,
+          priceQualifier: data.priceQualifier,
+          status: req.user!.role === 'ADMIN' ? data.status ?? 'APPROVED' : 'PENDING',
+          developerId: developer.id,
+          ownerId: req.user!.id,
+          nearestLandmarkId: nearestLandmark?.id,
+          images: imageData.length
+            ? {
+                create: imageData
+              }
+            : undefined
+        },
+        include: developerProjectInclude
+      });
+
+      res.status(201).json({
+        project
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+developersRouter.get('/projects/:slug', async (req, res, next) => {
+  try {
+    const { slug } = slugParamsSchema.parse(req.params);
+    const project = await prisma.developerProject.findFirst({
+      where: {
+        slug,
+        status: 'APPROVED'
+      },
+      include: developerProjectInclude
+    });
+
+    if (!project) {
+      throw new AppError(404, 'Developer project not found');
+    }
+
+    res.json({
+      project
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+developersRouter.get('/:slug/projects', async (req, res, next) => {
+  try {
+    const { slug } = slugParamsSchema.parse(req.params);
+    const query = developerProjectsQuerySchema.parse(req.query);
+    const developer = await prisma.developerCompany.findUnique({
+      where: {
+        slug
+      }
+    });
+
+    if (!developer) {
+      throw new AppError(404, 'Developer not found');
+    }
+
+    const projects = await prisma.developerProject.findMany({
+      where: {
+        developerId: developer.id,
+        status: 'APPROVED'
+      },
+      include: developerProjectInclude,
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: query.take,
+      skip: query.skip
+    });
+
+    res.json({
+      projects,
+      pagination: {
+        take: query.take,
+        skip: query.skip,
+        count: projects.length
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 developersRouter.patch(
   '/:id',
@@ -305,7 +719,8 @@ developersRouter.patch(
           include: {
             _count: {
               select: {
-                listings: true
+                listings: true,
+                projects: true
               }
             }
           }

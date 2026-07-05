@@ -268,6 +268,7 @@ const listingSchema = z
     amenities: z.array(z.string().trim().min(1).max(50)).max(30).default([]),
 
     developerId: optionalIdSchema,
+    developerProjectId: optionalIdSchema,
     developerNameEn: optionalTextSchema,
     developerNameAr: optionalTextSchema,
     nearestLandmarkId: optionalIdSchema,
@@ -343,6 +344,7 @@ const listQuerySchema = z.object({
   location: z.string().trim().optional(),
   nearestLandmarkId: z.string().trim().optional(),
   developerId: z.string().trim().optional(),
+  developerProjectId: z.string().trim().optional(),
   minBeds: z.coerce.number().int().min(0).optional(),
   minBaths: z.coerce.number().int().min(0).optional(),
   minSqm: z.coerce.number().int().min(0).optional(),
@@ -555,6 +557,7 @@ const listingInclude = {
     }
   },
   developer: true,
+  developerProject: true,
   nearestLandmark: true,
   owner: {
     select: {
@@ -1397,6 +1400,12 @@ listingsRouter.get('/', async (req, res, next) => {
       });
     }
 
+    if (query.developerProjectId) {
+      listingFilters.push({
+        developerProjectId: query.developerProjectId
+      });
+    }
+
     if (query.minBeds !== undefined) {
       listingFilters.push({
         beds: {
@@ -1720,6 +1729,26 @@ listingsRouter.get('/', async (req, res, next) => {
             developerNameAr: {
               contains: search,
               mode: 'insensitive'
+            }
+          },
+          {
+            developerProject: {
+              is: {
+                OR: [
+                  {
+                    nameEn: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  },
+                  {
+                    nameAr: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  }
+                ]
+              }
             }
           },
           {
@@ -2749,13 +2778,43 @@ listingsRouter.post(
     const baseSlug = slugify(data.title);
     const slug = `${baseSlug}-${Date.now().toString(36)}`;
 
+    const developerProject = data.developerProjectId
+      ? await prisma.developerProject.findUnique({
+          where: {
+            id: data.developerProjectId
+          },
+          include: {
+            developer: true
+          }
+        })
+      : null;
+
+    if (data.developerProjectId && !developerProject) {
+      throw new AppError(400, 'Selected developer project was not found');
+    }
+
+    if (developerProject && req.user!.role !== 'ADMIN' && developerProject.ownerId !== req.user!.id) {
+      throw new AppError(403, 'You can only add units to your own developer projects');
+    }
+
+    if (developerProject && data.developerId && data.developerId !== developerProject.developerId) {
+      throw new AppError(400, 'Selected developer company does not match the selected project');
+    }
+
+    if (developerProject && (data.developerNameEn || data.developerNameAr)) {
+      throw new AppError(
+        400,
+        'Project units inherit their developer company from the selected project'
+      );
+    }
+
     const developer = data.developerId
       ? await prisma.developerCompany.findUnique({
           where: {
             id: data.developerId
           }
         })
-      : null;
+      : developerProject?.developer ?? null;
 
     if (data.developerId && !developer) {
       throw new AppError(400, 'Selected development company was not found');
@@ -2871,6 +2930,7 @@ listingsRouter.post(
 
         partnerTier,
         developerId: developer?.id,
+        developerProjectId: developerProject?.id,
         developerNameEn: developer ? null : data.developerNameEn,
         developerNameAr: developer ? null : data.developerNameAr,
         nearestLandmarkId: nearestLandmark?.id,

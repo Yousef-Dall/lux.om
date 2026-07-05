@@ -22,6 +22,12 @@ enum ListingStatus {
   REJECTED
 }
 
+enum DeveloperProjectStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum ActivityStatus {
   PENDING
   APPROVED
@@ -386,6 +392,7 @@ model User {
   updatedAt                   DateTime  @updatedAt
 
   listings      Listing[]
+  developerProjects DeveloperProject[]
   activities    Activity[]
   bookings      Booking[]
   inquiries     Inquiry[]
@@ -465,6 +472,7 @@ model Landmark {
 
   listings   Listing[]
   activities Activity[]
+  developerProjects DeveloperProject[]
 
   @@index([cityEn])
   @@index([category])
@@ -499,6 +507,7 @@ model DeveloperCompany {
   updatedAt DateTime @updatedAt
 
   listings Listing[]
+  projects DeveloperProject[]
   reviews  Review[]
 
   @@index([verified])
@@ -542,6 +551,72 @@ model TravelAgency {
   @@index([featured])
   @@index([verificationStatus])
   @@index([verificationReviewedById])
+}
+
+model DeveloperProject {
+  id   String @id @default(cuid())
+  slug String @unique
+
+  nameEn        String
+  nameAr        String?
+  descriptionEn String?
+  descriptionAr String?
+  locationEn    String
+  locationAr    String?
+
+  completionStatus String?
+  handoverDate     DateTime?
+  totalUnits       Int?
+  availableUnits   Int?
+  bedroomsSummary  String?
+  amenities        String[] @default([])
+  paymentPlan      String?
+  brochureUrl      String?
+  masterplanUrl    String?
+  videoWalkthroughUrl String?
+  image            String?
+
+  startingPriceAmount Decimal?       @db.Decimal(14, 3)
+  priceCurrency       String?        @db.VarChar(3)
+  priceQualifier      PriceQualifier @default(FROM)
+
+  status         DeveloperProjectStatus @default(PENDING)
+  rejectedReason String?
+
+  developerId String
+  developer   DeveloperCompany @relation(fields: [developerId], references: [id], onDelete: Cascade)
+
+  ownerId String
+  owner   User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  nearestLandmarkId String?
+  nearestLandmark   Landmark? @relation(fields: [nearestLandmarkId], references: [id], onDelete: SetNull)
+
+  images   DeveloperProjectImage[]
+  listings Listing[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([developerId])
+  @@index([ownerId])
+  @@index([nearestLandmarkId])
+}
+
+model DeveloperProjectImage {
+  id        String @id @default(cuid())
+  url       String
+  altEn     String?
+  altAr     String?
+  sortOrder Int    @default(0)
+
+  projectId String
+  project   DeveloperProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
 }
 
 model Listing {
@@ -621,6 +696,9 @@ model Listing {
   developerNameEn String?
   developerNameAr String?
 
+  developerProjectId String?
+  developerProject   DeveloperProject? @relation(fields: [developerProjectId], references: [id], onDelete: SetNull)
+
   nearestLandmarkId      String?
   nearestLandmark        Landmark? @relation(fields: [nearestLandmarkId], references: [id], onDelete: SetNull)
   distanceFromLandmarkEn String?
@@ -647,6 +725,7 @@ model Listing {
   @@index([status, priceAmount])
   @@index([ownerId])
   @@index([developerId])
+  @@index([developerProjectId])
   @@index([nearestLandmarkId])
   @@index([location])
   @@index([transaction])
