@@ -926,6 +926,233 @@ export default function Dashboard() {
     );
   }
 
+  function renderWorkspaceBriefing() {
+    const cards: Array<{
+      label: string;
+      value: number | string;
+      helper: string;
+      tone?: 'critical' | 'high' | 'medium' | 'low';
+    }> = [];
+
+    const verificationGaps = stats?.verificationGaps ?? 0;
+    const mediaGaps = stats?.mediaGaps ?? 0;
+    const pendingReviewCount = stats?.pendingReviewCount ?? 0;
+    const receivedDemand = (stats?.receivedInquiries ?? 0) + (stats?.receivedBookings ?? 0);
+    const receivedPending = stats?.receivedPendingBookings ?? pendingReceivedBookings.length;
+    const savedItems = stats?.savedItems ?? 0;
+    const unreadCount = stats?.unreadNotifications ?? unreadNotifications.length;
+
+    switch (activeTabContent.key) {
+      case 'listings-command':
+        cards.push(
+          {
+            label: language === 'ar' ? 'مسار النشر' : 'Publishing pipeline',
+            value: pendingReviewCount,
+            helper: language === 'ar' ? 'عقارات تنتظر مراجعة السوق.' : 'Listings waiting for marketplace review.',
+            tone: pendingReviewCount ? 'high' : 'low'
+          },
+          {
+            label: language === 'ar' ? 'الثقة' : 'Trust readiness',
+            value: verificationGaps,
+            helper: language === 'ar' ? 'فجوات تحقق تؤثر على الثقة والتحويل.' : 'Verification gaps that affect trust and conversion.',
+            tone: verificationGaps ? 'high' : 'low'
+          },
+          {
+            label: language === 'ar' ? 'العرض البصري' : 'Visual quality',
+            value: mediaGaps,
+            helper: language === 'ar' ? 'عناصر تحتاج صوراً أو مراجعة جودة.' : 'Records that need stronger media or quality review.',
+            tone: mediaGaps ? 'medium' : 'low'
+          }
+        );
+        break;
+
+      case 'activities-command':
+        cards.push(
+          {
+            label: language === 'ar' ? 'مخزون التجارب' : 'Experience inventory',
+            value: stats?.totalLocalActivities ?? localActivities.length,
+            helper: language === 'ar' ? 'أنشطة وتجارب داخل عمان.' : 'Inside-Oman experiences managed by this account.',
+            tone: 'medium'
+          },
+          {
+            label: language === 'ar' ? 'ضغط الحجز' : 'Booking pressure',
+            value: receivedPending,
+            helper: language === 'ar' ? 'طلبات تحتاج قبولاً أو رفضاً.' : 'Requests waiting for approval or rejection.',
+            tone: receivedPending ? 'critical' : 'low'
+          },
+          {
+            label: language === 'ar' ? 'الجاهزية' : 'Readiness gaps',
+            value: verificationGaps + mediaGaps,
+            helper: language === 'ar' ? 'فجوات ثقة أو وسائط قبل الترويج.' : 'Trust or media gaps before stronger promotion.',
+            tone: verificationGaps + mediaGaps ? 'high' : 'low'
+          }
+        );
+        break;
+
+      case 'travel-packages':
+      case 'itineraries':
+        cards.push(
+          {
+            label: language === 'ar' ? 'باقات السفر' : 'Package inventory',
+            value: stats?.totalTravelPackages ?? travelPackages.length,
+            helper: language === 'ar' ? 'باقات خارج عمان تحتاج برنامجاً واضحاً.' : 'Outside-Oman packages that need clear itinerary detail.',
+            tone: 'medium'
+          },
+          {
+            label: language === 'ar' ? 'طلبات المجموعات' : 'Group demand',
+            value: receivedDemand,
+            helper: language === 'ar' ? 'استفسارات وحجوزات مرتبطة بالباقات.' : 'Inquiries and bookings connected to packages.',
+            tone: receivedDemand ? 'high' : 'low'
+          },
+          {
+            label: language === 'ar' ? 'جاهزية المستندات' : 'Document readiness',
+            value: verificationGaps,
+            helper: language === 'ar' ? 'مستندات وكالة أو موردين تحتاج مراجعة.' : 'Agency or supplier documents that need trust review.',
+            tone: verificationGaps ? 'high' : 'low'
+          }
+        );
+        break;
+
+      case 'developer-profile':
+      case 'projects-developments':
+      case 'units-inventory':
+      case 'launch-readiness':
+        cards.push(
+          {
+            label: language === 'ar' ? 'محفظة المشاريع' : 'Project portfolio',
+            value: stats?.totalListings ?? listings.length,
+            helper: language === 'ar' ? 'مشاريع ووحدات مرتبطة بشركة التطوير.' : 'Projects and unit records connected to this developer.',
+            tone: 'medium'
+          },
+          {
+            label: language === 'ar' ? 'جاهزية الإطلاق' : 'Launch readiness',
+            value: verificationGaps + mediaGaps + pendingReviewCount,
+            helper: language === 'ar' ? 'مستندات أو وسائط أو موافقات ناقصة قبل الإطلاق.' : 'Missing documents, media, or approvals before launch.',
+            tone: verificationGaps + mediaGaps + pendingReviewCount ? 'high' : 'low'
+          },
+          {
+            label: language === 'ar' ? 'اهتمام المستثمرين' : 'Investor signal',
+            value: receivedDemand,
+            helper: language === 'ar' ? 'طلب مشترين أو مستثمرين على المشاريع.' : 'Buyer or investor demand around projects.',
+            tone: receivedDemand ? 'high' : 'low'
+          }
+        );
+        break;
+
+      case 'lead-inbox':
+      case 'buyer-investor-leads':
+      case 'viewing-requests':
+      case 'booking-requests':
+      case 'group-bookings':
+        cards.push(
+          {
+            label: language === 'ar' ? 'طلبات تحتاج قراراً' : 'Needs decision',
+            value: receivedPending,
+            helper: language === 'ar' ? 'كل طلب سريع الرد عليه يزيد الثقة والتحويل.' : 'Fast decisions improve trust and conversion.',
+            tone: receivedPending ? 'critical' : 'low'
+          },
+          {
+            label: language === 'ar' ? 'الطلب الكلي' : 'Total demand',
+            value: receivedDemand,
+            helper: language === 'ar' ? 'استفسارات وحجوزات مستلمة.' : 'Received inquiries and booking requests.',
+            tone: receivedDemand ? 'high' : 'low'
+          }
+        );
+        break;
+
+      case 'my-bookings':
+      case 'payments-receipts':
+      case 'package-payments':
+        cards.push(
+          {
+            label: language === 'ar' ? 'حجوزاتي' : 'My bookings',
+            value: customerBookings.length,
+            helper: language === 'ar' ? 'حجوزاتك وطلباتك النشطة.' : 'Your active bookings and marketplace requests.',
+            tone: customerBookings.length ? 'medium' : 'low'
+          },
+          {
+            label: language === 'ar' ? 'مدفوعات معلقة' : 'Pending payments',
+            value: stats?.pendingPayments ?? pendingPayments.length,
+            helper: language === 'ar' ? 'مدفوعات تحتاج إكمالاً أو تحديثاً.' : 'Payments that need checkout or status sync.',
+            tone: (stats?.pendingPayments ?? pendingPayments.length) ? 'high' : 'low'
+          }
+        );
+        break;
+
+      case 'saved-alerts':
+        cards.push(
+          {
+            label: language === 'ar' ? 'العناصر المحفوظة' : 'Saved items',
+            value: savedItems,
+            helper: language === 'ar' ? 'عقارات وأنشطة وبحث محفوظ للمتابعة.' : 'Saved listings, activities, and searches for follow-up.',
+            tone: savedItems ? 'medium' : 'low'
+          },
+          {
+            label: language === 'ar' ? 'تنبيهات غير مقروءة' : 'Unread alerts',
+            value: unreadCount,
+            helper: language === 'ar' ? 'تحديثات مهمة لم تراجعها بعد.' : 'Important updates you have not reviewed yet.',
+            tone: unreadCount ? 'medium' : 'low'
+          }
+        );
+        break;
+
+      case 'media-quality':
+        cards.push({
+          label: language === 'ar' ? 'فجوات الوسائط' : 'Media gaps',
+          value: mediaGaps,
+          helper: language === 'ar' ? 'صور أو عروض تحتاج تحسيناً قبل الترويج.' : 'Images or presentation details that need improvement before promotion.',
+          tone: mediaGaps ? 'medium' : 'low'
+        });
+        break;
+
+      case 'verification':
+      case 'documents-verification':
+      case 'supplier-documents':
+        cards.push({
+          label: language === 'ar' ? 'فجوات التحقق' : 'Verification gaps',
+          value: verificationGaps,
+          helper: language === 'ar' ? 'مستندات أو إشارات ثقة تحتاج استكمالاً.' : 'Documents or trust signals that need completion.',
+          tone: verificationGaps ? 'high' : 'low'
+        });
+        break;
+
+      case 'performance':
+      case 'market-insights':
+        cards.push(
+          {
+            label: language === 'ar' ? 'جاهز للجمهور' : 'Public-ready',
+            value: (stats?.approvedListings ?? 0) + (stats?.approvedActivities ?? 0),
+            helper: language === 'ar' ? 'سجلات معتمدة وقابلة للظهور.' : 'Approved records ready for marketplace visibility.',
+            tone: 'medium'
+          },
+          {
+            label: language === 'ar' ? 'الطلب' : 'Demand',
+            value: receivedDemand,
+            helper: language === 'ar' ? 'استفسارات وحجوزات مستلمة.' : 'Received inquiries and bookings.',
+            tone: receivedDemand ? 'high' : 'low'
+          }
+        );
+        break;
+
+      default:
+        break;
+    }
+
+    if (!cards.length) return null;
+
+    return (
+      <div className="dashboard-v2-depth-grid" aria-label={language === 'ar' ? 'عمق مساحة العمل' : 'Workspace depth'}>
+        {cards.map((card) => (
+          <article className={'dashboard-v2-depth-card dashboard-v2-depth-card--' + (card.tone ?? 'medium')} key={card.label}>
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+            <p>{card.helper}</p>
+          </article>
+        ))}
+      </div>
+    );
+  }
+
   function renderRecordCard(record: Listing | Activity) {
     const isActivity = isActivityRecord(record);
     const detailRoute = isActivity ? `/activities/${record.slug}` : `/listings/${record.slug}`;
@@ -1092,11 +1319,18 @@ export default function Dashboard() {
   }
 
   function renderBookingList(bookings: ApiBooking[], mode: 'customer' | 'operator') {
-    if (!bookings.length) return renderEmptyState();
-
-    return <div className="dashboard-v2-booking-grid">{bookings.map((booking) => renderBookingCard(booking, mode))}</div>;
+    return (
+      <>
+        {renderWorkspaceDataSignals()}
+        {renderWorkspaceBriefing()}
+        {bookings.length ? (
+          <div className="dashboard-v2-booking-grid">{bookings.map((booking) => renderBookingCard(booking, mode))}</div>
+        ) : (
+          renderEmptyState()
+        )}
+      </>
+    );
   }
-
   function renderNotificationCenter() {
     return (
       <section className="dashboard-v2-workspace-stack">
@@ -1265,6 +1499,7 @@ export default function Dashboard() {
           {action ? <ButtonLink to={action.to}>{action.label}</ButtonLink> : null}
         </div>
         {renderWorkspaceDataSignals()}
+        {renderWorkspaceBriefing()}
         {records.length ? (
           <div className="dashboard-v2-record-grid">{records.map((record) => renderRecordCard(record))}</div>
         ) : (
@@ -1318,7 +1553,9 @@ export default function Dashboard() {
             <p>{activeTabContent.helperText}</p>
           </div>
         </div>
-        {canUseVerification ? (
+        {renderWorkspaceDataSignals()}
+          {renderWorkspaceBriefing()}
+          {canUseVerification ? (
           <VerificationRequestWorkspace
             token={token}
             listings={listings}
@@ -1342,7 +1579,8 @@ export default function Dashboard() {
             <p>{activeTabContent.helperText}</p>
           </div>
         </div>
-        <div className="dashboard-v2-insight-grid">
+        {renderWorkspaceBriefing()}
+          <div className="dashboard-v2-insight-grid">
           <article>
             <span>{language === 'ar' ? 'منشور' : 'Approved'}</span>
             <strong>{(stats?.approvedListings ?? 0) + (stats?.approvedActivities ?? 0)}</strong>

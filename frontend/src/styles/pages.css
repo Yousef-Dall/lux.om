@@ -14585,3 +14585,87 @@ transition: none;
     grid-template-columns: 1fr;
   }
 }
+
+/* Dashboard V2 persona workspace depth */
+.dashboard-v2-depth-grid {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-v2-depth-card {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(250, 244, 232, 0.78));
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 24px;
+  box-shadow: 0 18px 38px rgba(7, 56, 62, 0.06);
+  min-height: 9.25rem;
+  overflow: hidden;
+  padding: 1.05rem;
+  position: relative;
+}
+
+.dashboard-v2-depth-card::after {
+  background: rgba(178, 135, 74, 0.14);
+  border-radius: 999px;
+  content: '';
+  height: 4.4rem;
+  position: absolute;
+  right: -1.75rem;
+  top: -1.75rem;
+  width: 4.4rem;
+}
+
+.dashboard-v2-depth-card--critical {
+  border-color: rgba(180, 65, 54, 0.26);
+}
+
+.dashboard-v2-depth-card--high {
+  border-color: rgba(178, 135, 74, 0.28);
+}
+
+.dashboard-v2-depth-card--low {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(241, 247, 244, 0.78));
+}
+
+.dashboard-v2-depth-card span {
+  color: rgba(7, 56, 62, 0.62);
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  margin-bottom: 0.55rem;
+  position: relative;
+  text-transform: uppercase;
+  z-index: 1;
+}
+
+.dashboard-v2-depth-card strong {
+  color: var(--dashboard-teal);
+  display: block;
+  font-size: 2.1rem;
+  letter-spacing: -0.06em;
+  line-height: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard-v2-depth-card p {
+  color: rgba(7, 56, 62, 0.64);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  margin: 0.65rem 0 0;
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 980px) {
+  .dashboard-v2-depth-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-v2-depth-card {
+    min-height: auto;
+  }
+}
