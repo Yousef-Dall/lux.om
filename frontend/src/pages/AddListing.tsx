@@ -675,7 +675,38 @@ export default function AddListing() {
 
         {renderListingFlowCard()}
 
-              <form className="form-card form-card--wide listing-form" onSubmit={handleSubmit}>
+        {renderListingFlowCard()}
+
+        <div className="persona-flow-card persona-flow-card--listing">
+          <div>
+            <p className="eyebrow">{listingFlow.cardTitle}</p>
+            <h2>{listingFlow.title}</h2>
+            <p>{listingFlow.cardText}</p>
+          </div>
+          <ul>
+            {listingFlow.points.map((point) => (
+              <li key={point}>
+                <CheckCircle2 size={16} aria-hidden="true" />
+                <span>{point}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <EmailVerificationBanner mode="blocking" />
+      </section>
+    );
+  }
+
+  return (
+  <section className="page-section container add-listing-page">
+      <SectionHeader
+          eyebrow={listingFlow.eyebrow}
+          title={listingFlow.title}
+          description={listingFlow.description}
+        />
+
+      <form className="form-card form-card--wide listing-form" onSubmit={handleSubmit}>
         <div className="form-status-card">
           <div>
             <p className="eyebrow">{copy.qualityEyebrow}</p>
