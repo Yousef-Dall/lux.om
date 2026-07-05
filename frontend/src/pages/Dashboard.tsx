@@ -825,107 +825,6 @@ export default function Dashboard() {
     );
   }
 
-  function renderWorkspaceDataSignals() {
-    const signals: Array<{ label: string; value: number | string; helper: string }> = [];
-
-    switch (activeTabContent.key) {
-      case 'listings-command':
-      case 'projects-developments':
-      case 'units-inventory':
-      case 'developer-profile':
-      case 'launch-readiness':
-        signals.push(
-          {
-            label: language === 'ar' ? 'إجمالي السجلات' : 'Total records',
-            value: stats?.totalListings ?? listings.length,
-            helper: language === 'ar' ? 'كل العقارات والمشاريع المرتبطة بالحساب' : 'All property and project records on this account'
-          },
-          {
-            label: language === 'ar' ? 'جاهز للجمهور' : 'Public-ready',
-            value: stats?.approvedListings ?? 0,
-            helper: language === 'ar' ? 'سجلات معتمدة وقابلة للظهور' : 'Approved records ready for marketplace visibility'
-          },
-          {
-            label: language === 'ar' ? 'قيد المراجعة' : 'Pending review',
-            value: stats?.pendingListings ?? 0,
-            helper: language === 'ar' ? 'سجلات تنتظر مراجعة السوق' : 'Records waiting for marketplace review'
-          }
-        );
-        break;
-      case 'activities-command':
-      case 'travel-packages':
-      case 'itineraries':
-        signals.push(
-          {
-            label: language === 'ar' ? 'الأنشطة المحلية' : 'Local activities',
-            value: stats?.totalLocalActivities ?? localActivities.length,
-            helper: language === 'ar' ? 'تجارب داخل عمان' : 'Inside-Oman experience inventory'
-          },
-          {
-            label: language === 'ar' ? 'باقات السفر' : 'Travel packages',
-            value: stats?.totalTravelPackages ?? travelPackages.length,
-            helper: language === 'ar' ? 'باقات خارج عمان' : 'Outside-Oman package inventory'
-          },
-          {
-            label: language === 'ar' ? 'قيد المراجعة' : 'Pending review',
-            value: stats?.pendingActivities ?? 0,
-            helper: language === 'ar' ? 'أنشطة أو باقات تنتظر الاعتماد' : 'Activities or packages waiting for approval'
-          }
-        );
-        break;
-      case 'lead-inbox':
-      case 'buyer-investor-leads':
-      case 'viewing-requests':
-      case 'booking-requests':
-      case 'group-bookings':
-        signals.push(
-          {
-            label: language === 'ar' ? 'الطلب المستلم' : 'Received demand',
-            value: (stats?.receivedInquiries ?? 0) + (stats?.receivedBookings ?? 0),
-            helper: language === 'ar' ? 'استفسارات وحجوزات من العملاء' : 'Customer inquiries and booking requests'
-          },
-          {
-            label: language === 'ar' ? 'بانتظار قرار' : 'Needs decision',
-            value: stats?.receivedPendingBookings ?? 0,
-            helper: language === 'ar' ? 'طلبات تحتاج قبولاً أو رفضاً' : 'Requests waiting for approval or rejection'
-          }
-        );
-        break;
-      case 'media-quality':
-        signals.push({
-          label: language === 'ar' ? 'فجوات الوسائط' : 'Media gaps',
-          value: stats?.mediaGaps ?? 0,
-          helper: language === 'ar' ? 'سجلات تحتاج صوراً أو مراجعة جودة' : 'Records needing better media or quality review'
-        });
-        break;
-      case 'verification':
-      case 'documents-verification':
-      case 'supplier-documents':
-        signals.push({
-          label: language === 'ar' ? 'فجوات التحقق' : 'Verification gaps',
-          value: stats?.verificationGaps ?? 0,
-          helper: language === 'ar' ? 'سجلات تحتاج مستندات أو اعتماد ثقة' : 'Records needing documents or trust approval'
-        });
-        break;
-      default:
-        break;
-    }
-
-    if (!signals.length) return null;
-
-    return (
-      <div className="dashboard-v2-signal-grid" aria-label={language === 'ar' ? 'مؤشرات مساحة العمل' : 'Workspace data signals'}>
-        {signals.map((signal) => (
-          <article key={signal.label}>
-            <span>{signal.label}</span>
-            <strong>{signal.value}</strong>
-            <p>{signal.helper}</p>
-          </article>
-        ))}
-      </div>
-    );
-  }
-
   function renderWorkspaceBriefing() {
     const cards: Array<{
       label: string;
@@ -1141,7 +1040,10 @@ export default function Dashboard() {
     if (!cards.length) return null;
 
     return (
-      <div className="dashboard-v2-depth-grid" aria-label={language === 'ar' ? 'عمق مساحة العمل' : 'Workspace depth'}>
+      <div
+        className={'dashboard-v2-depth-grid dashboard-v2-depth-grid--' + Math.min(cards.length, 3)}
+        aria-label={language === 'ar' ? 'عمق مساحة العمل' : 'Workspace depth'}
+      >
         {cards.map((card) => (
           <article className={'dashboard-v2-depth-card dashboard-v2-depth-card--' + (card.tone ?? 'medium')} key={card.label}>
             <span>{card.label}</span>
@@ -1321,7 +1223,6 @@ export default function Dashboard() {
   function renderBookingList(bookings: ApiBooking[], mode: 'customer' | 'operator') {
     return (
       <>
-        {renderWorkspaceDataSignals()}
         {renderWorkspaceBriefing()}
         {bookings.length ? (
           <div className="dashboard-v2-booking-grid">{bookings.map((booking) => renderBookingCard(booking, mode))}</div>
@@ -1334,13 +1235,8 @@ export default function Dashboard() {
   function renderNotificationCenter() {
     return (
       <section className="dashboard-v2-workspace-stack">
-        <div className="dashboard-v2-section-heading">
-          <div>
-            <p className="eyebrow">{copy.notifications}</p>
-            <h3>{activeTabContent.text}</h3>
-            <p>{activeTabContent.helperText}</p>
-          </div>
-          {notifications.length ? (
+        {notifications.length ? (
+          <div className="dashboard-v2-workspace-actions">
             <button
               className="button-link button-link--secondary"
               type="button"
@@ -1349,8 +1245,8 @@ export default function Dashboard() {
             >
               {copy.markAllRead}
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         {notificationActionError ? <p className="form-error" role="alert">{notificationActionError}</p> : null}
 
@@ -1385,7 +1281,6 @@ export default function Dashboard() {
       </section>
     );
   }
-
   function renderReadinessPanel() {
     return (
       <section className="dashboard-v2-readiness-panel">
@@ -1489,17 +1384,15 @@ export default function Dashboard() {
 
   function renderRecords(records: Array<Listing | Activity>, title: string, action?: { to: string; label: string }) {
     return (
-      <section className="dashboard-v2-workspace-stack">
-        <div className="dashboard-v2-section-heading">
-          <div>
-            <p className="eyebrow">{copy.activeWorkspace}</p>
-            <h3>{title}</h3>
-            <p>{activeTabContent.helperText}</p>
+      <section className="dashboard-v2-workspace-stack" aria-label={title}>
+        {action ? (
+          <div className="dashboard-v2-workspace-actions">
+            <ButtonLink to={action.to}>{action.label}</ButtonLink>
           </div>
-          {action ? <ButtonLink to={action.to}>{action.label}</ButtonLink> : null}
-        </div>
-        {renderWorkspaceDataSignals()}
+        ) : null}
+
         {renderWorkspaceBriefing()}
+
         {records.length ? (
           <div className="dashboard-v2-record-grid">{records.map((record) => renderRecordCard(record))}</div>
         ) : (
@@ -1508,19 +1401,13 @@ export default function Dashboard() {
       </section>
     );
   }
-
   function renderOperationsCalendar() {
     const operations = data?.receivedBookingOperations ?? [];
 
     return (
       <section className="dashboard-v2-workspace-stack">
-        <div className="dashboard-v2-section-heading">
-          <div>
-            <p className="eyebrow">{copy.operationalCalendar}</p>
-            <h3>{activeTabContent.text}</h3>
-            <p>{activeTabContent.helperText}</p>
-          </div>
-        </div>
+        {renderWorkspaceBriefing()}
+
         {operations.length ? (
           <div className="dashboard-v2-operations-grid">
             {operations.slice(0, 12).map((day) => (
@@ -1542,20 +1429,12 @@ export default function Dashboard() {
       </section>
     );
   }
-
   function renderVerificationWorkspace() {
     return (
       <section className="dashboard-v2-workspace-stack">
-        <div className="dashboard-v2-section-heading">
-          <div>
-            <p className="eyebrow">{copy.documents}</p>
-            <h3>{activeTabContent.text}</h3>
-            <p>{activeTabContent.helperText}</p>
-          </div>
-        </div>
-        {renderWorkspaceDataSignals()}
-          {renderWorkspaceBriefing()}
-          {canUseVerification ? (
+        {renderWorkspaceBriefing()}
+
+        {canUseVerification ? (
           <VerificationRequestWorkspace
             token={token}
             listings={listings}
@@ -1568,19 +1447,12 @@ export default function Dashboard() {
       </section>
     );
   }
-
   function renderPerformanceWorkspace() {
     return (
       <section className="dashboard-v2-workspace-stack">
-        <div className="dashboard-v2-section-heading">
-          <div>
-            <p className="eyebrow">{copy.insights}</p>
-            <h3>{activeTabContent.text}</h3>
-            <p>{activeTabContent.helperText}</p>
-          </div>
-        </div>
         {renderWorkspaceBriefing()}
-          <div className="dashboard-v2-insight-grid">
+
+        <div className="dashboard-v2-insight-grid">
           <article>
             <span>{language === 'ar' ? 'منشور' : 'Approved'}</span>
             <strong>{(stats?.approvedListings ?? 0) + (stats?.approvedActivities ?? 0)}</strong>
@@ -1600,7 +1472,6 @@ export default function Dashboard() {
       </section>
     );
   }
-
   function renderActiveWorkspace() {
     switch (activeTabContent.key) {
       case 'overview':
