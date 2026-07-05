@@ -1074,9 +1074,6 @@ export default function Dashboard() {
               </span>
               <h3>{record.title}</h3>
             </div>
-            <ButtonLink to={detailRoute} variant="ghost">
-              {copy.view}
-            </ButtonLink>
           </div>
           <p>{record.description}</p>
           <dl className="dashboard-v2-inline-meta">
