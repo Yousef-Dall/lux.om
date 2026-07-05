@@ -342,6 +342,26 @@ export default function AddListing() {
     YEAR: copy.perYear
   };
 
+  function renderListingFlowCard() {
+    return (
+      <div className="persona-flow-card persona-flow-card--listing">
+        <div>
+          <p className="eyebrow">{listingFlow.cardTitle}</p>
+          <h2>{listingFlow.title}</h2>
+          <p>{listingFlow.cardText}</p>
+        </div>
+        <ul>
+          {listingFlow.points.map((point) => (
+            <li key={point}>
+              <CheckCircle2 size={16} aria-hidden="true" />
+              <span>{point}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
   useEffect(() => {
     let isMounted = true;
 
@@ -653,6 +673,10 @@ export default function AddListing() {
           description={listingFlow.description}
         />
 
+        {renderListingFlowCard()}
+
+        {renderListingFlowCard()}
+
         <div className="persona-flow-card persona-flow-card--listing">
           <div>
             <p className="eyebrow">{listingFlow.cardTitle}</p>
@@ -677,10 +701,10 @@ export default function AddListing() {
   return (
   <section className="page-section container add-listing-page">
       <SectionHeader
-        eyebrow={t.addListing.eyebrow}
-        title={t.addListing.title}
-        description={t.addListing.description}
-      />
+          eyebrow={listingFlow.eyebrow}
+          title={listingFlow.title}
+          description={listingFlow.description}
+        />
 
       <form className="form-card form-card--wide listing-form" onSubmit={handleSubmit}>
         <div className="form-status-card">

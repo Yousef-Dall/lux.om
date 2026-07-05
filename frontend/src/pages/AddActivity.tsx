@@ -335,6 +335,26 @@ DAY: pricingCopy.perDay,
 NIGHT: pricingCopy.perNight
 };
 
+function renderActivityFlowCard() {
+return (
+<div className="persona-flow-card persona-flow-card--activity">
+<div>
+<p className="eyebrow">{activityFlow.cardTitle}</p>
+<h2>{activityFlow.title}</h2>
+<p>{activityFlow.cardText}</p>
+</div>
+<ul>
+{activityFlow.points.map((point) => (
+<li key={point}>
+<CheckCircle2 size={16} aria-hidden="true" />
+<span>{point}</span>
+</li>
+))}
+</ul>
+</div>
+);
+}
+
 const copy =
 language === 'ar'
 ? {
@@ -949,10 +969,14 @@ if (emailVerificationRequired) {
 return (
 <section className="page-section container add-listing-page add-activity-page">
 <SectionHeader
-eyebrow={addActivityCopy.eyebrow}
-title={addActivityCopy.title ?? copy.addActivityTitle}
-description={addActivityCopy.description ?? copy.addActivityDescription}
+eyebrow={activityFlow.eyebrow}
+title={activityFlow.title}
+description={activityFlow.description}
 />
+
+{renderActivityFlowCard()}
+
+{renderActivityFlowCard()}
 
       <div className="persona-flow-card persona-flow-card--activity">
         <div>
@@ -977,9 +1001,9 @@ description={addActivityCopy.description ?? copy.addActivityDescription}
 
 return ( <section className="page-section container add-listing-page add-activity-page">
 <SectionHeader
-eyebrow={addActivityCopy.eyebrow}
-title={addActivityCopy.title ?? copy.addActivityTitle}
-description={addActivityCopy.description ?? copy.addActivityDescription}
+eyebrow={activityFlow.eyebrow}
+title={activityFlow.title}
+description={activityFlow.description}
 />
 
 
