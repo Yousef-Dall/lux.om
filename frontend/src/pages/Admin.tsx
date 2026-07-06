@@ -201,6 +201,7 @@ function isPendingStatus(status?: string) {
 type ReviewStatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED';
 
 type AdminWorkspaceKey =
+  | 'approvals'
   | 'command'
   | 'health'
   | 'summary'
@@ -210,6 +211,9 @@ type AdminWorkspaceKey =
   | 'reviewDetails';
 
 const adminSectionWorkspaceMap: Partial<Record<string, AdminWorkspaceKey>> = {
+  'admin-approvals-workspace': 'approvals',
+  'admin-approvals': 'approvals',
+  'admin-developer-projects': 'approvals',
   'admin-command-center': 'command',
   'admin-health': 'health',
   'admin-overview-metrics': 'summary',
@@ -490,7 +494,7 @@ const [agencyFormSuccess, setAgencyFormSuccess] = useState('');
 const [creatingDeveloper, setCreatingDeveloper] = useState(false);
 const [developerFormError, setDeveloperFormError] = useState('');
 const [developerFormSuccess, setDeveloperFormSuccess] = useState('');
-const [activeAdminWorkspace, setActiveAdminWorkspace] = useState<AdminWorkspaceKey>('command');
+const [activeAdminWorkspace, setActiveAdminWorkspace] = useState<AdminWorkspaceKey>('approvals');
   
 
   const copy =
@@ -1051,7 +1055,7 @@ const metrics = useMemo(() => {
       title: adminOperationsCopy.approvalsTitle,
       text: adminOperationsCopy.approvalsText,
       metric: metrics.needsAttention,
-      sectionId: 'admin-approvals',
+      sectionId: 'admin-approvals-workspace',
       icon: ShieldCheck
     },
     {
@@ -1061,7 +1065,7 @@ const metrics = useMemo(() => {
           ? 'اعتماد المشاريع الجديدة وربطها بوحدات البيع قبل ظهورها للعامة.'
           : 'Approve new project launches and monitor the unit inventory behind each development.',
       metric: language === 'ar' ? 'مراجعة' : 'Review',
-      sectionId: 'admin-developer-projects',
+      sectionId: 'admin-approvals-workspace',
       icon: Building2
     },
     {
@@ -1570,6 +1574,17 @@ async function deleteDeveloperCompany(developerId: string) {
   function renderAdminWorkspaceSwitcher() {
     const workspaceCards = [
       {
+        key: 'approvals' as const,
+        label: language === 'ar' ? 'الموافقات' : 'Approvals',
+        text:
+          language === 'ar'
+            ? 'قرارات النشر ومشاريع المطورين قبل ظهورها للعامة.'
+            : 'Publishing decisions and developer projects before they go public.',
+        metric: metrics.needsAttention,
+        sectionId: 'admin-approvals-workspace',
+        icon: ShieldCheck
+      },
+      {
         key: 'command' as const,
         label: language === 'ar' ? 'مركز القرار' : 'Command center',
         text:
@@ -1701,7 +1716,7 @@ async function deleteDeveloperCompany(developerId: string) {
           language === 'ar'
             ? 'عقارات وأنشطة تنتظر قراراً يدوياً قبل النشر.'
             : 'Listings and activities waiting for a manual publishing decision.',
-        sectionId: 'admin-approvals',
+        sectionId: 'admin-approvals-workspace',
         tone: metrics.needsAttention > 0 ? 'urgent' : 'healthy',
         icon: ShieldCheck
       },
@@ -1712,7 +1727,7 @@ async function deleteDeveloperCompany(developerId: string) {
           language === 'ar'
             ? 'اعتماد صفحات المشاريع وربطها بوحدات البيع.'
             : 'Approve project pages and inspect their linked unit inventory.',
-        sectionId: 'admin-developer-projects',
+        sectionId: 'admin-approvals-workspace',
         tone: 'primary',
         icon: Building2
       },
@@ -2028,11 +2043,18 @@ async function deleteDeveloperCompany(developerId: string) {
 
       {!loading && !loadError ? renderAdminCommandBriefing() : null}
 
-      {!loading && !loadError ? renderPublishingApprovalCockpit() : null}
-
-      {!loading && !loadError && token ? <AdminDeveloperProjectReviewPanel token={token} /> : null}
-
       {!loading && !loadError ? renderAdminWorkspaceSwitcher() : null}
+
+      {!loading && !loadError ? (
+        <div
+          id="admin-approvals-workspace"
+          className="admin-anchor-section admin-workspace-panel admin-approvals-workspace"
+          tabIndex={-1}
+        >
+          {renderPublishingApprovalCockpit()}
+          {token ? <AdminDeveloperProjectReviewPanel token={token} /> : null}
+        </div>
+      ) : null}
 
       <div id="admin-command-center" className="admin-anchor-section admin-workspace-panel" tabIndex={-1}>
 

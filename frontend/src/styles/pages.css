@@ -15599,7 +15599,7 @@ transition: none;
 .admin-workspace-switcher {
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .admin-workspace-tab {
@@ -15681,6 +15681,7 @@ transition: none;
   padding: 0.26rem 0.5rem;
 }
 
+.admin-page--command-center #admin-approvals-workspace,
 .admin-page--command-center #admin-command-center,
 .admin-page--command-center #admin-health,
 .admin-page--command-center #admin-overview-metrics,
@@ -15692,6 +15693,7 @@ transition: none;
   display: none;
 }
 
+.admin-page--workspace-approvals #admin-approvals-workspace,
 .admin-page--workspace-command #admin-command-center,
 .admin-page--workspace-health #admin-health,
 .admin-page--workspace-finance #admin-finance-section,
@@ -15764,5 +15766,73 @@ transition: none;
 
   .admin-workspace-tab small {
     display: none;
+  }
+}
+
+/* =========================================================
+   Admin primary workspace structure polish
+   ========================================================= */
+.admin-approvals-workspace {
+  gap: clamp(1rem, 2vw, 1.35rem);
+}
+
+.admin-page--workspace-approvals #admin-approvals-workspace {
+  display: grid;
+}
+
+.admin-page--workspace-approvals .publishing-approval-cockpit,
+.admin-page--workspace-approvals .admin-project-review-panel {
+  margin: 0;
+}
+
+.admin-page--command-center .admin-workspace-shell {
+  order: 3;
+}
+
+.admin-page--command-center .admin-approvals-workspace {
+  order: 4;
+}
+
+.admin-page--command-center #admin-command-center {
+  order: 5;
+}
+
+@media (max-width: 1180px) {
+  .admin-workspace-switcher {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-workspace-shell {
+    padding: 1rem;
+  }
+
+  .admin-workspace-shell__header h2 {
+    font-size: clamp(1.6rem, 7vw, 2.2rem);
+  }
+
+  .admin-workspace-switcher {
+    display: flex;
+    flex-wrap: nowrap;
+    margin-inline: -0.2rem;
+    overflow-x: auto;
+    padding: 0.2rem;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .admin-workspace-switcher::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-workspace-tab {
+    flex: 0 0 min(17.25rem, 82vw);
+    min-height: 7.1rem;
+    scroll-snap-align: start;
+  }
+
+  .admin-approvals-workspace {
+    gap: 0.9rem;
   }
 }
