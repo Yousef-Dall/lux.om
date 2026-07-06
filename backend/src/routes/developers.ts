@@ -11,6 +11,7 @@ import {
   resolvePartnerStatus
 } from '../utils/partnerTier';
 import { slugify } from '../utils/slugify';
+import { createMediaQualityUpdate } from '../services/mediaQuality';
 
 const optionalBooleanQuerySchema = z
   .preprocess((value) => {
@@ -709,6 +710,13 @@ developersRouter.post(
       }
 
       const imageData = createProjectImageData(data);
+      const qualityUpdate = createMediaQualityUpdate({
+        mainImage: data.image ?? imageData[0]?.url,
+        images: imageData,
+        videoWalkthroughUrl: data.videoWalkthroughUrl,
+        floorPlanUrl: data.masterplanUrl ?? data.brochureUrl,
+        listingType: 'developer project'
+      });
       const project = await prisma.developerProject.create({
         data: {
           slug: slugify(data.nameEn) + '-' + Date.now().toString(36),
@@ -729,6 +737,7 @@ developersRouter.post(
           masterplanUrl: data.masterplanUrl,
           videoWalkthroughUrl: data.videoWalkthroughUrl,
           image: data.image ?? imageData[0]?.url,
+          ...qualityUpdate,
           startingPriceAmount: data.startingPriceAmount,
           priceCurrency: data.priceCurrency,
           priceQualifier: data.priceQualifier,

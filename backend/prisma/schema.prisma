@@ -576,6 +576,13 @@ model DeveloperProject {
   videoWalkthroughUrl String?
   image            String?
 
+  mediaQualityStatus  MediaQualityStatus @default(NOT_CHECKED)
+  mediaQualityNotes   String?
+  enhancedImageUrl    String?
+  enhancementStatus   EnhancementStatus  @default(NOT_REQUESTED)
+  enhancementProvider String?
+  enhancementNotes    String?
+
   startingPriceAmount Decimal?       @db.Decimal(14, 3)
   priceCurrency       String?        @db.VarChar(3)
   priceQualifier      PriceQualifier @default(FROM)
@@ -602,6 +609,7 @@ model DeveloperProject {
   @@index([developerId])
   @@index([ownerId])
   @@index([nearestLandmarkId])
+  @@index([mediaQualityStatus])
 }
 
 model DeveloperProjectImage {

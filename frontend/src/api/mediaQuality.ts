@@ -15,24 +15,35 @@ export type AdminEnhancementStatus =
   | 'COMPLETED'
   | 'FAILED';
 
+export type AdminMediaQualityItemType = 'LISTING' | 'ACTIVITY' | 'PROJECT';
+
+export type AdminMediaQualityWarning =
+  | 'MISSING_HERO'
+  | 'WEAK_IMAGE_COUNT'
+  | 'MISSING_VIDEO_TOUR'
+  | 'MISSING_FLOOR_PLAN';
+
 export type AdminMediaQualityItem = Record<string, unknown> & {
   id: string;
-  itemType: 'LISTING' | 'ACTIVITY';
+  itemType: AdminMediaQualityItemType;
   title: string;
   slug: string;
   owner?: {
     id: string;
-    name: string;
+    name: string | null;
     email: string;
   } | null;
   status: string;
   mediaQualityStatus: AdminMediaQualityStatus;
   mediaQualityNotes?: string | null;
   enhancementStatus: AdminEnhancementStatus;
+  enhancementNotes?: string | null;
   imageCount: number;
   hasMainImage: boolean;
   hasVideoOrTour: boolean;
   hasFloorPlan: boolean;
+  thumbnailUrl?: string | null;
+  warnings: AdminMediaQualityWarning[];
   updatedAt: string;
   publicPath: string;
 };
@@ -40,29 +51,43 @@ export type AdminMediaQualityItem = Record<string, unknown> & {
 export type AdminMediaQualityQueueResponse = {
   items: AdminMediaQualityItem[];
   total: number;
+  pagination?: {
+    take: number;
+    skip: number;
+    count: number;
+  };
 };
 
 export type AdminMediaQualityQueueParams = {
-  itemType?: 'LISTING' | 'ACTIVITY';
+  itemType?: AdminMediaQualityItemType;
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED';
   mediaQualityStatus?: AdminMediaQualityStatus;
+  warning?: AdminMediaQualityWarning;
   take?: number;
+  skip?: number;
 };
 
 export type UpdateAdminMediaQualityPayload = {
   mediaQualityStatus?: AdminMediaQualityStatus;
   mediaQualityNotes?: string | null;
   enhancementStatus?: AdminEnhancementStatus;
+  enhancementNotes?: string | null;
 };
 
 function toQueryString(params?: AdminMediaQualityQueueParams) {
   const searchParams = new URLSearchParams();
 
   if (params?.itemType) searchParams.set('itemType', params.itemType);
+  if (params?.status) searchParams.set('status', params.status);
   if (params?.mediaQualityStatus) {
     searchParams.set('mediaQualityStatus', params.mediaQualityStatus);
   }
+  if (params?.warning) searchParams.set('warning', params.warning);
   if (typeof params?.take === 'number') {
     searchParams.set('take', String(params.take));
+  }
+  if (typeof params?.skip === 'number') {
+    searchParams.set('skip', String(params.skip));
   }
 
   const queryString = searchParams.toString();
@@ -84,7 +109,7 @@ export async function getAdminMediaQualityQueue(
 
 export async function updateAdminMediaQualityItem(
   token: string,
-  itemType: 'LISTING' | 'ACTIVITY',
+  itemType: AdminMediaQualityItemType,
   itemId: string,
   payload: UpdateAdminMediaQualityPayload
 ) {

@@ -89,6 +89,9 @@ async function clearTestDatabase() {
   await prisma.amenity.deleteMany();
   await prisma.listing.deleteMany();
 
+  await prisma.developerProjectImage.deleteMany();
+  await prisma.developerProject.deleteMany();
+
   await prisma.travelAgency.deleteMany();
   await prisma.developerCompany.deleteMany();
   await prisma.landmark.deleteMany();
@@ -5948,6 +5951,89 @@ describe('admin trust and safety report review workflow', () => {
     expect(dismissedReport.reviewNotes).toBe(
       'Dismissed after checking the target context.'
     );
+  });
+});
+
+
+describe('admin media quality workflow', () => {
+  it('lists project media warnings and updates project media status', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-owner@lux.test'
+      }
+    });
+    const developer = await prisma.developerCompany.findFirstOrThrow();
+
+    const project = await prisma.developerProject.create({
+      data: {
+        slug: 'integration-media-quality-project',
+        nameEn: 'Media Quality Project',
+        locationEn: 'Muscat Hills',
+        status: 'PENDING',
+        developerId: developer.id,
+        ownerId: owner.id,
+        mediaQualityStatus: 'NOT_CHECKED'
+      }
+    });
+
+    const queueResponse = await request(app)
+      .get('/api/media-quality/admin/queue?itemType=PROJECT&warning=MISSING_HERO&take=20')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(queueResponse.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: project.id,
+          itemType: 'PROJECT',
+          title: 'Media Quality Project',
+          publicPath: '/developer-projects/integration-media-quality-project',
+          hasMainImage: false,
+          warnings: expect.arrayContaining(['MISSING_HERO', 'WEAK_IMAGE_COUNT'])
+        })
+      ])
+    );
+
+    const updateResponse = await request(app)
+      .patch(`/api/media-quality/admin/PROJECT/${project.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        mediaQualityStatus: 'EXCELLENT',
+        mediaQualityNotes: 'Project media approved for premium placement.'
+      })
+      .expect(200);
+
+    expect(updateResponse.body.item).toMatchObject({
+      id: project.id,
+      itemType: 'PROJECT',
+      mediaQualityStatus: 'EXCELLENT',
+      mediaQualityNotes: 'Project media approved for premium placement.'
+    });
+
+    const updatedProject = await prisma.developerProject.findUniqueOrThrow({
+      where: {
+        id: project.id
+      }
+    });
+
+    expect(updatedProject.mediaQualityStatus).toBe('EXCELLENT');
+    expect(updatedProject.mediaQualityNotes).toBe('Project media approved for premium placement.');
+  });
+
+  it('filters media quality queue by item type, publish status, and media status', async () => {
+    const response = await request(app)
+      .get('/api/media-quality/admin/queue?itemType=LISTING&status=PENDING&mediaQualityStatus=NOT_CHECKED&take=20')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body.items.every((item: { itemType: string; status: string; mediaQualityStatus: string }) =>
+      item.itemType === 'LISTING' && item.status === 'PENDING' && item.mediaQualityStatus === 'NOT_CHECKED'
+    )).toBe(true);
+    expect(response.body.pagination).toMatchObject({
+      take: 20,
+      skip: 0,
+      count: response.body.items.length
+    });
   });
 });
 
