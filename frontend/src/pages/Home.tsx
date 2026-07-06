@@ -18,6 +18,7 @@ import {
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { useAuth } from '../auth/AuthContext';
 import {
   getActivities,
   getDevelopers,
@@ -38,6 +39,7 @@ import {
 } from '../config/marketplace';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
+import { getRoleAwareHomeReadinessPanel } from '../utils/roleBasedUi';
 import type { Activity, DevelopmentCompany, Landmark, Listing, TravelAgency } from '../types';
 
 function prioritizeFeaturedItems<T extends { featured?: boolean }>(
@@ -69,6 +71,7 @@ function prioritizePartners<
 
 export default function Home() {
   const { t, language } = useLanguage();
+  const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
 
   useDocumentTitle('Premium Oman marketplace');
@@ -392,22 +395,11 @@ export default function Home() {
           }
         ];
 
-  const sellerReadinessSteps =
-    language === 'ar'
-      ? [
-          'سعر وهيكلة دفع واضحة',
-          'صور قوية ووسائط داعمة',
-          'موقع ومعلم قريب أو وجهة واضحة',
-          'بيانات تواصل وتحقق للمزود',
-          'تفاصيل جدول أو مخزون عند الحاجة'
-        ]
-      : [
-          'Clear price and payment structure',
-          'Strong images and supporting media',
-          'Location, landmark, or destination clarity',
-          'Provider contact and verification context',
-          'Schedule or inventory details when needed'
-        ];
+  const roleAwareReadinessPanel = getRoleAwareHomeReadinessPanel(
+    user?.role,
+    language,
+    isAuthenticated
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -904,27 +896,27 @@ export default function Home() {
           </section>
 
           <section className="page-section container home-section home-section--submit-ready">
-            <div className="home-submit-ready">
+            <div className="home-submit-ready home-submit-ready--role-aware">
               <div>
-                <p className="eyebrow">{discoveryCopy.sellerEyebrow}</p>
-                <h2>{discoveryCopy.sellerTitle}</h2>
-                <p>{discoveryCopy.sellerDescription}</p>
+                <p className="eyebrow">{roleAwareReadinessPanel.eyebrow}</p>
+                <h2>{roleAwareReadinessPanel.title}</h2>
+                <p>{roleAwareReadinessPanel.description}</p>
 
                 <div className="home-submit-ready__actions">
-                  <ButtonLink to="/add-listing" variant="secondary">
-                    {discoveryCopy.startListing}
-                  </ButtonLink>
-                  <ButtonLink to="/add-activity" variant="secondary">
-                    {discoveryCopy.startActivity}
-                  </ButtonLink>
-                  <ButtonLink to="/add-project" variant="secondary">
-                    {discoveryCopy.startProject}
-                  </ButtonLink>
+                  {roleAwareReadinessPanel.actions.map((action) => (
+                    <ButtonLink
+                      key={action.key}
+                      to={action.to}
+                      variant={action.intent === 'primary' ? 'secondary' : 'soft'}
+                    >
+                      {action.label}
+                    </ButtonLink>
+                  ))}
                 </div>
               </div>
 
               <div className="home-submit-ready__checklist">
-                {sellerReadinessSteps.map((step) => (
+                {roleAwareReadinessPanel.checklist.map((step) => (
                   <span key={step}>
                     <CheckCircle2 size={17} aria-hidden="true" />
                     {step}

@@ -666,11 +666,19 @@ export function getMarketplacePersonaDescription(
 export type MarketplacePersonaPrimaryAction = {
   key:
     | 'explore-marketplace'
+    | 'saved-alerts'
+    | 'my-bookings'
     | 'add-listing'
+    | 'manage-listings'
     | 'add-activity'
+    | 'booking-requests'
     | 'add-travel-package'
+    | 'travel-packages'
+    | 'add-project'
     | 'developer-profile'
-    | 'admin-cockpit';
+    | 'units-inventory'
+    | 'admin-cockpit'
+    | 'admin-approvals';
   to: string;
   label: {
     en: string;
@@ -689,8 +697,26 @@ const marketplacePersonaPrimaryActions: Record<MarketplacePersona, MarketplacePe
       to: '/listings',
       label: { en: 'Explore marketplace', ar: 'استكشاف السوق' },
       description: {
-        en: 'Browse listings, activities, developers, travel agencies, and investor opportunities.',
-        ar: 'تصفح العقارات والأنشطة والمطورين ووكالات السفر وفرص المستثمرين.'
+        en: 'Browse listings, projects, activities, developers, travel agencies, and investor opportunities.',
+        ar: 'تصفح العقارات والمشاريع والأنشطة والمطورين ووكالات السفر وفرص المستثمرين.'
+      }
+    },
+    {
+      key: 'saved-alerts',
+      to: '/dashboard?workspace=saved-alerts',
+      label: { en: 'Saved & alerts', ar: 'المحفوظات والتنبيهات' },
+      description: {
+        en: 'Return to saved opportunities, watchlists, and alerts.',
+        ar: 'العودة للفرص المحفوظة وقوائم المتابعة والتنبيهات.'
+      }
+    },
+    {
+      key: 'my-bookings',
+      to: '/dashboard?workspace=my-bookings',
+      label: { en: 'My bookings', ar: 'حجوزاتي' },
+      description: {
+        en: 'Track booking requests, payment state, and receipts.',
+        ar: 'متابعة طلبات الحجز وحالة الدفع والإيصالات.'
       }
     }
   ],
@@ -700,8 +726,17 @@ const marketplacePersonaPrimaryActions: Record<MarketplacePersona, MarketplacePe
       to: '/add-listing',
       label: { en: 'Add listing', ar: 'إضافة عقار' },
       description: {
-        en: 'Publish and manage real-estate inventory, leads, verification, and readiness.',
-        ar: 'نشر وإدارة العقارات والعملاء المحتملين والتحقق والجاهزية.'
+        en: 'Publish real-estate inventory with readiness guidance.',
+        ar: 'نشر مخزون عقاري مع إرشادات الجاهزية.'
+      }
+    },
+    {
+      key: 'manage-listings',
+      to: '/dashboard?workspace=listings-command',
+      label: { en: 'Manage listings', ar: 'إدارة العقارات' },
+      description: {
+        en: 'Review listing status, leads, media, verification, and contracts.',
+        ar: 'مراجعة حالة العقارات والعملاء والوسائط والتحقق والعقود.'
       }
     }
   ],
@@ -711,8 +746,17 @@ const marketplacePersonaPrimaryActions: Record<MarketplacePersona, MarketplacePe
       to: '/add-activity',
       label: { en: 'Add activity', ar: 'إضافة نشاط' },
       description: {
-        en: 'Create and manage local experiences, booking requests, capacity, and media quality.',
-        ar: 'إنشاء وإدارة التجارب المحلية وطلبات الحجز والسعة وجودة الوسائط.'
+        en: 'Create local experiences with schedule, capacity, and media readiness.',
+        ar: 'إنشاء تجارب محلية مع جاهزية الجدولة والسعة والوسائط.'
+      }
+    },
+    {
+      key: 'booking-requests',
+      to: '/dashboard?workspace=booking-requests',
+      label: { en: 'Booking requests', ar: 'طلبات الحجز' },
+      description: {
+        en: 'Approve, reject, or follow up on customer requests.',
+        ar: 'قبول أو رفض أو متابعة طلبات العملاء.'
       }
     }
   ],
@@ -722,19 +766,46 @@ const marketplacePersonaPrimaryActions: Record<MarketplacePersona, MarketplacePe
       to: '/add-activity',
       label: { en: 'Add travel package', ar: 'إضافة باقة سفر' },
       description: {
-        en: 'Create outside-Oman packages, itineraries, group requests, and package payments.',
-        ar: 'إنشاء باقات خارج عمان والبرامج وطلبات المجموعات ومدفوعات الباقات.'
+        en: 'Create outside-Oman packages, itineraries, and group-ready offers.',
+        ar: 'إنشاء باقات خارج عمان وبرامج وعروض جاهزة للمجموعات.'
+      }
+    },
+    {
+      key: 'travel-packages',
+      to: '/dashboard?workspace=travel-packages',
+      label: { en: 'Travel packages', ar: 'باقات السفر' },
+      description: {
+        en: 'Manage package readiness, documents, suppliers, and payments.',
+        ar: 'إدارة جاهزية الباقات والمستندات والموردين والمدفوعات.'
       }
     }
   ],
   developer: [
     {
-      key: 'developer-profile',
-      to: '/dashboard',
-      label: { en: 'Developer workspace', ar: 'مساحة المطور' },
+      key: 'add-project',
+      to: '/add-project',
+      label: { en: 'Add project', ar: 'إضافة مشروع' },
       description: {
-        en: 'Manage developer profile, projects, units, documents, leads, and launch readiness.',
-        ar: 'إدارة ملف المطور والمشاريع والوحدات والمستندات والعملاء وجاهزية الإطلاق.'
+        en: 'Create a development project with media, inventory, and launch readiness.',
+        ar: 'إنشاء مشروع تطويري مع الوسائط والمخزون وجاهزية الإطلاق.'
+      }
+    },
+    {
+      key: 'developer-profile',
+      to: '/dashboard?workspace=projects-developments',
+      label: { en: 'Manage projects', ar: 'إدارة المشاريع' },
+      description: {
+        en: 'Manage developer profile, projects, documents, leads, and launch readiness.',
+        ar: 'إدارة ملف المطور والمشاريع والمستندات والعملاء وجاهزية الإطلاق.'
+      }
+    },
+    {
+      key: 'units-inventory',
+      to: '/dashboard?workspace=units-inventory',
+      label: { en: 'Units inventory', ar: 'مخزون الوحدات' },
+      description: {
+        en: 'Connect approved units and inventory to public projects.',
+        ar: 'ربط الوحدات والمخزون المعتمد بالمشاريع العامة.'
       }
     }
   ],
@@ -746,6 +817,15 @@ const marketplacePersonaPrimaryActions: Record<MarketplacePersona, MarketplacePe
       description: {
         en: 'Review marketplace operations, approvals, trust, payments, users, and system health.',
         ar: 'مراجعة عمليات السوق والموافقات والثقة والمدفوعات والمستخدمين وصحة النظام.'
+      }
+    },
+    {
+      key: 'admin-approvals',
+      to: '/admin?workspace=approvals',
+      label: { en: 'Approvals', ar: 'الموافقات' },
+      description: {
+        en: 'Open publishing and verification approval queues.',
+        ar: 'فتح قوائم موافقات النشر والتحقق.'
       }
     }
   ]

@@ -1,11 +1,16 @@
 import { ArrowUpRight, Building2, Mail, MapPin, Phone, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
+import { getRoleAwareFooterCta, getRoleAwareFooterWorkspaceLinks } from '../utils/roleBasedUi';
 
 export default function Footer() {
   const { t, language } = useLanguage();
+  const { isAuthenticated, user } = useAuth();
   const currentYear = new Date().getFullYear();
+  const roleCta = getRoleAwareFooterCta(user?.role, language, isAuthenticated);
+  const workspaceLinks = getRoleAwareFooterWorkspaceLinks(user?.role, language, isAuthenticated);
 
   const copy =
     language === 'ar'
@@ -57,33 +62,29 @@ export default function Footer() {
 
   return (
     <footer className="site-footer">
-      <section className="container footer-cta" aria-labelledby="footer-cta-title">
+      <section className="container footer-cta footer-cta--role-aware" aria-labelledby="footer-cta-title">
         <div>
-          <p className="eyebrow">{t.footer.partnerEyebrow}</p>
-          <h2 id="footer-cta-title">{t.footer.partnerTitle}</h2>
-          <p>{t.footer.partnerText}</p>
+          <p className="eyebrow">{roleCta.eyebrow}</p>
+          <h2 id="footer-cta-title">{roleCta.title}</h2>
+          <p>{roleCta.description}</p>
         </div>
 
         <div className="footer-cta__actions">
-          <Link to="/register?role=OWNER" className="footer-cta__link">
-            {t.common.listProperty}
-            <ArrowUpRight size={18} aria-hidden="true" />
-          </Link>
+          {roleCta.actions.map((action, index) => {
+            const Icon = index === 0 ? ArrowUpRight : index === 1 ? Sparkles : Building2;
 
-          <Link to="/register?role=ACTIVITY_PROVIDER" className="footer-cta__link footer-cta__link--secondary">
-            <Sparkles size={18} aria-hidden="true" />
-            {t.common.listActivity}
-          </Link>
-
-          <Link to="/register?role=TRAVEL_AGENCY" className="footer-cta__link footer-cta__link--secondary">
-            <Building2 size={18} aria-hidden="true" />
-            {copy.partnerAgencies}
-          </Link>
-
-          <Link to="/register?role=DEVELOPER" className="footer-cta__link footer-cta__link--secondary">
-            <Building2 size={18} aria-hidden="true" />
-            {t.footer.partnerWithLux}
-          </Link>
+            return (
+              <Link
+                key={action.key}
+                to={action.to}
+                className={`footer-cta__link${action.intent === 'primary' ? '' : ' footer-cta__link--secondary'}`}
+              >
+                {index === 0 ? null : <Icon size={18} aria-hidden="true" />}
+                {action.label}
+                {index === 0 ? <ArrowUpRight size={18} aria-hidden="true" /> : null}
+              </Link>
+            );
+          })}
         </div>
       </section>
 
@@ -116,12 +117,10 @@ export default function Footer() {
         </nav>
 
         <nav aria-label={aria.owners}>
-          <h2>{t.footer.owners}</h2>
-          <Link to="/register?role=OWNER">{t.common.listProperty}</Link>
-          <Link to="/register?role=ACTIVITY_PROVIDER">{t.common.listActivity}</Link>
-          <Link to="/register?role=TRAVEL_AGENCY">{copy.listAgency}</Link>
-          <Link to="/register?role=DEVELOPER">{t.footer.partnerWithLux}</Link>
-          <Link to="/dashboard">{t.footer.dashboard}</Link>
+          <h2>{workspaceLinks.heading}</h2>
+          {workspaceLinks.links.map((link) => (
+            <Link key={link.key} to={link.to}>{link.label}</Link>
+          ))}
         </nav>
 
         <nav aria-label={aria.legal}>
