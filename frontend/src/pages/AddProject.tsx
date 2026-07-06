@@ -1,0 +1,412 @@
+import { Building2, CheckCircle2, FileText, Image, Link as LinkIcon, MapPin } from 'lucide-react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+
+import { ApiError } from '../api/client';
+import { createDeveloperProject } from '../api/developerProjects';
+import { getDevelopers, getLandmarks } from '../api/marketplace';
+import { useAuth } from '../auth/AuthContext';
+import EmailVerificationBanner from '../components/EmailVerificationBanner';
+import SectionHeader from '../components/SectionHeader';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useLanguage } from '../i18n/LanguageContext';
+import type { DevelopmentCompany, Landmark, PriceQualifier } from '../types';
+
+type DeveloperMode = 'auto' | 'existing' | 'manual';
+
+const initialForm = {
+  nameEn: '',
+  nameAr: '',
+  descriptionEn: '',
+  descriptionAr: '',
+  locationEn: '',
+  locationAr: '',
+  completionStatus: 'Off-plan',
+  handoverDate: '',
+  totalUnits: '',
+  availableUnits: '',
+  bedroomsSummary: '',
+  amenities: '',
+  paymentPlan: '',
+  brochureUrl: '',
+  masterplanUrl: '',
+  videoWalkthroughUrl: '',
+  image: '',
+  images: '',
+  startingPriceAmount: '',
+  priceCurrency: 'OMR',
+  priceQualifier: 'FROM' as PriceQualifier,
+  developerMode: 'auto' as DeveloperMode,
+  developerId: '',
+  developerNameEn: '',
+  developerNameAr: '',
+  nearestLandmarkId: ''
+};
+
+function optionalText(value: string) {
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function optionalNumber(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseCommaList(value: string) {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseImageUrls(value: string, fallbackAlt: string) {
+  return parseCommaList(value).map((url, index) => ({
+    url,
+    altEn: fallbackAlt,
+    sortOrder: index
+  }));
+}
+
+export default function AddProject() {
+  const { language } = useLanguage();
+  const { token, user, isAdmin } = useAuth();
+
+  useDocumentTitle('Add developer project');
+
+  const [form, setForm] = useState(initialForm);
+  const [developers, setDevelopers] = useState<DevelopmentCompany[]>([]);
+  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [createdSlug, setCreatedSlug] = useState('');
+
+  const emailVerificationRequired = Boolean(user && !user.emailVerified && !isAdmin);
+
+  const copy =
+    language === 'ar'
+      ? {
+          eyebrow: 'مشروع مطور عقاري',
+          title: 'أضف مشروعاً كاملاً',
+          description: 'أنشئ صفحة مشروع تجمع معلومات التطوير، المخطط، خطة الدفع، والصور قبل إضافة الوحدات المتاحة.',
+          projectIdentity: 'هوية المشروع',
+          projectIdentityText: 'اسم المشروع، الموقع، المطور، والمرحلة الحالية.',
+          inventory: 'المخزون والوحدات',
+          inventoryText: 'عدد الوحدات، المتاح، الملخص السكني، ونطاق السعر.',
+          mediaDocs: 'الوسائط والمستندات',
+          mediaDocsText: 'صور المشروع، البروشور، المخطط العام، وفيديو الجولة.',
+          projectName: 'اسم المشروع بالإنجليزية',
+          projectNameAr: 'اسم المشروع بالعربية',
+          descriptionEn: 'وصف المشروع بالإنجليزية',
+          descriptionAr: 'وصف المشروع بالعربية',
+          locationEn: 'الموقع بالإنجليزية',
+          locationAr: 'الموقع بالعربية',
+          completionStatus: 'حالة الإنجاز',
+          handoverDate: 'تاريخ التسليم المتوقع',
+          developerMode: 'المطور',
+          autoDeveloper: 'استخدام اسم حسابي / الشركة',
+          existingDeveloper: 'ربط بمطور مسجل',
+          manualDeveloper: 'إدخال اسم مطور',
+          selectDeveloper: 'اختر مطوراً',
+          developerNameEn: 'اسم المطور بالإنجليزية',
+          developerNameAr: 'اسم المطور بالعربية',
+          landmark: 'أقرب معلم أو منطقة',
+          noLandmark: 'بدون معلم محدد',
+          totalUnits: 'إجمالي الوحدات',
+          availableUnits: 'الوحدات المتاحة',
+          bedroomsSummary: 'ملخص الغرف',
+          amenities: 'مرافق المشروع',
+          amenitiesPlaceholder: 'مسبح, نادي صحي, ممشى, أمن',
+          startingPrice: 'السعر يبدأ من',
+          currency: 'العملة',
+          priceType: 'نوع السعر',
+          paymentPlan: 'خطة الدفع',
+          image: 'الصورة الرئيسية',
+          images: 'صور إضافية',
+          imagesPlaceholder: 'ضع روابط الصور مفصولة بفواصل',
+          brochure: 'رابط البروشور',
+          masterplan: 'رابط المخطط العام',
+          video: 'رابط الفيديو',
+          submit: 'إرسال المشروع للمراجعة',
+          submitting: 'جاري الإرسال...',
+          success: 'تم إرسال المشروع للمراجعة.',
+          addUnit: 'إضافة وحدة لهذا المشروع',
+          optionsError: 'تعذر تحميل المطورين والمعالم.',
+          authError: 'يجب تسجيل الدخول قبل إضافة مشروع.',
+          submitError: 'تعذر إنشاء المشروع. حاول مرة أخرى.'
+        }
+      : {
+          eyebrow: 'Developer project',
+          title: 'Add a full development project',
+          description: 'Create a project page with development details, masterplan, payment plan, media, and launch context before adding available units.',
+          projectIdentity: 'Project identity',
+          projectIdentityText: 'Project name, location, developer, and delivery stage.',
+          inventory: 'Inventory & unit mix',
+          inventoryText: 'Total units, available units, bedroom mix, and starting price.',
+          mediaDocs: 'Media & documents',
+          mediaDocsText: 'Project images, brochure, masterplan, and video walkthrough.',
+          projectName: 'Project name in English',
+          projectNameAr: 'Project name in Arabic',
+          descriptionEn: 'Project description in English',
+          descriptionAr: 'Project description in Arabic',
+          locationEn: 'Location in English',
+          locationAr: 'Location in Arabic',
+          completionStatus: 'Completion status',
+          handoverDate: 'Expected handover date',
+          developerMode: 'Developer',
+          autoDeveloper: 'Use my account / company name',
+          existingDeveloper: 'Link existing developer',
+          manualDeveloper: 'Enter developer name',
+          selectDeveloper: 'Select developer',
+          developerNameEn: 'Developer name in English',
+          developerNameAr: 'Developer name in Arabic',
+          landmark: 'Nearest landmark or area',
+          noLandmark: 'No landmark selected',
+          totalUnits: 'Total units',
+          availableUnits: 'Available units',
+          bedroomsSummary: 'Bedroom mix summary',
+          amenities: 'Project amenities',
+          amenitiesPlaceholder: 'Pool, gym, promenade, security',
+          startingPrice: 'Starting price',
+          currency: 'Currency',
+          priceType: 'Price type',
+          paymentPlan: 'Payment plan',
+          image: 'Main image URL',
+          images: 'Additional images',
+          imagesPlaceholder: 'Comma-separated image URLs',
+          brochure: 'Brochure URL',
+          masterplan: 'Masterplan URL',
+          video: 'Video walkthrough URL',
+          submit: 'Submit project for review',
+          submitting: 'Submitting...',
+          success: 'Project submitted for review.',
+          addUnit: 'Add a unit to this project',
+          optionsError: 'Could not load developers and landmarks.',
+          authError: 'You must be logged in before adding a project.',
+          submitError: 'Could not create this project. Please try again.'
+        };
+
+  const completion = useMemo(() => {
+    const required = [form.nameEn, form.locationEn, form.descriptionEn, form.image];
+    return Math.round((required.filter(Boolean).length / required.length) * 100);
+  }, [form.descriptionEn, form.image, form.locationEn, form.nameEn]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadOptions() {
+      try {
+        setLoadingOptions(true);
+        const [apiDevelopers, apiLandmarks] = await Promise.all([
+          getDevelopers(language, { take: 100 }),
+          getLandmarks(language, { take: 100 })
+        ]);
+
+        if (!isMounted) return;
+        setDevelopers(apiDevelopers);
+        setLandmarks(apiLandmarks);
+      } catch (error) {
+        console.error(error);
+        if (isMounted) setSubmitError(copy.optionsError);
+      } finally {
+        if (isMounted) setLoadingOptions(false);
+      }
+    }
+
+    void loadOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [language]);
+
+  function updateForm<K extends keyof typeof initialForm>(field: K, value: (typeof initialForm)[K]) {
+    setSubmitError('');
+    setCreatedSlug('');
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!token) {
+      setSubmitError(copy.authError);
+      return;
+    }
+
+    if (emailVerificationRequired) return;
+
+    try {
+      setSubmitting(true);
+      setSubmitError('');
+      setCreatedSlug('');
+
+      const project = await createDeveloperProject(
+        {
+          nameEn: form.nameEn,
+          nameAr: optionalText(form.nameAr),
+          descriptionEn: optionalText(form.descriptionEn),
+          descriptionAr: optionalText(form.descriptionAr),
+          locationEn: form.locationEn,
+          locationAr: optionalText(form.locationAr),
+          completionStatus: optionalText(form.completionStatus),
+          handoverDate: optionalText(form.handoverDate),
+          totalUnits: optionalNumber(form.totalUnits),
+          availableUnits: optionalNumber(form.availableUnits),
+          bedroomsSummary: optionalText(form.bedroomsSummary),
+          amenities: parseCommaList(form.amenities),
+          paymentPlan: optionalText(form.paymentPlan),
+          brochureUrl: optionalText(form.brochureUrl),
+          masterplanUrl: optionalText(form.masterplanUrl),
+          videoWalkthroughUrl: optionalText(form.videoWalkthroughUrl),
+          image: optionalText(form.image),
+          images: parseImageUrls(form.images, form.nameEn),
+          startingPriceAmount: optionalText(form.startingPriceAmount),
+          priceCurrency: optionalText(form.priceCurrency),
+          priceQualifier: form.priceQualifier,
+          developerId: form.developerMode === 'existing' ? optionalText(form.developerId) : undefined,
+          developerNameEn: form.developerMode === 'manual' ? optionalText(form.developerNameEn) : undefined,
+          developerNameAr: form.developerMode === 'manual' ? optionalText(form.developerNameAr) : undefined,
+          nearestLandmarkId: optionalText(form.nearestLandmarkId)
+        },
+        token,
+        language
+      );
+
+      setCreatedSlug(project.slug);
+      setForm(initialForm);
+    } catch (error) {
+      console.error(error);
+      if (error instanceof ApiError || error instanceof Error) {
+        setSubmitError(error.message);
+      } else {
+        setSubmitError(copy.submitError);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (emailVerificationRequired) {
+    return (
+      <section className="page-section container add-listing-page add-project-page">
+        <SectionHeader eyebrow={copy.eyebrow} title={copy.title} description={copy.description} />
+        <EmailVerificationBanner mode="blocking" />
+      </section>
+    );
+  }
+
+  return (
+    <section className="page-section container add-listing-page add-project-page">
+      <SectionHeader eyebrow={copy.eyebrow} title={copy.title} description={copy.description} />
+
+      <div className="persona-flow-card persona-flow-card--listing">
+        <div>
+          <p className="eyebrow">{language === 'ar' ? 'مشروع ثم وحدات' : 'Project first, units next'}</p>
+          <h2>{copy.title}</h2>
+          <p>{copy.description}</p>
+        </div>
+        <ul>
+          {[copy.projectIdentity, copy.inventory, copy.mediaDocs].map((point) => (
+            <li key={point}>
+              <CheckCircle2 size={16} aria-hidden="true" />
+              <span>{point}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <form className="form-card form-card--wide listing-form" onSubmit={handleSubmit}>
+        <div className="form-status-card">
+          <div>
+            <p className="eyebrow">{language === 'ar' ? 'جاهزية المشروع' : 'Project readiness'}</p>
+            <h2>{completion}% {language === 'ar' ? 'جاهز' : 'ready'}</h2>
+            <p>{language === 'ar' ? 'أكمل البيانات الأساسية لإرسال المشروع للمراجعة.' : 'Complete the essential details to submit the project for review.'}</p>
+          </div>
+          <div className="form-progress" aria-label={"Project completion " + completion + "%"}>
+            <span style={{ width: completion + '%' }} />
+          </div>
+        </div>
+
+        {submitError ? <p className="form-error" role="alert">{submitError}</p> : null}
+        {createdSlug ? (
+          <div className="success-message success-message--floating" role="status">
+            <strong>{copy.success}</strong>
+            <Link className="button-link button-link--secondary" to="/add-listing">
+              {copy.addUnit}
+            </Link>
+          </div>
+        ) : null}
+
+        <section className="form-section-card">
+          <div className="form-group-heading">
+            <span className="form-section-icon"><Building2 size={18} aria-hidden="true" /></span>
+            <div>
+              <p className="eyebrow">{copy.projectIdentity}</p>
+              <h2>{copy.projectIdentityText}</h2>
+            </div>
+          </div>
+          <div className="form-grid">
+            <label>{copy.projectName}<input required value={form.nameEn} onChange={(event) => updateForm('nameEn', event.target.value)} /></label>
+            <label>{copy.projectNameAr}<input value={form.nameAr} onChange={(event) => updateForm('nameAr', event.target.value)} /></label>
+            <label>{copy.locationEn}<input required value={form.locationEn} onChange={(event) => updateForm('locationEn', event.target.value)} /></label>
+            <label>{copy.locationAr}<input value={form.locationAr} onChange={(event) => updateForm('locationAr', event.target.value)} /></label>
+            <label>{copy.completionStatus}<input value={form.completionStatus} onChange={(event) => updateForm('completionStatus', event.target.value)} /></label>
+            <label>{copy.handoverDate}<input type="date" value={form.handoverDate} onChange={(event) => updateForm('handoverDate', event.target.value)} /></label>
+            <label>{copy.developerMode}<select value={form.developerMode} onChange={(event) => updateForm('developerMode', event.target.value as DeveloperMode)}><option value="auto">{copy.autoDeveloper}</option><option value="existing">{copy.existingDeveloper}</option><option value="manual">{copy.manualDeveloper}</option></select></label>
+            {form.developerMode === 'existing' ? <label>{copy.selectDeveloper}<select required disabled={loadingOptions} value={form.developerId} onChange={(event) => updateForm('developerId', event.target.value)}><option value="">{copy.selectDeveloper}</option>{developers.map((developer) => <option key={developer.id} value={developer.id}>{developer.name}</option>)}</select></label> : null}
+            {form.developerMode === 'manual' ? <><label>{copy.developerNameEn}<input required value={form.developerNameEn} onChange={(event) => updateForm('developerNameEn', event.target.value)} /></label><label>{copy.developerNameAr}<input value={form.developerNameAr} onChange={(event) => updateForm('developerNameAr', event.target.value)} /></label></> : null}
+            <label>{copy.landmark}<select disabled={loadingOptions} value={form.nearestLandmarkId} onChange={(event) => updateForm('nearestLandmarkId', event.target.value)}><option value="">{copy.noLandmark}</option>{landmarks.map((landmark) => <option key={landmark.id} value={landmark.id}>{landmark.name} · {landmark.city}</option>)}</select></label>
+          </div>
+        </section>
+
+        <section className="form-section-card">
+          <div className="form-group-heading">
+            <span className="form-section-icon"><MapPin size={18} aria-hidden="true" /></span>
+            <div>
+              <p className="eyebrow">{copy.inventory}</p>
+              <h2>{copy.inventoryText}</h2>
+            </div>
+          </div>
+          <div className="form-grid">
+            <label>{copy.totalUnits}<input type="number" min="0" value={form.totalUnits} onChange={(event) => updateForm('totalUnits', event.target.value)} /></label>
+            <label>{copy.availableUnits}<input type="number" min="0" value={form.availableUnits} onChange={(event) => updateForm('availableUnits', event.target.value)} /></label>
+            <label>{copy.bedroomsSummary}<input placeholder="1BR, 2BR, villas" value={form.bedroomsSummary} onChange={(event) => updateForm('bedroomsSummary', event.target.value)} /></label>
+            <label>{copy.startingPrice}<input type="number" min="0" step="0.001" value={form.startingPriceAmount} onChange={(event) => updateForm('startingPriceAmount', event.target.value)} /></label>
+            <label>{copy.currency}<input maxLength={3} value={form.priceCurrency} onChange={(event) => updateForm('priceCurrency', event.target.value.toUpperCase())} /></label>
+            <label>{copy.priceType}<select value={form.priceQualifier} onChange={(event) => updateForm('priceQualifier', event.target.value as PriceQualifier)}><option value="FROM">Starting from</option><option value="FIXED">Fixed</option><option value="ON_REQUEST">On request</option></select></label>
+            <label>{copy.amenities}<input placeholder={copy.amenitiesPlaceholder} value={form.amenities} onChange={(event) => updateForm('amenities', event.target.value)} /></label>
+            <label>{copy.paymentPlan}<textarea value={form.paymentPlan} onChange={(event) => updateForm('paymentPlan', event.target.value)} /></label>
+          </div>
+        </section>
+
+        <section className="form-section-card">
+          <div className="form-group-heading">
+            <span className="form-section-icon"><Image size={18} aria-hidden="true" /></span>
+            <div>
+              <p className="eyebrow">{copy.mediaDocs}</p>
+              <h2>{copy.mediaDocsText}</h2>
+            </div>
+          </div>
+          <div className="form-grid">
+            <label>{copy.image}<input required value={form.image} onChange={(event) => updateForm('image', event.target.value)} /></label>
+            <label>{copy.images}<input placeholder={copy.imagesPlaceholder} value={form.images} onChange={(event) => updateForm('images', event.target.value)} /></label>
+            <label>{copy.brochure}<span className="input-with-icon"><LinkIcon size={16} aria-hidden="true" /><input value={form.brochureUrl} onChange={(event) => updateForm('brochureUrl', event.target.value)} /></span></label>
+            <label>{copy.masterplan}<span className="input-with-icon"><FileText size={16} aria-hidden="true" /><input value={form.masterplanUrl} onChange={(event) => updateForm('masterplanUrl', event.target.value)} /></span></label>
+            <label>{copy.video}<input value={form.videoWalkthroughUrl} onChange={(event) => updateForm('videoWalkthroughUrl', event.target.value)} /></label>
+          </div>
+          <label>{copy.descriptionEn}<textarea required value={form.descriptionEn} onChange={(event) => updateForm('descriptionEn', event.target.value)} /></label>
+          <label>{copy.descriptionAr}<textarea value={form.descriptionAr} onChange={(event) => updateForm('descriptionAr', event.target.value)} /></label>
+        </section>
+
+        <div className="form-submit-bar">
+          <div><strong>{completion}% {language === 'ar' ? 'جاهز' : 'ready'}</strong><span>{language === 'ar' ? 'سيتم مراجعة المشروع قبل النشر.' : 'Projects are reviewed before publication.'}</span></div>
+          <button className="button-link button-link--primary" disabled={submitting} type="submit">{submitting ? copy.submitting : copy.submit}</button>
+        </div>
+      </form>
+    </section>
+  );
+}

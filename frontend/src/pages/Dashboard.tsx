@@ -376,6 +376,7 @@ export default function Dashboard() {
           price: 'السعر',
           location: 'الموقع',
           addListing: 'إضافة عقار',
+          addProject: 'إضافة مشروع',
           addActivity: 'إضافة نشاط',
           addPackage: 'إضافة باقة سفر',
           openAdmin: 'فتح مركز الإدارة',
@@ -440,6 +441,7 @@ export default function Dashboard() {
           price: 'Price',
           location: 'Location',
           addListing: 'Add listing',
+          addProject: 'Add project',
           addActivity: 'Add activity',
           addPackage: 'Add travel package',
           openAdmin: 'Open admin cockpit',
@@ -1474,11 +1476,27 @@ export default function Dashboard() {
     switch (activeTabContent.key) {
       case 'overview':
         return renderOverview();
-      case 'listings-command':
       case 'projects-developments':
-      case 'units-inventory':
       case 'developer-profile':
       case 'launch-readiness':
+        return renderRecords(
+          listings,
+          activeTabContent.text,
+          canManageDeveloperProjects
+            ? { to: '/add-project', label: copy.addProject }
+            : canManageListings
+              ? { to: '/add-listing', label: copy.addListing }
+              : undefined
+        );
+      case 'units-inventory':
+        return renderRecords(
+          listings,
+          activeTabContent.text,
+          canManageDeveloperProjects
+            ? { to: '/add-listing', label: language === 'ar' ? 'إضافة وحدة' : 'Add unit' }
+            : undefined
+        );
+      case 'listings-command':
         return renderRecords(
           listings,
           activeTabContent.text,

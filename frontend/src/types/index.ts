@@ -35,6 +35,8 @@ export type ListingBuyerEligibility =
 
 export type ListingStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
+export type DeveloperProjectStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export type ActivityStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export type ActivityTravelRegion = 'INSIDE_OMAN' | 'OUTSIDE_OMAN';
@@ -133,6 +135,58 @@ specialties: string[];
 establishedYear?: number;
 };
 
+export type DeveloperProjectImage = {
+id?: string;
+url: string;
+altEn?: string | null;
+altAr?: string | null;
+sortOrder?: number;
+projectId?: string;
+};
+
+export type DeveloperProjectSummary = {
+id: string;
+slug: string;
+name: string;
+location: string;
+image?: string;
+status?: DeveloperProjectStatus;
+};
+
+export type DeveloperProject = {
+id: string;
+slug: string;
+name: string;
+description: string;
+location: string;
+completionStatus?: string;
+handoverDate?: string;
+totalUnits?: number;
+availableUnits?: number;
+bedroomsSummary?: string;
+amenities: string[];
+paymentPlan?: string;
+brochureUrl?: string;
+masterplanUrl?: string;
+videoWalkthroughUrl?: string;
+image?: string;
+images?: DeveloperProjectImage[];
+startingPriceAmount?: string;
+priceCurrency?: string;
+priceQualifier?: PriceQualifier;
+status?: DeveloperProjectStatus;
+rejectedReason?: string;
+developerId: string;
+developer?: DevelopmentCompany;
+owner?: PublicUser;
+nearestLandmarkId?: string;
+nearestLandmarkName?: string;
+units?: Listing[];
+unitCount?: number;
+createdAt?: string;
+updatedAt?: string;
+};
+
 export type TravelAgency = {
 id: string;
 slug: string;
@@ -223,6 +277,8 @@ featured?: boolean;
 developerId?: string;
 developer?: ListingDeveloperSummary;
 developerName?: string;
+developerProjectId?: string;
+developerProject?: DeveloperProjectSummary;
 
 nearestLandmarkId?: string;
 nearestLandmarkName?: string;
@@ -403,6 +459,55 @@ verificationDate?: string | null;
 verificationExpiryDate?: string | null;
 _count?: {
 listings: number;
+projects?: number;
+};
+createdAt?: string;
+updatedAt?: string;
+};
+
+export type ApiDeveloperProjectImage = {
+id?: string;
+url: string;
+altEn?: string | null;
+altAr?: string | null;
+sortOrder?: number;
+projectId?: string;
+};
+
+export type ApiDeveloperProject = {
+id: string;
+slug: string;
+nameEn: string;
+nameAr?: string | null;
+descriptionEn?: string | null;
+descriptionAr?: string | null;
+locationEn: string;
+locationAr?: string | null;
+completionStatus?: string | null;
+handoverDate?: string | null;
+totalUnits?: number | null;
+availableUnits?: number | null;
+bedroomsSummary?: string | null;
+amenities?: string[] | null;
+paymentPlan?: string | null;
+brochureUrl?: string | null;
+masterplanUrl?: string | null;
+videoWalkthroughUrl?: string | null;
+image?: string | null;
+images?: ApiDeveloperProjectImage[];
+startingPriceAmount?: string | null;
+priceCurrency?: string | null;
+priceQualifier?: PriceQualifier | null;
+status?: DeveloperProjectStatus;
+rejectedReason?: string | null;
+developerId: string;
+developer?: ApiDeveloperCompany | null;
+owner?: PublicUser;
+nearestLandmarkId?: string | null;
+nearestLandmark?: ApiLandmark | null;
+listings?: ApiListing[];
+_count?: {
+listings: number;
 };
 createdAt?: string;
 updatedAt?: string;
@@ -492,6 +597,8 @@ developerId?: string | null;
 developer?: ApiDeveloperCompany | null;
 developerNameEn?: string | null;
 developerNameAr?: string | null;
+developerProjectId?: string | null;
+developerProject?: ApiDeveloperProject | null;
 
 nearestLandmarkId?: string | null;
 nearestLandmark?: ApiLandmark | null;

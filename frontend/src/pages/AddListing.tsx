@@ -12,6 +12,7 @@ import {
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 import { ApiError } from '../api/client';
+import { getMyDeveloperProjects } from '../api/developerProjects';
 import { createListing, type CreateListingPayload } from '../api/listings';
 import {
   ACCEPTED_IMAGE_INPUT_TYPES,
@@ -31,6 +32,7 @@ import {
 } from '../utils/listingEligibility';
 import type {
   DevelopmentCompany,
+    DeveloperProject,
   Landmark,
   ListingBuyerEligibility,
   PriceQualifier,
@@ -124,6 +126,7 @@ const initialForm = {
   description: '',
   amenities: '',
   developerMode: 'none' as DeveloperMode,
+  developerProjectId: '',
   developerId: '',
   developerName: '',
   nearestLandmarkId: '',
@@ -175,6 +178,7 @@ export default function AddListing() {
   const [loadingOptions, setLoadingOptions] = useState(true);
 
   const [developers, setDevelopers] = useState<DevelopmentCompany[]>([]);
+  const [developerProjects, setDeveloperProjects] = useState<DeveloperProject[]>([]);
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
 
   const [imageMode, setImageMode] = useState<ImageMode>('upload');
@@ -274,7 +278,11 @@ export default function AddListing() {
           totalPrice: 'السعر الإجمالي',
           perNight: 'لكل ليلة',
           perMonth: 'لكل شهر',
-          perYear: 'لكل سنة'
+          perYear: 'لكل سنة',
+          project: 'المشروع',
+          noProject: 'بدون مشروع محدد',
+          projectHint: 'اختر مشروعاً لإضافة هذه الوحدة ضمن مخزون مشروع كامل.',
+          addProject: 'إضافة مشروع جديد'
         }
       : {
           qualityEyebrow: 'Listing quality',
@@ -321,7 +329,11 @@ export default function AddListing() {
           totalPrice: 'Total price',
           perNight: 'Per night',
           perMonth: 'Per month',
-          perYear: 'Per year'
+          perYear: 'Per year',
+          project: 'Project',
+          noProject: 'No project selected',
+          projectHint: 'Choose a project to attach this unit to full development inventory.',
+          addProject: 'Add new project'
         };
 
   const priceQualifierLabels: Record<
@@ -369,14 +381,18 @@ export default function AddListing() {
       try {
         setLoadingOptions(true);
 
-        const [apiDevelopers, apiLandmarks] = await Promise.all([
+        const [apiDevelopers, apiLandmarks, apiDeveloperProjects] = await Promise.all([
           getDevelopers(language, { take: 100 }),
-          getLandmarks(language, { take: 100 })
+          getLandmarks(language, { take: 100 }),
+          isDeveloperCreation && token
+            ? getMyDeveloperProjects(token, language, { take: 100 })
+            : Promise.resolve([])
         ]);
 
         if (!isMounted) return;
 
         setDevelopers(apiDevelopers);
+        setDeveloperProjects(apiDeveloperProjects);
         setLandmarks(apiLandmarks);
       } catch (error) {
         console.error(error);
@@ -396,7 +412,7 @@ export default function AddListing() {
     return () => {
       isMounted = false;
     };
-  }, [language]);
+  }, [isDeveloperCreation, language, token]);
 
   useEffect(() => {
     if (!isDeveloperCreation) return;
@@ -601,14 +617,15 @@ export default function AddListing() {
     })),
     description: form.description,
     amenities,
+    developerProjectId: optionalText(form.developerProjectId),
     developerId:
-      form.developerMode === 'existing' ? optionalText(form.developerId) : undefined,
+      !form.developerProjectId && form.developerMode === 'existing' ? optionalText(form.developerId) : undefined,
     developerNameEn:
-      form.developerMode === 'manual' && language === 'en'
+      !form.developerProjectId && form.developerMode === 'manual' && language === 'en'
         ? optionalText(form.developerName)
         : undefined,
     developerNameAr:
-      form.developerMode === 'manual' && language === 'ar'
+      !form.developerProjectId && form.developerMode === 'manual' && language === 'ar'
         ? optionalText(form.developerName)
         : undefined,
     nearestLandmarkId: optionalText(form.nearestLandmarkId),
@@ -937,59 +954,101 @@ export default function AddListing() {
           </div>
 
           <div className="form-grid">
-            <label>
-              {copy.developerMode}
-              <select
-                value={form.developerMode}
-                onChange={(event) => {
-                  const developerMode = event.target.value as DeveloperMode;
-
-                  setSubmitted(false);
-                  setSubmitError('');
-                  setForm((current) => ({
-                    ...current,
-                    developerMode,
-                    developerId: '',
-                    developerName: ''
-                  }));
-                }}
-              >
-                <option value="none">{copy.noDeveloper}</option>
-                <option value="existing">{copy.existingDeveloper}</option>
-                <option value="manual">{copy.manualDeveloper}</option>
-              </select>
-            </label>
-
-            {form.developerMode === 'existing' ? (
-              <label>
-                {copy.developer}
-                <select
-                  required
-                  value={form.developerId}
-                  disabled={loadingOptions}
-                  onChange={(event) => updateForm('developerId', event.target.value)}
-                >
-                  <option value="">{copy.selectDeveloper}</option>
-                  {developers.map((developer) => (
-                    <option key={developer.id} value={developer.id}>
-                      {developer.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            {isDeveloperCreation ? (
+              <div className="amenity-picker">
+                <p>{copy.project}</p>
+                <small>{copy.projectHint}</small>
+                <div className="form-grid">
+                  <label>
+                    {copy.project}
+                    <select
+                      value={form.developerProjectId}
+                      disabled={loadingOptions}
+                      onChange={(event) => {
+                        const developerProjectId = event.target.value;
+                        setSubmitted(false);
+                        setSubmitError('');
+                        setForm((current) => ({
+                          ...current,
+                          developerProjectId,
+                          developerMode: developerProjectId ? 'none' : current.developerMode,
+                          developerId: developerProjectId ? '' : current.developerId,
+                          developerName: developerProjectId ? '' : current.developerName
+                        }));
+                      }}
+                    >
+                      <option value="">{copy.noProject}</option>
+                      {developerProjects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name} · {project.location}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <a className="button-link button-link--secondary" href="/add-project">
+                    {copy.addProject}
+                  </a>
+                </div>
+              </div>
             ) : null}
 
-            {form.developerMode === 'manual' ? (
-              <label>
-                {copy.manualDeveloperName}
-                <input
-                  required
-                  value={form.developerName}
-                  onChange={(event) => updateForm('developerName', event.target.value)}
-                  placeholder={copy.manualDeveloperPlaceholder}
-                  maxLength={120}
-                />
-              </label>
+            {!form.developerProjectId ? (
+              <>
+                <label>
+                  {copy.developerMode}
+                  <select
+                    value={form.developerMode}
+                    onChange={(event) => {
+                      const developerMode = event.target.value as DeveloperMode;
+
+                      setSubmitted(false);
+                      setSubmitError('');
+                      setForm((current) => ({
+                        ...current,
+                        developerMode,
+                        developerId: '',
+                        developerName: ''
+                      }));
+                    }}
+                  >
+                    <option value="none">{copy.noDeveloper}</option>
+                    <option value="existing">{copy.existingDeveloper}</option>
+                    <option value="manual">{copy.manualDeveloper}</option>
+                  </select>
+                </label>
+
+                {form.developerMode === 'existing' ? (
+                  <label>
+                    {copy.developer}
+                    <select
+                      required
+                      value={form.developerId}
+                      disabled={loadingOptions}
+                      onChange={(event) => updateForm('developerId', event.target.value)}
+                    >
+                      <option value="">{copy.selectDeveloper}</option>
+                      {developers.map((developer) => (
+                        <option key={developer.id} value={developer.id}>
+                          {developer.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+
+                {form.developerMode === 'manual' ? (
+                  <label>
+                    {copy.manualDeveloperName}
+                    <input
+                      required
+                      value={form.developerName}
+                      onChange={(event) => updateForm('developerName', event.target.value)}
+                      placeholder={copy.manualDeveloperPlaceholder}
+                      maxLength={120}
+                    />
+                  </label>
+                ) : null}
+              </>
             ) : null}
 
             <label>

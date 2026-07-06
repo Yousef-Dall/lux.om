@@ -14783,3 +14783,92 @@ transition: none;
     padding: 1.1rem;
   }
 }
+
+/* Developer project UX */
+.add-project-page .success-message {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.developer-project-detail-page {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.developer-project-hero-card {
+  background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(250,244,232,0.88));
+  border: 1px solid rgba(7, 56, 62, 0.1);
+  border-radius: 30px;
+  box-shadow: 0 24px 60px rgba(7, 56, 62, 0.08);
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  overflow: hidden;
+  padding: 1rem;
+}
+
+.developer-project-hero-card img {
+  aspect-ratio: 16 / 10;
+  border-radius: 22px;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.developer-project-hero-card h2 {
+  color: #07383e;
+  font-size: clamp(1.5rem, 3vw, 2.4rem);
+  letter-spacing: -0.045em;
+  margin: 0.25rem 0 1rem;
+}
+
+.developer-project-hero-card dl {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.developer-project-hero-card dt {
+  color: rgba(7, 56, 62, 0.58);
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.developer-project-hero-card dd {
+  color: #07383e;
+  font-size: 1.05rem;
+  font-weight: 900;
+  margin: 0.15rem 0 0;
+}
+
+.developer-project-content-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+}
+
+.developer-project-content-grid article,
+.developer-project-content-grid aside {
+  background: rgba(255,255,255,0.88);
+  border: 1px solid rgba(7, 56, 62, 0.08);
+  border-radius: 24px;
+  padding: 1.25rem;
+}
+
+.developer-project-content-grid aside {
+  align-content: start;
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (max-width: 860px) {
+  .developer-project-hero-card,
+  .developer-project-content-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

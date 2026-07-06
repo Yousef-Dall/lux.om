@@ -6,10 +6,12 @@ ActivityDifficulty,
 ActivityType,
 ApiActivity,
 ApiDeveloperCompany,
+ApiDeveloperProject,
 ApiLandmark,
 ApiListing,
 ApiTravelAgency,
 DevelopmentCompany,
+DeveloperProject,
 Landmark,
 Language,
 Listing,
@@ -163,6 +165,67 @@ establishedYear: apiDeveloper.establishedYear ?? undefined
 };
 }
 
+
+export function mapDeveloperProject(
+apiProject: ApiDeveloperProject,
+language: Language
+): DeveloperProject {
+const name = pickLocalized(language, apiProject.nameEn, apiProject.nameAr);
+const description = pickLocalized(
+language,
+apiProject.descriptionEn,
+apiProject.descriptionAr
+);
+const location = pickLocalized(language, apiProject.locationEn, apiProject.locationAr);
+const images =
+apiProject.images
+?.map((image) => ({
+...image,
+url: resolveAssetUrl(image.url)
+}))
+.filter((image) => image.url) ?? [];
+const developer = apiProject.developer
+? mapDeveloperCompany(apiProject.developer, language)
+: undefined;
+const nearestLandmark = apiProject.nearestLandmark
+? mapLandmark(apiProject.nearestLandmark, language)
+: undefined;
+
+return {
+id: apiProject.id,
+slug: apiProject.slug,
+name,
+description,
+location,
+completionStatus: apiProject.completionStatus ?? undefined,
+handoverDate: apiProject.handoverDate ?? undefined,
+totalUnits: apiProject.totalUnits ?? undefined,
+availableUnits: apiProject.availableUnits ?? undefined,
+bedroomsSummary: apiProject.bedroomsSummary ?? undefined,
+amenities: apiProject.amenities ?? [],
+paymentPlan: apiProject.paymentPlan ?? undefined,
+brochureUrl: apiProject.brochureUrl ? resolveAssetUrl(apiProject.brochureUrl) : undefined,
+masterplanUrl: apiProject.masterplanUrl ? resolveAssetUrl(apiProject.masterplanUrl) : undefined,
+videoWalkthroughUrl: apiProject.videoWalkthroughUrl ? resolveAssetUrl(apiProject.videoWalkthroughUrl) : undefined,
+image: resolveAssetUrl(images[0]?.url || apiProject.image),
+images,
+startingPriceAmount: apiProject.startingPriceAmount ?? undefined,
+priceCurrency: apiProject.priceCurrency ?? undefined,
+priceQualifier: apiProject.priceQualifier ?? undefined,
+status: apiProject.status,
+rejectedReason: apiProject.rejectedReason ?? undefined,
+developerId: apiProject.developerId,
+developer,
+owner: apiProject.owner,
+nearestLandmarkId: apiProject.nearestLandmarkId ?? undefined,
+nearestLandmarkName: nearestLandmark?.name,
+units: apiProject.listings?.map((listing) => mapListing(listing, language)) ?? [],
+unitCount: apiProject._count?.listings ?? apiProject.listings?.length ?? 0,
+createdAt: apiProject.createdAt,
+updatedAt: apiProject.updatedAt
+};
+}
+
 export function mapTravelAgency(
 apiTravelAgency: ApiTravelAgency,
 language: Language
@@ -227,6 +290,17 @@ language,
 apiListing.developerNameEn,
 apiListing.developerNameAr
 );
+
+const developerProject = apiListing.developerProject
+? {
+id: apiListing.developerProject.id,
+slug: apiListing.developerProject.slug,
+name: pickLocalized(language, apiListing.developerProject.nameEn, apiListing.developerProject.nameAr),
+location: pickLocalized(language, apiListing.developerProject.locationEn, apiListing.developerProject.locationAr),
+image: apiListing.developerProject.image ? resolveAssetUrl(apiListing.developerProject.image) : undefined,
+status: apiListing.developerProject.status
+}
+: undefined;
 
 const nearestLandmark = apiListing.nearestLandmark
 ? mapLandmark(apiListing.nearestLandmark, language)
@@ -305,6 +379,8 @@ featured: apiListing.developer?.featured === true,
 developerId: apiListing.developerId ?? undefined,
 developer,
 developerName: manualDeveloperName || undefined,
+developerProjectId: apiListing.developerProjectId ?? undefined,
+developerProject,
 nearestLandmarkId: apiListing.nearestLandmarkId ?? undefined,
 nearestLandmarkName: nearestLandmark?.name,
 distanceFromLandmark: pickLocalized(

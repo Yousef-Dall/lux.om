@@ -90,6 +90,7 @@ type ListingParams = ListParams & {
   location?: string;
   nearestLandmarkId?: string;
   developerId?: string;
+  developerProjectId?: string;
   minBeds?: number;
   minBaths?: number;
   minSqm?: number;

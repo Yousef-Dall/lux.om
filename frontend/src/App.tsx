@@ -35,11 +35,13 @@ import { useLanguage } from './i18n/LanguageContext';
 
 const AddActivity = lazy(() => import('./pages/AddActivity'));
 const AddListing = lazy(() => import('./pages/AddListing'));
+const AddProject = lazy(() => import('./pages/AddProject'));
 const Admin = lazy(() => import('./pages/Admin'));
 const AdminUsers = lazy(() => import('./pages/AdminUsers'));
 const AdminEmailDeliveries = lazy(() => import('./pages/AdminEmailDeliveries'));
 const AdminTrustReports = lazy(() => import('./pages/AdminTrustReports'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const DeveloperProjectDetails = lazy(() => import('./pages/DeveloperProjectDetails'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 const GoogleAuthCallback = lazy(() => import('./pages/GoogleAuthCallback'));
@@ -419,6 +421,26 @@ function RequireOwner({ children }: { children: ReactNode }) {
   return children;
 }
 
+
+function RequireDeveloper({ children }: { children: ReactNode }) {
+  const { isAuthenticated, canManageDeveloperProjects, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return <LoadingPage />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!canManageDeveloperProjects) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
 function RequireActivityProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, canManageActivities, loading } = useAuth();
   const location = useLocation();
@@ -521,6 +543,7 @@ export default function App() {
     pathname.startsWith('/profile') ||
     pathname.startsWith('/notifications') ||
     pathname.startsWith('/add-listing') ||
+    pathname.startsWith('/add-project') ||
     pathname.startsWith('/add-activity');
 
   return (
@@ -551,6 +574,14 @@ export default function App() {
               </RequireOwner>
             }
           />
+          <Route
+            path="/add-project"
+            element={
+              <RequireDeveloper>
+                <AddProject />
+              </RequireDeveloper>
+            }
+          />
 
           <Route path="/activities" element={<Activities />} />
           <Route path="/activities/:slug" element={<ActivityDetails />} />
@@ -567,6 +598,7 @@ export default function App() {
 
           <Route path="/developers" element={<Developers />} />
           <Route path="/developers/:slug" element={<DeveloperDetails />} />
+          <Route path="/developer-projects/:slug" element={<DeveloperProjectDetails />} />
 
           <Route path="/travel-agencies" element={<TravelAgencies />} />
           <Route path="/travel-agencies/:slug" element={<TravelAgencyDetails />} />

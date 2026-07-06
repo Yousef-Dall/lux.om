@@ -59,6 +59,7 @@ export type CreateListingPayload = {
   amenities: string[];
 
   developerId?: string;
+  developerProjectId?: string;
   developerNameEn?: string;
   developerNameAr?: string;
   nearestLandmarkId?: string;
