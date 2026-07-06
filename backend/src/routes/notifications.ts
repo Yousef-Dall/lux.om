@@ -45,6 +45,9 @@ type NotificationWithActionSource = Prisma.NotificationGetPayload<{
 type NotificationActionContext =
   | 'ACCOUNT_SECURITY'
   | 'BOOKING'
+  | 'APPROVAL_LISTING'
+  | 'APPROVAL_ACTIVITY'
+  | 'APPROVAL_DEVELOPER_PROJECT'
   | 'PUBLISHING'
   | 'REPORT'
   | 'VERIFICATION'
@@ -53,24 +56,156 @@ type NotificationActionContext =
   | 'SAVED_SEARCH'
   | 'DASHBOARD';
 
-function dashboardAction(actionContext: NotificationActionContext) {
+type PublishingReviewTarget =
+  | 'LISTING'
+  | 'ACTIVITY'
+  | 'DEVELOPER_PROJECT'
+  | null;
+
+function dashboardAction(
+  actionContext: NotificationActionContext,
+  query?: Record<string, string | undefined | null>
+) {
   return {
-    actionUrl: '/dashboard',
+    actionUrl: buildAppPath('/dashboard', query),
     actionLabel: 'Open dashboard',
     actionContext
   };
 }
 
-function isPublishingReviewNotification(notification: NotificationWithActionSource) {
+function buildAppPath(path: string, query?: Record<string, string | undefined | null>) {
+  const params = new URLSearchParams();
+
+  Object.entries(query ?? {}).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+
+  const queryString = params.toString();
+
+  return queryString ? `${path}?${queryString}` : path;
+}
+
+function includesAny(value: string, fragments: string[]) {
+  return fragments.some((fragment) => value.includes(fragment));
+}
+
+function getPublishingReviewTarget(
+  notification: NotificationWithActionSource
+): PublishingReviewTarget {
+  const title = notification.title.toLowerCase();
+  const message = notification.message?.toLowerCase() ?? '';
+  const combined = `${title} ${message}`;
+
+  if (includesAny(combined, ['developer project', 'project moved to review'])) {
+    return 'DEVELOPER_PROJECT';
+  }
+
+  if (includesAny(combined, ['listing awaiting review', 'listing needs admin review'])) {
+    return 'LISTING';
+  }
+
+  if (includesAny(combined, ['activity awaiting review', 'activity needs admin review'])) {
+    return 'ACTIVITY';
+  }
+
+  if (
+    includesAny(combined, ['submitted or updated and needs admin review', 'awaiting review'])
+  ) {
+    if (includesAny(combined, ['listing'])) return 'LISTING';
+    if (includesAny(combined, ['activity'])) return 'ACTIVITY';
+  }
+
+  return null;
+}
+
+function getPublishingOwnerAction(notification: NotificationWithActionSource) {
+  const title = notification.title.toLowerCase();
+  const message = notification.message?.toLowerCase() ?? '';
+  const combined = `${title} ${message}`;
+
+  if (combined.includes('developer project')) {
+    return {
+      actionUrl: buildAppPath('/dashboard', { workspace: 'projects-developments' }),
+      actionLabel: 'Open developer projects',
+      actionContext: 'APPROVAL_DEVELOPER_PROJECT' as const,
+      targetType: 'DEVELOPER_PROJECT',
+      targetId: notification.id
+    };
+  }
+
+  if (combined.includes('activity')) {
+    return {
+      actionUrl: buildAppPath('/dashboard', { workspace: 'activities-command' }),
+      actionLabel: 'Open activity workspace',
+      actionContext: 'APPROVAL_ACTIVITY' as const,
+      targetType: 'ACTIVITY',
+      targetId: notification.id
+    };
+  }
+
+  if (combined.includes('listing')) {
+    return {
+      actionUrl: buildAppPath('/dashboard', { workspace: 'listings-command' }),
+      actionLabel: 'Open listing workspace',
+      actionContext: 'APPROVAL_LISTING' as const,
+      targetType: 'LISTING',
+      targetId: notification.id
+    };
+  }
+
+  return null;
+}
+
+function getAdminPublishingAction(
+  target: Exclude<PublishingReviewTarget, null>,
+  notificationId: string
+) {
+  if (target === 'LISTING') {
+    return {
+      actionUrl: buildAppPath('/admin', {
+        workspace: 'approvals',
+        section: 'admin-approvals',
+        reviewType: 'listing'
+      }),
+      actionLabel: 'Review listing',
+      actionContext: 'APPROVAL_LISTING' as const,
+      targetType: 'LISTING',
+      targetId: notificationId
+    };
+  }
+
+  if (target === 'ACTIVITY') {
+    return {
+      actionUrl: buildAppPath('/admin', {
+        workspace: 'approvals',
+        section: 'admin-approvals',
+        reviewType: 'activity'
+      }),
+      actionLabel: 'Review activity',
+      actionContext: 'APPROVAL_ACTIVITY' as const,
+      targetType: 'ACTIVITY',
+      targetId: notificationId
+    };
+  }
+
+  return {
+    actionUrl: buildAppPath('/admin', {
+      workspace: 'approvals',
+      section: 'admin-developer-projects',
+      reviewType: 'developer-project'
+    }),
+    actionLabel: 'Review developer project',
+    actionContext: 'APPROVAL_DEVELOPER_PROJECT' as const,
+    targetType: 'DEVELOPER_PROJECT',
+    targetId: notificationId
+  };
+}
+
+function isTrustReportNotification(notification: NotificationWithActionSource) {
   const title = notification.title.toLowerCase();
   const message = notification.message?.toLowerCase() ?? '';
 
-  return (
-    title.includes('listing awaiting review') ||
-    title.includes('activity awaiting review') ||
-    message.includes('needs admin review') ||
-    message.includes('awaiting review')
-  );
+  return title.includes('trust report') || message.includes('report is now');
 }
 
 function getNotificationAction(
@@ -91,7 +226,7 @@ function getNotificationAction(
   ) {
     return {
       actionUrl: notification.bookingId
-        ? `/dashboard?booking=${notification.bookingId}`
+        ? `/dashboard?bookingId=${notification.bookingId}`
         : '/dashboard',
       actionLabel: 'View booking',
       actionContext: 'BOOKING' as const,
@@ -111,29 +246,45 @@ function getNotificationAction(
   }
 
   if (notification.type === NotificationType.REVIEW_STATUS_UPDATED) {
-    if (isAdmin && isPublishingReviewNotification(notification)) {
+    const publishingTarget = getPublishingReviewTarget(notification);
+
+    if (isAdmin && publishingTarget) {
+      return getAdminPublishingAction(publishingTarget, notification.id);
+    }
+
+    const ownerPublishingAction = getPublishingOwnerAction(notification);
+
+    if (!isAdmin && ownerPublishingAction) {
+      return ownerPublishingAction;
+    }
+
+    if (isTrustReportNotification(notification)) {
       return {
-        actionUrl: '/admin',
-        actionLabel: 'Open approval workflow',
-        actionContext: 'PUBLISHING' as const,
-        targetType: 'PUBLISHING',
+        actionUrl: isAdmin ? '/admin/reports' : '/notifications',
+        actionLabel: isAdmin ? 'Open trust report queue' : 'View report outcome',
+        actionContext: 'REPORT' as const,
+        targetType: 'REPORT',
         targetId: notification.id
       };
     }
 
     return {
-      actionUrl: isAdmin ? '/admin/reports' : '/dashboard',
-      actionLabel: isAdmin ? 'Open report queue' : 'View dashboard',
-      actionContext: 'REPORT' as const,
-      targetType: 'REPORT',
+      actionUrl: isAdmin
+        ? buildAppPath('/admin', { workspace: 'reviewDetails' })
+        : '/notifications',
+      actionLabel: isAdmin ? 'Open review queue' : 'View review update',
+      actionContext: 'PUBLISHING' as const,
+      targetType: 'REVIEW',
       targetId: notification.id
     };
   }
 
   if (notification.type === NotificationType.VERIFICATION_STATUS_UPDATED) {
     return {
-      actionUrl: isAdmin ? '/admin' : '/dashboard',
-      actionLabel: isAdmin ? 'Open verification queue' : 'View verification workspace',
+      actionUrl: isAdmin
+        ? buildAppPath('/admin', { workspace: 'health', section: 'admin-health' })
+        : buildAppPath('/dashboard', { workspace: 'verification' }),
+      actionLabel: isAdmin ? 'Open verification queue' : 'Open verification workspace',
       actionContext: 'VERIFICATION' as const,
       targetType: 'VERIFICATION',
       targetId: notification.id
@@ -142,7 +293,7 @@ function getNotificationAction(
 
   if (notification.type === NotificationType.RENT_PAYMENT_DUE) {
     return {
-      ...dashboardAction('RENT_PAYMENT'),
+      ...dashboardAction('RENT_PAYMENT', { workspace: 'contracts-rent' }),
       actionLabel: 'Open rent payments',
       targetType: 'RENT_PAYMENT',
       targetId: notification.id
@@ -151,7 +302,9 @@ function getNotificationAction(
 
   if (notification.type === NotificationType.TRANSACTION_STATUS_UPDATED) {
     return {
-      actionUrl: isAdmin ? '/admin' : '/dashboard',
+      actionUrl: isAdmin
+        ? buildAppPath('/admin', { workspace: 'finance', section: 'admin-finance-section' })
+        : buildAppPath('/dashboard', { workspace: 'transactions' }),
       actionLabel: isAdmin ? 'Open admin transactions' : 'Open transactions',
       actionContext: 'TRANSACTION' as const,
       targetType: 'TRANSACTION',
@@ -161,7 +314,7 @@ function getNotificationAction(
 
   if (notification.type === NotificationType.SAVED_SEARCH_MATCH) {
     return {
-      actionUrl: '/dashboard',
+      actionUrl: buildAppPath('/dashboard', { workspace: 'saved-alerts' }),
       actionLabel: 'Open saved searches',
       actionContext: 'SAVED_SEARCH' as const,
       targetType: 'SAVED_SEARCH',

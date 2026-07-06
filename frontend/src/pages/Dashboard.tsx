@@ -524,6 +524,7 @@ export default function Dashboard() {
     (booking) => booking.status === 'PENDING' || booking.status === 'CANCELLATION_REQUESTED'
   );
   const bookingFocusId = searchParams.get('bookingId') || searchParams.get('booking');
+  const workspaceFocusId = searchParams.get('workspace');
   const focusedBooking = bookingFocusId
     ? [...customerBookings, ...receivedBookings].find((booking) => booking.id === bookingFocusId)
     : null;
@@ -620,6 +621,14 @@ export default function Dashboard() {
       setActiveDashboardTab(dashboardTabs[0]?.id ?? 'overview');
     }
   }, [activeDashboardTab, dashboardTabs]);
+
+  useEffect(() => {
+    if (!workspaceFocusId) return;
+
+    if (dashboardTabs.some((tab) => tab.id === workspaceFocusId)) {
+      setActiveDashboardTab(workspaceFocusId);
+    }
+  }, [dashboardTabs, workspaceFocusId]);
 
   useEffect(() => {
     if (!bookingFocusId) return;

@@ -139,7 +139,7 @@ function getDefaultActionPath(input: {
     input.type === NotificationType.BOOKING_PAYMENT_FAILED
   ) {
     return input.bookingId
-      ? `/dashboard?booking=${encodeURIComponent(input.bookingId)}`
+      ? `/dashboard?bookingId=${encodeURIComponent(input.bookingId)}`
       : '/dashboard';
   }
 

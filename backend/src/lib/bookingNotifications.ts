@@ -132,7 +132,7 @@ export async function notifyAdmins(
     message: input.message,
     bookingId: input.bookingId,
     actionPath: input.bookingId
-      ? `/dashboard?booking=${encodeURIComponent(input.bookingId)}`
+      ? `/dashboard?bookingId=${encodeURIComponent(input.bookingId)}`
       : '/dashboard'
   });
 }

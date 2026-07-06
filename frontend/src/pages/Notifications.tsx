@@ -42,11 +42,13 @@ function getNotificationRoute(notification: NotificationRecord, isAdmin: boolean
   if (notification.type === 'ACCOUNT_SECURITY') return '/profile';
 
   if (notification.type === 'REVIEW_STATUS_UPDATED') {
-    return isAdmin ? '/admin/reports' : '/dashboard';
+    return isAdmin ? '/admin?workspace=reviewDetails' : '/notifications';
   }
 
   if (notification.type === 'VERIFICATION_STATUS_UPDATED') {
-    return isAdmin ? '/admin' : '/dashboard';
+    return isAdmin
+      ? '/admin?workspace=health&section=admin-health'
+      : '/dashboard?workspace=verification';
   }
 
   return '/dashboard';
@@ -108,6 +110,10 @@ export default function Notifications() {
           actionContextLabels: {
             ACCOUNT_SECURITY: 'أمان الحساب',
             BOOKING: 'حجز',
+            APPROVAL_LISTING: 'مراجعة عقار',
+            APPROVAL_ACTIVITY: 'مراجعة نشاط',
+            APPROVAL_DEVELOPER_PROJECT: 'مراجعة مشروع مطور',
+            PUBLISHING: 'مراجعة النشر',
             REPORT: 'بلاغ ثقة وسلامة',
             VERIFICATION: 'تحقق',
             RENT_PAYMENT: 'دفعات الإيجار',
@@ -162,6 +168,10 @@ export default function Notifications() {
           actionContextLabels: {
             ACCOUNT_SECURITY: 'Account security',
             BOOKING: 'Booking',
+            APPROVAL_LISTING: 'Listing approval',
+            APPROVAL_ACTIVITY: 'Activity approval',
+            APPROVAL_DEVELOPER_PROJECT: 'Developer project approval',
+            PUBLISHING: 'Publishing review',
             REPORT: 'Trust report',
             VERIFICATION: 'Verification',
             RENT_PAYMENT: 'Rent payment',
@@ -343,6 +353,8 @@ export default function Notifications() {
             <div className="notifications-search">
               <Search size={16} aria-hidden="true" />
               <input
+                id="notification-search"
+                name="notificationSearch"
                 value={query}
                 placeholder={copy.searchPlaceholder}
                 onChange={(event) => setQuery(event.target.value)}
@@ -353,6 +365,8 @@ export default function Notifications() {
           <label>
             <span>{copy.unreadCount}</span>
             <select
+              id="notification-read-filter"
+              name="notificationReadFilter"
               value={readFilter}
               onChange={(event) => setReadFilter(event.target.value as ReadFilter)}
             >

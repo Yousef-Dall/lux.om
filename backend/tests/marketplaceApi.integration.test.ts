@@ -5994,7 +5994,7 @@ describe('notification action routing', () => {
     });
 
     expect(rentNotification).toMatchObject({
-      actionUrl: '/dashboard',
+      actionUrl: '/dashboard?workspace=contracts-rent',
       actionLabel: 'Open rent payments',
       actionContext: 'RENT_PAYMENT',
       targetType: 'RENT_PAYMENT'
@@ -6042,7 +6042,7 @@ describe('notification action routing', () => {
 
     expect(bookingNotification).toMatchObject({
       bookingId: booking.id,
-      actionUrl: `/dashboard?booking=${booking.id}`,
+      actionUrl: `/dashboard?bookingId=${booking.id}`,
       actionLabel: 'View booking',
       actionContext: 'BOOKING',
       targetType: 'BOOKING',
@@ -6052,6 +6052,69 @@ describe('notification action routing', () => {
         listingId: listing.id
       }
     });
+  });
+
+
+  it('routes admin review notifications to the correct approval workspace', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-admin@lux.test'
+      }
+    });
+
+    await prisma.notification.createMany({
+      data: [
+        {
+          userId: admin.id,
+          type: 'REVIEW_STATUS_UPDATED',
+          title: 'Listing awaiting review',
+          message: 'A listing was submitted or updated and needs admin review.'
+        },
+        {
+          userId: admin.id,
+          type: 'REVIEW_STATUS_UPDATED',
+          title: 'Activity awaiting review',
+          message: 'An activity was submitted or updated and needs admin review.'
+        },
+        {
+          userId: admin.id,
+          type: 'REVIEW_STATUS_UPDATED',
+          title: 'Developer project moved to review',
+          message: 'A developer project is back in the admin review queue.'
+        }
+      ]
+    });
+
+    const response = await request(app)
+      .get('/api/notifications?take=20')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body.notifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Listing awaiting review',
+          actionUrl: '/admin?workspace=approvals&section=admin-approvals&reviewType=listing',
+          actionLabel: 'Review listing',
+          actionContext: 'APPROVAL_LISTING',
+          targetType: 'LISTING'
+        }),
+        expect.objectContaining({
+          title: 'Activity awaiting review',
+          actionUrl: '/admin?workspace=approvals&section=admin-approvals&reviewType=activity',
+          actionLabel: 'Review activity',
+          actionContext: 'APPROVAL_ACTIVITY',
+          targetType: 'ACTIVITY'
+        }),
+        expect.objectContaining({
+          title: 'Developer project moved to review',
+          actionUrl: '/admin?workspace=approvals&section=admin-developer-projects&reviewType=developer-project',
+          actionLabel: 'Review developer project',
+          actionContext: 'APPROVAL_DEVELOPER_PROJECT',
+          targetType: 'DEVELOPER_PROJECT'
+        })
+      ])
+    );
   });
 });
 
@@ -6115,7 +6178,7 @@ describe('transactional email notifications', () => {
         )
       );
       expect(infoSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`/dashboard?booking=${booking.id}`)
+        expect.stringContaining(`/dashboard?bookingId=${booking.id}`)
       );
     } finally {
       infoSpy.mockRestore();
@@ -6787,7 +6850,7 @@ describe('critical-launch-smoke tests', () => {
         expect.objectContaining({
           type: 'VERIFICATION_STATUS_UPDATED',
           title: 'Verification approved',
-          actionUrl: '/dashboard',
+          actionUrl: '/dashboard?workspace=verification',
           actionContext: 'VERIFICATION',
           targetType: 'VERIFICATION'
         })
@@ -6889,7 +6952,7 @@ describe('critical-launch-smoke tests', () => {
         expect.objectContaining({
           type: 'REVIEW_STATUS_UPDATED',
           title: 'Trust report reviewed',
-          actionUrl: '/dashboard',
+          actionUrl: '/notifications',
           actionContext: 'REPORT',
           targetType: 'REPORT'
         })
@@ -7034,7 +7097,7 @@ describe('critical-marketplace-smoke tests', () => {
         expect.objectContaining({
           type: 'BOOKING_OWNER_APPROVED',
           title: 'Booking approved by provider',
-          actionUrl: `/dashboard?booking=${bookingId}`,
+          actionUrl: `/dashboard?bookingId=${bookingId}`,
           actionContext: 'BOOKING',
           targetType: 'BOOKING',
           targetId: bookingId
@@ -7198,7 +7261,7 @@ describe('critical-marketplace-smoke tests', () => {
           expect.objectContaining({
             type: 'BOOKING_PAYMENT_PAID',
             title: 'Payment completed',
-            actionUrl: `/dashboard?booking=${bookingId}`,
+            actionUrl: `/dashboard?bookingId=${bookingId}`,
             actionContext: 'BOOKING'
           })
         ])
@@ -7317,7 +7380,7 @@ describe('critical-marketplace-smoke tests', () => {
         expect.objectContaining({
           type: 'BOOKING_CANCELLED',
           title: 'Booking cancelled',
-          actionUrl: `/dashboard?booking=${bookingId}`,
+          actionUrl: `/dashboard?bookingId=${bookingId}`,
           actionContext: 'BOOKING'
         })
       ])
@@ -7466,7 +7529,7 @@ describe('critical-marketplace-smoke tests', () => {
         expect.objectContaining({
           type: 'REVIEW_STATUS_UPDATED',
           title: 'Trust report reviewed',
-          actionUrl: '/dashboard',
+          actionUrl: '/notifications',
           actionContext: 'REPORT',
           targetType: 'REPORT'
         })

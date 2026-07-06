@@ -16,6 +16,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import {
   createAdminDeveloper,
@@ -222,6 +223,25 @@ const adminSectionWorkspaceMap: Partial<Record<string, AdminWorkspaceKey>> = {
   'admin-partners-section': 'partners',
   'admin-review-detail-queues': 'reviewDetails'
 };
+
+const adminWorkspaceKeys: AdminWorkspaceKey[] = [
+  'approvals',
+  'command',
+  'health',
+  'summary',
+  'finance',
+  'bookings',
+  'partners',
+  'reviewDetails'
+];
+
+function parseAdminWorkspace(value: string | null): AdminWorkspaceKey | null {
+  if (!value) return null;
+
+  return adminWorkspaceKeys.includes(value as AdminWorkspaceKey)
+    ? (value as AdminWorkspaceKey)
+    : null;
+}
 
 const reviewStatusFilters: ReviewStatusFilter[] = [
   'ALL',
@@ -462,6 +482,7 @@ function optionalText(value: string) {
 export default function Admin() {
   const { t, language } = useLanguage();
   const { token } = useAuth();
+  const [searchParams] = useSearchParams();
 
   useDocumentTitle('Admin');
 
@@ -967,6 +988,8 @@ verifiedDevelopers: 'Verified developers',
           }
         };
 
+  const adminWorkspaceFocus = searchParams.get('workspace');
+  const adminSectionFocus = searchParams.get('section');
   const activeAdminWorkspaceHeader = adminWorkspaceHeaderCopy[activeAdminWorkspace];
 
   function scrollToAdminSection(sectionId: string) {
@@ -991,6 +1014,18 @@ verifiedDevelopers: 'Verified developers',
       });
     }, workspace ? 80 : 0);
   }
+
+  useEffect(() => {
+    const workspace = parseAdminWorkspace(adminWorkspaceFocus);
+
+    if (workspace) {
+      setActiveAdminWorkspace(workspace);
+    }
+
+    if (adminSectionFocus && adminSectionWorkspaceMap[adminSectionFocus]) {
+      window.setTimeout(() => scrollToAdminSection(adminSectionFocus), 120);
+    }
+  }, [adminSectionFocus, adminWorkspaceFocus]);
 
   const adminReportFilters = useMemo<AdminReportFilters>(
     () => ({
