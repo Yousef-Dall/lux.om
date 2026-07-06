@@ -15416,3 +15416,144 @@ transition: none;
     transform: none;
   }
 }
+
+/* =========================================================
+   Admin command center visual QA fixes
+   ========================================================= */
+.admin-page--command-center {
+  gap: clamp(1rem, 1.8vw, 1.45rem);
+}
+
+.admin-page--command-center > .section-header {
+  margin-bottom: 0.35rem;
+}
+
+.admin-page--command-center .admin-hero-card--command {
+  margin-bottom: 0;
+}
+
+.admin-page--command-center .admin-hero-card--command + .admin-command-briefing {
+  margin-top: 0;
+}
+
+.admin-command-briefing {
+  scroll-margin-top: 6.5rem;
+}
+
+.admin-command-jumpbar {
+  backdrop-filter: blur(16px);
+}
+
+@media (max-width: 760px) {
+  .admin-page--command-center {
+    gap: 0.9rem;
+    padding-top: 5.75rem;
+  }
+
+  .admin-page--command-center > .section-header h1,
+  .admin-page--command-center > .section-header h2 {
+    font-size: clamp(2.35rem, 10vw, 3.35rem);
+    line-height: 0.92;
+  }
+
+  .admin-page--command-center > .section-header p:not(.eyebrow) {
+    font-size: 0.96rem;
+    line-height: 1.75;
+  }
+
+  .admin-page--command-center .admin-hero-card--command {
+    gap: 1rem;
+    padding: 1.35rem;
+  }
+
+  .admin-page--command-center .admin-hero-card--command h2 {
+    font-size: clamp(1.85rem, 8vw, 2.55rem);
+    line-height: 0.98;
+  }
+
+  .admin-page--command-center .admin-hero-card--command p:not(.eyebrow) {
+    margin-top: 0.85rem;
+  }
+
+  .admin-page--command-center .admin-hero-badge {
+    min-height: 8rem;
+    width: 100%;
+  }
+
+  .admin-command-briefing {
+    border-radius: 1.45rem;
+    padding: 1rem;
+  }
+
+  .admin-command-briefing::before {
+    left: 0.6rem;
+  }
+
+  .admin-command-briefing__header {
+    padding-left: 0.45rem;
+  }
+
+  .admin-command-briefing__header h2 {
+    font-size: clamp(1.65rem, 7vw, 2.15rem);
+  }
+
+  .admin-command-briefing__header p:not(.eyebrow) {
+    font-size: 0.92rem;
+    line-height: 1.58;
+  }
+
+  .admin-command-kpi-grid {
+    gap: 0.55rem;
+  }
+
+  .admin-command-kpi {
+    align-items: center;
+    gap: 0.65rem;
+    min-height: 0;
+    padding: 0.75rem;
+  }
+
+  .admin-command-kpi__icon {
+    border-radius: 0.85rem;
+    height: 2.1rem;
+    width: 2.1rem;
+  }
+
+  .admin-command-kpi__body {
+    gap: 0.1rem;
+  }
+
+  .admin-command-kpi__body > span {
+    font-size: 0.66rem;
+  }
+
+  .admin-command-kpi__body strong {
+    font-size: 1.35rem;
+  }
+
+  .admin-command-kpi__body small {
+    display: none;
+  }
+
+  .admin-command-jumpbar {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.45rem;
+    margin-inline: -0.15rem;
+    overflow-x: auto;
+    padding: 0.45rem;
+    scrollbar-width: none;
+  }
+
+  .admin-command-jumpbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-command-jumpbar button {
+    flex: 0 0 auto;
+    justify-content: center;
+    min-height: 2.25rem;
+    white-space: nowrap;
+    width: auto;
+  }
+}
