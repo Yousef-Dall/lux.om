@@ -877,6 +877,98 @@ verifiedDevelopers: 'Verified developers',
           open: 'Open section'
         };
 
+  const adminWorkspaceHeaderCopy: Record<
+    AdminWorkspaceKey,
+    { eyebrow: string; title: string; description: string }
+  > =
+    language === 'ar'
+      ? {
+          approvals: {
+            eyebrow: 'الإدارة',
+            title: 'سير موافقات النشر',
+            description: 'راجع العقارات والأنشطة ومشاريع المطورين قبل ظهورها للعامة.'
+          },
+          command: {
+            eyebrow: 'مركز العمليات',
+            title: 'مركز قرارات السوق',
+            description: 'ابدأ من القرارات التي تؤثر على النشر، الثقة، الحجوزات، والجاهزية.'
+          },
+          health: {
+            eyebrow: 'صحة النظام',
+            title: 'جاهزية الإنتاج والثقة',
+            description: 'راجع النظام، البريد، التقارير، والتحقق قبل التوسع التشغيلي.'
+          },
+          summary: {
+            eyebrow: 'ملخص السوق',
+            title: 'ملخص أداء السوق',
+            description: 'نظرة سريعة على العقارات، الأنشطة، الشركاء، وقوائم المراجعة.'
+          },
+          finance: {
+            eyebrow: 'المالية',
+            title: 'عمليات المالية والمدفوعات',
+            description: 'تابع المدفوعات، العمولات، التقارير، وجاهزية الصرف.'
+          },
+          bookings: {
+            eyebrow: 'الحجوزات',
+            title: 'عمليات الحجوزات',
+            description: 'راجع الحجوزات، حالة الدفع، الإلغاء، وسجل التدقيق.'
+          },
+          partners: {
+            eyebrow: 'الشركاء',
+            title: 'إدارة الشركاء',
+            description: 'أنشئ وأدر شركات التطوير ووكالات السفر المرتبطة بالسوق.'
+          },
+          reviewDetails: {
+            eyebrow: 'قوائم المراجعة',
+            title: 'قوائم مراجعة السوق',
+            description: 'راجع العقارات والأنشطة والاستفسارات بتفاصيل أعمق.'
+          }
+        }
+      : {
+          approvals: {
+            eyebrow: 'Admin',
+            title: 'Approval workflow',
+            description: 'Review listings, activities, and developer projects before they become public.'
+          },
+          command: {
+            eyebrow: 'Operations command center',
+            title: 'Marketplace decisions',
+            description: 'Start with the decisions that affect publishing, trust, bookings, and readiness.'
+          },
+          health: {
+            eyebrow: 'System health',
+            title: 'Production health',
+            description: 'Review system readiness, email delivery, reports, and verification before scale.'
+          },
+          summary: {
+            eyebrow: 'Marketplace summary',
+            title: 'Marketplace summary',
+            description: 'Track publishing totals, activities, partners, and review workload.'
+          },
+          finance: {
+            eyebrow: 'Finance',
+            title: 'Finance operations',
+            description: 'Track payments, commissions, reports, and provider payout readiness.'
+          },
+          bookings: {
+            eyebrow: 'Bookings',
+            title: 'Booking operations',
+            description: 'Review booking requests, payment state, cancellations, and audit trail.'
+          },
+          partners: {
+            eyebrow: 'Partners',
+            title: 'Partner management',
+            description: 'Create and manage developer companies and travel agencies connected to the marketplace.'
+          },
+          reviewDetails: {
+            eyebrow: 'Review queues',
+            title: 'Marketplace review queues',
+            description: 'Review listings, activities, and inquiries with deeper operational detail.'
+          }
+        };
+
+  const activeAdminWorkspaceHeader = adminWorkspaceHeaderCopy[activeAdminWorkspace];
+
   function scrollToAdminSection(sectionId: string) {
     const workspace = adminSectionWorkspaceMap[sectionId];
 
@@ -2026,9 +2118,9 @@ async function deleteDeveloperCompany(developerId: string) {
   return (
   <section className={'page-section container admin-page admin-page--command-center admin-page--workspace-' + activeAdminWorkspace}>
       <SectionHeader
-        eyebrow={t.admin.eyebrow}
-        title={t.admin.title}
-        description={t.admin.description}
+        eyebrow={activeAdminWorkspaceHeader.eyebrow}
+        title={activeAdminWorkspaceHeader.title}
+        description={activeAdminWorkspaceHeader.description}
       />
 
       <div className="admin-hero-card admin-hero-card--command">

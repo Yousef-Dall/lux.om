@@ -15955,3 +15955,31 @@ transition: none;
 .admin-page--command-center:not(.admin-page--workspace-reviewDetails) #admin-review-detail-queues {
   display: none !important;
 }
+
+/* =========================================================
+   Admin workspace active tab legibility
+   ========================================================= */
+.admin-workspace-tab.admin-workspace-tab--active {
+  background:
+    linear-gradient(135deg, rgba(7, 56, 62, 0.98), rgba(18, 77, 80, 0.92)) !important;
+  border-color: rgba(178, 135, 74, 0.48) !important;
+  color: #ffffff !important;
+}
+
+.admin-workspace-tab.admin-workspace-tab--active strong,
+.admin-workspace-tab.admin-workspace-tab--active small,
+.admin-workspace-tab.admin-workspace-tab--active em {
+  color: inherit !important;
+}
+
+.admin-workspace-tab.admin-workspace-tab--active small {
+  opacity: 0.78;
+}
+
+.admin-workspace-tab:not(.admin-workspace-tab--active) strong {
+  color: #07383e;
+}
+
+.admin-workspace-tab:not(.admin-workspace-tab--active) small {
+  color: rgba(7, 56, 62, 0.62);
+}
