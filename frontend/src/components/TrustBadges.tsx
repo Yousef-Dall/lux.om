@@ -151,17 +151,24 @@ function getVerificationBadge(
 function getMediaBadge(status: string | null | undefined, language: 'en' | 'ar') {
   if (!status) return null;
 
-  if (status === 'APPROVED' || status === 'HIGH_QUALITY') {
+  if (['APPROVED', 'HIGH_QUALITY', 'ACCEPTABLE', 'EXCELLENT'].includes(status)) {
     return {
       key: 'media-quality',
       tone: 'neutral' as const,
       icon: <CheckCircle2 size={14} aria-hidden="true" />,
-      label: language === 'ar' ? 'وسائط مراجعة' : 'Reviewed media',
+      label:
+        status === 'EXCELLENT'
+          ? language === 'ar'
+            ? 'وسائط ممتازة'
+            : 'Excellent media'
+          : language === 'ar'
+            ? 'وسائط مراجعة'
+            : 'Reviewed media',
       detail: humanize(status)
     };
   }
 
-  if (status === 'NEEDS_REVIEW' || status === 'REJECTED') {
+  if (['NEEDS_REVIEW', 'REJECTED', 'BLOCKED'].includes(status)) {
     return {
       key: 'media-quality-warning',
       tone: 'warning' as const,

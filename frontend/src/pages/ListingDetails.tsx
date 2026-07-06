@@ -17,6 +17,7 @@ import { Link, useParams } from 'react-router-dom';
 import { getListingBySlug } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
 import InvestorWatchlistForm from '../components/InvestorWatchlistForm';
+import MediaQualityGuidance from '../components/MediaQualityGuidance';
 import ReportModal from '../components/ReportModal';
 import ReviewSection from '../components/ReviewSection';
 import SavedButton from '../components/SavedButton';
@@ -74,6 +75,10 @@ notSpecified: 'غير محدد',
               'يعرض lux.om العقارات المنشورة بعد مراجعة أساسية للمحتوى والوسائط قبل ظهورها للعامة.',
             fastInquiry: 'استفسار سريع',
             fastInquiryText: 'اختاري واتساب أو نموذج التواصل وسيساعدك فريق lux.om في توجيه الطلب للطرف المناسب.',
+            mediaConfidence: 'صور ومعلومات جاهزة للمراجعة',
+            mediaConfidenceText: 'راجعي جودة الوسائط، المخطط، والجولة قبل طلب الزيارة أو التفاصيل.',
+            requestTour: 'طلب زيارة أو تفاصيل',
+            compareReviews: 'قراءة التقييمات',
             safeNextStepText: 'اطلبي التفاصيل، راجعي الأهلية والمستندات، ولا تحولي أي مبالغ خارج القنوات المتفق عليها.',
           loading: 'جاري تحميل العقار...',
           error: 'تعذر تحميل تفاصيل العقار. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
@@ -109,6 +114,10 @@ notSpecified: 'Not specified',
               'lux.om shows published listings after a basic content and media review before they appear publicly.',
             fastInquiry: 'Fast inquiry path',
             fastInquiryText: 'Use WhatsApp or the contact form and lux.om will help route the request to the right party.',
+            mediaConfidence: 'Media and facts ready to review',
+            mediaConfidenceText: 'Check photos, floor plan, and walkthrough media before requesting a viewing or details.',
+            requestTour: 'Request viewing or details',
+            compareReviews: 'Read reviews',
             safeNextStepText: 'Request details, review eligibility and documents, and avoid sending money outside agreed channels.',
           loading: 'Loading listing...',
           error: 'Could not load listing details. Make sure the backend is running and try again.'
@@ -380,10 +389,11 @@ notSpecified: 'Not specified',
 
             <TrustBadges
               verificationStatus={listing.verificationStatus}
+              verificationSource={listing.verificationSource}
               mediaQualityStatus={listing.mediaQualityStatus}
               buyerEligibility={listing.buyerEligibility}
-                      variant="full"
-        />
+              variant="full"
+            />
 
             <div className="stage8-detail-actions">
               <SavedButton targetId={listing.id} targetType="listing" />
@@ -418,7 +428,17 @@ notSpecified: 'Not specified',
                     <span>{copy.fastInquiryText}</span>
                   </div>
                 </article>
+
+                <article>
+                  <Sparkles size={18} aria-hidden="true" />
+                  <div>
+                    <strong>{copy.mediaConfidence}</strong>
+                    <span>{copy.mediaConfidenceText}</span>
+                  </div>
+                </article>
               </div>
+
+              <MediaQualityGuidance item={listing} itemType="listing" language={language} />
 
             <div className="details-highlight-strip">
               <span>
@@ -660,8 +680,8 @@ notSpecified: 'Not specified',
             </div>
 
             <div className="booking-panel-actions">
-              <ButtonLink to="/contact" isFullWidth>
-                {t.common.requestDetails}
+              <ButtonLink to={`/contact?type=PROPERTY&listingId=${listing.id}`} isFullWidth>
+                {copy.requestTour}
                 <MoveRight size={16} aria-hidden="true" />
               </ButtonLink>
 
@@ -672,16 +692,16 @@ notSpecified: 'Not specified',
                 label={language === 'ar' ? 'استفسار واتساب' : 'WhatsApp inquiry'}
               />
 
-              <ButtonLink to="/contact" variant="secondary" isFullWidth>
-                {t.common.contactOwner}
-              </ButtonLink>
+              <a className="button-link button-link--secondary button-link--full" href="#listing-reviews">
+                {copy.compareReviews}
+              </a>
             </div>
 
             <p>{t.listings.contactHint}</p>
         </aside>
       </section>
 
-      <section className="container stage8-review-wrap">
+      <section className="container stage8-review-wrap" id="listing-reviews">
         <ReviewSection targetType="LISTING" targetId={listing.id} />
       </section>
     </article>

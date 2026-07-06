@@ -29,6 +29,7 @@ import { ApiError } from '../api/client';
 import { getActivityBySlug } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
+import MediaQualityGuidance from '../components/MediaQualityGuidance';
 import ReportModal from '../components/ReportModal';
 import ReviewSection from '../components/ReviewSection';
 import SavedButton from '../components/SavedButton';
@@ -128,6 +129,10 @@ bookingPathText:
 'أرسلي طلب الحجز من النموذج، ثم تتم مراجعة الطلب مع المزود قبل التأكيد النهائي أو الدفع.',
 safeBookingNote:
 'لا يتم اعتبار الطلب مؤكداً إلا بعد مراجعة المزود والتأكيد داخل lux.om.',
+mediaConfidence: 'وسائط النشاط جاهزة للمراجعة',
+mediaConfidenceText: 'راجعي الصور والفيديو والتوفر قبل إرسال طلب الحجز.',
+jumpToBooking: 'الانتقال إلى طلب الحجز',
+readReviews: 'قراءة التقييمات',
 bookingTitle: 'اطلبي الحجز مباشرة',
 bookingText:
 'اختاري التاريخ والوقت وعدد الضيوف، وسيراجع فريق lux.om الطلب مع منظم النشاط.',
@@ -210,6 +215,10 @@ bookingPathText:
 'Send the booking request from the form, then the provider reviews it before final confirmation or payment.',
 safeBookingNote:
 'Your request is not final until the provider reviews it and confirmation happens inside lux.om.',
+mediaConfidence: 'Activity media ready to review',
+mediaConfidenceText: 'Check photos, video, and availability before sending the booking request.',
+jumpToBooking: 'Jump to booking request',
+readReviews: 'Read reviews',
 bookingTitle: 'Book this activity directly',
 bookingText:
 'Choose your date, preferred time, and guest count. lux.om will route the request to the activity provider.',
@@ -642,8 +651,9 @@ return ( <article className="details-page details-page--activity-detail"> <secti
 
         <TrustBadges
           verificationStatus={activity.verificationStatus}
+          verificationSource={activity.verificationSource}
           mediaQualityStatus={activity.mediaQualityStatus}
-                  variant="full"
+          variant="full"
         />
 
         <div className="stage8-detail-actions">
@@ -679,7 +689,17 @@ return ( <article className="details-page details-page--activity-detail"> <secti
                 <span>{copy.bookingPathText}</span>
               </div>
             </article>
+
+            <article>
+              <Sparkles size={18} aria-hidden="true" />
+              <div>
+                <strong>{copy.mediaConfidence}</strong>
+                <span>{copy.mediaConfidenceText}</span>
+              </div>
+            </article>
           </div>
+
+          <MediaQualityGuidance item={activity} itemType="activity" language={language} />
 
         <div className="details-highlight-strip">
           <span>
@@ -1042,6 +1062,16 @@ return ( <article className="details-page details-page--activity-detail"> <secti
         ))}
       </div>
 
+      <div className="booking-panel-actions booking-panel-actions--activity">
+        <a className="button-link button-link--primary button-link--full" href="#activity-booking-card">
+          {copy.jumpToBooking}
+          <MoveRight size={16} aria-hidden="true" />
+        </a>
+        <a className="button-link button-link--secondary button-link--full" href="#activity-reviews">
+          {copy.readReviews}
+        </a>
+      </div>
+
       <div className="activity-booking-card" id="activity-booking-card">
         <h2>{copy.bookingTitle}</h2>
         <p>{copy.bookingText}</p>
@@ -1182,7 +1212,7 @@ return ( <article className="details-page details-page--activity-detail"> <secti
     </aside>
   </section>
 
-  <section className="container stage8-review-wrap">
+  <section className="container stage8-review-wrap" id="activity-reviews">
     <ReviewSection targetType="ACTIVITY" targetId={activity.id} />
   </section>
 </article>

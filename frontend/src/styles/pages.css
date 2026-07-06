@@ -16464,3 +16464,89 @@ transition: none;
     justify-content: stretch;
   }
 }
+
+/* Public detail conversion flow polish */
+.detail-conversion-strip--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.booking-panel-actions--activity {
+  margin: 0 0 1rem;
+}
+
+.booking-panel-specs--stacked {
+  align-items: stretch;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.booking-panel-specs--stacked span {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  justify-content: flex-start;
+}
+
+.details-hero--project {
+  background:
+    radial-gradient(circle at 14% 16%, rgba(194, 154, 82, 0.2), transparent 24rem),
+    linear-gradient(135deg, #07383e, #0f4c54 58%, #0f766e);
+}
+
+.developer-project-conversion-grid {
+  align-items: start;
+}
+
+.developer-project-gallery {
+  margin-bottom: 1.25rem;
+}
+
+.developer-project-media-placeholder {
+  align-items: center;
+  aspect-ratio: 16 / 10;
+  background:
+    radial-gradient(circle at 25% 25%, rgba(194, 154, 82, 0.18), transparent 16rem),
+    rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(7, 56, 62, 0.1);
+  border-radius: 1.5rem;
+  color: var(--color-primary);
+  display: grid;
+  font-weight: 900;
+  gap: 0.65rem;
+  justify-items: center;
+  min-height: 18rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.provider-report-card--compact {
+  margin-top: 1rem;
+}
+
+.provider-report-card--compact h3,
+.provider-report-card--compact p {
+  margin-top: 0;
+}
+
+.developer-project-units-section {
+  margin-bottom: clamp(48px, 7vw, 96px);
+}
+
+.developer-project-unit-grid .dashboard-v2-record-card img {
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+@media (max-width: 960px) {
+  .detail-conversion-strip--three {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .booking-panel-actions--activity {
+    position: sticky;
+    top: 0.75rem;
+    z-index: 2;
+  }
+}

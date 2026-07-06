@@ -1,6 +1,6 @@
 type MediaQualityGuidanceProps = {
   item: unknown;
-  itemType: 'listing' | 'activity';
+  itemType: 'listing' | 'activity' | 'project';
   language: 'en' | 'ar';
 };
 
@@ -37,7 +37,7 @@ function hasMediaUrl(item: unknown) {
   );
 }
 
-function getSuggestions(item: unknown, itemType: 'listing' | 'activity', language: 'en' | 'ar') {
+function getSuggestions(item: unknown, itemType: 'listing' | 'activity' | 'project', language: 'en' | 'ar') {
   const suggestions: string[] = [];
   const images = getArray(item, 'images');
   const mainImage = getText(item, 'image');
@@ -66,9 +66,13 @@ function getSuggestions(item: unknown, itemType: 'listing' | 'activity', languag
         ? language === 'ar'
           ? 'أضف مخططاً أو جولة 360 أو فيديو قصير.'
           : 'Add a floor plan, 360 tour, or short walkthrough video.'
-        : language === 'ar'
-          ? 'أضف فيديو أو جولة افتراضية للنشاط.'
-          : 'Add a video or virtual tour for this activity.'
+        : itemType === 'project'
+          ? language === 'ar'
+            ? 'أضف مخططاً عاماً أو فيديو قصير للمشروع.'
+            : 'Add a masterplan or short project walkthrough video.'
+          : language === 'ar'
+            ? 'أضف فيديو أو جولة افتراضية للنشاط.'
+            : 'Add a video or virtual tour for this activity.'
     );
   }
 
