@@ -190,9 +190,36 @@ export default function AddProject() {
         };
 
   const completion = useMemo(() => {
-    const required = [form.nameEn, form.locationEn, form.descriptionEn, form.image];
+    const required = [
+      form.nameEn,
+      form.locationEn,
+      form.descriptionEn,
+      form.image,
+      form.handoverDate,
+      form.totalUnits,
+      form.availableUnits,
+      form.bedroomsSummary,
+      form.startingPriceAmount,
+      form.brochureUrl,
+      form.masterplanUrl,
+      form.videoWalkthroughUrl
+    ];
+
     return Math.round((required.filter(Boolean).length / required.length) * 100);
-  }, [form.descriptionEn, form.image, form.locationEn, form.nameEn]);
+  }, [
+    form.availableUnits,
+    form.bedroomsSummary,
+    form.brochureUrl,
+    form.descriptionEn,
+    form.handoverDate,
+    form.image,
+    form.locationEn,
+    form.masterplanUrl,
+    form.nameEn,
+    form.startingPriceAmount,
+    form.totalUnits,
+    form.videoWalkthroughUrl
+  ]);
 
   useEffect(() => {
     let isMounted = true;
@@ -227,6 +254,30 @@ export default function AddProject() {
     setSubmitError('');
     setCreatedSlug('');
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function getSubmitErrorMessage(error: unknown) {
+    if (error instanceof ApiError) {
+      const payload = error.payload as {
+        issues?: Array<{ path?: string; message?: string }>;
+      } | null;
+
+      if (payload?.issues?.length) {
+        return payload.issues
+          .map((issue) =>
+            [issue.path, issue.message].filter(Boolean).join(': ')
+          )
+          .join(' · ');
+      }
+
+      return error.message;
+    }
+
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return copy.submitError;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -280,11 +331,7 @@ export default function AddProject() {
       setForm(initialForm);
     } catch (error) {
       console.error(error);
-      if (error instanceof ApiError || error instanceof Error) {
-        setSubmitError(error.message);
-      } else {
-        setSubmitError(copy.submitError);
-      }
+      setSubmitError(getSubmitErrorMessage(error));
     } finally {
       setSubmitting(false);
     }

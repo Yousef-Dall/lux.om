@@ -25,12 +25,12 @@ const optionalBooleanQuerySchema = z
 const optionalProjectNumberSchema = z.preprocess((value) => {
   if (value === undefined || value === null || value === '') return undefined;
   return value;
-}, z.coerce.number().finite().min(0).optional());
+}, z.coerce.number().finite().min(0).optional()).optional();
 
 const optionalProjectDateSchema = z.preprocess((value) => {
   if (value === undefined || value === null || value === '') return undefined;
   return value;
-}, z.coerce.date().optional());
+}, z.coerce.date().optional()).optional();
 
 const safeProjectUrlSchema = z
   .string()
@@ -48,7 +48,7 @@ const safeProjectUrlSchema = z
 const optionalSafeProjectUrlSchema = z.preprocess((value) => {
   if (value === undefined || value === null || value === '') return undefined;
   return value;
-}, safeProjectUrlSchema.optional());
+}, safeProjectUrlSchema.optional()).optional();
 
 const priceQualifierValues = ['FIXED', 'FROM', 'ON_REQUEST'] as const;
 const projectStatusValues = ['PENDING', 'APPROVED', 'REJECTED'] as const;
