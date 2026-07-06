@@ -269,6 +269,12 @@ const adminDeveloperProjectInclude = {
 };
 
 const developerDetailsInclude = {
+  _count: {
+    select: {
+      listings: true,
+      projects: true
+    }
+  },
   listings: {
     where: {
       status: 'APPROVED' as const

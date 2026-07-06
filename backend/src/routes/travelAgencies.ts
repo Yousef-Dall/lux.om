@@ -86,6 +86,11 @@ const travelAgencyUpdateSchema = z
   });
 
 const travelAgencyInclude = {
+  _count: {
+    select: {
+      activities: true
+    }
+  },
   activities: {
     where: {
       status: 'APPROVED' as const
@@ -167,6 +172,13 @@ travelAgenciesRouter.get('/', async (req, res, next) => {
               ]
             }
           : {})
+      },
+      include: {
+        _count: {
+          select: {
+            activities: true
+          }
+        }
       },
       orderBy: [
         {

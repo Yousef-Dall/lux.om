@@ -15,6 +15,7 @@ import { getDeveloperBySlug, getListings } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
 import { ListingCard } from '../components/Cards';
+import PartnerCredibilityPanel from '../components/PartnerCredibilityPanel';
 import ReportModal from '../components/ReportModal';
 import SectionHeader from '../components/SectionHeader';
 import TrustBadges from '../components/TrustBadges';
@@ -22,6 +23,10 @@ import WhatsAppActions from '../components/WhatsAppActions';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { DevelopmentCompany, Listing } from '../types';
+
+function getWebsiteHref(website: string) {
+  return /^https?:\/\//i.test(website) ? website : `https://${website}`;
+}
 
 export default function DeveloperDetails() {
   const { slug } = useParams();
@@ -63,6 +68,8 @@ export default function DeveloperDetails() {
           reportTrustDescription:
             'أبلغي فريق lux.om إذا كانت بيانات الشركة أو حالة التحقق تبدو غير دقيقة.',
           reportTrustTrigger: 'الإبلاغ عن هذا المطور',
+          publicTrackRecord: 'عقارات ومشاريع منشورة',
+          trustExplainer: 'يمكنك مراجعة التحقق، سجل الشركة، وقنوات التواصل قبل التواصل أو الحجز.',
           whatsapp: 'تواصل عبر واتساب',
           loading: 'جاري تحميل ملف المطور...',
           error: 'تعذر تحميل ملف المطور. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
@@ -93,6 +100,8 @@ export default function DeveloperDetails() {
           reportTrustDescription:
             'Tell lux.om if this company profile or verification status looks inaccurate.',
           reportTrustTrigger: 'Report this developer',
+          publicTrackRecord: 'public properties and projects',
+          trustExplainer: 'Review verification, company history, and contact paths before contacting or booking.',
           whatsapp: 'Chat on WhatsApp',
           loading: 'Loading developer profile...',
           error: 'Could not load developer profile. Make sure the backend is running and try again.'
@@ -187,6 +196,8 @@ export default function DeveloperDetails() {
               variant="full"
               className="provider-profile-trust"
             />
+
+            <p className="provider-profile-assurance">{copy.trustExplainer}</p>
 
             <div className="developer-profile-hero__badges">
               {developer.verified ? (
@@ -304,12 +315,34 @@ export default function DeveloperDetails() {
               ) : null}
 
               {developer.website ? (
-                <a href={developer.website} target="_blank" rel="noreferrer">
+                <a href={getWebsiteHref(developer.website)} target="_blank" rel="noreferrer">
                   <Globe2 size={17} aria-hidden="true" />
                   <strong>{copy.website}:</strong> {developer.website.replace(/^https?:\/\//, '')}
                 </a>
               ) : null}
             </div>
+
+            <PartnerCredibilityPanel
+              providerType="developer"
+              name={developer.name}
+              verified={developer.verified}
+              featured={developer.featured}
+              verificationStatus={developer.verificationStatus}
+              verificationSource={developer.verificationSource}
+              verificationDate={developer.verificationDate}
+              verificationExpiryDate={developer.verificationExpiryDate}
+              establishedYear={developer.establishedYear}
+              publicItemCount={developerListings.length + (developer.projectCount ?? 0)}
+              publicItemLabel={copy.publicTrackRecord}
+              specialties={developer.specialties}
+              contactChannels={{
+                phone: Boolean(developer.phone),
+                email: Boolean(developer.email),
+                website: Boolean(developer.website),
+                whatsapp: Boolean(developer.phone)
+              }}
+              className="developer-profile-credibility"
+            />
 
             <div className="provider-report-card">
               <h3>{copy.reportTrustIssue}</h3>

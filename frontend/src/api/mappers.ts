@@ -160,6 +160,8 @@ verificationDate: apiDeveloper.verificationDate ?? null,
 verificationExpiryDate: apiDeveloper.verificationExpiryDate ?? null,
 listedPropertyIds: [],
 featuredProjectIds: [],
+listingCount: apiDeveloper._count?.listings ?? 0,
+projectCount: apiDeveloper._count?.projects ?? 0,
 specialties: [],
 establishedYear: apiDeveloper.establishedYear ?? undefined
 };
@@ -267,6 +269,7 @@ verificationNotes: apiTravelAgency.verificationNotes ?? null,
 verificationDate: apiTravelAgency.verificationDate ?? null,
 verificationExpiryDate: apiTravelAgency.verificationExpiryDate ?? null,
 activityIds: [],
+activityCount: apiTravelAgency._count?.activities ?? 0,
 specialties: [],
 establishedYear: apiTravelAgency.establishedYear ?? undefined
 };

@@ -1,6 +1,7 @@
 import {
   BadgeCheck,
   Building2,
+  CalendarCheck2,
   Globe,
   Mail,
   MapPin,
@@ -20,6 +21,9 @@ type PartnerCardLabels = {
   email: string;
   website: string;
   view: string;
+  established?: string;
+  publicItems?: string;
+  contactReady?: string;
 };
 
 type PartnerCardProps = {
@@ -37,6 +41,8 @@ type PartnerCardProps = {
   verificationSource?: string | null;
   verificationDate?: string | null;
   verificationExpiryDate?: string | null;
+  establishedYear?: number;
+  publicItemCount?: number;
   labels: PartnerCardLabels;
 };
 
@@ -61,6 +67,8 @@ export default function PartnerCard({
   verificationSource,
   verificationDate,
   verificationExpiryDate,
+  establishedYear,
+  publicItemCount,
   labels
 }: PartnerCardProps) {
   return (
@@ -113,6 +121,29 @@ export default function PartnerCard({
               {description}
             </p>
           ) : null}
+
+          <div className="travel-agency-card__credibility" aria-label="Partner credibility signals">
+            {typeof publicItemCount === 'number' ? (
+              <span>
+                <Building2 size={15} aria-hidden="true" />
+                {publicItemCount} {labels.publicItems || ''}
+              </span>
+            ) : null}
+
+            {establishedYear ? (
+              <span>
+                <CalendarCheck2 size={15} aria-hidden="true" />
+                {labels.established || ''} {establishedYear}
+              </span>
+            ) : null}
+
+            {phone || email || website ? (
+              <span>
+                <BadgeCheck size={15} aria-hidden="true" />
+                {labels.contactReady || ''}
+              </span>
+            ) : null}
+          </div>
 
           {headquarters ? (
             <div className="travel-agency-card__headquarters">

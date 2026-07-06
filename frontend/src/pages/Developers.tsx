@@ -34,6 +34,7 @@ export default function Developers() {
           developerProfiles: 'ملفات المطورين',
           featuredPartners: 'شركاء مميزون',
           linkedProperties: 'عقارات مرتبطة',
+          trustPromise: 'التحقق، معلومات التواصل، والعقارات المرتبطة تظهر بوضوح داخل كل ملف.',
          verifiedDeveloper: 'مطور موثق',
 developer: 'مطور',
 featured: 'مميز',
@@ -41,6 +42,9 @@ headquarters: 'المقر',
 phone: 'الهاتف',
 email: 'البريد الإلكتروني',
 website: 'الموقع الإلكتروني',
+established: 'تأسست',
+publicItems: 'أعمال منشورة',
+contactReady: 'تواصل مباشر',
 listedProperties: 'عقارات منشورة',
 viewProfile: 'عرض ملف الشركة',
           cardAria: 'عرض ملف المطور',
@@ -62,6 +66,7 @@ viewProfile: 'عرض ملف الشركة',
           developerProfiles: 'developer profiles',
           featuredPartners: 'featured partners',
           linkedProperties: 'linked properties',
+          trustPromise: 'Verification, contact paths, and linked inventory are visible inside each profile.',
          verifiedDeveloper: 'Verified developer',
 developer: 'Developer',
 featured: 'Featured',
@@ -69,6 +74,9 @@ headquarters: 'Headquarters',
 phone: 'Phone',
 email: 'Email',
 website: 'Website',
+established: 'Est.',
+publicItems: 'public items',
+contactReady: 'Direct contact',
 listedProperties: 'listed properties',
 viewProfile: 'View company profile',
           cardAria: 'View developer profile',
@@ -139,6 +147,7 @@ viewProfile: 'View company profile',
           <p className="eyebrow">{copy.network}</p>
           <h2 id="developer-network-title">{copy.heroTitle}</h2>
           <p>{copy.heroText}</p>
+          <p className="partner-directory-trust-note">{copy.trustPromise}</p>
         </div>
 
         <div
@@ -195,6 +204,8 @@ viewProfile: 'View company profile',
         verificationSource={developer.verificationSource}
         verificationDate={developer.verificationDate}
         verificationExpiryDate={developer.verificationExpiryDate}
+        establishedYear={developer.establishedYear}
+        publicItemCount={(developer.listingCount ?? 0) + (developer.projectCount ?? 0)}
         labels={{
           verified: copy.verifiedDeveloper,
           featured: copy.featured,
@@ -202,6 +213,9 @@ viewProfile: 'View company profile',
           phone: copy.phone,
           email: copy.email,
           website: copy.website,
+          established: copy.established,
+          publicItems: copy.publicItems,
+          contactReady: copy.contactReady,
           view: copy.viewProfile
         }}
       />

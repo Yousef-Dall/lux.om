@@ -5,6 +5,7 @@ import { Link, useParams } from 'react-router-dom';
 import { getActivities, getTravelAgencyBySlug } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
+import PartnerCredibilityPanel from '../components/PartnerCredibilityPanel';
 import ReportModal from '../components/ReportModal';
 import TrustBadges from '../components/TrustBadges';
 import { ActivityCard } from '../components/Cards';
@@ -12,6 +13,10 @@ import WhatsAppActions from '../components/WhatsAppActions';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { Activity, TravelAgency } from '../types';
+
+function getWebsiteHref(website: string) {
+  return /^https?:\/\//i.test(website) ? website : `https://${website}`;
+}
 
 export default function TravelAgencyDetails() {
   const { language } = useLanguage();
@@ -44,7 +49,12 @@ export default function TravelAgencyDetails() {
           reportTrustIssue: 'الإبلاغ عن مشكلة ثقة',
           reportTrustDescription:
             'أبلغي فريق lux.om إذا كانت بيانات الوكالة أو حالة التحقق تبدو غير دقيقة.',
-          reportTrustTrigger: 'الإبلاغ عن هذه الوكالة'
+          reportTrustTrigger: 'الإبلاغ عن هذه الوكالة',
+          publicTrackRecord: 'أنشطة منشورة',
+          trustExplainer: 'راجعي التحقق وقنوات التواصل والأنشطة المنشورة قبل الحجز.',
+          phoneLabel: 'الهاتف',
+          emailLabel: 'البريد الإلكتروني',
+          websiteLabel: 'الموقع الإلكتروني'
         }
       : {
           back: 'Back to travel agencies',
@@ -63,7 +73,12 @@ export default function TravelAgencyDetails() {
           reportTrustIssue: 'Report a trust concern',
           reportTrustDescription:
             'Tell lux.om if this agency profile or verification status looks inaccurate.',
-          reportTrustTrigger: 'Report this agency'
+          reportTrustTrigger: 'Report this agency',
+          publicTrackRecord: 'published activities',
+          trustExplainer: 'Review verification, contact paths, and published activities before booking.',
+          phoneLabel: 'Phone',
+          emailLabel: 'Email',
+          websiteLabel: 'Website'
         };
 
   useEffect(() => {
@@ -187,6 +202,10 @@ export default function TravelAgencyDetails() {
               variant="full"
               className="provider-profile-trust"
             />
+
+                <p className="provider-profile-assurance provider-profile-assurance--light">
+                  {copy.trustExplainer}
+                </p>
               </div>
             </div>
 
@@ -212,7 +231,7 @@ export default function TravelAgencyDetails() {
               {agency.phone ? (
                 <div className="activity-spec-card">
                   <Phone size={20} aria-hidden="true" />
-                  <span>Phone</span>
+                  <span>{copy.phoneLabel}</span>
                   <strong>{agency.phone}</strong>
                 </div>
               ) : null}
@@ -231,17 +250,17 @@ export default function TravelAgencyDetails() {
               {agency.email ? (
                 <div className="activity-spec-card">
                   <Mail size={20} aria-hidden="true" />
-                  <span>Email</span>
+                  <span>{copy.emailLabel}</span>
                   <strong>{agency.email}</strong>
                 </div>
               ) : null}
 
               {agency.website ? (
-                <div className="activity-spec-card">
+                <a className="activity-spec-card" href={getWebsiteHref(agency.website)} target="_blank" rel="noreferrer">
                   <Globe size={20} aria-hidden="true" />
-                  <span>Website</span>
-                  <strong>{agency.website}</strong>
-                </div>
+                  <span>{copy.websiteLabel}</span>
+                  <strong>{agency.website.replace(/^https?:\/\//, '')}</strong>
+                </a>
               ) : null}
             </div>
 
@@ -299,11 +318,33 @@ export default function TravelAgencyDetails() {
           ) : null}
 
           {agency.website ? (
-            <p className="inline-info">
+            <a className="inline-info" href={getWebsiteHref(agency.website)} target="_blank" rel="noreferrer">
               <Globe size={18} aria-hidden="true" />
-              {agency.website}
-            </p>
+              {agency.website.replace(/^https?:\/\//, '')}
+            </a>
           ) : null}
+
+          <PartnerCredibilityPanel
+            providerType="travelAgency"
+            name={agency.name}
+            verified={agency.verified}
+            featured={agency.featured}
+            verificationStatus={agency.verificationStatus}
+            verificationSource={agency.verificationSource}
+            verificationDate={agency.verificationDate}
+            verificationExpiryDate={agency.verificationExpiryDate}
+            establishedYear={agency.establishedYear}
+            publicItemCount={activities.length || agency.activityCount || 0}
+            publicItemLabel={copy.publicTrackRecord}
+            specialties={agency.specialties}
+            contactChannels={{
+              phone: Boolean(agency.phone),
+              email: Boolean(agency.email),
+              website: Boolean(agency.website),
+              whatsapp: Boolean(agency.phone)
+            }}
+            className="provider-sidebar-credibility"
+          />
 
           <div className="provider-report-card">
             <h3>{copy.reportTrustIssue}</h3>

@@ -33,6 +33,7 @@ export default function TravelAgencies() {
           agencyProfiles: 'ملفات شركاء',
           featuredPartners: 'شركاء مميزون',
           verifiedPartners: 'شركاء موثقون',
+          trustPromise: 'تظهر شارات التحقق وقنوات التواصل وعدد الأنشطة بشكل واضح قبل فتح ملف الشريك.',
           loading: 'جاري تحميل وكالات السفر...',
           error: 'تعذر تحميل وكالات السفر. تأكد أن الخادم يعمل ثم حاول مرة أخرى.',
           verified: 'شريك موثق',
@@ -41,6 +42,9 @@ export default function TravelAgencies() {
           phone: 'الهاتف',
           email: 'البريد الإلكتروني',
           website: 'الموقع الإلكتروني',
+          established: 'تأسست',
+          publicItems: 'أنشطة منشورة',
+          contactReady: 'تواصل مباشر',
           view: 'عرض الوكالة',
           noResultsTitle: 'لا توجد وكالات سفر حالياً',
           noResultsText: 'ستظهر وكالات السفر ومنظمو الأنشطة هنا بعد إضافتهم واعتمادهم.'
@@ -58,6 +62,7 @@ export default function TravelAgencies() {
           agencyProfiles: 'partner profiles',
           featuredPartners: 'featured partners',
           verifiedPartners: 'verified partners',
+          trustPromise: 'Verification badges, contact paths, and published activity counts are visible before opening a partner profile.',
           loading: 'Loading travel agencies...',
           error: 'Could not load travel agencies. Make sure the backend is running and try again.',
           verified: 'Verified partner',
@@ -66,6 +71,9 @@ export default function TravelAgencies() {
           phone: 'Phone',
           email: 'Email',
           website: 'Website',
+          established: 'Est.',
+          publicItems: 'activities',
+          contactReady: 'Direct contact',
           view: 'View agency',
           noResultsTitle: 'No travel agencies yet',
           noResultsText:
@@ -132,6 +140,7 @@ export default function TravelAgencies() {
           <p className="eyebrow">{copy.network}</p>
           <h2 id="travel-agency-network-title">{copy.heroTitle}</h2>
           <p>{copy.heroText}</p>
+          <p className="partner-directory-trust-note">{copy.trustPromise}</p>
         </div>
 
         <div
@@ -188,6 +197,8 @@ export default function TravelAgencies() {
               verificationSource={agency.verificationSource}
               verificationDate={agency.verificationDate}
               verificationExpiryDate={agency.verificationExpiryDate}
+              establishedYear={agency.establishedYear}
+              publicItemCount={agency.activityCount ?? 0}
               labels={{
                 verified: copy.verified,
                 featured: copy.featured,
@@ -195,6 +206,9 @@ export default function TravelAgencies() {
                 phone: copy.phone,
                 email: copy.email,
                 website: copy.website,
+                established: copy.established,
+                publicItems: copy.publicItems,
+                contactReady: copy.contactReady,
                 view: copy.view
               }}
             />
