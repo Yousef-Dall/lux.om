@@ -188,6 +188,22 @@ const developerProjectCreateSchema = z
     }
   });
 
+const developerProjectStatusUpdateSchema = z
+  .object({
+    status: z.enum(projectStatusValues),
+    rejectedReason: z.string().trim().max(1000).optional()
+  })
+  .strict()
+  .superRefine((data, context) => {
+    if (data.status === 'REJECTED' && !data.rejectedReason?.trim()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['rejectedReason'],
+        message: 'A rejection reason is required when rejecting a project'
+      });
+    }
+  });
+
 type DeveloperProjectCreateData = z.infer<typeof developerProjectCreateSchema>;
 
 const listingUnitInclude = {
@@ -237,6 +253,16 @@ const developerProjectInclude = {
   _count: {
     select: {
       listings: true
+    }
+  }
+};
+
+const adminDeveloperProjectInclude = {
+  ...developerProjectInclude,
+  listings: {
+    include: listingUnitInclude,
+    orderBy: {
+      createdAt: 'desc' as const
     }
   }
 };
@@ -475,6 +501,112 @@ developersRouter.post(
 
       res.status(201).json({
         developer
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+developersRouter.get(
+  '/admin/projects/all',
+  requireAuth(),
+  requireRole('ADMIN'),
+  async (req, res, next) => {
+    try {
+      const query = developerProjectsQuerySchema.parse(req.query);
+
+      const projects = await prisma.developerProject.findMany({
+        where: {
+          ...(query.status
+            ? {
+                status: query.status
+              }
+            : {}),
+          ...(query.developerId
+            ? {
+                developerId: query.developerId
+              }
+            : {})
+        },
+        include: adminDeveloperProjectInclude,
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: query.take,
+        skip: query.skip
+      });
+
+      res.json({
+        projects,
+        pagination: {
+          take: query.take,
+          skip: query.skip,
+          count: projects.length
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+developersRouter.patch(
+  '/admin/projects/:id/status',
+  requireAuth(),
+  requireRole('ADMIN'),
+  async (req, res, next) => {
+    try {
+      const { id } = idParamsSchema.parse(req.params);
+      const data = developerProjectStatusUpdateSchema.parse(req.body);
+
+      const existingProject = await prisma.developerProject.findUnique({
+        where: {
+          id
+        },
+        select: {
+          id: true,
+          nameEn: true,
+          ownerId: true
+        }
+      });
+
+      if (!existingProject) {
+        throw new AppError(404, 'Developer project not found');
+      }
+
+      const project = await prisma.developerProject.update({
+        where: {
+          id
+        },
+        data: {
+          status: data.status,
+          rejectedReason: data.status === 'REJECTED' ? data.rejectedReason : null
+        },
+        include: adminDeveloperProjectInclude
+      });
+
+      await prisma.notification.create({
+        data: {
+          userId: existingProject.ownerId,
+          type: 'REVIEW_STATUS_UPDATED',
+          title:
+            data.status === 'APPROVED'
+              ? 'Developer project approved'
+              : data.status === 'REJECTED'
+                ? 'Developer project needs changes'
+                : 'Developer project moved to review',
+          message:
+            data.status === 'APPROVED'
+              ? existingProject.nameEn + ' is now approved and can appear publicly once it has approved units.'
+              : data.status === 'REJECTED'
+                ? (existingProject.nameEn + ' was not approved yet. ' + (data.rejectedReason ?? '')).trim()
+                : existingProject.nameEn + ' is back in the admin review queue.'
+        }
+      });
+
+      res.json({
+        project
       });
     } catch (error) {
       next(error);

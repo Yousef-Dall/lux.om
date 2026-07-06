@@ -62,6 +62,7 @@ import type {
 import AdminOperationsTrustPanel from '../components/AdminOperationsTrustPanel';
 import AdminEmailDeliveryHealthPanel from '../components/AdminEmailDeliveryHealthPanel';
 import AdminSystemHealthPanel from '../components/AdminSystemHealthPanel';
+import AdminDeveloperProjectReviewPanel from '../components/AdminDeveloperProjectReviewPanel';
 
 function getListingTitle(listing: ApiListing, language: 'en' | 'ar') {
   if (language === 'ar') {
@@ -1781,6 +1782,8 @@ async function deleteDeveloperCompany(developerId: string) {
       </div>
 
       {!loading && !loadError ? renderPublishingApprovalCockpit() : null}
+
+      {!loading && !loadError && token ? <AdminDeveloperProjectReviewPanel token={token} /> : null}
 
       <div id="admin-command-center" className="admin-anchor-section" tabIndex={-1}>
 

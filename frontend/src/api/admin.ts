@@ -4,10 +4,12 @@ import type {
   ActivityStatus,
   ApiActivity,
   ApiDeveloperCompany,
+  ApiDeveloperProject,
   ApiListing,
   ApiTravelAgency,
   Inquiry,
-  ListingStatus
+  ListingStatus,
+  DeveloperProjectStatus
 } from '../types';
 
 
@@ -126,6 +128,15 @@ export type DevelopersResponse = {
   developers: ApiDeveloperCompany[];
 };
 
+export type AdminDeveloperProjectsResponse = {
+  projects: ApiDeveloperProject[];
+  pagination: {
+    take: number;
+    skip: number;
+    count: number;
+  };
+};
+
 export type CreateDeveloperPayload = {
   nameEn: string;
   nameAr?: string;
@@ -173,6 +184,11 @@ export type UpdateListingStatusPayload = {
 
 export type UpdateActivityStatusPayload = {
   status: ActivityStatus;
+  rejectedReason?: string;
+};
+
+export type UpdateDeveloperProjectStatusPayload = {
+  status: DeveloperProjectStatus;
   rejectedReason?: string;
 };
 
@@ -250,6 +266,19 @@ export async function getAdminDevelopers(token: string) {
   return apiClient.get<DevelopersResponse>('/api/developers', { token });
 }
 
+export async function getAdminDeveloperProjects(
+  token: string,
+  params?: { status?: DeveloperProjectStatus | 'ALL'; take?: number; skip?: number }
+) {
+  return apiClient.get<AdminDeveloperProjectsResponse>('/api/developers/admin/projects/all', {
+    token,
+    params: {
+      ...params,
+      status: params?.status === 'ALL' ? undefined : params?.status
+    }
+  });
+}
+
 export async function updateAdminListingStatus(
   listingId: string,
   payload: UpdateListingStatusPayload,
@@ -269,6 +298,18 @@ export async function updateAdminActivityStatus(
 ) {
   return apiClient.patch<{ activity: ApiActivity }>(
     `/api/activities/admin/${activityId}/status`,
+    payload,
+    { token }
+  );
+}
+
+export async function updateAdminDeveloperProjectStatus(
+  projectId: string,
+  payload: UpdateDeveloperProjectStatusPayload,
+  token: string
+) {
+  return apiClient.patch<{ project: ApiDeveloperProject }>(
+    '/api/developers/admin/projects/' + projectId + '/status',
     payload,
     { token }
   );
