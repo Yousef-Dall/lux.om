@@ -200,6 +200,25 @@ function isPendingStatus(status?: string) {
 
 type ReviewStatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED';
 
+type AdminWorkspaceKey =
+  | 'command'
+  | 'health'
+  | 'summary'
+  | 'finance'
+  | 'bookings'
+  | 'partners'
+  | 'reviewDetails';
+
+const adminSectionWorkspaceMap: Partial<Record<string, AdminWorkspaceKey>> = {
+  'admin-command-center': 'command',
+  'admin-health': 'health',
+  'admin-overview-metrics': 'summary',
+  'admin-finance-section': 'finance',
+  'admin-bookings-section': 'bookings',
+  'admin-partners-section': 'partners',
+  'admin-review-detail-queues': 'reviewDetails'
+};
+
 const reviewStatusFilters: ReviewStatusFilter[] = [
   'ALL',
   'PENDING',
@@ -471,6 +490,7 @@ const [agencyFormSuccess, setAgencyFormSuccess] = useState('');
 const [creatingDeveloper, setCreatingDeveloper] = useState(false);
 const [developerFormError, setDeveloperFormError] = useState('');
 const [developerFormSuccess, setDeveloperFormSuccess] = useState('');
+const [activeAdminWorkspace, setActiveAdminWorkspace] = useState<AdminWorkspaceKey>('command');
   
 
   const copy =
@@ -854,21 +874,29 @@ verifiedDevelopers: 'Verified developers',
         };
 
   function scrollToAdminSection(sectionId: string) {
-    const section = document.getElementById(sectionId);
+    const workspace = adminSectionWorkspaceMap[sectionId];
 
-    if (!section) return;
+    if (workspace) {
+      setActiveAdminWorkspace(workspace);
+    }
 
-    section.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    });
+    window.setTimeout(() => {
+      const section = document.getElementById(sectionId);
 
-    section.focus({
-      preventScroll: true
-    });
+      if (!section) return;
+
+      section.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+
+      section.focus({
+        preventScroll: true
+      });
+    }, workspace ? 80 : 0);
   }
 
-const adminReportFilters = useMemo<AdminReportFilters>(
+  const adminReportFilters = useMemo<AdminReportFilters>(
     () => ({
       status: adminBookingStatusFilter,
       paymentStatus: adminPaymentStatusFilter,
@@ -1539,6 +1567,131 @@ async function deleteDeveloperCompany(developerId: string) {
     );
   }
 
+  function renderAdminWorkspaceSwitcher() {
+    const workspaceCards = [
+      {
+        key: 'command' as const,
+        label: language === 'ar' ? 'مركز القرار' : 'Command center',
+        text:
+          language === 'ar'
+            ? 'قوائم الثقة والجودة والمهام التشغيلية العاجلة.'
+            : 'Trust queues, quality operations, and urgent marketplace tasks.',
+        metric: metrics.needsAttention,
+        sectionId: 'admin-command-center',
+        icon: Inbox
+      },
+      {
+        key: 'health' as const,
+        label: language === 'ar' ? 'صحة النظام' : 'System health',
+        text:
+          language === 'ar'
+            ? 'حالة الإنتاج، البريد، والثقة قبل الإطلاق.'
+            : 'Production, email delivery, and trust readiness before launch.',
+        metric: metrics.pendingBookings,
+        sectionId: 'admin-health',
+        icon: AlertCircle
+      },
+      {
+        key: 'summary' as const,
+        label: language === 'ar' ? 'ملخص السوق' : 'Marketplace summary',
+        text:
+          language === 'ar'
+            ? 'نظرة سريعة على النشر، الشركاء، والعناصر التي تحتاج مراجعة.'
+            : 'Quick marketplace totals for publishing, partners, and review load.',
+        metric: listings.length + activities.length,
+        sectionId: 'admin-overview-metrics',
+        icon: Sparkles
+      },
+      {
+        key: 'finance' as const,
+        label: language === 'ar' ? 'المالية' : 'Finance',
+        text:
+          language === 'ar'
+            ? 'التقارير، المدفوعات، العمولات، وجاهزية الصرف.'
+            : 'Reports, payments, commissions, and payout readiness.',
+        metric: finance?.ledger.length ?? 0,
+        sectionId: 'admin-finance-section',
+        icon: CreditCard
+      },
+      {
+        key: 'bookings' as const,
+        label: language === 'ar' ? 'الحجوزات' : 'Bookings',
+        text:
+          language === 'ar'
+            ? 'حالات الحجز، الدفع، الإلغاء، وسجل التدقيق.'
+            : 'Booking state, payment state, cancellations, and audit trail.',
+        metric: bookings.length,
+        sectionId: 'admin-bookings-section',
+        icon: CalendarDays
+      },
+      {
+        key: 'partners' as const,
+        label: language === 'ar' ? 'الشركاء' : 'Partners',
+        text:
+          language === 'ar'
+            ? 'شركات التطوير ووكالات السفر المرتبطة بالسوق.'
+            : 'Developer companies and travel agencies connected to the marketplace.',
+        metric: travelAgencies.length + developers.length,
+        sectionId: 'admin-partners-section',
+        icon: Building2
+      },
+      {
+        key: 'reviewDetails' as const,
+        label: language === 'ar' ? 'قوائم المراجعة' : 'Review queues',
+        text:
+          language === 'ar'
+            ? 'جداول العقارات والأنشطة والاستفسارات للمراجعة التفصيلية.'
+            : 'Detailed listing, activity, and inquiry queues for deeper review.',
+        metric: filteredListings.length + filteredActivities.length + inquiries.length,
+        sectionId: 'admin-review-detail-queues',
+        icon: ShieldCheck
+      }
+    ];
+
+    return (
+      <section className="admin-workspace-shell" aria-label={language === 'ar' ? 'مساحات عمل الإدارة' : 'Admin workspaces'}>
+        <div className="admin-workspace-shell__header">
+          <div>
+            <p className="eyebrow">{language === 'ar' ? 'مساحات العمل' : 'Workspace control'}</p>
+            <h2>{language === 'ar' ? 'افتح مساحة واحدة بدل صفحة طويلة.' : 'Open one operations workspace at a time.'}</h2>
+            <p>
+              {language === 'ar'
+                ? 'استخدم هذه المساحات للتنقل بين التشغيل، الصحة، المالية، الحجوزات، الشركاء، والمراجعة التفصيلية بدون فقدان السياق.'
+                : 'Use these workspaces to move between operations, health, finance, bookings, partners, and detailed review without working through one endless page.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="admin-workspace-switcher" role="tablist" aria-label={language === 'ar' ? 'اختيار مساحة العمل' : 'Choose admin workspace'}>
+          {workspaceCards.map((workspace) => {
+            const Icon = workspace.icon;
+            const isActive = activeAdminWorkspace === workspace.key;
+
+            return (
+              <button
+                aria-selected={isActive}
+                className={isActive ? 'admin-workspace-tab admin-workspace-tab--active' : 'admin-workspace-tab'}
+                key={workspace.key}
+                role="tab"
+                type="button"
+                onClick={() => scrollToAdminSection(workspace.sectionId)}
+              >
+                <span className="admin-workspace-tab__icon" aria-hidden="true">
+                  <Icon size={17} />
+                </span>
+                <span>
+                  <strong>{workspace.label}</strong>
+                  <small>{workspace.text}</small>
+                </span>
+                <em>{workspace.metric}</em>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
   function renderAdminCommandBriefing() {
     const commandHighlights = [
       {
@@ -1853,7 +2006,7 @@ async function deleteDeveloperCompany(developerId: string) {
   }
 
   return (
-  <section className="page-section container admin-page admin-page--command-center">
+  <section className={'page-section container admin-page admin-page--command-center admin-page--workspace-' + activeAdminWorkspace}>
       <SectionHeader
         eyebrow={t.admin.eyebrow}
         title={t.admin.title}
@@ -1879,7 +2032,9 @@ async function deleteDeveloperCompany(developerId: string) {
 
       {!loading && !loadError && token ? <AdminDeveloperProjectReviewPanel token={token} /> : null}
 
-      <div id="admin-command-center" className="admin-anchor-section" tabIndex={-1}>
+      {!loading && !loadError ? renderAdminWorkspaceSwitcher() : null}
+
+      <div id="admin-command-center" className="admin-anchor-section admin-workspace-panel" tabIndex={-1}>
 
 
         <Stage8AdminCommandCenter token={token} />
@@ -1906,7 +2061,7 @@ async function deleteDeveloperCompany(developerId: string) {
 
       {!loading && !loadError ? (
         <>
-        <div id="admin-health" className="admin-anchor-section" tabIndex={-1}>
+        <div id="admin-health" className="admin-anchor-section admin-workspace-panel" tabIndex={-1}>
         {token ? <AdminSystemHealthPanel token={token} /> : null}
 
         <AdminOperationsTrustPanel />
@@ -1914,7 +2069,7 @@ async function deleteDeveloperCompany(developerId: string) {
           {token ? <AdminEmailDeliveryHealthPanel token={token} /> : null}
         </div>
 
-          <div id="admin-overview-metrics" className="dashboard-grid admin-overview-metrics" tabIndex={-1}>
+          <div id="admin-overview-metrics" className="dashboard-grid admin-overview-metrics admin-workspace-panel" tabIndex={-1}>
             <article className="metric-card metric-card--accent">
               <span>
                 <CheckCircle2 size={18} aria-hidden="true" />
@@ -1993,7 +2148,7 @@ async function deleteDeveloperCompany(developerId: string) {
 
           <div
               id="admin-finance-section"
-              className="table-card table-card--premium admin-report-filters-card"
+              className="table-card table-card--premium admin-report-filters-card admin-workspace-panel"
               tabIndex={-1}
             >
             <div className="table-card__header">
@@ -2099,7 +2254,7 @@ async function deleteDeveloperCompany(developerId: string) {
 
 
           {finance ? (
-            <div className="table-card table-card--premium admin-finance-card">
+            <div className="table-card table-card--premium admin-finance-card admin-workspace-panel">
               <div className="table-card__header">
                 <div>
                   <p className="eyebrow">{adminFinanceCopy.title}</p>
@@ -2202,7 +2357,7 @@ async function deleteDeveloperCompany(developerId: string) {
 
           <div
               id="admin-bookings-section"
-              className="table-card table-card--premium admin-bookings-card"
+              className="table-card table-card--premium admin-bookings-card admin-workspace-panel"
               tabIndex={-1}
             >
             <div className="table-card__header">
@@ -2421,7 +2576,7 @@ async function deleteDeveloperCompany(developerId: string) {
             </div>
           </div>
 
-          <div id="admin-partners-section" className="table-card table-card--premium" tabIndex={-1}>
+          <div id="admin-partners-section" className="table-card table-card--premium admin-workspace-panel" tabIndex={-1}>
   <div className="table-card__header">
     <div>
       <p className="eyebrow">{copy.developerManagement}</p>
@@ -3396,7 +3551,7 @@ async function deleteDeveloperCompany(developerId: string) {
             </div>
           </div>
 
-          <div className="table-card table-card--premium">
+          <div id="admin-review-detail-queues" className="table-card table-card--premium admin-review-detail-card admin-workspace-panel" tabIndex={-1}>
             <div className="table-card__header">
               <div>
                 <p className="eyebrow">{copy.reviewQueue}</p>
@@ -3514,7 +3669,7 @@ async function deleteDeveloperCompany(developerId: string) {
             </div>
           </div>
 
-          <div className="table-card table-card--premium">
+          <div className="table-card table-card--premium admin-review-detail-card admin-workspace-panel">
             <div className="table-card__header">
               <div>
                 <p className="eyebrow">{copy.reviewQueue}</p>
@@ -3619,7 +3774,7 @@ async function deleteDeveloperCompany(developerId: string) {
             </div>
           </div>
 
-          <div className="table-card table-card--premium">
+          <div className="table-card table-card--premium admin-review-detail-card admin-workspace-panel">
             <div className="table-card__header">
               <div>
                 <p className="eyebrow">

@@ -15557,3 +15557,212 @@ transition: none;
     width: auto;
   }
 }
+
+/* =========================================================
+   Admin workspace panelization
+   ========================================================= */
+.admin-workspace-shell {
+  background:
+    radial-gradient(circle at top right, rgba(178, 135, 74, 0.12), transparent 32%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(246, 240, 229, 0.86));
+  border: 1px solid rgba(7, 56, 62, 0.1);
+  border-radius: 2rem;
+  box-shadow: 0 24px 70px rgba(7, 56, 62, 0.08);
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1rem, 2vw, 1.35rem);
+  scroll-margin-top: 6.5rem;
+}
+
+.admin-workspace-shell__header {
+  align-items: end;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.admin-workspace-shell__header h2 {
+  color: #07383e;
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin: 0.15rem 0 0.45rem;
+}
+
+.admin-workspace-shell__header p:not(.eyebrow) {
+  color: rgba(7, 56, 62, 0.68);
+  line-height: 1.65;
+  margin: 0;
+  max-width: 54rem;
+}
+
+.admin-workspace-switcher {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.admin-workspace-tab {
+  align-items: stretch;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(7, 56, 62, 0.09);
+  border-radius: 1.2rem;
+  color: #07383e;
+  cursor: pointer;
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 8.3rem;
+  padding: 0.85rem;
+  text-align: left;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.admin-workspace-tab:hover,
+.admin-workspace-tab--active {
+  background: #ffffff;
+  border-color: rgba(178, 135, 74, 0.45);
+  box-shadow: 0 18px 45px rgba(7, 56, 62, 0.1);
+  transform: translateY(-2px);
+}
+
+.admin-workspace-tab--active {
+  background:
+    linear-gradient(135deg, rgba(7, 56, 62, 0.98), rgba(18, 77, 80, 0.92));
+  color: #ffffff;
+}
+
+.admin-workspace-tab__icon {
+  align-items: center;
+  background: rgba(7, 56, 62, 0.08);
+  border-radius: 0.9rem;
+  display: inline-flex;
+  height: 2.2rem;
+  justify-content: center;
+  width: 2.2rem;
+}
+
+.admin-workspace-tab--active .admin-workspace-tab__icon {
+  background: rgba(255, 255, 255, 0.15);
+  color: #e5bd72;
+}
+
+.admin-workspace-tab span:nth-child(2) {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.admin-workspace-tab strong {
+  font-size: 0.86rem;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.admin-workspace-tab small {
+  color: rgba(7, 56, 62, 0.62);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.admin-workspace-tab--active small {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.admin-workspace-tab em {
+  align-self: start;
+  background: rgba(178, 135, 74, 0.14);
+  border-radius: 999px;
+  color: inherit;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 900;
+  padding: 0.26rem 0.5rem;
+}
+
+.admin-page--command-center #admin-command-center,
+.admin-page--command-center #admin-health,
+.admin-page--command-center #admin-overview-metrics,
+.admin-page--command-center #admin-finance-section,
+.admin-page--command-center .admin-finance-card,
+.admin-page--command-center #admin-bookings-section,
+.admin-page--command-center #admin-partners-section,
+.admin-page--command-center .admin-review-detail-card {
+  display: none;
+}
+
+.admin-page--workspace-command #admin-command-center,
+.admin-page--workspace-health #admin-health,
+.admin-page--workspace-finance #admin-finance-section,
+.admin-page--workspace-finance .admin-finance-card,
+.admin-page--workspace-bookings #admin-bookings-section,
+.admin-page--workspace-partners #admin-partners-section,
+.admin-page--workspace-reviewDetails .admin-review-detail-card {
+  display: block;
+}
+
+.admin-page--workspace-summary #admin-overview-metrics {
+  display: grid;
+}
+
+.admin-workspace-panel {
+  animation: adminWorkspaceReveal 0.24s ease both;
+  scroll-margin-top: 7rem;
+}
+
+@keyframes adminWorkspaceReveal {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 1180px) {
+  .admin-workspace-switcher {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-workspace-shell {
+    border-radius: 1.45rem;
+    gap: 0.85rem;
+    padding: 0.95rem;
+  }
+
+  .admin-workspace-shell__header h2 {
+    font-size: clamp(1.45rem, 7vw, 2rem);
+  }
+
+  .admin-workspace-shell__header p:not(.eyebrow) {
+    font-size: 0.9rem;
+  }
+
+  .admin-workspace-switcher {
+    display: flex;
+    gap: 0.55rem;
+    margin-inline: -0.15rem;
+    overflow-x: auto;
+    padding: 0.15rem;
+    scrollbar-width: none;
+  }
+
+  .admin-workspace-switcher::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-workspace-tab {
+    flex: 0 0 13.5rem;
+    min-height: 7rem;
+    padding: 0.75rem;
+  }
+
+  .admin-workspace-tab small {
+    display: none;
+  }
+}
