@@ -24,6 +24,7 @@ import { getDevelopers, getLandmarks } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
 import EmailVerificationBanner from '../components/EmailVerificationBanner';
+import CreationReadinessPanel, { type CreationReadinessCheck } from '../components/CreationReadinessPanel';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
@@ -282,7 +283,20 @@ export default function AddListing() {
           project: 'المشروع',
           noProject: 'بدون مشروع محدد',
           projectHint: 'اختر مشروعاً لإضافة هذه الوحدة ضمن مخزون مشروع كامل.',
-          addProject: 'إضافة مشروع جديد'
+          addProject: 'إضافة مشروع جديد',
+          readinessTitle: 'جاهزية المراجعة',
+          readinessReview: 'قبل الإرسال',
+          readinessDescription: 'هذه النقاط تساعد فريق المراجعة على اعتماد العقار بسرعة وتساعد العملاء على الثقة بالإعلان.',
+          coreDetailsReady: 'التفاصيل الأساسية والسعر',
+          coreDetailsReadyText: 'العنوان، الموقع، المساحة، الغرف، والسعر واضحون.',
+          mediaReady: 'صور الإعلان',
+          mediaReadyText: 'أضف صورة رئيسية وثلاث صور أو أكثر لعرض العقار بوضوح.',
+          premiumMediaReady: 'وسائط مميزة',
+          premiumMediaReadyText: 'الفيديو أو الجولة أو المخطط يزيد الثقة قبل التواصل.',
+          trustReady: 'الثقة وأهلية الشراء',
+          trustReadyText: 'الوصف والملاحظات القانونية أو الاستثمارية تقلل أسئلة المراجعة.',
+          locationReady: 'سياق الموقع',
+          locationReadyText: 'المعلم القريب أو المسافة يساعد العملاء على فهم المنطقة.'
         }
       : {
           qualityEyebrow: 'Listing quality',
@@ -333,7 +347,20 @@ export default function AddListing() {
           project: 'Project',
           noProject: 'No project selected',
           projectHint: 'Choose a project to attach this unit to full development inventory.',
-          addProject: 'Add new project'
+          addProject: 'Add new project',
+          readinessTitle: 'Review readiness',
+          readinessReview: 'Before submit',
+          readinessDescription: 'These checks help the review team approve faster and help customers trust the listing.',
+          coreDetailsReady: 'Core details and price',
+          coreDetailsReadyText: 'Title, location, size, bedrooms, and pricing are clear.',
+          mediaReady: 'Listing photos',
+          mediaReadyText: 'Add a main image and at least three photos to show the property clearly.',
+          premiumMediaReady: 'Premium media',
+          premiumMediaReadyText: 'A video, tour, or floor plan increases confidence before contact.',
+          trustReady: 'Trust and buyer eligibility',
+          trustReadyText: 'Description and legal or investor notes reduce review questions.',
+          locationReady: 'Location context',
+          locationReadyText: 'A nearby landmark or distance note helps customers understand the area.'
         };
 
   const priceQualifierLabels: Record<
@@ -465,6 +492,56 @@ export default function AddListing() {
   }, [form, imageMode, imageFiles]);
 
   const formCompletion = Math.round((completedRequiredFields / 8) * 100);
+  const hasListingImage = imagePreviews.length > 0;
+  const listingMediaCount = imageMode === 'upload' ? imageFiles.length : imagePreviews.length;
+  const hasPremiumMedia = Boolean(
+    form.videoWalkthroughUrl.trim() ||
+      form.tour360Url.trim() ||
+      form.virtualTourUrl.trim() ||
+      form.floorPlanUrl.trim()
+  );
+  const hasSaleTrustContext =
+    form.transaction !== 'Sale' ||
+    form.buyerEligibility.length > 0 ||
+    Boolean(
+      form.eligibilityNotes.trim() ||
+        form.eligibilityDisclaimer.trim() ||
+        form.investorHighlights.trim()
+    );
+  const listingReadinessChecks: CreationReadinessCheck[] = [
+    {
+      key: 'core-details',
+      title: copy.coreDetailsReady,
+      description: copy.coreDetailsReadyText,
+      done: completedRequiredFields >= 6,
+      critical: true
+    },
+    {
+      key: 'media',
+      title: copy.mediaReady,
+      description: copy.mediaReadyText,
+      done: hasListingImage && listingMediaCount >= 3,
+      critical: true
+    },
+    {
+      key: 'premium-media',
+      title: copy.premiumMediaReady,
+      description: copy.premiumMediaReadyText,
+      done: hasPremiumMedia
+    },
+    {
+      key: 'location',
+      title: copy.locationReady,
+      description: copy.locationReadyText,
+      done: Boolean(form.nearestLandmarkId || form.distanceFromLandmark.trim())
+    },
+    {
+      key: 'trust',
+      title: copy.trustReady,
+      description: copy.trustReadyText,
+      done: form.description.trim().length >= 80 && hasSaleTrustContext
+    }
+  ];
 
   function updateForm<K extends keyof typeof initialForm>(
     field: K,
@@ -727,6 +804,16 @@ export default function AddListing() {
             {submitError}
           </p>
         ) : null}
+
+        <CreationReadinessPanel
+          title={copy.readinessTitle}
+          description={copy.readinessDescription}
+          completion={formCompletion}
+          readyLabel={copy.ready}
+          reviewLabel={copy.readinessReview}
+          checks={listingReadinessChecks}
+          language={language}
+        />
 
         <section className="form-section-card">
           <div className="form-group-heading">

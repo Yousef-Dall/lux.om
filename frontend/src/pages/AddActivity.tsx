@@ -30,6 +30,7 @@ import { getLandmarks, getTravelAgencies } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import SectionHeader from '../components/SectionHeader';
 import EmailVerificationBanner from '../components/EmailVerificationBanner';
+import CreationReadinessPanel, { type CreationReadinessCheck } from '../components/CreationReadinessPanel';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
 import type {
@@ -458,7 +459,20 @@ submitError: 'تعذر إرسال النشاط للمراجعة. حاولي مر
 premiumMediaEyebrow: 'وسائط مميزة',
 premiumActivityMediaTitle: 'وسائط النشاط المميزة',
 premiumActivityMediaHint:
-'أضف روابط اختيارية للفيديو أو الجولات الافتراضية. سيتم عرض الروابط الآمنة فقط في صفحة النشاط.'
+'أضف روابط اختيارية للفيديو أو الجولات الافتراضية. سيتم عرض الروابط الآمنة فقط في صفحة النشاط.',
+readinessTitle: 'جاهزية المراجعة',
+readinessReview: 'قبل الإرسال',
+readinessDescription: 'هذه النقاط تساعد فريق المراجعة على فهم النشاط أو الباقة بسرعة وتزيد ثقة العميل قبل الحجز.',
+coreDetailsReady: 'التفاصيل والسعر',
+coreDetailsReadyText: 'العنوان، الفئة، المدة، السعر، والوصف مكتملة.',
+scheduleReady: 'الجدول والسعة',
+scheduleReadyText: 'الأيام، الوقت، السعة أو حجم المجموعة واضحة للحجز.',
+mediaReady: 'صور ووسائط النشاط',
+mediaReadyText: 'أضف صوراً متعددة ورابط فيديو أو جولة إن أمكن.',
+providerReady: 'معلومات المنظم',
+providerReadyText: 'اربط وكالة سفر أو اكتب اسم المنظم مع مزايا التجربة.',
+packageReady: 'تفاصيل باقة السفر',
+packageReadyText: 'للرحلات خارج عُمان: الوجهة، الفندق، الرحلات، المستندات، وسياسة الإلغاء.'
 }
 : {
 addActivityTitle: 'Add activity',
@@ -562,7 +576,20 @@ submitError: 'Could not submit this activity for review. Please try again.',
 premiumMediaEyebrow: 'Premium media',
 premiumActivityMediaTitle: 'Premium activity media',
 premiumActivityMediaHint:
-'Add optional video walkthroughs, 360 tours, or virtual tour links. Only safe supported links are displayed on the public activity page.'
+'Add optional video walkthroughs, 360 tours, or virtual tour links. Only safe supported links are displayed on the public activity page.',
+readinessTitle: 'Review readiness',
+readinessReview: 'Before submit',
+readinessDescription: 'These checks help reviewers understand the activity or package quickly and help customers feel confident before booking.',
+coreDetailsReady: 'Details and pricing',
+coreDetailsReadyText: 'Title, category, duration, price, and description are complete.',
+scheduleReady: 'Schedule and capacity',
+scheduleReadyText: 'Days, timing, capacity, or group size are clear for booking.',
+mediaReady: 'Activity photos and media',
+mediaReadyText: 'Add multiple images plus a video or virtual tour when possible.',
+providerReady: 'Organizer information',
+providerReadyText: 'Link a travel agency or name the organizer with experience highlights.',
+packageReady: 'Travel package details',
+packageReadyText: 'For outside-Oman trips: destination, hotel, flights, documents, and cancellation policy.'
 };
 
 useEffect(() => {
@@ -662,6 +689,64 @@ return [...baseRequiredValues, ...outsideOmanRequiredValues].filter(Boolean).len
 
 const requiredFieldCount = isOutsideOman ? 14 : 11;
 const formCompletion = Math.round((completedRequiredFields / requiredFieldCount) * 100);
+const activityMediaCount = imageMode === 'upload' ? imageFiles.length : imagePreviews.length;
+const hasActivityPremiumMedia = Boolean(
+  form.videoWalkthroughUrl.trim() ||
+    form.tour360Url.trim() ||
+    form.virtualTourUrl.trim()
+);
+const hasOrganizerContext = Boolean(
+  form.travelAgencyId ||
+    form.provider.trim() ||
+    selectedHighlights.length > 0 ||
+    form.highlights.trim()
+);
+const hasPackageReadiness = !isOutsideOman || Boolean(
+  form.destinationCountry.trim() &&
+    form.destinationCity.trim() &&
+    form.tripDurationDays.trim() &&
+    (form.hotelName.trim() || !form.hotelIncluded) &&
+    (form.airline.trim() || !form.flightIncluded) &&
+    form.packageItinerary.trim() &&
+    form.requiredDocuments.trim() &&
+    form.cancellationPolicy.trim()
+);
+const activityReadinessChecks: CreationReadinessCheck[] = [
+  {
+    key: 'core-details',
+    title: copy.coreDetailsReady,
+    description: copy.coreDetailsReadyText,
+    done: completedRequiredFields >= (isOutsideOman ? 10 : 8),
+    critical: true
+  },
+  {
+    key: 'schedule',
+    title: copy.scheduleReady,
+    description: copy.scheduleReadyText,
+    done: selectedDays.length > 0 && Boolean(form.startTime && form.endTime && (form.capacity || form.groupSize)),
+    critical: true
+  },
+  {
+    key: 'media',
+    title: copy.mediaReady,
+    description: copy.mediaReadyText,
+    done: activityMediaCount >= 3 && hasActivityPremiumMedia,
+    critical: true
+  },
+  {
+    key: 'organizer',
+    title: copy.providerReady,
+    description: copy.providerReadyText,
+    done: hasOrganizerContext
+  },
+  {
+    key: 'package',
+    title: copy.packageReady,
+    description: copy.packageReadyText,
+    done: hasPackageReadiness,
+    critical: isOutsideOman
+  }
+];
 
 function updateForm<K extends keyof typeof initialForm>(field: K, value: (typeof initialForm)[K]) {
 setSubmitted(false);
@@ -1027,6 +1112,16 @@ description={activityFlow.description}
         {submitError}
       </p>
     ) : null}
+
+    <CreationReadinessPanel
+      title={copy.readinessTitle}
+      description={copy.readinessDescription}
+      completion={formCompletion}
+      readyLabel={addActivityCopy.ready ?? (language === 'ar' ? 'جاهز' : 'ready')}
+      reviewLabel={copy.readinessReview}
+      checks={activityReadinessChecks}
+      language={language}
+    />
 
     <section className="form-section-card">
       <div className="form-group-heading">

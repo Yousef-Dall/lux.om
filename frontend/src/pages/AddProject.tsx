@@ -7,6 +7,7 @@ import { createDeveloperProject } from '../api/developerProjects';
 import { getDevelopers, getLandmarks } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import EmailVerificationBanner from '../components/EmailVerificationBanner';
+import CreationReadinessPanel, { type CreationReadinessCheck } from '../components/CreationReadinessPanel';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -136,7 +137,20 @@ export default function AddProject() {
           addUnit: 'إضافة وحدة لهذا المشروع',
           optionsError: 'تعذر تحميل المطورين والمعالم.',
           authError: 'يجب تسجيل الدخول قبل إضافة مشروع.',
-          submitError: 'تعذر إنشاء المشروع. حاول مرة أخرى.'
+          submitError: 'تعذر إنشاء المشروع. حاول مرة أخرى.',
+          readinessTitle: 'جاهزية المشروع للمراجعة',
+          readinessReview: 'قبل الإرسال',
+          readinessDescription: 'هذه النقاط تساعد فريق المراجعة على فهم جاهزية المشروع وتساعد المشترين على الثقة بالصفحة.',
+          identityReady: 'هوية المشروع والمطور',
+          identityReadyText: 'الاسم، الموقع، المطور، وحالة التسليم واضحة.',
+          inventoryReady: 'المخزون والسعر',
+          inventoryReadyText: 'عدد الوحدات، الوحدات المتاحة، ملخص الغرف، والسعر مذكورة.',
+          mediaReady: 'الوسائط والمستندات',
+          mediaReadyText: 'صورة رئيسية، صور إضافية، بروشور، مخطط عام، وفيديو أو جولة.',
+          storyReady: 'وصف وثقة المشروع',
+          storyReadyText: 'الوصف وخطة الدفع والمرافق تشرح قيمة المشروع للمشتري.',
+          unitsReady: 'خطوة الوحدات التالية',
+          unitsReadyText: 'بعد اعتماد المشروع، أضف وحدات مرتبطة ليظهر المشروع كمخزون كامل.'
         }
       : {
           eyebrow: 'Developer project',
@@ -186,7 +200,20 @@ export default function AddProject() {
           addUnit: 'Add a unit to this project',
           optionsError: 'Could not load developers and landmarks.',
           authError: 'You must be logged in before adding a project.',
-          submitError: 'Could not create this project. Please try again.'
+          submitError: 'Could not create this project. Please try again.',
+          readinessTitle: 'Project review readiness',
+          readinessReview: 'Before submit',
+          readinessDescription: 'These checks help reviewers understand launch readiness and help buyers trust the project page.',
+          identityReady: 'Project and developer identity',
+          identityReadyText: 'Name, location, developer, and handover stage are clear.',
+          inventoryReady: 'Inventory and pricing',
+          inventoryReadyText: 'Total units, available units, bedroom mix, and starting price are included.',
+          mediaReady: 'Media and documents',
+          mediaReadyText: 'Main image, gallery, brochure, masterplan, and video or tour are present.',
+          storyReady: 'Project story and trust',
+          storyReadyText: 'Description, payment plan, and amenities explain the value to buyers.',
+          unitsReady: 'Next unit step',
+          unitsReadyText: 'After project approval, add linked units so the project becomes complete inventory.'
         };
 
   const completion = useMemo(() => {
@@ -220,6 +247,60 @@ export default function AddProject() {
     form.totalUnits,
     form.videoWalkthroughUrl
   ]);
+
+  const projectImageCount = parseCommaList(form.images).length + (form.image.trim() ? 1 : 0);
+  const hasDeveloperIdentity =
+    form.developerMode === 'auto' ||
+    Boolean(form.developerId || form.developerNameEn.trim() || form.developerNameAr.trim());
+  const projectReadinessChecks: CreationReadinessCheck[] = [
+    {
+      key: 'identity',
+      title: copy.identityReady,
+      description: copy.identityReadyText,
+      done: Boolean(form.nameEn.trim() && form.locationEn.trim() && form.handoverDate && hasDeveloperIdentity),
+      critical: true
+    },
+    {
+      key: 'inventory',
+      title: copy.inventoryReady,
+      description: copy.inventoryReadyText,
+      done: Boolean(
+        form.totalUnits.trim() &&
+          form.availableUnits.trim() &&
+          form.bedroomsSummary.trim() &&
+          (form.priceQualifier === 'ON_REQUEST' || form.startingPriceAmount.trim())
+      ),
+      critical: true
+    },
+    {
+      key: 'media-documents',
+      title: copy.mediaReady,
+      description: copy.mediaReadyText,
+      done: Boolean(
+        projectImageCount >= 3 &&
+          form.brochureUrl.trim() &&
+          form.masterplanUrl.trim() &&
+          form.videoWalkthroughUrl.trim()
+      ),
+      critical: true
+    },
+    {
+      key: 'story',
+      title: copy.storyReady,
+      description: copy.storyReadyText,
+      done: Boolean(
+        form.descriptionEn.trim().length >= 120 &&
+          form.amenities.trim() &&
+          form.paymentPlan.trim()
+      )
+    },
+    {
+      key: 'units-next',
+      title: copy.unitsReady,
+      description: copy.unitsReadyText,
+      done: Boolean(form.availableUnits.trim() && Number(form.availableUnits) > 0)
+    }
+  ];
 
   useEffect(() => {
     let isMounted = true;
@@ -379,6 +460,17 @@ export default function AddProject() {
         </div>
 
         {submitError ? <p className="form-error" role="alert">{submitError}</p> : null}
+
+        <CreationReadinessPanel
+          title={copy.readinessTitle}
+          description={copy.readinessDescription}
+          completion={completion}
+          readyLabel={language === 'ar' ? 'جاهز' : 'ready'}
+          reviewLabel={copy.readinessReview}
+          checks={projectReadinessChecks}
+          language={language}
+        />
+
         {createdSlug ? (
           <div className="success-message success-message--floating" role="status">
             <strong>{copy.success}</strong>
