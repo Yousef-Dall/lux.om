@@ -16221,3 +16221,246 @@ transition: none;
     width: 100%;
   }
 }
+
+/* Unified admin approval cockpit */
+.publishing-approval-cockpit--unified {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.publishing-approval-metrics--unified article {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+}
+
+.publishing-approval-metrics--unified article.is-urgent {
+  border-color: rgba(180, 83, 9, 0.34);
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.96), rgba(255, 255, 255, 0.94));
+}
+
+.approval-cockpit-breakdown,
+.approval-cockpit-toolbar,
+.approval-cockpit-filter-group,
+.approval-cockpit-checks,
+.approval-cockpit-item__meta,
+.approval-cockpit-item__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.approval-cockpit-breakdown span,
+.approval-cockpit-check,
+.approval-cockpit-item__meta span,
+.approval-cockpit-item__type {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.35rem 0.65rem;
+}
+
+.approval-cockpit-toolbar {
+  justify-content: space-between;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(248, 250, 252, 0.82);
+  padding: 0.85rem;
+}
+
+.approval-cockpit-search {
+  min-width: min(100%, 19rem);
+  flex: 1 1 18rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #fff;
+  padding: 0.55rem 0.8rem;
+  color: #64748b;
+}
+
+.approval-cockpit-search input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0f172a;
+  font: inherit;
+}
+
+.approval-cockpit-filter-group {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  padding: 0.25rem;
+}
+
+.approval-cockpit-filter-group button {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 0.48rem 0.72rem;
+}
+
+.approval-cockpit-filter-group button.is-active {
+  background: #0f172a;
+  color: #fff;
+  box-shadow: 0 0.55rem 1.3rem rgba(15, 23, 42, 0.16);
+}
+
+.approval-cockpit-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.approval-cockpit-item {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: start;
+  border-radius: 1.35rem;
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 1.15rem 2.7rem rgba(15, 23, 42, 0.08);
+  padding: 0.95rem;
+}
+
+.approval-cockpit-item--attention {
+  border-color: rgba(245, 158, 11, 0.32);
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.9), rgba(255, 255, 255, 0.96));
+}
+
+.approval-cockpit-item--focused {
+  outline: 3px solid rgba(37, 99, 235, 0.22);
+  border-color: rgba(37, 99, 235, 0.4);
+}
+
+.approval-cockpit-item__media {
+  width: 5.5rem;
+  height: 5.5rem;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+  color: #64748b;
+}
+
+.approval-cockpit-item__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.approval-cockpit-item__main {
+  min-width: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.approval-cockpit-item__title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.approval-cockpit-item__title h3 {
+  margin: 0.25rem 0 0;
+  color: #0f172a;
+  font-size: 1.02rem;
+}
+
+.approval-cockpit-item__title p,
+.approval-cockpit-rejection {
+  margin: 0.2rem 0 0;
+  color: #64748b;
+  font-size: 0.86rem;
+}
+
+.approval-cockpit-item__meta .is-warning {
+  border-color: rgba(180, 83, 9, 0.28);
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.approval-cockpit-item__meta .is-ready,
+.approval-cockpit-check--passed {
+  border-color: rgba(22, 163, 74, 0.2);
+  color: #166534;
+  background: #f0fdf4;
+}
+
+.approval-cockpit-check--missing {
+  border-color: rgba(180, 83, 9, 0.24);
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.approval-cockpit-rejection {
+  border-left: 3px solid rgba(220, 38, 38, 0.44);
+  padding-left: 0.65rem;
+  color: #991b1b;
+}
+
+.approval-cockpit-item__actions {
+  min-width: 10.5rem;
+  justify-content: flex-end;
+}
+
+.approval-cockpit-item__actions .button-link {
+  width: 100%;
+  justify-content: center;
+}
+
+.approval-cockpit-empty {
+  margin-top: 0.4rem;
+}
+
+.admin-page .status-pill--approved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.admin-page .status-pill--pending {
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.admin-page .status-pill--rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+@media (max-width: 900px) {
+  .approval-cockpit-item {
+    grid-template-columns: 1fr;
+  }
+
+  .approval-cockpit-item__media {
+    width: 100%;
+    height: 12rem;
+  }
+
+  .approval-cockpit-item__title,
+  .approval-cockpit-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .approval-cockpit-item__actions {
+    justify-content: stretch;
+  }
+}
