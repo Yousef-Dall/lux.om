@@ -42,17 +42,20 @@ const navCopy =
 language === 'ar'
 ? {
 investorInsights: 'رؤى المستثمر',
-travelAgencies: 'وكالات السفر'
+travelAgencies: 'وكالات السفر',
+projects: 'المشاريع'
 }
 : {
 investorInsights: 'Investor insights',
-travelAgencies: 'Travel agencies'
+travelAgencies: 'Travel agencies',
+projects: 'Projects'
 };
 
 const links = useMemo(
 () => [
 { to: '/listings', label: t.nav.listings },
 { to: '/market-insights', label: navCopy.investorInsights },
+{ to: '/projects', label: navCopy.projects },
 { to: '/activities', label: t.nav.activities },
 { to: '/developers', label: t.nav.developers },
 { to: '/travel-agencies', label: navCopy.travelAgencies },
@@ -61,6 +64,7 @@ const links = useMemo(
 ],
 [
 navCopy.investorInsights,
+navCopy.projects,
 navCopy.travelAgencies,
 t.nav.about,
 t.nav.activities,

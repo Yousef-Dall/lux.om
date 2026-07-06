@@ -22,7 +22,7 @@ import SavedButton from './SavedButton';
 import TrustBadges from './TrustBadges';
 import WhatsAppActions from './WhatsAppActions';
 import { useLanguage } from '../i18n/LanguageContext';
-import type { Activity, Listing, ListingTransaction } from '../types';
+import type { Activity, DeveloperProject, Listing, ListingTransaction } from '../types';
 import {
   formatDayList,
   formatMarketplacePrice,
@@ -461,6 +461,189 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
 
           <Link to={`/listings/${listing.slug}`} className="lux-card-link">
             {t.common.view}
+            <MoveRight size={16} aria-hidden="true" />
+          </Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+
+type ProjectCardProps = {
+  project: DeveloperProject;
+  variant?: 'default' | 'featured';
+};
+
+function formatProjectHandover(value: string | undefined, language: 'en' | 'ar') {
+  if (!value) return language === 'ar' ? 'قيد التحديث' : 'To be confirmed';
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) return value;
+
+  return new Intl.DateTimeFormat(language === 'ar' ? 'ar-OM' : 'en-GB', {
+    dateStyle: 'medium'
+  }).format(parsed);
+}
+
+export function ProjectCard({ project, variant = 'default' }: ProjectCardProps) {
+  const { t, language } = useLanguage();
+  const developer = project.developer;
+  const primaryImage = project.images?.[0]?.url || project.image;
+  const imageCount = project.images?.length ?? 0;
+  const formattedPrice = formatMarketplacePrice({
+    priceAmount: project.startingPriceAmount,
+    priceCurrency: project.priceCurrency,
+    priceQualifier: project.priceQualifier,
+    language
+  });
+
+  const projectCopy =
+    language === 'ar'
+      ? {
+          project: 'مشروع تطوير',
+          startingPrice: 'يبدأ من',
+          handover: 'التسليم',
+          units: 'وحدات',
+          available: 'متاح',
+          developer: 'المطور',
+          viewDeveloper: 'عرض المطور',
+          viewProject: 'عرض المشروع',
+          brochure: 'بروشور',
+          masterplan: 'مخطط عام',
+          video: 'فيديو',
+          verifiedDeveloper: 'مطور موثق',
+          unitMix: 'مزيج الوحدات',
+          whatsapp: 'واتساب'
+        }
+      : {
+          project: 'Development project',
+          startingPrice: 'From',
+          handover: 'Handover',
+          units: 'units',
+          available: 'available',
+          developer: 'Developer',
+          viewDeveloper: 'View developer',
+          viewProject: 'View project',
+          brochure: 'Brochure',
+          masterplan: 'Masterplan',
+          video: 'Video',
+          verifiedDeveloper: 'Verified developer',
+          unitMix: 'Unit mix',
+          whatsapp: 'WhatsApp'
+        };
+
+  return (
+    <article className={`project-card lux-market-card lux-project-card lux-market-card--${variant}`}>
+      <Link
+        className="lux-market-card__media lux-project-card__media"
+        to={`/projects/${project.slug}`}
+        aria-label={`${t.common.view} ${project.name}`}
+      >
+        {primaryImage ? (
+          <img src={primaryImage} alt={project.name} loading="lazy" />
+        ) : (
+          <span className="lux-project-card__placeholder" aria-hidden="true">
+            <Building2 size={34} />
+          </span>
+        )}
+
+        {imageCount > 1 ? <span className="lux-card-image-count">{imageCount} photos</span> : null}
+
+        <div className="lux-card-media-flags">
+          {project.brochureUrl ? <span>{projectCopy.brochure}</span> : null}
+          {project.masterplanUrl ? <span>{projectCopy.masterplan}</span> : null}
+          {project.videoWalkthroughUrl ? <span>{projectCopy.video}</span> : null}
+        </div>
+
+        <span className="lux-card-badge lux-card-badge--top">{projectCopy.project}</span>
+        <div className="lux-card-gradient" aria-hidden="true" />
+
+        <div className="lux-card-price">
+          <span>{projectCopy.startingPrice}</span>
+          <strong>{formattedPrice}</strong>
+        </div>
+      </Link>
+
+      <div className="lux-market-card__body">
+        <div className="lux-card-meta">
+          {project.completionStatus ? <span>{project.completionStatus}</span> : null}
+        </div>
+
+        <TrustBadges
+          verificationStatus={developer?.verificationStatus}
+          mediaQualityStatus={project.mediaQualityStatus}
+        />
+
+        <h3>
+          <Link to={`/projects/${project.slug}`}>{project.name}</Link>
+        </h3>
+
+        <p className="lux-card-location">
+          <MapPin size={16} aria-hidden="true" />
+          {project.location}
+        </p>
+
+        {developer ? (
+          <Link
+            to={`/developers/${developer.slug}`}
+            className="lux-card-developer"
+            aria-label={`${projectCopy.viewDeveloper}: ${developer.name}`}
+          >
+            {developer.logo ? (
+              <img src={developer.logo} alt={`${developer.name} logo`} loading="lazy" />
+            ) : (
+              <span className="lux-card-developer__placeholder">
+                <Building2 size={16} aria-hidden="true" />
+              </span>
+            )}
+            <span>
+              <small>{projectCopy.developer}</small>
+              <strong>
+                {developer.name}
+                {developer.verified ? <ShieldCheck size={14} aria-hidden="true" /> : null}
+              </strong>
+            </span>
+          </Link>
+        ) : null}
+
+        <p className="lux-card-description">{project.description}</p>
+
+        <div className="lux-card-facts" aria-label={projectCopy.project}>
+          <span>
+            <Building2 size={16} aria-hidden="true" />
+            {project.totalUnits ?? '—'} {projectCopy.units}
+          </span>
+          <span>
+            <Users size={16} aria-hidden="true" />
+            {project.availableUnits ?? '—'} {projectCopy.available}
+          </span>
+          <span>
+            <CalendarDays size={16} aria-hidden="true" />
+            {formatProjectHandover(project.handoverDate, language)}
+          </span>
+        </div>
+
+        {project.bedroomsSummary || project.amenities.length ? (
+          <div className="lux-chip-list" aria-label={projectCopy.unitMix}>
+            {project.bedroomsSummary ? <span>{project.bedroomsSummary}</span> : null}
+            {project.amenities.slice(0, 3).map((amenity) => (
+              <span key={amenity}>{amenity}</span>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="lux-card-footer">
+          <WhatsAppActions
+            phone={developer?.phone || project.owner?.phone}
+            title={project.name}
+            location={project.location}
+            label={projectCopy.whatsapp}
+          />
+          <span>{projectCopy.project}</span>
+          <Link to={`/projects/${project.slug}`} className="lux-card-link">
+            {projectCopy.viewProject}
             <MoveRight size={16} aria-hidden="true" />
           </Link>
         </div>

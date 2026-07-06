@@ -2231,6 +2231,52 @@ describe('POST /api/bookings', () => {
     expect(response.body.stats.receivedPendingBookings).toBeGreaterThan(0);
   });
 
+
+  it('counts developer projects in the developer dashboard inventory stats', async () => {
+    const developerUser = await prisma.user.create({
+      data: {
+        name: 'Dashboard Developer',
+        email: 'dashboard-developer@lux.test',
+        password: 'test-password',
+        role: 'DEVELOPER',
+        emailVerified: true,
+        companyName: 'Dashboard Developer LLC'
+      }
+    });
+    const developerToken = signToken(developerUser);
+    const developerCompany = await prisma.developerCompany.create({
+      data: {
+        slug: 'dashboard-developer-llc',
+        nameEn: 'Dashboard Developer LLC',
+        verified: true,
+        verificationStatus: 'ADMIN_VERIFIED'
+      }
+    });
+
+    await prisma.developerProject.create({
+      data: {
+        slug: 'dashboard-project',
+        nameEn: 'Dashboard Project',
+        locationEn: 'Muscat, Oman',
+        developerId: developerCompany.id,
+        ownerId: developerUser.id,
+        status: 'APPROVED',
+        mediaQualityStatus: 'EXCELLENT'
+      }
+    });
+
+    const response = await request(app)
+      .get('/api/dashboard')
+      .set('Authorization', `Bearer ${developerToken}`)
+      .expect(200);
+
+    expect(response.body.stats.totalProjects).toBe(1);
+    expect(response.body.stats.approvedProjects).toBe(1);
+    expect(response.body.stats.pendingProjects).toBe(0);
+    expect(response.body.health.breakdown.hasInventory).toBe(true);
+    expect(response.body.health.nextBestAction?.actionTo).not.toBe('/add-listing');
+  });
+
   it('prevents checkout before provider approval', async () => {
     const activity = await prisma.activity.findUniqueOrThrow({
       where: {

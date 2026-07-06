@@ -296,9 +296,9 @@ export default function Home() {
           {
             title: 'مطوّرون ومشاريع جديدة',
             description: 'ملفات مطورين موثقة، مشاريع، وحدات مرتبطة، وخطوات ثقة تساعد المشترين على المقارنة.',
-            metric: `${developmentCompanies.length}`,
-            label: 'مطور',
-            to: '/developers',
+            metric: `${developmentCompanies.length}+`,
+            label: 'مشروع ومطور',
+            to: '/projects',
             icon: Building2
           },
           {
@@ -330,9 +330,9 @@ export default function Home() {
           {
             title: 'Developers and new projects',
             description: 'Verified developer profiles, projects, linked units, and trust context for buyer comparison.',
-            metric: `${developmentCompanies.length}`,
-            label: 'developers',
-            to: '/developers',
+            metric: `${developmentCompanies.length}+`,
+            label: 'projects and developers',
+            to: '/projects',
             icon: Building2
           },
           {

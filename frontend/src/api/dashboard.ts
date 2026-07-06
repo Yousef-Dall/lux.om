@@ -89,6 +89,10 @@ export type DashboardStats = {
   pendingActivities: number;
   approvedActivities: number;
   rejectedActivities: number;
+  totalProjects: number;
+  pendingProjects: number;
+  approvedProjects: number;
+  rejectedProjects: number;
   submittedInquiries: number;
   receivedInquiries: number;
   submittedBookings: number;

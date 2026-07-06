@@ -22,6 +22,7 @@ import Home from './pages/Home';
 import ListingDetails from './pages/ListingDetails';
 import MarketInsights from './pages/MarketInsights';
 import Listings from './pages/Listings';
+import Projects from './pages/Projects';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
@@ -140,6 +141,11 @@ const seoCopy = {
       title: 'Oman market insights | lux.om',
       description: 'Explore Oman real estate market signals based on approved lux.om listings and conservative comparable data.'
     },
+    projects: {
+      title: 'Oman property projects and developments | lux.om',
+      description:
+        'Explore approved developer projects, masterplans, unit inventory, media, and project details across Oman.'
+    },
     developers: {
       title: 'Oman real estate developers | lux.om',
       description:
@@ -222,6 +228,10 @@ const seoCopy = {
       title: 'أنشطة وباقات سفر مختارة في عُمان | lux.om',
       description: 'احجز أنشطة وتجارب مميزة في عُمان وباقات سفر مختارة من مزودين موثوقين.'
     },
+    projects: {
+      title: 'مشاريع عقارية في عُمان | lux.om',
+      description: 'استكشف مشاريع مطورين معتمدة ومخططات ووحدات وتفاصيل مشاريع في عُمان.'
+    },
     developers: {
       title: 'مطورو العقارات في عُمان | lux.om',
       description: 'اكتشف مطورين عقاريين موثوقين ومشاريع سكنية ومتعددة الاستخدامات في عُمان.'
@@ -291,6 +301,7 @@ function getSeoKey(pathname: string) {
   if (pathname.startsWith('/listings')) return 'listings';
   if (pathname.startsWith('/activities')) return 'activities';
   if (pathname.startsWith('/market-insights')) return 'marketInsights';
+  if (pathname.startsWith('/projects') || pathname.startsWith('/developer-projects')) return 'projects';
   if (pathname.startsWith('/developers')) return 'developers';
   if (pathname.startsWith('/travel-agencies')) return 'travelAgencies';
   if (pathname.startsWith('/about')) return 'about';
@@ -661,6 +672,8 @@ export default function App() {
 
           <Route path="/market-insights" element={<MarketInsights />} />
 
+          <Route path="/projects" element={<Projects />} />
+          <Route path="/projects/:slug" element={<DeveloperProjectDetails />} />
           <Route path="/developers" element={<Developers />} />
           <Route path="/developers/:slug" element={<DeveloperDetails />} />
           <Route path="/developer-projects/:slug" element={<DeveloperProjectDetails />} />

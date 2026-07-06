@@ -214,8 +214,8 @@ export default function DeveloperProjectDetails() {
     <article className="details-page developer-project-detail-page">
       <section className="details-hero details-hero--project">
         <div className="container">
-          <Link className="back-link" to="/developers">
-            {language === 'ar' ? 'العودة إلى المطورين' : 'Back to developers'}
+          <Link className="back-link" to="/projects">
+            {language === 'ar' ? 'العودة إلى المشاريع' : 'Back to projects'}
           </Link>
 
           <div className="details-hero__content">

@@ -11,10 +11,11 @@ import {
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+import { getProjectsByDeveloperSlug } from '../api/developerProjects';
 import { getDeveloperBySlug, getListings } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
-import { ListingCard } from '../components/Cards';
+import { ListingCard, ProjectCard } from '../components/Cards';
 import PartnerCredibilityPanel from '../components/PartnerCredibilityPanel';
 import ReportModal from '../components/ReportModal';
 import SectionHeader from '../components/SectionHeader';
@@ -22,7 +23,7 @@ import TrustBadges from '../components/TrustBadges';
 import WhatsAppActions from '../components/WhatsAppActions';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
-import type { DevelopmentCompany, Listing } from '../types';
+import type { DeveloperProject, DevelopmentCompany, Listing } from '../types';
 
 function getWebsiteHref(website: string) {
   return /^https?:\/\//i.test(website) ? website : `https://${website}`;
@@ -35,6 +36,7 @@ export default function DeveloperDetails() {
 
   const [developer, setDeveloper] = useState<DevelopmentCompany | null>(null);
   const [developerListings, setDeveloperListings] = useState<Listing[]>([]);
+  const [developerProjects, setDeveloperProjects] = useState<DeveloperProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
@@ -50,6 +52,12 @@ export default function DeveloperDetails() {
           verifiedDeveloper: 'مطور موثق',
           featuredPartner: 'شريك مميز',
           listedProperties: 'العقارات المنشورة',
+          publishedProjects: 'المشاريع المنشورة',
+          projectsBy: 'مشاريع بواسطة',
+          projectsDescription: 'استكشفي المشاريع المعتمدة والوحدات والمستندات المرتبطة بهذه الشركة.',
+          viewAllProjects: 'عرض كل المشاريع',
+          noProjectsTitle: 'لا توجد مشاريع منشورة حالياً',
+          noProjectsText: 'تم تجهيز ملف الشركة، لكن لم تتم إضافة مشاريع عامة بعد.',
           propertiesBy: 'عقارات بواسطة',
           propertiesDescription:
             'استكشف العقارات الحالية، الإقامات القصيرة، الإيجارات، وفرص البيع المرتبطة بهذه الشركة.',
@@ -82,6 +90,12 @@ export default function DeveloperDetails() {
           verifiedDeveloper: 'Verified developer',
           featuredPartner: 'Featured partner',
           listedProperties: 'Listed properties',
+          publishedProjects: 'Published projects',
+          projectsBy: 'Projects by',
+          projectsDescription: 'Explore approved developments, units, and documents connected to this company.',
+          viewAllProjects: 'View all projects',
+          noProjectsTitle: 'No public projects yet',
+          noProjectsText: 'This company profile is ready, but public projects have not been added yet.',
           propertiesBy: 'Properties by',
           propertiesDescription:
             'Explore current listings, short stays, rentals, and sale opportunities connected to this development company.',
@@ -114,6 +128,7 @@ export default function DeveloperDetails() {
       if (!slug) {
         setDeveloper(null);
         setDeveloperListings([]);
+        setDeveloperProjects([]);
         setLoading(false);
         return;
       }
@@ -122,9 +137,10 @@ export default function DeveloperDetails() {
         setLoading(true);
         setLoadError('');
 
-        const [apiDeveloper, apiListings] = await Promise.all([
+        const [apiDeveloper, apiListings, apiProjects] = await Promise.all([
           getDeveloperBySlug(slug, language),
-          getListings(language, { take: 100 })
+          getListings(language, { take: 100 }),
+          getProjectsByDeveloperSlug(slug, language, { take: 100 })
         ]);
 
         if (!isMounted) return;
@@ -133,12 +149,14 @@ export default function DeveloperDetails() {
         setDeveloperListings(
           apiListings.filter((listing) => listing.developerId === apiDeveloper.id)
         );
+        setDeveloperProjects(apiProjects);
       } catch (error) {
         if (!isMounted) return;
 
         console.error(error);
         setDeveloper(null);
         setDeveloperListings([]);
+        setDeveloperProjects([]);
         setLoadError(copy.error);
       } finally {
         if (isMounted) {
@@ -221,7 +239,7 @@ export default function DeveloperDetails() {
 
               <span>
                 <Building2 size={16} aria-hidden="true" />
-                {developerListings.length} {copy.listedProperties}
+                {developerListings.length + developerProjects.length} {copy.publicTrackRecord}
               </span>
             </div>
           </div>
@@ -241,6 +259,32 @@ export default function DeveloperDetails() {
       <section className="page-section container">
         <div className="developer-profile-grid">
           <div>
+            <SectionHeader
+              eyebrow={copy.publishedProjects}
+              title={`${copy.projectsBy} ${developer.name}`}
+              description={copy.projectsDescription}
+              actions={
+                <ButtonLink to={`/projects?developer=${developer.slug}`} variant="soft">
+                  {copy.viewAllProjects}
+                  <ArrowRight size={16} aria-hidden="true" />
+                </ButtonLink>
+              }
+            />
+
+            {developerProjects.length > 0 ? (
+              <div className="listing-grid developer-project-grid">
+                {developerProjects.map((project) => (
+                  <ProjectCard key={project.id} project={project} />
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state empty-state--premium developer-profile-empty-block">
+                <Building2 size={34} aria-hidden="true" />
+                <h2>{copy.noProjectsTitle}</h2>
+                <p>{copy.noProjectsText}</p>
+              </div>
+            )}
+
             <SectionHeader
               eyebrow={copy.listedProperties}
               title={`${copy.propertiesBy} ${developer.name}`}
@@ -332,7 +376,7 @@ export default function DeveloperDetails() {
               verificationDate={developer.verificationDate}
               verificationExpiryDate={developer.verificationExpiryDate}
               establishedYear={developer.establishedYear}
-              publicItemCount={developerListings.length + (developer.projectCount ?? 0)}
+              publicItemCount={developerListings.length + developerProjects.length}
               publicItemLabel={copy.publicTrackRecord}
               specialties={developer.specialties}
               contactChannels={{

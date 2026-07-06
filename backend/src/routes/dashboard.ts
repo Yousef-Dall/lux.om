@@ -105,6 +105,7 @@ type DashboardHealthInput = {
   };
   totalListings: number;
   totalActivities: number;
+  totalProjects: number;
   pendingReviewCount: number;
   pendingPayments: number;
   receivedPendingBookings: number;
@@ -152,7 +153,7 @@ function getPersonaHealthWeights(role: string) {
 
 function createDashboardHealth(input: DashboardHealthInput) {
   const weights = getPersonaHealthWeights(input.user.role);
-  const hasInventory = input.totalListings + input.totalActivities > 0;
+  const hasInventory = input.totalListings + input.totalActivities + input.totalProjects > 0;
   const hasDemand =
     input.submittedInquiries +
       input.submittedBookings +
@@ -183,7 +184,7 @@ function createDashboardHealth(input: DashboardHealthInput) {
       labelAr: input.user.role === 'DEVELOPER' ? 'جهّز مخزون المشاريع' : 'أضف أول عنصر في السوق',
       descriptionEn: 'A complete inventory is the foundation for leads, bookings, trust, and performance.',
       descriptionAr: 'المخزون المكتمل هو أساس العملاء والحجوزات والثقة والأداء.',
-      actionTo: input.user.role === 'OWNER' || input.user.role === 'DEVELOPER' ? '/add-listing' : '/add-activity'
+      actionTo: input.user.role === 'DEVELOPER' ? '/add-project' : input.user.role === 'OWNER' ? '/add-listing' : '/add-activity'
     });
   }
 
@@ -409,6 +410,10 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
       pendingActivities,
       approvedActivities,
       rejectedActivities,
+      totalProjects,
+      pendingProjects,
+      approvedProjects,
+      rejectedProjects,
       submittedInquiries,
       receivedListingInquiries,
       receivedActivityInquiries,
@@ -421,6 +426,8 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
       verificationGapActivities,
       mediaGapListings,
       mediaGapActivities,
+      verificationGapProjects,
+      mediaGapProjects,
       savedListingsCount,
       savedActivitiesCount,
       savedSearchesCount,
@@ -547,6 +554,33 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
         }
       }),
 
+      prisma.developerProject.count({
+        where: {
+          ownerId: userId
+        }
+      }),
+
+      prisma.developerProject.count({
+        where: {
+          ownerId: userId,
+          status: 'PENDING'
+        }
+      }),
+
+      prisma.developerProject.count({
+        where: {
+          ownerId: userId,
+          status: 'APPROVED'
+        }
+      }),
+
+      prisma.developerProject.count({
+        where: {
+          ownerId: userId,
+          status: 'REJECTED'
+        }
+      }),
+
       prisma.inquiry.count({
         where: {
           userId
@@ -638,6 +672,30 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
         }
       }),
 
+      prisma.developerProject.count({
+        where: {
+          ownerId: userId,
+          developer: {
+            is: {
+              NOT: {
+                verificationStatus: {
+                  in: ['ADMIN_VERIFIED', 'EXTERNALLY_VERIFIED']
+                }
+              }
+            }
+          }
+        }
+      }),
+
+      prisma.developerProject.count({
+        where: {
+          ownerId: userId,
+          mediaQualityStatus: {
+            in: ['NOT_CHECKED', 'NEEDS_REVIEW', 'BLOCKED']
+          }
+        }
+      }),
+
       prisma.savedListing.count({
         where: {
           userId
@@ -671,16 +729,17 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
       })
     ]);
 
-    const pendingReviewCount = pendingListings + pendingActivities;
+    const pendingReviewCount = pendingListings + pendingActivities + pendingProjects;
     const receivedInquiries = receivedListingInquiries + receivedActivityInquiries;
-    const verificationGaps = verificationGapListings + verificationGapActivities;
-    const mediaGaps = mediaGapListings + mediaGapActivities;
+    const verificationGaps = verificationGapListings + verificationGapActivities + verificationGapProjects;
+    const mediaGaps = mediaGapListings + mediaGapActivities + mediaGapProjects;
     const savedItemsCount = savedListingsCount + savedActivitiesCount + savedSearchesCount;
 
     const health = createDashboardHealth({
       user: req.user!,
       totalListings,
       totalActivities,
+      totalProjects,
       pendingReviewCount,
       pendingPayments,
       receivedPendingBookings,
@@ -704,6 +763,10 @@ dashboardRouter.get('/', requireAuth(), async (req, res, next) => {
         pendingActivities,
         approvedActivities,
         rejectedActivities,
+        totalProjects,
+        pendingProjects,
+        approvedProjects,
+        rejectedProjects,
         submittedInquiries,
         receivedInquiries,
         submittedBookings,
