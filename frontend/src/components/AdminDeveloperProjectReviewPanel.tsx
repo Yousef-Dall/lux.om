@@ -134,7 +134,7 @@ export default function AdminDeveloperProjectReviewPanel({ token }: { token: str
   }
 
   return (
-    <section id="admin-developer-projects" className="admin-project-review-panel admin-anchor-section" tabIndex={-1}>
+    <section id="admin-developer-projects" className="admin-project-review-panel admin-project-review-panel--command admin-anchor-section" tabIndex={-1}>
       <div className="admin-project-review-panel__header">
         <div>
           <p className="eyebrow">Developer project review</p>
@@ -206,7 +206,9 @@ export default function AdminDeveloperProjectReviewPanel({ token }: { token: str
             <div className="admin-project-review-card__body">
               <div className="admin-project-review-card__title">
                 <div>
-                  <span>{project.status?.toLowerCase() ?? 'pending'}</span>
+                  <span className={'admin-project-review-status admin-project-review-status--' + (project.status?.toLowerCase() ?? 'pending')}>
+                    {project.status?.toLowerCase() ?? 'pending'}
+                  </span>
                   <h3>{getProjectName(project)}</h3>
                   <p>{getDeveloperName(project)} · {getProjectLocation(project)}</p>
                 </div>

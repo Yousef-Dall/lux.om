@@ -1027,6 +1027,16 @@ const metrics = useMemo(() => {
       icon: ShieldCheck
     },
     {
+      title: language === 'ar' ? 'مشاريع المطورين' : 'Developer projects',
+      text:
+        language === 'ar'
+          ? 'اعتماد المشاريع الجديدة وربطها بوحدات البيع قبل ظهورها للعامة.'
+          : 'Approve new project launches and monitor the unit inventory behind each development.',
+      metric: language === 'ar' ? 'مراجعة' : 'Review',
+      sectionId: 'admin-developer-projects',
+      icon: Building2
+    },
+    {
       title: adminOperationsCopy.commandTitle,
       text: adminOperationsCopy.commandText,
       metric: metrics.pendingListings + metrics.pendingActivities,
@@ -1529,38 +1539,120 @@ async function deleteDeveloperCompany(developerId: string) {
     );
   }
 
-        {!loading && !loadError ? (
-          <div className="admin-operations-map" aria-label={adminOperationsCopy.aria}>
-            {adminOperationCards.map((card) => {
-              const Icon = card.icon;
+  function renderAdminCommandBriefing() {
+    const commandHighlights = [
+      {
+        label: language === 'ar' ? 'قرارات النشر' : 'Publishing decisions',
+        value: metrics.needsAttention,
+        text:
+          language === 'ar'
+            ? 'عقارات وأنشطة تنتظر قراراً يدوياً قبل النشر.'
+            : 'Listings and activities waiting for a manual publishing decision.',
+        sectionId: 'admin-approvals',
+        tone: metrics.needsAttention > 0 ? 'urgent' : 'healthy',
+        icon: ShieldCheck
+      },
+      {
+        label: language === 'ar' ? 'مشاريع المطورين' : 'Developer projects',
+        value: language === 'ar' ? 'مراجعة' : 'Review',
+        text:
+          language === 'ar'
+            ? 'اعتماد صفحات المشاريع وربطها بوحدات البيع.'
+            : 'Approve project pages and inspect their linked unit inventory.',
+        sectionId: 'admin-developer-projects',
+        tone: 'primary',
+        icon: Building2
+      },
+      {
+        label: language === 'ar' ? 'الحجوزات' : 'Bookings',
+        value: metrics.pendingBookings,
+        text:
+          language === 'ar'
+            ? 'طلبات تحتاج متابعة من الإدارة أو المنظم.'
+            : 'Requests that may need admin or provider follow-up.',
+        sectionId: 'admin-bookings-section',
+        tone: metrics.pendingBookings > 0 ? 'attention' : 'healthy',
+        icon: CalendarDays
+      },
+      {
+        label: language === 'ar' ? 'المالية' : 'Finance',
+        value: finance?.summary.payoutBlockedCount ?? 0,
+        text:
+          language === 'ar'
+            ? 'مدفوعات أو مستحقات محجوزة للمراجعة.'
+            : 'Payments or payout items blocked for review.',
+        sectionId: 'admin-finance-section',
+        tone: (finance?.summary.payoutBlockedCount ?? 0) > 0 ? 'attention' : 'healthy',
+        icon: CreditCard
+      }
+    ] as const;
 
-              return (
-                <article className="admin-operations-map__card" key={card.sectionId}>
-                  <div className="admin-operations-map__icon" aria-hidden="true">
-                    <Icon size={18} />
-                  </div>
-
-                  <div>
-                    <h3>{card.title}</h3>
-                    <p>{card.text}</p>
-                  </div>
-
-                  <div className="admin-operations-map__footer">
-                    <strong>{card.metric}</strong>
-
-                    <button
-                      className="button-link button-link--ghost"
-                      type="button"
-                      onClick={() => scrollToAdminSection(card.sectionId)}
-                    >
-                      {adminOperationsCopy.open}
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
+    return (
+      <section className="admin-command-briefing" aria-label={adminOperationsCopy.aria}>
+        <div className="admin-command-briefing__header">
+          <div>
+            <p className="eyebrow">{language === 'ar' ? 'غرفة العمليات' : 'Operations command center'}</p>
+            <h2>{language === 'ar' ? 'ابدأ بالقرارات التي تؤثر على السوق اليوم.' : 'Start with the decisions that affect the marketplace today.'}</h2>
+            <p>
+              {language === 'ar'
+                ? 'واجهة مركّزة تجمع النشر، المشاريع، الحجوزات، المالية، الصحة، والثقة حتى لا تضيع فرق الإدارة في صفحة طويلة.'
+                : 'A focused command layer groups publishing, projects, bookings, finance, health, and trust so operations teams do not work from one long stack.'}
+            </p>
           </div>
-        ) : null}
+
+          <button
+            className="button-link button-link--secondary"
+            type="button"
+            onClick={loadAdminData}
+          >
+            {language === 'ar' ? 'تحديث البيانات' : 'Refresh operations'}
+          </button>
+        </div>
+
+        <div className="admin-command-kpi-grid">
+          {commandHighlights.map((item) => {
+            const Icon = item.icon;
+
+            return (
+              <button
+                className={'admin-command-kpi admin-command-kpi--' + item.tone}
+                key={item.sectionId}
+                type="button"
+                onClick={() => scrollToAdminSection(item.sectionId)}
+              >
+                <span className="admin-command-kpi__icon" aria-hidden="true">
+                  <Icon size={18} />
+                </span>
+                <span className="admin-command-kpi__body">
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <small>{item.text}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <nav className="admin-command-jumpbar" aria-label={adminOperationsCopy.aria}>
+          {adminOperationCards.map((card) => {
+            const Icon = card.icon;
+
+            return (
+              <button
+                key={card.sectionId}
+                type="button"
+                onClick={() => scrollToAdminSection(card.sectionId)}
+              >
+                <Icon size={15} aria-hidden="true" />
+                <span>{card.title}</span>
+                <strong>{card.metric}</strong>
+              </button>
+            );
+          })}
+        </nav>
+      </section>
+    );
+  }
 
   function renderPublishingApprovalCockpit() {
     const pendingListings = listings
@@ -1761,14 +1853,14 @@ async function deleteDeveloperCompany(developerId: string) {
   }
 
   return (
-  <section className="page-section container admin-page">
+  <section className="page-section container admin-page admin-page--command-center">
       <SectionHeader
         eyebrow={t.admin.eyebrow}
         title={t.admin.title}
         description={t.admin.description}
       />
 
-      <div className="admin-hero-card">
+      <div className="admin-hero-card admin-hero-card--command">
         <div>
           <p className="eyebrow">{copy.marketplaceControl}</p>
           <h2>{copy.heroTitle}</h2>
@@ -1780,6 +1872,8 @@ async function deleteDeveloperCompany(developerId: string) {
           <span>{copy.qualityGate}</span>
         </div>
       </div>
+
+      {!loading && !loadError ? renderAdminCommandBriefing() : null}
 
       {!loading && !loadError ? renderPublishingApprovalCockpit() : null}
 
