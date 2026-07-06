@@ -1,9 +1,15 @@
 import {
   ArrowRight,
+  BadgeCheck,
+  Building2,
   CalendarDays,
   CheckCircle2,
+  Compass,
   Crown,
+  Handshake,
+  Home as HomeIcon,
   MapPin,
+  PlaneTakeoff,
   Search,
   ShieldCheck,
   Sparkles,
@@ -105,6 +111,7 @@ export default function Home() {
           { label: 'فلل على البحر', to: '/listings?near=mall-of-oman&type=Sale' },
           { label: 'إيجارات فاخرة', to: '/listings?type=Rent' },
           { label: 'أنشطة بحرية', to: '/activities?near=mall-of-oman' },
+          { label: 'مشاريع جديدة موثوقة', to: '/developers' },
           { label: 'وكالات سفر موثقة', to: '/travel-agencies' }
         ]
       : [
@@ -119,8 +126,8 @@ export default function Home() {
           { value: `${landmarks.length}`, label: 'معالم ومناطق مفهرسة' },
           { value: `${listings.length}+`, label: 'عقارات وإقامات مميزة' },
           {
-            value: `${travelAgencies.filter((agency) => agency.verified).length}`,
-            label: 'وكالات سفر موثقة'
+            value: `${[...developmentCompanies, ...travelAgencies].filter((partner) => partner.verified).length}`,
+            label: 'شركاء موثقون'
           }
         ]
       : [
@@ -128,8 +135,8 @@ export default function Home() {
           { value: `${landmarks.length}`, label: 'Indexed landmarks' },
           { value: `${listings.length}+`, label: 'Premium properties' },
           {
-            value: `${travelAgencies.filter((agency) => agency.verified).length}`,
-            label: 'Verified travel agencies'
+            value: `${[...developmentCompanies, ...travelAgencies].filter((partner) => partner.verified).length}`,
+            label: 'Verified partners'
           }
         ];
 
@@ -169,14 +176,31 @@ export default function Home() {
             'تساعد lux.om المشترين والمستأجرين على اكتشاف العقارات المرتبطة بمطورين موثوقين ومجتمعات سكنية ومشاريع مميزة.',
           viewDevelopers: 'تصفح المطورين',
           verifiedDeveloper: 'مطور موثق',
-developer: 'مطور',
-featured: 'مميز',
-headquarters: 'المقر',
-phone: 'الهاتف',
-email: 'البريد الإلكتروني',
-website: 'الموقع الإلكتروني',
-listedProperties: 'عقارات منشورة',
-viewProfile: 'عرض ملف الشركة',
+          developer: 'مطور',
+          featured: 'مميز',
+          headquarters: 'المقر',
+          phone: 'الهاتف',
+          email: 'البريد الإلكتروني',
+          website: 'الموقع الإلكتروني',
+          listedProperties: 'عناصر منشورة',
+          established: 'منذ',
+          contactReady: 'تواصل مباشر',
+          viewProfile: 'عرض ملف الشركة',
+          launchEyebrow: 'تجربة سوق واحدة',
+          launchTitle: 'كل مسار في lux.om مصمم ليصل المستخدم إلى قرار أسرع.',
+          launchDescription:
+            'الصفحة الرئيسية تربط بين العقارات، الأنشطة، المطورين، وكالات السفر، والثقة التشغيلية حتى لا يشعر المستخدم أن كل قسم منفصل عن الآخر.',
+          trustEyebrow: 'الثقة قبل التحويل',
+          trustTitle: 'إشارات تشغيلية واضحة قبل أن يرسل العميل طلبه.',
+          trustDescription:
+            'نعرض التحقق، جودة الوسائط، جاهزية الأسعار، ومعلومات الشريك في أماكن مبكرة حتى يكون القرار أوضح قبل الحجز أو التواصل.',
+          sellerEyebrow: 'للملاك والشركاء',
+          sellerTitle: 'إرشادات جاهزية قبل المراجعة الإدارية.',
+          sellerDescription:
+            'نماذج الإضافة توضّح للملاك والشركاء ما الذي يقوي فرص الموافقة: السعر، الصور، الموقع، التحقق، تفاصيل النشاط، أو وثائق المشروع.',
+          startListing: 'أضف عقاراً',
+          startActivity: 'أضف نشاطاً',
+          startProject: 'أضف مشروعاً',
           agenciesEyebrow: 'شركاء الأنشطة',
           agenciesTitle: 'وكالات سفر موثقة تنظم تجارب عُمان المختارة.',
           agenciesDescription:
@@ -212,14 +236,31 @@ viewProfile: 'عرض ملف الشركة',
             'lux.om helps buyers and renters discover properties connected to trusted development companies, master communities, and premium project pipelines.',
           viewDevelopers: 'View developers',
           verifiedDeveloper: 'Verified developer',
-developer: 'Developer',
-featured: 'Featured',
-headquarters: 'Headquarters',
-phone: 'Phone',
-email: 'Email',
-website: 'Website',
-listedProperties: 'listed properties',
-viewProfile: 'View company profile',
+          developer: 'Developer',
+          featured: 'Featured',
+          headquarters: 'Headquarters',
+          phone: 'Phone',
+          email: 'Email',
+          website: 'Website',
+          listedProperties: 'published items',
+          established: 'Established',
+          contactReady: 'Direct contact ready',
+          viewProfile: 'View company profile',
+          launchEyebrow: 'One marketplace journey',
+          launchTitle: 'Every lux.om path is designed to move users toward a confident decision.',
+          launchDescription:
+            'The homepage connects properties, activities, developers, travel agencies, and operational trust so the marketplace feels like one launch-ready product instead of separate directories.',
+          trustEyebrow: 'Trust before conversion',
+          trustTitle: 'Operational signals appear before the customer sends an inquiry or booking request.',
+          trustDescription:
+            'Verification, media quality, pricing readiness, and partner context are surfaced early so customers understand why an item is credible.',
+          sellerEyebrow: 'For owners and partners',
+          sellerTitle: 'Submission readiness guidance before admin review.',
+          sellerDescription:
+            'Creation flows now show owners and partners what strengthens approval: pricing, images, location, verification, activity schedule, package documents, or project inventory.',
+          startListing: 'Add a listing',
+          startActivity: 'Add an activity',
+          startProject: 'Add a project',
           agenciesEyebrow: 'Activity operators',
           agenciesTitle: 'Trusted travel agencies organizing curated Oman experiences.',
           agenciesDescription:
@@ -232,6 +273,141 @@ viewProfile: 'View company profile',
           loading: 'Loading marketplace data...',
           error: 'Could not load homepage data. Make sure the backend is running and try again.'
         };
+
+  const marketplacePathCards =
+    language === 'ar'
+      ? [
+          {
+            title: 'عقارات للبيع والإيجار',
+            description: 'فلل، شقق، إقامات قصيرة، وفرص قابلة للشراء من الأجانب مع إشارات التحقق والوسائط.',
+            metric: `${listings.length}+`,
+            label: 'عقار ظاهر',
+            to: '/listings',
+            icon: HomeIcon
+          },
+          {
+            title: 'أنشطة وباقات سفر',
+            description: 'تجارب داخل عُمان وباقات خارجية مع مواعيد، سعة، خدمات مشمولة، ومسار حجز واضح.',
+            metric: `${activities.length}+`,
+            label: 'نشاط وباقة',
+            to: '/activities',
+            icon: PlaneTakeoff
+          },
+          {
+            title: 'مطوّرون ومشاريع جديدة',
+            description: 'ملفات مطورين موثقة، مشاريع، وحدات مرتبطة، وخطوات ثقة تساعد المشترين على المقارنة.',
+            metric: `${developmentCompanies.length}`,
+            label: 'مطور',
+            to: '/developers',
+            icon: Building2
+          },
+          {
+            title: 'وكالات سفر موثقة',
+            description: 'منظمون موثوقون خلف التجارب والرحلات مع بيانات تواصل وسجل نشاط واضح.',
+            metric: `${travelAgencies.length}`,
+            label: 'وكالة',
+            to: '/travel-agencies',
+            icon: Compass
+          }
+        ]
+      : [
+          {
+            title: 'Properties for sale, rent, and short stay',
+            description: 'Villas, apartments, short stays, and foreign-buyer-ready opportunities with trust and media signals.',
+            metric: `${listings.length}+`,
+            label: 'visible properties',
+            to: '/listings',
+            icon: HomeIcon
+          },
+          {
+            title: 'Activities and travel packages',
+            description: 'Inside-Oman experiences and outbound packages with dates, capacity, inclusions, and a clear booking path.',
+            metric: `${activities.length}+`,
+            label: 'activities and packages',
+            to: '/activities',
+            icon: PlaneTakeoff
+          },
+          {
+            title: 'Developers and new projects',
+            description: 'Verified developer profiles, projects, linked units, and trust context for buyer comparison.',
+            metric: `${developmentCompanies.length}`,
+            label: 'developers',
+            to: '/developers',
+            icon: Building2
+          },
+          {
+            title: 'Trusted travel agencies',
+            description: 'Operators behind curated trips and experiences with direct contact details and activity history.',
+            metric: `${travelAgencies.length}`,
+            label: 'agencies',
+            to: '/travel-agencies',
+            icon: Compass
+          }
+        ];
+
+  const trustOperations =
+    language === 'ar'
+      ? [
+          {
+            title: 'تحقق من الحسابات والمزودين',
+            description: 'إشارات التحقق تظهر على العقارات، الأنشطة، المطورين، والوكالات حيثما كانت متاحة.',
+            icon: BadgeCheck
+          },
+          {
+            title: 'جودة وسائط قبل النشر المميز',
+            description: 'الصور، الفيديو، الجولة، المخطط، والبروشور تساعد المستخدم على تقييم العرض أسرع.',
+            icon: Sparkles
+          },
+          {
+            title: 'مراجعة إدارية قابلة للتتبع',
+            description: 'لوحات الإدارة تجمع الموافقات، جودة الوسائط، البلاغات، والإشعارات في مسارات واضحة.',
+            icon: ShieldCheck
+          },
+          {
+            title: 'حجز أو تواصل بخطوة واضحة',
+            description: 'كل صفحة عامة تقود إلى طلب حجز، واتساب، استفسار، أو ملف شريك حسب نوع المحتوى.',
+            icon: Handshake
+          }
+        ]
+      : [
+          {
+            title: 'Verified accounts and providers',
+            description: 'Verification signals appear across listings, activities, developers, and agencies where available.',
+            icon: BadgeCheck
+          },
+          {
+            title: 'Media quality before premium placement',
+            description: 'Images, video, tours, floor plans, masterplans, and brochures help users evaluate faster.',
+            icon: Sparkles
+          },
+          {
+            title: 'Traceable admin review',
+            description: 'Admin workspaces connect approvals, media quality, reports, and notifications into clear operations.',
+            icon: ShieldCheck
+          },
+          {
+            title: 'Clear booking or contact path',
+            description: 'Every public detail page leads to booking, WhatsApp, inquiry, or partner profile depending on the content.',
+            icon: Handshake
+          }
+        ];
+
+  const sellerReadinessSteps =
+    language === 'ar'
+      ? [
+          'سعر وهيكلة دفع واضحة',
+          'صور قوية ووسائط داعمة',
+          'موقع ومعلم قريب أو وجهة واضحة',
+          'بيانات تواصل وتحقق للمزود',
+          'تفاصيل جدول أو مخزون عند الحاجة'
+        ]
+      : [
+          'Clear price and payment structure',
+          'Strong images and supporting media',
+          'Location, landmark, or destination clarity',
+          'Provider contact and verification context',
+          'Schedule or inventory details when needed'
+        ];
 
   useEffect(() => {
     let isMounted = true;
@@ -429,6 +605,38 @@ viewProfile: 'View company profile',
         </div>
       </section>
 
+      <section className="page-section container home-section home-section--marketplace-paths">
+        <SectionHeader
+          eyebrow={discoveryCopy.launchEyebrow}
+          title={discoveryCopy.launchTitle}
+          description={discoveryCopy.launchDescription}
+          align="center"
+        />
+
+        <div className="home-path-grid">
+          {marketplacePathCards.map((card) => {
+            const Icon = card.icon;
+
+            return (
+              <Link className="home-path-card" key={card.title} to={card.to}>
+                <span className="home-path-card__icon">
+                  <Icon size={22} aria-hidden="true" />
+                </span>
+                <span className="home-path-card__metric">
+                  <strong>{card.metric}</strong>
+                  <small>{card.label}</small>
+                </span>
+                <span className="home-path-card__copy">
+                  <strong>{card.title}</strong>
+                  <small>{card.description}</small>
+                </span>
+                <ArrowRight size={17} aria-hidden="true" />
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
       {loading ? (
         <section className="page-section container">
           <div className="empty-state empty-state--premium">
@@ -511,6 +719,31 @@ viewProfile: 'View company profile',
             </div>
           </section>
 
+          <section className="page-section container home-section home-section--trust-depth">
+            <SectionHeader
+              eyebrow={discoveryCopy.trustEyebrow}
+              title={discoveryCopy.trustTitle}
+              description={discoveryCopy.trustDescription}
+              align="center"
+            />
+
+            <div className="home-trust-grid">
+              {trustOperations.map((item) => {
+                const Icon = item.icon;
+
+                return (
+                  <article className="home-trust-card" key={item.title}>
+                    <span>
+                      <Icon size={21} aria-hidden="true" />
+                    </span>
+                    <h3>{item.title}</h3>
+                    <p>{item.description}</p>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
           {homepageListings.length > 0 ? (
             <section className="page-section container home-section home-section--featured">
               <SectionHeader
@@ -561,6 +794,15 @@ viewProfile: 'View company profile',
                     website={developer.website}
                     verified={developer.verified}
                     featured={developer.featured}
+                    verificationStatus={developer.verificationStatus}
+                    verificationSource={developer.verificationSource}
+                    verificationDate={developer.verificationDate}
+                    verificationExpiryDate={developer.verificationExpiryDate}
+                    establishedYear={developer.establishedYear}
+                    publicItemCount={
+                      (developer.listingCount ?? developer.listedPropertyIds.length) +
+                      (developer.projectCount ?? developer.featuredProjectIds.length)
+                    }
                     labels={{
                       verified: discoveryCopy.verifiedDeveloper,
                       featured: discoveryCopy.featured,
@@ -568,7 +810,10 @@ viewProfile: 'View company profile',
                       phone: discoveryCopy.phone,
                       email: discoveryCopy.email,
                       website: discoveryCopy.website,
-                      view: discoveryCopy.viewProfile
+                      view: discoveryCopy.viewProfile,
+                      publicItems: discoveryCopy.listedProperties,
+                      established: discoveryCopy.established,
+                      contactReady: discoveryCopy.contactReady
                     }}
                   />
                 ))}
@@ -604,6 +849,12 @@ viewProfile: 'View company profile',
                     website={agency.website}
                     verified={agency.verified}
                     featured={agency.featured}
+                    verificationStatus={agency.verificationStatus}
+                    verificationSource={agency.verificationSource}
+                    verificationDate={agency.verificationDate}
+                    verificationExpiryDate={agency.verificationExpiryDate}
+                    establishedYear={agency.establishedYear}
+                    publicItemCount={agency.activityCount ?? agency.activityIds.length}
                     labels={{
                       verified: discoveryCopy.verifiedAgency,
                       featured: discoveryCopy.featured,
@@ -611,7 +862,10 @@ viewProfile: 'View company profile',
                       phone: discoveryCopy.phone,
                       email: discoveryCopy.email,
                       website: discoveryCopy.website,
-                      view: discoveryCopy.viewAgency
+                      view: discoveryCopy.viewAgency,
+                      publicItems: discoveryCopy.agencyActivities,
+                      established: discoveryCopy.established,
+                      contactReady: discoveryCopy.contactReady
                     }}
                   />
                 ))}
@@ -644,6 +898,37 @@ viewProfile: 'View company profile',
                     )}
                     <h3>{item}</h3>
                   </article>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="page-section container home-section home-section--submit-ready">
+            <div className="home-submit-ready">
+              <div>
+                <p className="eyebrow">{discoveryCopy.sellerEyebrow}</p>
+                <h2>{discoveryCopy.sellerTitle}</h2>
+                <p>{discoveryCopy.sellerDescription}</p>
+
+                <div className="home-submit-ready__actions">
+                  <ButtonLink to="/add-listing" variant="secondary">
+                    {discoveryCopy.startListing}
+                  </ButtonLink>
+                  <ButtonLink to="/add-activity" variant="secondary">
+                    {discoveryCopy.startActivity}
+                  </ButtonLink>
+                  <ButtonLink to="/add-project" variant="secondary">
+                    {discoveryCopy.startProject}
+                  </ButtonLink>
+                </div>
+              </div>
+
+              <div className="home-submit-ready__checklist">
+                {sellerReadinessSteps.map((step) => (
+                  <span key={step}>
+                    <CheckCircle2 size={17} aria-hidden="true" />
+                    {step}
+                  </span>
                 ))}
               </div>
             </div>
