@@ -17,7 +17,6 @@ import {
   MessageCircle,
   PackageCheck,
   Plane,
-  Receipt,
   ShieldCheck,
   Sparkles,
   TrendingUp,
@@ -48,6 +47,7 @@ import DashboardWorkspaceTabs, {
 } from '../components/DashboardWorkspaceTabs';
 import EmailVerificationBanner from '../components/EmailVerificationBanner';
 import MediaQualityGuidance from '../components/MediaQualityGuidance';
+import OperationalStatusPanel from '../components/OperationalStatusPanel';
 import OwnerMarketplaceEditModal from '../components/OwnerMarketplaceEditModal';
 import ReceiptView from '../components/ReceiptView';
 import Stage8DashboardPanel from '../components/Stage8DashboardPanel';
@@ -350,6 +350,9 @@ export default function Dashboard() {
   const [activeReceipt, setActiveReceipt] = useState<ApiBookingReceipt | null>(null);
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [refreshingDashboard, setRefreshingDashboard] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
 
   useDocumentTitle('Dashboard');
 
@@ -418,7 +421,9 @@ export default function Dashboard() {
           nextBestAction: 'أفضل خطوة تالية',
           excellentShape: 'حسابك في حالة ممتازة، تابع النشاط والفرص الجديدة.',
           focusedBookingFound: 'تم فتح الحجز المطلوب داخل لوحة التحكم.',
-          focusedBookingMissing: 'لم يتم العثور على الحجز المطلوب أو لم يعد متاحاً لهذا الحساب.'
+          focusedBookingMissing: 'لم يتم العثور على الحجز المطلوب أو لم يعد متاحاً لهذا الحساب.',
+          liveStatusTitle: 'حالة مساحة العمل',
+          liveStatusDescription: 'تحديث آمن للحجوزات والتنبيهات والجاهزية بدون فقدان سياق العمل.'
         }
       : {
           loading: 'Loading your command center...',
@@ -483,7 +488,9 @@ export default function Dashboard() {
           nextBestAction: 'Next best action',
           excellentShape: 'Your workspace is in excellent shape. Keep watching new activity and opportunities.',
           focusedBookingFound: 'The requested booking is open in your dashboard.',
-          focusedBookingMissing: 'That booking was not found or is no longer available to this account.'
+          focusedBookingMissing: 'That booking was not found or is no longer available to this account.',
+          liveStatusTitle: 'Workspace freshness',
+          liveStatusDescription: 'Safely refresh bookings, alerts, and readiness without losing your current workspace context.'
         };
 
   const personaContent = useMemo(
@@ -660,6 +667,7 @@ export default function Dashboard() {
 
         if (!active) return;
         setDashboardData(nextData);
+        setLastUpdatedAt(new Date());
       } catch (error) {
         console.error(error);
         if (active) setLoadError(copy.error);
@@ -676,10 +684,29 @@ export default function Dashboard() {
   }, [copy.error, language, token]);
 
   async function refreshDashboard() {
-    if (!token) return;
+    if (!token || refreshingDashboard) return;
 
-    const nextData = await getDashboardData(token, language);
-    setDashboardData(nextData);
+    const showFullLoader = !dashboardData;
+
+    try {
+      setRefreshingDashboard(true);
+      setRefreshError('');
+      if (showFullLoader) setLoading(true);
+
+      const nextData = await getDashboardData(token, language);
+      setDashboardData(nextData);
+      setLastUpdatedAt(new Date());
+      setLoadError('');
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof ApiError ? error.message : copy.error;
+
+      if (showFullLoader) setLoadError(message);
+      else setRefreshError(message);
+    } finally {
+      setRefreshingDashboard(false);
+      if (showFullLoader) setLoading(false);
+    }
   }
 
   async function handleCreatePayment(booking: ApiBooking) {
@@ -1732,10 +1759,17 @@ export default function Dashboard() {
             onSelect={(tab) => setActiveDashboardTab(tab.id)}
           />
 
-          <button className="dashboard-v2-refresh" type="button" onClick={() => void refreshDashboard()}>
-            <Receipt size={15} aria-hidden="true" />
-            {copy.refresh}
-          </button>
+          <OperationalStatusPanel
+            language={language}
+            updatedAt={lastUpdatedAt}
+            loading={refreshingDashboard}
+            error={refreshError}
+            onRefresh={() => void refreshDashboard()}
+            refreshLabel={copy.refresh}
+            title={copy.liveStatusTitle}
+            description={copy.liveStatusDescription}
+            className="dashboard-v2-freshness"
+          />
         </aside>
 
         <main className="dashboard-v2-workspace" id={`dashboard-v2-${activeTabContent.key}`}>

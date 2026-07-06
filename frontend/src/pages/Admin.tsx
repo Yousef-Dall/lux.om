@@ -47,6 +47,7 @@ import type { ApiBooking, BookingStatus, PaymentStatus } from '../api/bookings';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
+import OperationalStatusPanel from '../components/OperationalStatusPanel';
 import SectionHeader from '../components/SectionHeader';
 import Stage8AdminCommandCenter from '../components/Stage8AdminCommandCenter';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -508,6 +509,9 @@ const [creatingDeveloper, setCreatingDeveloper] = useState(false);
 const [developerFormError, setDeveloperFormError] = useState('');
 const [developerFormSuccess, setDeveloperFormSuccess] = useState('');
 const [activeAdminWorkspace, setActiveAdminWorkspace] = useState<AdminWorkspaceKey>('approvals');
+const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+const [refreshingAdminData, setRefreshingAdminData] = useState(false);
+const [adminRefreshError, setAdminRefreshError] = useState('');
 
 
   const copy =
@@ -603,7 +607,9 @@ verifiedDevelopers: 'شركات تطوير موثقة',
           message: 'الرسالة',
           contact: 'التواصل',
           createdAt: 'تاريخ الإرسال',
-          developers: 'شركات التطوير'
+          developers: 'شركات التطوير',
+          liveStatusTitle: 'حالة عمليات السوق',
+          liveStatusDescription: 'تحديث آمن لقوائم المراجعة والحجوزات والمالية مع إبقاء مساحة العمل الحالية مفتوحة.'
         }
       : {
         noDevelopers: 'No developer companies yet.',
@@ -664,7 +670,6 @@ requiredField: 'Required',
           inquiriesQueue: 'Inquiries',
           featuredActivities: 'Featured activities',
 travelAgencies: 'Travel agencies',
-developers: 'Developer companies',
 verifiedDevelopers: 'Verified developers',
           agencyManagement: 'Travel agency management',
           agencyManagementText: 'Create verified travel agencies and connect them to activities.',
@@ -696,7 +701,10 @@ verifiedDevelopers: 'Verified developers',
           inquiryType: 'Type',
           message: 'Message',
           contact: 'Contact',
-          createdAt: 'Created at'
+          createdAt: 'Created at',
+          developers: 'Developer companies',
+          liveStatusTitle: 'Operations freshness',
+          liveStatusDescription: 'Safely refresh review queues, bookings, and finance while keeping the current workspace open.'
         };
 
 
@@ -1076,9 +1084,13 @@ verifiedDevelopers: 'Verified developers',
   async function loadAdminData() {
     if (!token) return;
 
+    const showFullLoader = !lastUpdatedAt;
+
     try {
-      setLoading(true);
+      if (showFullLoader) setLoading(true);
+      else setRefreshingAdminData(true);
       setLoadError('');
+      setAdminRefreshError('');
 
       const [
   listingsResponse,
@@ -1105,16 +1117,17 @@ setBookings(bookingsResponse.bookings);
 setFinance(financeResponse.finance);
 setTravelAgencies(agenciesResponse.travelAgencies);
 setDevelopers(developersResponse.developers);
+setLastUpdatedAt(new Date());
     } catch (error) {
       console.error(error);
 
-      if (error instanceof ApiError) {
-        setLoadError(error.message);
-      } else {
-        setLoadError(copy.error);
-      }
+      const message = error instanceof ApiError ? error.message : copy.error;
+
+      if (showFullLoader) setLoadError(message);
+      else setAdminRefreshError(message);
     } finally {
-      setLoading(false);
+      if (showFullLoader) setLoading(false);
+      else setRefreshingAdminData(false);
     }
   }
 
@@ -1830,13 +1843,17 @@ async function deleteDeveloperCompany(developerId: string) {
             </p>
           </div>
 
-          <button
-            className="button-link button-link--secondary"
-            type="button"
-            onClick={loadAdminData}
-          >
-            {language === 'ar' ? 'تحديث البيانات' : 'Refresh operations'}
-          </button>
+          <OperationalStatusPanel
+            language={language}
+            updatedAt={lastUpdatedAt}
+            loading={loading || refreshingAdminData}
+            error={adminRefreshError}
+            onRefresh={() => void loadAdminData()}
+            refreshLabel={language === 'ar' ? 'تحديث البيانات' : 'Refresh operations'}
+            title={copy.liveStatusTitle}
+            description={copy.liveStatusDescription}
+            className="admin-command-freshness"
+          />
         </div>
 
         <div className="admin-command-kpi-grid">

@@ -17150,3 +17150,107 @@ transition: none;
     width: 100%;
   }
 }
+
+.operational-status-panel {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px;
+  border: 1px solid rgba(7, 56, 62, 0.1);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 18px 40px rgba(7, 56, 62, 0.07);
+}
+
+.operational-status-panel__content {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+
+.operational-status-panel__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 14px;
+  background: rgba(7, 56, 62, 0.08);
+  color: var(--color-primary);
+}
+
+.operational-status-panel strong,
+.operational-status-panel p,
+.operational-status-panel small {
+  display: block;
+}
+
+.operational-status-panel strong {
+  color: var(--color-primary);
+  font-size: 0.94rem;
+}
+
+.operational-status-panel p {
+  max-width: 42rem;
+  margin: 4px 0 0;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.operational-status-panel small {
+  margin-top: 6px;
+  color: rgba(7, 56, 62, 0.68);
+  font-size: 0.75rem;
+  font-weight: 820;
+}
+
+.operational-status-panel__error {
+  color: #a33b2f !important;
+}
+
+.operational-status-panel__button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  white-space: nowrap;
+}
+
+.operational-status-panel__button:disabled {
+  cursor: progress;
+  opacity: 0.64;
+}
+
+.admin-command-freshness {
+  width: min(100%, 470px);
+}
+
+.dashboard-v2-freshness {
+  align-items: stretch;
+  flex-direction: column;
+  padding: 12px;
+  box-shadow: none;
+}
+
+.dashboard-v2-freshness .operational-status-panel__button {
+  width: 100%;
+  justify-content: center;
+}
+
+.route-error-boundary .not-found__code {
+  font-size: clamp(4rem, 12vw, 7rem);
+}
+
+@media (max-width: 760px) {
+  .operational-status-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .operational-status-panel__button {
+    width: 100%;
+    justify-content: center;
+  }
+}

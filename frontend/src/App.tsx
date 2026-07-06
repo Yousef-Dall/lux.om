@@ -1,4 +1,4 @@
-import { type ReactNode, Suspense, lazy, useEffect, useState } from 'react';
+import { Component, type ErrorInfo, type ReactNode, Suspense, lazy, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { useAuth } from './auth/AuthContext';
@@ -52,6 +52,69 @@ function RouteFallback() {
       <span>Loading lux.om…</span>
     </div>
   );
+}
+
+type RouteErrorBoundaryProps = {
+  children: ReactNode;
+  language: 'en' | 'ar';
+};
+
+type RouteErrorBoundaryState = {
+  hasError: boolean;
+};
+
+class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBoundaryState> {
+  state: RouteErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): RouteErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('[lux.om] Route render failed', error, errorInfo);
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+
+    const copy =
+      this.props.language === 'ar'
+        ? {
+            eyebrow: 'تعذر تحميل الصفحة',
+            title: 'حدث خطأ في هذه المساحة',
+            text: 'يمكنك تحديث الصفحة أو العودة للرئيسية. تم عزل الخطأ حتى لا يتعطل باقي الموقع.',
+            reload: 'تحديث الصفحة',
+            home: 'العودة للرئيسية'
+          }
+        : {
+            eyebrow: 'Page failed to load',
+            title: 'Something went wrong in this workspace',
+            text: 'Refresh the page or return home. The failure is isolated so the rest of lux.om can keep working.',
+            reload: 'Refresh page',
+            home: 'Back to home'
+          };
+
+    return (
+      <section className="page-section container not-found route-error-boundary" role="alert" aria-labelledby="route-error-title">
+        <div className="not-found__panel">
+          <span className="not-found__code" aria-hidden="true">!</span>
+          <div className="not-found__content">
+            <p className="eyebrow">{copy.eyebrow}</p>
+            <h1 id="route-error-title">{copy.title}</h1>
+            <p>{copy.text}</p>
+            <div className="not-found__actions">
+              <button className="button-link button-link--primary" type="button" onClick={() => window.location.reload()}>
+                {copy.reload}
+              </button>
+              <Link className="button-link button-link--secondary" to="/">
+                {copy.home}
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
 }
 
 const SITE_ORIGIN = 'https://lux.om';
@@ -536,6 +599,7 @@ function NotFoundPage() {
 
 export default function App() {
   const { pathname } = useLocation();
+  const { language } = useLanguage();
   const isAdminRoute = pathname.startsWith('/admin');
   const isWorkspaceRoute =
     isAdminRoute ||
@@ -560,7 +624,8 @@ export default function App() {
         >
           {isAdminRoute ? <AdminWorkspaceNav /> : null}
 
-          <Suspense fallback={<RouteFallback />}>
+          <RouteErrorBoundary key={pathname} language={language}>
+            <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/" element={<Home />} />
 
@@ -715,7 +780,8 @@ export default function App() {
 
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
-        </Suspense>
+            </Suspense>
+          </RouteErrorBoundary>
       </main>
 
       {!isWorkspaceRoute ? <Footer /> : null}
