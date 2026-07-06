@@ -280,7 +280,7 @@ function getDashboardMetricValue(key: PersonaDashboardMetricKey, data: Dashboard
     case 'packages':
       return stats?.totalTravelPackages ?? activities.filter(isTravelPackage).length;
     case 'projects':
-      return stats?.totalListings ?? 0;
+      return stats?.totalProjects ?? 0;
     case 'units':
       return listings.length;
     case 'leads':
@@ -423,7 +423,19 @@ export default function Dashboard() {
           focusedBookingFound: 'تم فتح الحجز المطلوب داخل لوحة التحكم.',
           focusedBookingMissing: 'لم يتم العثور على الحجز المطلوب أو لم يعد متاحاً لهذا الحساب.',
           liveStatusTitle: 'حالة مساحة العمل',
-          liveStatusDescription: 'تحديث آمن للحجوزات والتنبيهات والجاهزية بدون فقدان سياق العمل.'
+          liveStatusDescription: 'تحديث آمن للحجوزات والتنبيهات والجاهزية بدون فقدان سياق العمل.',
+          workspaceSignals: 'مؤشرات التشغيل',
+          openWorkspace: 'فتح القسم',
+          quickActions: 'إجراءات سريعة',
+          inventorySignal: 'المخزون',
+          inventorySignalHelp: 'عناصر منشورة أو قيد المراجعة',
+          demandSignal: 'الطلب',
+          demandSignalHelp: 'حجوزات واستفسارات واردة',
+          attentionSignal: 'الانتباه',
+          attentionSignalHelp: 'تنبيهات وفجوات تحتاج إجراء',
+          readinessSignal: 'الجاهزية',
+          readinessSignalHelp: 'درجة صحة مساحة العمل',
+          emptyAction: 'ابدأ من هنا'
         }
       : {
           loading: 'Loading your command center...',
@@ -490,7 +502,19 @@ export default function Dashboard() {
           focusedBookingFound: 'The requested booking is open in your dashboard.',
           focusedBookingMissing: 'That booking was not found or is no longer available to this account.',
           liveStatusTitle: 'Workspace freshness',
-          liveStatusDescription: 'Safely refresh bookings, alerts, and readiness without losing your current workspace context.'
+          liveStatusDescription: 'Safely refresh bookings, alerts, and readiness without losing your current workspace context.',
+          workspaceSignals: 'Operational signals',
+          openWorkspace: 'Open section',
+          quickActions: 'Quick actions',
+          inventorySignal: 'Inventory',
+          inventorySignalHelp: 'Published and pending records',
+          demandSignal: 'Demand',
+          demandSignalHelp: 'Incoming bookings and inquiries',
+          attentionSignal: 'Attention',
+          attentionSignalHelp: 'Alerts and readiness gaps',
+          readinessSignal: 'Readiness',
+          readinessSignalHelp: 'Workspace health score',
+          emptyAction: 'Start here'
         };
 
   const personaContent = useMemo(
@@ -618,6 +642,43 @@ export default function Dashboard() {
           description: urgentActions[0].helper,
           actionTo: urgentActions[0].to
         }
+      : null;
+  const inventorySignal =
+    (stats?.totalListings ?? 0) + (stats?.totalActivities ?? 0) + (stats?.totalProjects ?? 0);
+  const demandSignal =
+    (stats?.receivedInquiries ?? 0) + (stats?.receivedBookings ?? 0) + (stats?.submittedBookings ?? 0);
+  const attentionSignal =
+    attentionCount + (stats?.pendingReviewCount ?? 0) + (stats?.pendingPayments ?? 0);
+  const heroSignals = [
+    {
+      key: 'readiness',
+      label: copy.readinessSignal,
+      value: `${readinessScore}%`,
+      helper: copy.readinessSignalHelp
+    },
+    {
+      key: 'inventory',
+      label: copy.inventorySignal,
+      value: inventorySignal,
+      helper: copy.inventorySignalHelp
+    },
+    {
+      key: 'demand',
+      label: copy.demandSignal,
+      value: demandSignal,
+      helper: copy.demandSignalHelp
+    },
+    {
+      key: 'attention',
+      label: copy.attentionSignal,
+      value: attentionSignal,
+      helper: copy.attentionSignalHelp
+    }
+  ];
+  const emptyStateAction = heroNextBestAction?.actionTo
+    ? { to: heroNextBestAction.actionTo, label: heroNextBestAction.label }
+    : personaContent.primaryActions[0]
+      ? { to: personaContent.primaryActions[0].to, label: personaContent.primaryActions[0].text }
       : null;
   const dashboardScoreStyle = {
     '--dashboard-score': `${Math.max(0, Math.min(100, readinessScore))}%`
@@ -854,12 +915,21 @@ export default function Dashboard() {
     }
   }
 
-  function renderEmptyState(title = activeTabContent.emptyStateTitle, description = activeTabContent.emptyStateDescription) {
+  function renderEmptyState(
+    title = activeTabContent.emptyStateTitle,
+    description = activeTabContent.emptyStateDescription,
+    action = emptyStateAction
+  ) {
     return (
       <div className="dashboard-v2-empty-state">
         <Sparkles size={22} aria-hidden="true" />
         <h3>{title}</h3>
         <p>{description}</p>
+        {action ? (
+          <ButtonLink to={action.to} variant="soft">
+            {action.label || copy.emptyAction}
+          </ButtonLink>
+        ) : null}
       </div>
     );
   }
@@ -958,8 +1028,8 @@ export default function Dashboard() {
         cards.push(
           {
             label: language === 'ar' ? 'محفظة المشاريع' : 'Project portfolio',
-            value: stats?.totalListings ?? listings.length,
-            helper: language === 'ar' ? 'مشاريع ووحدات مرتبطة بشركة التطوير.' : 'Projects and unit records connected to this developer.',
+            value: stats?.totalProjects ?? 0,
+            helper: language === 'ar' ? 'مشاريع معتمدة أو قيد المراجعة مرتبطة بشركة التطوير.' : 'Developer projects connected to this account across launch states.',
             tone: 'medium'
           },
           {
@@ -1677,6 +1747,20 @@ export default function Dashboard() {
             <span>{user?.emailVerified ? 'Verified email' : 'Email pending'}</span>
             <span>{user?.companyName || user?.name || 'lux.om'}</span>
           </div>
+
+          <div className="dashboard-v2-action-rail" aria-label={copy.quickActions}>
+            {personaContent.primaryActions.map((action) => (
+              <ButtonLink key={action.key} to={action.to} variant="soft">
+                {action.text}
+                <ArrowRight size={15} aria-hidden="true" />
+              </ButtonLink>
+            ))}
+            {canAccessAdmin ? (
+              <ButtonLink to="/admin" variant="secondary">
+                {copy.openAdmin}
+              </ButtonLink>
+            ) : null}
+          </div>
         </div>
 
         <aside className="dashboard-v2-hero__panel">
@@ -1715,18 +1799,14 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="dashboard-v2-hero__actions">
-            {personaContent.primaryActions.map((action) => (
-              <ButtonLink key={action.key} to={action.to} variant="primary">
-                {action.text}
-                <ArrowRight size={16} aria-hidden="true" />
-              </ButtonLink>
+          <div className="dashboard-v2-signal-grid dashboard-v2-signal-grid--compact" aria-label={copy.workspaceSignals}>
+            {heroSignals.map((signal) => (
+              <article key={signal.key}>
+                <span>{signal.label}</span>
+                <strong>{signal.value}</strong>
+                <p>{signal.helper}</p>
+              </article>
             ))}
-            {canAccessAdmin ? (
-              <ButtonLink to="/admin" variant="secondary">
-                {copy.openAdmin}
-              </ButtonLink>
-            ) : null}
           </div>
         </aside>
       </header>
@@ -1774,9 +1854,16 @@ export default function Dashboard() {
 
         <main className="dashboard-v2-workspace" id={`dashboard-v2-${activeTabContent.key}`}>
           <div className="dashboard-v2-workspace__header">
-            <p className="eyebrow">{copy.activeWorkspace}</p>
-            <h2>{activeTabContent.text}</h2>
-            <p>{activeTabContent.helperText}</p>
+            <div>
+              <p className="eyebrow">{copy.activeWorkspace}</p>
+              <h2>{activeTabContent.text}</h2>
+              <p>{activeTabContent.helperText}</p>
+            </div>
+            {emptyStateAction ? (
+              <ButtonLink to={emptyStateAction.to} variant="soft">
+                {emptyStateAction.label || copy.openWorkspace}
+              </ButtonLink>
+            ) : null}
           </div>
           {renderActiveWorkspace()}
         </main>
