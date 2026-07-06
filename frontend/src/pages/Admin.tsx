@@ -1686,10 +1686,13 @@ async function deleteDeveloperCompany(developerId: string) {
               <button
                 aria-selected={isActive}
                 className={isActive ? 'admin-workspace-tab admin-workspace-tab--active' : 'admin-workspace-tab'}
-                key={workspace.key}
+                key={`workspace-${workspace.key}`}
                 role="tab"
                 type="button"
-                onClick={() => scrollToAdminSection(workspace.sectionId)}
+                onClick={() => {
+                  setActiveAdminWorkspace(workspace.key);
+                  scrollToAdminSection(workspace.sectionId);
+                }}
               >
                 <span className="admin-workspace-tab__icon" aria-hidden="true">
                   <Icon size={17} />
@@ -1784,7 +1787,7 @@ async function deleteDeveloperCompany(developerId: string) {
             return (
               <button
                 className={'admin-command-kpi admin-command-kpi--' + item.tone}
-                key={item.sectionId}
+                key={`${item.sectionId}-${item.label}`}
                 type="button"
                 onClick={() => scrollToAdminSection(item.sectionId)}
               >
@@ -1807,7 +1810,7 @@ async function deleteDeveloperCompany(developerId: string) {
 
             return (
               <button
-                key={card.sectionId}
+                key={`${card.sectionId}-${card.title}`}
                 type="button"
                 onClick={() => scrollToAdminSection(card.sectionId)}
               >
@@ -2598,7 +2601,9 @@ async function deleteDeveloperCompany(developerId: string) {
             </div>
           </div>
 
-          <div id="admin-partners-section" className="table-card table-card--premium admin-workspace-panel" tabIndex={-1}>
+          {activeAdminWorkspace === 'partners' ? (
+            <>
+<div id="admin-partners-section" className="table-card table-card--premium admin-workspace-panel" tabIndex={-1}>
   <div className="table-card__header">
     <div>
       <p className="eyebrow">{copy.developerManagement}</p>
@@ -3572,6 +3577,8 @@ async function deleteDeveloperCompany(developerId: string) {
               </table>
             </div>
           </div>
+            </>
+          ) : null}
 
           <div id="admin-review-detail-queues" className="table-card table-card--premium admin-review-detail-card admin-workspace-panel" tabIndex={-1}>
             <div className="table-card__header">

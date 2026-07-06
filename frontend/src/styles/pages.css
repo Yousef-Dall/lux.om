@@ -15836,3 +15836,122 @@ transition: none;
     gap: 0.9rem;
   }
 }
+
+/* =========================================================
+   Admin primary workspace ordering fix
+   ========================================================= */
+.admin-page--command-center {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-page--command-center > .section-header {
+  order: 1;
+}
+
+.admin-page--command-center > .admin-hero-card--command {
+  order: 2;
+}
+
+.admin-page--command-center > .admin-command-briefing {
+  order: 3;
+}
+
+.admin-page--command-center > .admin-workspace-shell {
+  order: 4;
+}
+
+.admin-page--command-center > .admin-workspace-panel {
+  order: 5;
+}
+
+.admin-page--command-center > .admin-command-briefing + .admin-workspace-shell {
+  margin-top: clamp(1rem, 2vw, 1.35rem);
+}
+
+.admin-page--command-center > .admin-workspace-shell + .admin-workspace-panel {
+  margin-top: clamp(1rem, 2vw, 1.35rem);
+}
+
+/* =========================================================
+   Admin workspace strict ordering fix
+   ========================================================= */
+.admin-page--command-center {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-page--command-center > * {
+  order: 50;
+}
+
+.admin-page--command-center > .section-header {
+  order: 1;
+}
+
+.admin-page--command-center > .admin-hero-card--command {
+  order: 2;
+}
+
+.admin-page--command-center > .admin-command-briefing {
+  order: 3;
+}
+
+.admin-page--command-center > .admin-workspace-shell {
+  order: 4;
+}
+
+.admin-page--command-center > .admin-workspace-panel,
+.admin-page--command-center > .admin-approvals-workspace,
+.admin-page--command-center > .table-card,
+.admin-page--command-center > .dashboard-grid {
+  order: 5;
+}
+
+.admin-page--command-center > .admin-command-briefing + .admin-workspace-shell {
+  margin-top: clamp(1rem, 2vw, 1.35rem);
+}
+
+.admin-page--command-center > .admin-workspace-shell + .admin-workspace-panel,
+.admin-page--command-center > .admin-workspace-shell + .table-card,
+.admin-page--command-center > .admin-workspace-shell + .dashboard-grid {
+  margin-top: clamp(1rem, 2vw, 1.35rem);
+}
+
+/* =========================================================
+   Admin active workspace visibility gate
+   ========================================================= */
+.admin-page--command-center:not(.admin-page--workspace-approvals) #admin-approvals-workspace,
+.admin-page--command-center:not(.admin-page--workspace-health) #admin-health,
+.admin-page--command-center:not(.admin-page--workspace-summary) #admin-overview-metrics,
+.admin-page--command-center:not(.admin-page--workspace-finance) #admin-finance-section,
+.admin-page--command-center:not(.admin-page--workspace-bookings) #admin-bookings-section,
+.admin-page--command-center:not(.admin-page--workspace-partners) #admin-partners-section,
+.admin-page--command-center:not(.admin-page--workspace-reviewDetails) #admin-review-detail-queues {
+  display: none;
+}
+
+.admin-page--workspace-command #admin-command-center {
+  display: block;
+}
+
+/* =========================================================
+   Admin workspace final gating fix
+   ========================================================= */
+.admin-page--command-center:not(.admin-page--workspace-partners) #admin-partners-section,
+.admin-page--command-center:not(.admin-page--workspace-partners) .admin-partners-section,
+.admin-page--command-center:not(.admin-page--workspace-partners) .admin-developer-partners-section,
+.admin-page--command-center:not(.admin-page--workspace-partners) .admin-travel-agencies-section,
+.admin-page--command-center:not(.admin-page--workspace-partners) [data-admin-workspace='partners'] {
+  display: none !important;
+}
+
+.admin-page--command-center:not(.admin-page--workspace-approvals) #admin-approvals-workspace,
+.admin-page--command-center:not(.admin-page--workspace-command) #admin-command-center,
+.admin-page--command-center:not(.admin-page--workspace-health) #admin-health,
+.admin-page--command-center:not(.admin-page--workspace-summary) #admin-overview-metrics,
+.admin-page--command-center:not(.admin-page--workspace-finance) #admin-finance-section,
+.admin-page--command-center:not(.admin-page--workspace-bookings) #admin-bookings-section,
+.admin-page--command-center:not(.admin-page--workspace-reviewDetails) #admin-review-detail-queues {
+  display: none !important;
+}
