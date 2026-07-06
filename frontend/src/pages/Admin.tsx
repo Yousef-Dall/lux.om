@@ -1142,67 +1142,7 @@ const metrics = useMemo(() => {
   };
 }, [activities, bookings, developers, listings, travelAgencies]);
 
-    const adminOperationCards = [
-    {
-      title: adminOperationsCopy.approvalsTitle,
-      text: adminOperationsCopy.approvalsText,
-      metric: metrics.needsAttention,
-      sectionId: 'admin-approvals-workspace',
-      icon: ShieldCheck
-    },
-    {
-      title: language === 'ar' ? 'مشاريع المطورين' : 'Developer projects',
-      text:
-        language === 'ar'
-          ? 'اعتماد المشاريع الجديدة وربطها بوحدات البيع قبل ظهورها للعامة.'
-          : 'Approve new project launches and monitor the unit inventory behind each development.',
-      metric: language === 'ar' ? 'مراجعة' : 'Review',
-      sectionId: 'admin-approvals-workspace',
-      icon: Building2
-    },
-    {
-      title: adminOperationsCopy.commandTitle,
-      text: adminOperationsCopy.commandText,
-      metric: metrics.pendingListings + metrics.pendingActivities,
-      sectionId: 'admin-command-center',
-      icon: Inbox
-    },
-    {
-      title: adminOperationsCopy.healthTitle,
-      text: adminOperationsCopy.healthText,
-      metric: metrics.pendingBookings,
-      sectionId: 'admin-health',
-      icon: AlertCircle
-    },
-    {
-      title: adminOperationsCopy.metricsTitle,
-      text: adminOperationsCopy.metricsText,
-      metric: listings.length + activities.length,
-      sectionId: 'admin-overview-metrics',
-      icon: Sparkles
-    },
-    {
-      title: adminOperationsCopy.financeTitle,
-      text: adminOperationsCopy.financeText,
-      metric: finance?.ledger.length ?? 0,
-      sectionId: 'admin-finance-section',
-      icon: CreditCard
-    },
-    {
-      title: adminOperationsCopy.bookingsTitle,
-      text: adminOperationsCopy.bookingsText,
-      metric: bookings.length,
-      sectionId: 'admin-bookings-section',
-      icon: CalendarDays
-    },
-    {
-      title: adminOperationsCopy.partnersTitle,
-      text: adminOperationsCopy.partnersText,
-      metric: travelAgencies.length + developers.length,
-      sectionId: 'admin-partners-section',
-      icon: Building2
-    }
-  ];
+
 
 const filteredListings = useMemo(
     () =>
@@ -1897,21 +1837,7 @@ async function deleteDeveloperCompany(developerId: string) {
         </div>
 
         <nav className="admin-command-jumpbar" aria-label={adminOperationsCopy.aria}>
-          {adminOperationCards.map((card) => {
-            const Icon = card.icon;
-
-            return (
-              <button
-                key={`${card.sectionId}-${card.title}`}
-                type="button"
-                onClick={() => scrollToAdminSection(card.sectionId)}
-              >
-                <Icon size={15} aria-hidden="true" />
-                <span>{card.title}</span>
-                <strong>{card.metric}</strong>
-              </button>
-            );
-          })}
+          
         </nav>
       </section>
     );
