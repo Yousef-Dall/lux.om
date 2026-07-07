@@ -862,6 +862,34 @@ export default function App() {
             }
           />
 
+
+          <Route
+            path="/pms/properties"
+            element={
+              <RequirePms>
+                <PmsPortal />
+              </RequirePms>
+            }
+          />
+
+          <Route
+            path="/pms/properties/:propertyId"
+            element={
+              <RequirePms>
+                <PmsPortal />
+              </RequirePms>
+            }
+          />
+
+          <Route
+            path="/pms/units"
+            element={
+              <RequirePms>
+                <PmsPortal />
+              </RequirePms>
+            }
+          />
+
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
             </Suspense>

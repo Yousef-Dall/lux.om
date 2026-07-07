@@ -18469,3 +18469,219 @@ transition: none;
     grid-template-columns: 1fr;
   }
 }
+
+
+/* =========================================================
+   Stage 10B PMS private property and unit inventory
+   ========================================================= */
+
+.pms-panel-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.55fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.pms-panel-grid--inventory {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.55fr);
+}
+
+.pms-form-card,
+.pms-inventory-card,
+.pms-unit-table-card {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.17);
+  backdrop-filter: blur(18px);
+}
+
+.pms-form-card {
+  display: grid;
+  gap: 18px;
+  padding: clamp(18px, 3vw, 26px);
+  border-radius: 26px;
+}
+
+.pms-form-card h2 {
+  margin: 0;
+  color: #fff7df;
+  letter-spacing: -0.05em;
+}
+
+.pms-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.pms-form-grid label,
+.pms-checkbox-field {
+  display: grid;
+  gap: 7px;
+  color: rgba(255, 247, 223, 0.72);
+  font-weight: 760;
+}
+
+.pms-form-grid input,
+.pms-form-grid select,
+.pms-form-grid textarea,
+.pms-table select {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(3, 29, 33, 0.78);
+  color: #fff7df;
+}
+
+.pms-form-grid textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.pms-form-grid__wide {
+  grid-column: 1 / -1;
+}
+
+.pms-checkbox-field {
+  grid-auto-flow: column;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  justify-content: start;
+}
+
+.pms-checkbox-field input {
+  width: auto;
+}
+
+.pms-inventory-list {
+  display: grid;
+  gap: 12px;
+}
+
+.pms-inventory-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  border-radius: 20px;
+}
+
+.pms-inventory-card strong,
+.pms-table strong {
+  display: block;
+  color: #fff7df;
+}
+
+.pms-inventory-card span,
+.pms-inventory-card small,
+.pms-table small {
+  display: block;
+  color: rgba(255, 247, 223, 0.66);
+}
+
+.pms-empty-state-list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 247, 223, 0.82);
+  text-decoration: none;
+}
+
+.pms-table-scroll {
+  overflow-x: auto;
+}
+
+.pms-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.pms-table th,
+.pms-table td {
+  padding: 13px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 247, 223, 0.78);
+  text-align: start;
+  vertical-align: middle;
+}
+
+.pms-table th {
+  color: rgba(255, 247, 223, 0.58);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pms-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff7df;
+  font-size: 0.76rem;
+  font-weight: 860;
+}
+
+.pms-status-badge--vacant {
+  background: rgba(65, 206, 142, 0.17);
+  color: #9cf0c6;
+}
+
+.pms-status-badge--occupied {
+  background: rgba(226, 193, 122, 0.18);
+  color: #f7d88d;
+}
+
+.pms-status-badge--maintenance {
+  background: rgba(255, 149, 0, 0.16);
+  color: #ffd18a;
+}
+
+.pms-status-badge--reserved,
+.pms-status-badge--unavailable {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 247, 223, 0.78);
+}
+
+.pms-next-actions .map-location-panel {
+  margin-top: 18px;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pms-next-actions .map-location-panel h2,
+.pms-next-actions .details-section-heading h2 {
+  color: #fff7df;
+}
+
+.pms-next-actions .map-location-panel p,
+.pms-next-actions .map-location-panel span,
+.pms-next-actions .map-location-panel strong {
+  color: rgba(255, 247, 223, 0.76);
+}
+
+@media (max-width: 1100px) {
+  .pms-panel-grid,
+  .pms-panel-grid--inventory {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .pms-form-grid,
+  .pms-inventory-card {
+    grid-template-columns: 1fr;
+  }
+
+  .pms-inventory-card .button-link {
+    width: 100%;
+    justify-content: center;
+  }
+}
