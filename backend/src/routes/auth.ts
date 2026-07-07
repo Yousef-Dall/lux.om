@@ -1,6 +1,19 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { AccountSecurityEventType, EmailDeliveryStatus, NotificationType, type Prisma } from '@prisma/client';
+import {
+  AccountSecurityEventType,
+  ActivityStatus,
+  BookingStatus,
+  ContractDraftStatus,
+  DeveloperProjectStatus,
+  EmailDeliveryStatus,
+  ListingStatus,
+  MarketplaceTransactionStatus,
+  NotificationType,
+  PaymentStatus,
+  RentPaymentStatus,
+  type Prisma
+} from '@prisma/client';
 import { z } from 'zod';
 
 import { requireAdmin, requireAuth, signToken } from '../middleware/auth';
@@ -81,6 +94,13 @@ const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1).max(100).optional(),
     newPassword: z.string().min(1).max(100)
+  })
+  .strict();
+
+const deactivateAccountSchema = z
+  .object({
+    confirmation: z.string().trim().max(32),
+    currentPassword: z.string().min(1).max(100).optional()
   })
   .strict();
 
@@ -170,7 +190,7 @@ const adminUsersQuerySchema = z
     query: z.string().trim().max(120).optional(),
     role: z.enum(['USER', 'OWNER', 'ACTIVITY_PROVIDER', 'TRAVEL_AGENCY', 'DEVELOPER', 'ADMIN']).optional(),
     status: z
-      .enum(['all', 'active', 'suspended', 'verified', 'unverified'])
+      .enum(['all', 'active', 'suspended', 'deactivated', 'verified', 'unverified'])
       .default('all'),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(50).default(20)
@@ -255,6 +275,8 @@ function adminUserResponse(user: {
   emailVerified?: boolean;
   emailVerifiedAt?: Date | string | null;
   suspendedAt?: Date | string | null;
+  deactivatedAt?: Date | string | null;
+  deactivationReason?: string | null;
   suspendedReason?: string | null;
   suspendedById?: string | null;
   authTokenVersion?: number;
@@ -273,9 +295,11 @@ function adminUserResponse(user: {
     emailVerified: Boolean(user.emailVerified),
     emailVerifiedAt: user.emailVerifiedAt ?? null,
     suspendedAt: user.suspendedAt ?? null,
+    deactivatedAt: user.deactivatedAt ?? null,
+    deactivationReason: user.deactivationReason ?? null,
     suspendedReason: user.suspendedReason ?? null,
     suspendedById: user.suspendedById ?? null,
-    accountStatus: user.suspendedAt ? 'SUSPENDED' : 'ACTIVE',
+    accountStatus: user.deactivatedAt ? 'DEACTIVATED' : user.suspendedAt ? 'SUSPENDED' : 'ACTIVE',
     authTokenVersion: user.authTokenVersion ?? 0,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt
@@ -322,10 +346,17 @@ function getAdminUsersWhere(input: z.infer<typeof adminUsersQuerySchema>) {
 
   if (input.status === 'active') {
     where.suspendedAt = null;
+    where.deactivatedAt = null;
   }
 
   if (input.status === 'suspended') {
     where.suspendedAt = {
+      not: null
+    };
+  }
+
+  if (input.status === 'deactivated') {
+    where.deactivatedAt = {
       not: null
     };
   }
@@ -341,6 +372,183 @@ function getAdminUsersWhere(input: z.infer<typeof adminUsersQuerySchema>) {
   return where;
 }
 
+
+const activeBookingStatuses = [
+  BookingStatus.PENDING,
+  BookingStatus.OWNER_APPROVED,
+  BookingStatus.ADMIN_CONFIRMED,
+  BookingStatus.CANCELLATION_REQUESTED
+];
+
+const activeInventoryStatuses = [ListingStatus.PENDING, ListingStatus.APPROVED];
+const activeActivityStatuses = [ActivityStatus.PENDING, ActivityStatus.APPROVED];
+const activeProjectStatuses = [
+  DeveloperProjectStatus.PENDING,
+  DeveloperProjectStatus.APPROVED
+];
+const activeContractStatuses = [
+  ContractDraftStatus.DRAFT,
+  ContractDraftStatus.READY_FOR_REVIEW,
+  ContractDraftStatus.SIGNED_EXTERNALLY
+];
+const activeTransactionStatuses = [
+  MarketplaceTransactionStatus.DRAFT,
+  MarketplaceTransactionStatus.ACTIVE,
+  MarketplaceTransactionStatus.DISPUTED
+];
+
+type AccountDeletionBlocker = {
+  key: string;
+  label: string;
+  count: number;
+};
+
+function buildDeletedAccountEmail(userId: string) {
+  const safeId = userId.replace(/[^a-z0-9]/gi, '').slice(0, 32) || 'account';
+
+  return `deleted-${safeId}@deleted.lux.om`.toLowerCase();
+}
+
+function getBlockingItems(counts: Record<string, number>): AccountDeletionBlocker[] {
+  const labels: Array<[string, string]> = [
+    ['activeBookings', 'active bookings'],
+    ['activeListings', 'active listings'],
+    ['activeActivities', 'active activities'],
+    ['activeProjects', 'active developer projects'],
+    ['activeContracts', 'active rental contracts'],
+    ['activeRentSchedules', 'active rent schedules'],
+    ['activeRentDues', 'open rent payment dues'],
+    ['activeTransactions', 'active marketplace transactions'],
+    ['pendingLedgerEntries', 'pending payment ledger entries']
+  ];
+
+  return labels
+    .map(([key, label]) => ({
+      key: String(key),
+      label,
+      count: counts[String(key)] ?? 0
+    }))
+    .filter((item) => item.count > 0);
+}
+
+async function getAccountDeletionBlockers(
+  db: Prisma.TransactionClient | typeof prisma,
+  userId: string
+) {
+  const [
+    activeBookings,
+    activeListings,
+    activeActivities,
+    activeProjects,
+    activeContracts,
+    activeRentSchedules,
+    activeRentDues,
+    activeTransactions,
+    pendingLedgerEntries
+  ] = await Promise.all([
+    db.booking.count({
+      where: {
+        userId,
+        status: {
+          in: activeBookingStatuses
+        }
+      }
+    }),
+    db.listing.count({
+      where: {
+        ownerId: userId,
+        status: {
+          in: activeInventoryStatuses
+        }
+      }
+    }),
+    db.activity.count({
+      where: {
+        ownerId: userId,
+        status: {
+          in: activeActivityStatuses
+        }
+      }
+    }),
+    db.developerProject.count({
+      where: {
+        ownerId: userId,
+        status: {
+          in: activeProjectStatuses
+        }
+      }
+    }),
+    db.rentalContractDraft.count({
+      where: {
+        status: {
+          in: activeContractStatuses
+        },
+        OR: [
+          { createdById: userId },
+          { landlordUserId: userId },
+          { tenantUserId: userId }
+        ]
+      }
+    }),
+    db.rentPaymentSchedule.count({
+      where: {
+        active: true,
+        OR: [
+          { createdById: userId },
+          { landlordUserId: userId },
+          { tenantUserId: userId }
+        ]
+      }
+    }),
+    db.rentPaymentDueItem.count({
+      where: {
+        status: {
+          in: [RentPaymentStatus.PENDING, RentPaymentStatus.DUE_SOON, RentPaymentStatus.OVERDUE]
+        },
+        schedule: {
+          OR: [
+            { createdById: userId },
+            { landlordUserId: userId },
+            { tenantUserId: userId }
+          ]
+        }
+      }
+    }),
+    db.marketplaceTransaction.count({
+      where: {
+        status: {
+          in: activeTransactionStatuses
+        },
+        OR: [
+          { buyerId: userId },
+          { sellerId: userId },
+          { landlordId: userId },
+          { tenantId: userId },
+          { providerId: userId },
+          { participants: { some: { userId } } }
+        ]
+      }
+    }),
+    db.marketplacePaymentLedger.count({
+      where: {
+        status: PaymentStatus.PENDING,
+        OR: [{ payerId: userId }, { payeeId: userId }]
+      }
+    })
+  ]);
+
+  return getBlockingItems({
+    activeBookings,
+    activeListings,
+    activeActivities,
+    activeProjects,
+    activeContracts,
+    activeRentSchedules,
+    activeRentDues,
+    activeTransactions,
+    pendingLedgerEntries
+  });
+}
 
 authRouter.get('/google/start', authAbuseRateLimiters.googleStart, (req, res, next) => {
   try {
@@ -393,6 +601,10 @@ authRouter.post('/google/exchange', authAbuseRateLimiters.googleExchange, async 
         403,
         'Google account is suspended. Contact lux.om support if you believe this is a mistake.'
       );
+    }
+
+    if (result.user.deactivatedAt) {
+      throw new AppError(403, 'This account has been deleted.');
     }
 
     res.json({
@@ -475,6 +687,10 @@ authRouter.post('/login', authAbuseRateLimiters.login, async (req, res, next) =>
         403,
         'Account is suspended. Contact lux.om support if you believe this is a mistake.'
       );
+    }
+
+    if (user.deactivatedAt) {
+      throw new AppError(403, 'This account has been deleted.');
     }
 
     if (!user.passwordLoginEnabled) {
@@ -1331,6 +1547,8 @@ authRouter.get(
             emailVerified: true,
             emailVerifiedAt: true,
             suspendedAt: true,
+            deactivatedAt: true,
+            deactivationReason: true,
             suspendedReason: true,
             suspendedById: true,
             authTokenVersion: true,
@@ -1394,6 +1612,8 @@ authRouter.get(
           emailVerified: true,
           emailVerifiedAt: true,
           suspendedAt: true,
+          deactivatedAt: true,
+          deactivationReason: true,
           suspendedReason: true,
           suspendedById: true,
           authTokenVersion: true,
@@ -1475,6 +1695,7 @@ authRouter.patch(
           where: {
             role: 'ADMIN',
             suspendedAt: null,
+            deactivatedAt: null,
             NOT: {
               id: targetUser.id
             }
@@ -1652,6 +1873,174 @@ authRouter.patch('/me', requireAuth(), async (req, res, next) => {
     next(error);
   }
 });
+
+authRouter.post(
+  '/me/deactivate',
+  authAbuseRateLimiters.accountDeactivation,
+  requireAuth(),
+  async (req, res, next) => {
+    try {
+      if (!req.user) {
+        throw new AppError(401, 'Unauthorized');
+      }
+
+      const data = deactivateAccountSchema.parse(req.body);
+
+      if (data.confirmation !== 'DELETE') {
+        throw new AppError(400, 'Type DELETE to confirm account deletion');
+      }
+
+      const user = await prisma.user.findUniqueOrThrow({
+        where: {
+          id: req.user.id
+        }
+      });
+
+      if (user.role === 'ADMIN') {
+        throw new AppError(
+          400,
+          'Admin accounts cannot be deleted from the profile page. Transfer or suspend admin access from the admin console instead.'
+        );
+      }
+
+      if (user.deactivatedAt) {
+        throw new AppError(400, 'This account has already been deleted');
+      }
+
+      if (user.passwordLoginEnabled) {
+        if (!data.currentPassword) {
+          throw new AppError(400, 'Current password is required');
+        }
+
+        const currentPasswordMatches = await bcrypt.compare(data.currentPassword, user.password);
+
+        if (!currentPasswordMatches) {
+          throw new AppError(401, 'Current password is incorrect');
+        }
+      }
+
+      const blockers = await getAccountDeletionBlockers(prisma, user.id);
+
+      if (blockers.length > 0) {
+        throw new AppError(
+          409,
+          `Account cannot be deleted yet because it has ${blockers
+            .map((blocker) => `${blocker.count} ${blocker.label}`)
+            .join(', ')}. Please close or resolve them first.`
+        );
+      }
+
+      const now = new Date();
+      const anonymizedEmail = buildDeletedAccountEmail(user.id);
+      const disabledPasswordHash = await bcrypt.hash(
+        `${user.id}:${now.toISOString()}:deactivated`,
+        12
+      );
+
+      const deactivatedUser = await prisma.$transaction(async (tx) => {
+        await Promise.all([
+          tx.savedListing.deleteMany({
+            where: {
+              userId: user.id
+            }
+          }),
+          tx.savedActivity.deleteMany({
+            where: {
+              userId: user.id
+            }
+          }),
+          tx.savedSearch.deleteMany({
+            where: {
+              userId: user.id
+            }
+          }),
+          tx.investorWatchlistItem.deleteMany({
+            where: {
+              userId: user.id
+            }
+          }),
+          tx.notification.deleteMany({
+            where: {
+              userId: user.id
+            }
+          }),
+          tx.oauthLoginCode.deleteMany({
+            where: {
+              userId: user.id
+            }
+          }),
+          tx.inquiry.updateMany({
+            where: {
+              userId: user.id
+            },
+            data: {
+              userId: null
+            }
+          })
+        ]);
+
+        await tx.accountSecurityEvent.create({
+          data: {
+            userId: user.id,
+            actorId: user.id,
+            type: AccountSecurityEventType.ACCOUNT_DEACTIVATED,
+            title: 'Account deleted by user',
+            message:
+              'This lux.om account was deleted through the profile self-service flow.',
+            metadata: {
+              originalEmail: user.email,
+              requestedAt: now.toISOString(),
+              blockersChecked: true
+            }
+          }
+        });
+
+        return tx.user.update({
+          where: {
+            id: user.id
+          },
+          data: {
+            name: 'Deleted lux.om user',
+            email: anonymizedEmail,
+            password: disabledPasswordHash,
+            passwordLoginEnabled: false,
+            authTokenVersion: {
+              increment: 1
+            },
+            googleId: null,
+            phone: null,
+            companyName: null,
+            emailVerified: false,
+            emailVerifiedAt: null,
+            emailVerificationTokenHash: null,
+            emailVerificationExpiresAt: null,
+            pendingEmail: null,
+            emailChangeTokenHash: null,
+            emailChangeExpiresAt: null,
+            passwordResetTokenHash: null,
+            passwordResetExpiresAt: null,
+            passwordResetUsedAt: null,
+            emailBookingUpdates: false,
+            emailSavedSearchUpdates: false,
+            emailMarketingUpdates: false,
+            deactivatedAt: now,
+            deactivationReason: 'Self-service account deletion requested'
+          }
+        });
+      });
+
+      res.json({
+        ok: true,
+        account: {
+          status: 'DEACTIVATED',
+          deactivatedAt: deactivatedUser.deactivatedAt
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 authRouter.post('/resend-verification', authAbuseRateLimiters.verificationResend, requireAuth(), async (req, res, next) => {
   try {

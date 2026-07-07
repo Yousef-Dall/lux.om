@@ -89,6 +89,10 @@ export function requireAuth(required = true) {
         );
       }
 
+      if (user.deactivatedAt) {
+        throw new AppError(403, 'This account has been deleted.');
+      }
+
       if (payload.role !== user.role) {
         throw new AppError(401, 'Unauthorized');
       }

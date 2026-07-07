@@ -45,6 +45,12 @@ export const authAbuseRateLimitRules = {
     developmentLimit: 60,
     message: 'Too many session logout requests. Please wait before trying again.'
   },
+  accountDeactivation: {
+    windowMs: 60 * 60 * 1000,
+    productionLimit: 3,
+    developmentLimit: 20,
+    message: 'Too many account deletion requests. Please wait before trying again.'
+  },
   emailChangeRequest: {
     windowMs: 60 * 60 * 1000,
     productionLimit: 4,
@@ -119,6 +125,9 @@ export const authAbuseRateLimiters = {
   changePassword: createAuthAbuseRateLimiter(authAbuseRateLimitRules.changePassword),
   logoutAllSessions: createAuthAbuseRateLimiter(
     authAbuseRateLimitRules.logoutAllSessions
+  ),
+  accountDeactivation: createAuthAbuseRateLimiter(
+    authAbuseRateLimitRules.accountDeactivation
   ),
   emailChangeRequest: createAuthAbuseRateLimiter(
     authAbuseRateLimitRules.emailChangeRequest

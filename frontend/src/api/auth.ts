@@ -159,6 +159,28 @@ export async function logoutAllSessions(token: string) {
   );
 }
 
+export type DeactivateAccountPayload = {
+  confirmation: string;
+  currentPassword?: string;
+};
+
+export type DeactivateAccountResponse = {
+  ok: true;
+  account: {
+    status: 'DEACTIVATED';
+    deactivatedAt: string;
+  };
+};
+
+export async function deactivateCurrentAccount(
+  payload: DeactivateAccountPayload,
+  token: string
+) {
+  return apiClient.post<DeactivateAccountResponse>('/api/auth/me/deactivate', payload, {
+    token
+  });
+}
+
 export type RequestEmailChangeResponse = {
   ok: true;
   emailChange: {
@@ -202,9 +224,11 @@ export type AdminUserAccount = {
   emailVerified: boolean;
   emailVerifiedAt?: string | null;
   suspendedAt?: string | null;
+  deactivatedAt?: string | null;
+  deactivationReason?: string | null;
   suspendedReason?: string | null;
   suspendedById?: string | null;
-  accountStatus: 'ACTIVE' | 'SUSPENDED';
+  accountStatus: 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
   authTokenVersion: number;
   createdAt?: string;
   updatedAt?: string;
@@ -230,7 +254,7 @@ export type AdminUserSecurityEvent = {
 export type AdminUsersQuery = {
   query?: string;
   role?: UserRole;
-  status?: 'all' | 'active' | 'suspended' | 'verified' | 'unverified';
+  status?: 'all' | 'active' | 'suspended' | 'deactivated' | 'verified' | 'unverified';
   page?: number;
   pageSize?: number;
 };

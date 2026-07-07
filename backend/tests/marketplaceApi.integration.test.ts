@@ -1026,6 +1026,126 @@ describe('auth and account security hardening', () => {
       emailMarketingUpdates: false
     });
   });
+
+  it('deactivates an account safely after confirmation and password verification', async () => {
+    const password = 'SafeDelete2026!';
+    const user = await prisma.user.create({
+      data: {
+        name: 'Delete Ready User',
+        email: 'delete-ready-user@lux.test',
+        password: await bcrypt.hash(password, 12),
+        role: 'USER',
+        phone: '+96890000001',
+        companyName: 'Delete Ready LLC',
+        emailVerified: true,
+        emailVerifiedAt: new Date(),
+        emailMarketingUpdates: true
+      }
+    });
+
+    await prisma.savedSearch.create({
+      data: {
+        name: 'Delete ready saved search',
+        category: 'listings',
+        filters: {},
+        userId: user.id
+      }
+    });
+
+    const token = signToken(user);
+
+    await request(app)
+      .post('/api/auth/me/deactivate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        confirmation: 'DELETE',
+        currentPassword: password
+      })
+      .expect(200);
+
+    const deactivatedUser = await prisma.user.findUniqueOrThrow({
+      where: {
+        id: user.id
+      }
+    });
+
+    expect(deactivatedUser.deactivatedAt).toBeTruthy();
+    expect(deactivatedUser.email).toBe(`deleted-${user.id}@deleted.lux.om`);
+    expect(deactivatedUser.phone).toBeNull();
+    expect(deactivatedUser.companyName).toBeNull();
+    expect(deactivatedUser.passwordLoginEnabled).toBe(false);
+    expect(deactivatedUser.authTokenVersion).toBe(1);
+
+    await expect(
+      prisma.savedSearch.count({
+        where: {
+          userId: user.id
+        }
+      })
+    ).resolves.toBe(0);
+
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(403);
+  });
+
+  it('blocks account deactivation while active marketplace inventory exists', async () => {
+    const password = 'SafeOwnerDelete2026!';
+    const owner = await prisma.user.create({
+      data: {
+        name: 'Delete Blocked Owner',
+        email: 'delete-blocked-owner@lux.test',
+        password: await bcrypt.hash(password, 12),
+        role: 'OWNER',
+        emailVerified: true,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    await prisma.listing.create({
+      data: {
+        slug: 'delete-blocked-active-listing',
+        title: 'Delete Blocked Active Listing',
+        titleEn: 'Delete Blocked Active Listing',
+        description:
+          'Active listing that must block account deletion until resolved.',
+        type: 'Apartment',
+        typeEn: 'Apartment',
+        transaction: 'Rent',
+        location: 'Muscat, Oman',
+        price: 'OMR 500 /mo',
+        beds: 1,
+        baths: 1,
+        sqm: 80,
+        image: 'https://example.com/delete-blocked.jpg',
+        status: 'PENDING',
+        ownerId: owner.id
+      }
+    });
+
+    const token = signToken(owner);
+
+    const response = await request(app)
+      .post('/api/auth/me/deactivate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        confirmation: 'DELETE',
+        currentPassword: password
+      })
+      .expect(409);
+
+    expect(response.body.message).toContain('active listings');
+
+    const unchangedOwner = await prisma.user.findUniqueOrThrow({
+      where: {
+        id: owner.id
+      }
+    });
+
+    expect(unchangedOwner.deactivatedAt).toBeNull();
+    expect(unchangedOwner.email).toBe('delete-blocked-owner@lux.test');
+  });
 });
 
 describe('saved, reviews, and reports hardening', () => {

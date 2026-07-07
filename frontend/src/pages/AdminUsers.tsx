@@ -112,6 +112,10 @@ function getEventLabel(type: string, language: 'en' | 'ar') {
     ADMIN_EMAIL_UNVERIFIED: {
       en: 'Admin removed email verification',
       ar: 'إزالة تأكيد البريد من الأدمن'
+    },
+    ACCOUNT_DEACTIVATED: {
+      en: 'Account deleted by user',
+      ar: 'حذف الحساب من المستخدم'
     }
   };
 
@@ -164,6 +168,7 @@ export default function AdminUsers() {
           allStatuses: 'كل الحالات',
           active: 'نشط',
           suspended: 'معلق',
+          deleted: 'محذوف',
           verified: 'بريد مؤكد',
           unverified: 'بريد غير مؤكد',
           users: 'المستخدمون',
@@ -218,6 +223,7 @@ export default function AdminUsers() {
           allStatuses: 'All statuses',
           active: 'Active',
           suspended: 'Suspended',
+          deleted: 'Deleted',
           verified: 'Email verified',
           unverified: 'Email unverified',
           users: 'Users',
@@ -335,6 +341,11 @@ export default function AdminUsers() {
 
   async function handleSuspensionToggle() {
     if (!selectedUser || !token) return;
+
+    if (selectedUser.accountStatus === 'DEACTIVATED') {
+      setActionError(copy.actionError);
+      return;
+    }
 
     const shouldSuspend = selectedUser.accountStatus !== 'SUSPENDED';
     const reason = suspensionReason.trim();
@@ -456,6 +467,7 @@ export default function AdminUsers() {
             <option value="all">{copy.allStatuses}</option>
             <option value="active">{copy.active}</option>
             <option value="suspended">{copy.suspended}</option>
+            <option value="deactivated">{copy.deleted}</option>
             <option value="verified">{copy.verified}</option>
             <option value="unverified">{copy.unverified}</option>
           </select>
@@ -525,17 +537,24 @@ export default function AdminUsers() {
                       <td>
                         <span
                           className={`status-pill ${
-                            record.accountStatus === 'SUSPENDED' ? 'rejected' : 'approved'
+                            record.accountStatus === 'DEACTIVATED'
+                              ? 'rejected'
+                              : record.accountStatus === 'SUSPENDED'
+                                ? 'rejected'
+                                : 'approved'
                           }`}
                         >
-                          {record.accountStatus === 'SUSPENDED' ? (
+                          {record.accountStatus === 'DEACTIVATED' ||
+                          record.accountStatus === 'SUSPENDED' ? (
                             <Ban size={13} aria-hidden="true" />
                           ) : (
                             <CheckCircle2 size={13} aria-hidden="true" />
                           )}
-                          {record.accountStatus === 'SUSPENDED'
-                            ? copy.suspended
-                            : copy.active}
+                          {record.accountStatus === 'DEACTIVATED'
+                            ? copy.deleted
+                            : record.accountStatus === 'SUSPENDED'
+                              ? copy.suspended
+                              : copy.active}
                         </span>
 
                         <span
@@ -633,10 +652,17 @@ export default function AdminUsers() {
 
                 <span
                   className={`status-pill ${
-                    selectedUser.accountStatus === 'SUSPENDED' ? 'rejected' : 'approved'
+                    selectedUser.accountStatus === 'DEACTIVATED' ||
+                    selectedUser.accountStatus === 'SUSPENDED'
+                      ? 'rejected'
+                      : 'approved'
                   }`}
                 >
-                  {selectedUser.accountStatus === 'SUSPENDED' ? copy.suspended : copy.active}
+                  {selectedUser.accountStatus === 'DEACTIVATED'
+                    ? copy.deleted
+                    : selectedUser.accountStatus === 'SUSPENDED'
+                      ? copy.suspended
+                      : copy.active}
                 </span>
               </div>
 
@@ -680,10 +706,10 @@ export default function AdminUsers() {
                 </div>
               </div>
 
-              {selectedUser.suspendedReason ? (
+              {selectedUser.suspendedReason || selectedUser.deactivationReason ? (
                 <p className="admin-users-warning">
                   <AlertTriangle size={16} aria-hidden="true" />
-                  {selectedUser.suspendedReason}
+                  {selectedUser.deactivationReason ?? selectedUser.suspendedReason}
                 </p>
               ) : null}
 
@@ -710,6 +736,7 @@ export default function AdminUsers() {
                   type="button"
                   disabled={
                     selectedIsCurrentUser ||
+                    selectedUser.accountStatus === 'DEACTIVATED' ||
                     updatingAction === 'suspend' ||
                     updatingAction === 'unsuspend'
                   }

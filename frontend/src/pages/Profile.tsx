@@ -1,9 +1,9 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Bell, Building2, CheckCircle2, Circle, KeyRound, LockKeyhole, LogOut, Mail, Phone, ShieldCheck, User, XCircle } from 'lucide-react';
+import { AlertTriangle, Bell, Building2, CheckCircle2, Circle, KeyRound, LockKeyhole, LogOut, Mail, Phone, ShieldCheck, Trash2, User, XCircle } from 'lucide-react';
 
 import { ApiError } from '../api/client';
-import { changePassword, logoutAllSessions, requestEmailChange, resendEmailVerification } from '../api/auth';
+import { changePassword, deactivateCurrentAccount, logoutAllSessions, requestEmailChange, resendEmailVerification } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -12,7 +12,7 @@ import { getPasswordPolicyStatus } from '../utils/passwordPolicy';
 
 export default function Profile() {
   const { language } = useLanguage();
-  const { token, user, updateProfile, refreshUser, replaceSession } = useAuth();
+  const { token, user, updateProfile, refreshUser, replaceSession, logout } = useAuth();
   const [searchParams] = useSearchParams();
   const preferenceCardRef = useRef<HTMLFormElement | null>(null);
 
@@ -50,6 +50,11 @@ export default function Profile() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [devVerificationUrl, setDevVerificationUrl] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deleteCurrentPassword, setDeleteCurrentPassword] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteMessage, setDeleteMessage] = useState('');
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
     setName(user?.name ?? '');
@@ -99,6 +104,11 @@ export default function Profile() {
     Boolean(user?.passwordLoginEnabled) &&
     emailChangeCurrentPassword.length > 0 &&
     !requestingEmailChange;
+  const canDeleteAccount =
+    user?.role !== 'ADMIN' &&
+    deleteConfirmation === 'DELETE' &&
+    (!user?.passwordLoginEnabled || deleteCurrentPassword.length > 0) &&
+    !deletingAccount;
 
   const copy =
     language === 'ar'
@@ -168,6 +178,21 @@ export default function Profile() {
           emailChangeDevLink: 'رابط تغيير البريد للتطوير',
           emailChangeNeedsPassword:
             'يجب إضافة كلمة مرور للحساب قبل تغيير البريد الإلكتروني.',
+          deleteTitle: 'حذف الحساب',
+          deleteDescription:
+            'هذا الإجراء يوقف تسجيل الدخول ويزيل بيانات الحساب الشخصية. لن يتم حذف السجلات السوقية النشطة مثل الحجوزات، المدفوعات، العقود أو الإعلانات قبل إغلاقها.',
+          deleteConfirmationLabel: 'اكتبي DELETE للتأكيد',
+          deletePassword: 'كلمة المرور الحالية',
+          deleteButton: 'حذف حسابي',
+          deletingAccount: 'جاري حذف الحساب...',
+          deleteSuccess: 'تم حذف الحساب. سيتم تسجيل الخروج الآن.',
+          deleteError: 'تعذر حذف الحساب.',
+          deletePasswordHelp:
+            'كلمة المرور مطلوبة لحسابات الدخول بالبريد وكلمة المرور. حسابات Google فقط تحتاج كتابة DELETE.',
+          deleteWarning:
+            'قبل الحذف، أغلقي أي حجوزات، عقود، مدفوعات، إعلانات، أنشطة أو مشاريع نشطة مرتبطة بالحساب.',
+          deleteAdminBlocked:
+            'حسابات الأدمن لا يمكن حذفها من صفحة الملف الشخصي. انقلي أو عطّلي صلاحيات الأدمن من لوحة الإدارة أولاً.',
           passwordRules: {
             length: 'من 10 إلى 100 حرف',
             lowercase: 'حرف صغير واحد على الأقل',
@@ -245,6 +270,21 @@ export default function Profile() {
           emailChangeDevLink: 'Development email change link',
           emailChangeNeedsPassword:
             'You need to add a password to this account before changing your email.',
+          deleteTitle: 'Delete account',
+          deleteDescription:
+            'This disables sign-in and removes personal account details. Active marketplace records such as bookings, payments, contracts, listings, activities, or projects must be closed before deletion.',
+          deleteConfirmationLabel: 'Type DELETE to confirm',
+          deletePassword: 'Current password',
+          deleteButton: 'Delete my account',
+          deletingAccount: 'Deleting account...',
+          deleteSuccess: 'Account deleted. You will be signed out now.',
+          deleteError: 'Could not delete your account.',
+          deletePasswordHelp:
+            'Password is required for email/password accounts. Google-only accounts only need the DELETE confirmation.',
+          deleteWarning:
+            'Before deleting, close any active bookings, contracts, payments, listings, activities, or developer projects linked to this account.',
+          deleteAdminBlocked:
+            'Admin accounts cannot be deleted from the profile page. Transfer or suspend admin access from the admin console first.',
           passwordRules: {
             length: '10 to 100 characters',
             lowercase: 'At least one lowercase letter',
@@ -387,6 +427,42 @@ export default function Profile() {
       }
     } finally {
       setLoggingOutSessions(false);
+    }
+  }
+
+  async function handleDeleteAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!token || !user || !canDeleteAccount) return;
+
+    try {
+      setDeletingAccount(true);
+      setDeleteMessage('');
+      setDeleteError('');
+
+      await deactivateCurrentAccount(
+        {
+          confirmation: deleteConfirmation,
+          ...(user.passwordLoginEnabled ? { currentPassword: deleteCurrentPassword } : {})
+        },
+        token
+      );
+
+      setDeleteMessage(copy.deleteSuccess);
+
+      window.setTimeout(() => {
+        logout();
+      }, 650);
+    } catch (caughtError) {
+      console.error(caughtError);
+
+      if (caughtError instanceof ApiError) {
+        setDeleteError(caughtError.message);
+      } else {
+        setDeleteError(copy.deleteError);
+      }
+    } finally {
+      setDeletingAccount(false);
     }
   }
 
@@ -810,6 +886,79 @@ export default function Profile() {
               {loggingOutSessions ? copy.loggingOutSessions : copy.logoutOtherSessions}
             </button>
           </div>
+        </form>
+
+        <form
+          className="profile-card form-card profile-card--danger-zone"
+          onSubmit={handleDeleteAccount}
+        >
+          <div className="form-group-heading">
+            <span className="form-section-icon form-section-icon--danger">
+              <AlertTriangle size={18} aria-hidden="true" />
+            </span>
+
+            <div>
+              <h2>{copy.deleteTitle}</h2>
+              <p>{copy.deleteDescription}</p>
+            </div>
+          </div>
+
+          <p className="profile-danger-note">{copy.deleteWarning}</p>
+
+          {user.role === 'ADMIN' ? (
+            <p className="trust-note">{copy.deleteAdminBlocked}</p>
+          ) : null}
+
+          <label>
+            {copy.deleteConfirmationLabel}
+            <span className="input-with-icon">
+              <Trash2 size={17} aria-hidden="true" />
+              <input
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </span>
+          </label>
+
+          {user.passwordLoginEnabled ? (
+            <label>
+              {copy.deletePassword}
+              <span className="input-with-icon">
+                <LockKeyhole size={17} aria-hidden="true" />
+                <input
+                  type="password"
+                  value={deleteCurrentPassword}
+                  onChange={(event) => setDeleteCurrentPassword(event.target.value)}
+                  autoComplete="current-password"
+                />
+              </span>
+            </label>
+          ) : (
+            <p className="trust-note">{copy.deletePasswordHelp}</p>
+          )}
+
+          {deleteMessage ? (
+            <p className="form-success" role="status">
+              {deleteMessage}
+            </p>
+          ) : null}
+
+          {deleteError ? (
+            <p className="form-error" role="alert">
+              {deleteError}
+            </p>
+          ) : null}
+
+          <button
+            className="button-link button-link--danger"
+            type="submit"
+            disabled={!canDeleteAccount}
+          >
+            <Trash2 size={17} aria-hidden="true" />
+            {deletingAccount ? copy.deletingAccount : copy.deleteButton}
+          </button>
         </form>
 
       </div>

@@ -116,6 +116,7 @@ enum AccountSecurityEventType {
   ADMIN_USER_UNSUSPENDED
   ADMIN_EMAIL_VERIFIED
   ADMIN_EMAIL_UNVERIFIED
+  ACCOUNT_DEACTIVATED
 }
 
 enum BookingEventType {
@@ -369,6 +370,8 @@ model User {
   suspendedAt                DateTime?
   suspendedReason            String?
   suspendedById              String?
+  deactivatedAt              DateTime?
+  deactivationReason         String?
   suspendedBy                User?     @relation("UserSuspensionsIssued", fields: [suspendedById], references: [id], onDelete: SetNull)
   suspensionsIssued          User[]    @relation("UserSuspensionsIssued")
   role      Role     @default(USER)
@@ -449,6 +452,7 @@ model User {
 
   @@index([role])
   @@index([suspendedAt])
+  @@index([deactivatedAt])
   @@index([suspendedById])
   @@index([googleId])
   @@index([emailVerified])
