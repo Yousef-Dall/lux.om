@@ -19,6 +19,7 @@ import { bookingsRouter } from './routes/bookings';
 import { contractsRouter } from './routes/contracts';
 import { marketInsightsRouter } from './routes/marketInsights';
 import { mediaQualityRouter } from './routes/mediaQuality';
+import { mapRouter } from './routes/map';
 import { rentPaymentsRouter } from './routes/rentPayments';
 import { reportsRouter } from './routes/reports';
 import { reviewsRouter } from './routes/reviews';
@@ -124,6 +125,7 @@ const PUBLIC_CACHEABLE_API_PREFIXES = [
   '/api/travel-agencies',
   '/api/landmarks',
   '/api/market-insights',
+  '/api/map',
   '/api/reviews'
 ];
 
@@ -292,6 +294,8 @@ function createContentSecurityPolicyDirectives(): Record<string, string[] | null
       "'self'",
       ...GOOGLE_AUTH_ORIGINS,
       ...THAWANI_CHECKOUT_ORIGINS,
+      'https://www.google.com',
+      'https://maps.google.com',
       ...parseEnvList(env.CSP_FRAME_SRC)
     ],
     formAction: ["'self'", ...GOOGLE_AUTH_ORIGINS, ...THAWANI_CHECKOUT_ORIGINS],
@@ -501,6 +505,7 @@ export function createApp() {
   app.use('/api/rent-payments', rentPaymentsRouter);
   app.use('/api/transactions', transactionsRouter);
   app.use('/api/market-insights', marketInsightsRouter);
+  app.use('/api/map', mapRouter);
   app.use('/api/media-quality', mediaQualityRouter);
   app.use('/api/valuations', valuationsRouter);
   app.use('/api/verification', verificationRouter);

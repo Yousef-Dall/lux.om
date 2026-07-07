@@ -18,6 +18,7 @@ export default function Footer() {
           investorInsights: 'رؤى المستثمر',
           travelAgencies: 'وكالات السفر',
           projects: 'المشاريع',
+          map: 'الخريطة',
           partnerAgencies: 'شركاء الأنشطة',
           listAgency: 'انضم كوكالة سفر',
           legal: 'القانون والثقة',
@@ -32,6 +33,7 @@ export default function Footer() {
           investorInsights: 'Investor insights',
           travelAgencies: 'Travel agencies',
           projects: 'Projects',
+          map: 'Map',
           partnerAgencies: 'Activity partners',
           listAgency: 'Join as travel agency',
           legal: 'Legal & trust',
@@ -109,6 +111,7 @@ export default function Footer() {
           <Link to="/listings">{t.nav.listings}</Link>
           <Link to="/market-insights">{copy.investorInsights}</Link>
           <Link to="/projects">{copy.projects}</Link>
+          <Link to="/map">{copy.map}</Link>
           <Link to="/activities">{t.nav.activities}</Link>
           <Link to="/developers">{t.nav.developers}</Link>
           <Link to="/travel-agencies">{copy.travelAgencies}</Link>

@@ -568,6 +568,12 @@ model DeveloperProject {
   locationEn    String
   locationAr    String?
 
+  mapPlaceLabel String?
+  mapAddress    String?
+  mapGoogleUrl  String?
+  latitude      Decimal? @db.Decimal(10, 7)
+  longitude     Decimal? @db.Decimal(10, 7)
+
   completionStatus String?
   handoverDate     DateTime?
   totalUnits       Int?
@@ -613,6 +619,7 @@ model DeveloperProject {
   @@index([developerId])
   @@index([ownerId])
   @@index([nearestLandmarkId])
+  @@index([latitude, longitude])
   @@index([mediaQualityStatus])
 }
 
@@ -641,6 +648,12 @@ model Listing {
   transaction      String
   buyerEligibility ListingBuyerEligibility[] @default([])
   location         String
+
+  mapPlaceLabel String?
+  mapAddress    String?
+  mapGoogleUrl  String?
+  latitude      Decimal? @db.Decimal(10, 7)
+  longitude     Decimal? @db.Decimal(10, 7)
 
   titleEn       String?
   titleAr       String?
@@ -739,6 +752,7 @@ model Listing {
   @@index([developerId])
   @@index([developerProjectId])
   @@index([nearestLandmarkId])
+  @@index([latitude, longitude])
   @@index([location])
   @@index([transaction])
   @@index([eligibilityMarkedById])

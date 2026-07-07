@@ -1924,6 +1924,139 @@ describe('GET /api/listings', () => {
   });
 });
 
+describe('GET /api/map/markers', () => {
+  it('returns approved pinned listings and projects while excluding unpublished records', async () => {
+    const mapListingResponse = await request(app)
+      .post('/api/listings')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        title: 'Map pinned beach villa',
+        description:
+          'A sufficiently detailed listing description for the map discovery integration test.',
+        type: 'Villa',
+        transaction: 'Sale',
+        buyerEligibility: ['FOREIGNERS_ALLOWED'],
+        location: 'Qurum, Muscat',
+        mapPlaceLabel: 'Qurum Beach Villa Pin',
+        mapAddress: 'Qurum Beach, Muscat, Oman',
+        mapGoogleUrl: 'https://www.google.com/maps?q=23.6151,58.4878',
+        latitude: 23.6151,
+        longitude: 58.4878,
+        priceAmount: '125000',
+        priceCurrency: 'OMR',
+        priceQualifier: 'FIXED',
+        priceUnit: 'TOTAL',
+        beds: 4,
+        baths: 4,
+        sqm: 320,
+        image: 'https://example.com/map-villa.jpg',
+        amenities: ['Sea view']
+      })
+      .expect(201);
+
+    const mapProjectResponse = await request(app)
+      .post('/api/developers/projects')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        nameEn: 'Map pinned waterfront project',
+        descriptionEn:
+          'A sufficiently detailed developer project description for map discovery.',
+        locationEn: 'Mina Sultan Qaboos, Muscat',
+        mapPlaceLabel: 'Waterfront Project Pin',
+        mapAddress: 'Mina Sultan Qaboos, Muscat, Oman',
+        mapGoogleUrl: 'https://www.google.com/maps?q=23.6247,58.5651',
+        latitude: 23.6247,
+        longitude: 58.5651,
+        completionStatus: 'Off-plan',
+        totalUnits: 40,
+        availableUnits: 12,
+        bedroomsSummary: '1BR to 3BR',
+        startingPriceAmount: '90000',
+        priceCurrency: 'OMR',
+        priceQualifier: 'FROM',
+        image: 'https://example.com/map-project.jpg',
+        status: 'APPROVED'
+      })
+      .expect(201);
+
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: {
+        email: 'integration-admin@lux.test'
+      }
+    });
+
+    const unpublishedListing = await prisma.listing.create({
+      data: {
+        slug: 'map-pending-listing',
+        title: 'Pending map listing',
+        titleEn: 'Pending map listing',
+        description: 'Pending map listing should not appear in public markers.',
+        type: 'Villa',
+        typeEn: 'Villa',
+        transaction: 'Sale',
+        location: 'Muscat, Oman',
+        price: 'OMR 1',
+        beds: 1,
+        baths: 1,
+        sqm: 100,
+        image: 'https://example.com/pending-map.jpg',
+        status: 'PENDING',
+        ownerId: admin.id,
+        latitude: '23.1',
+        longitude: '58.1'
+      }
+    });
+
+    try {
+      const response = await request(app).get('/api/map/markers').expect(200);
+      const markers = response.body.markers as Array<{
+        kind: string;
+        slug: string;
+        titleEn: string;
+        latitude: number;
+        longitude: number;
+        detailPath: string;
+      }>;
+
+      const listingMarker = markers.find(
+        (marker) => marker.slug === mapListingResponse.body.listing.slug
+      );
+      const projectMarker = markers.find(
+        (marker) => marker.slug === mapProjectResponse.body.project.slug
+      );
+
+      expect(listingMarker).toMatchObject({
+        kind: 'LISTING',
+        titleEn: 'Map pinned beach villa',
+        latitude: 23.6151,
+        longitude: 58.4878,
+        detailPath: `/listings/${mapListingResponse.body.listing.slug}`
+      });
+      expect(projectMarker).toMatchObject({
+        kind: 'PROJECT',
+        titleEn: 'Map pinned waterfront project',
+        latitude: 23.6247,
+        longitude: 58.5651,
+        detailPath: `/projects/${mapProjectResponse.body.project.slug}`
+      });
+      expect(markers.some((marker) => marker.slug === unpublishedListing.slug)).toBe(false);
+    } finally {
+      await prisma.listing.deleteMany({
+        where: {
+          id: {
+            in: [mapListingResponse.body.listing.id, unpublishedListing.id]
+          }
+        }
+      });
+      await prisma.developerProject.deleteMany({
+        where: {
+          id: mapProjectResponse.body.project.id
+        }
+      });
+    }
+  });
+});
+
 describe('GET /api/activities', () => {
   it('returns approved activities with pagination metadata', async () => {
     const response = await request(app)

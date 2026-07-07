@@ -17,6 +17,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { getDeveloperProjectBySlug } from '../api/developerProjects';
 import ButtonLink from '../components/ButtonLink';
+import MapLocationPanel from '../components/MapLocationPanel';
 import MediaQualityGuidance from '../components/MediaQualityGuidance';
 import ReportModal from '../components/ReportModal';
 import SectionHeader from '../components/SectionHeader';
@@ -298,6 +299,16 @@ export default function DeveloperProjectDetails() {
               </div>
             </section>
           ) : null}
+
+          <MapLocationPanel
+            title={project.name}
+            location={project.location}
+            placeLabel={project.mapPlaceLabel}
+            address={project.mapAddress}
+            googleMapsUrl={project.mapGoogleUrl}
+            latitude={project.latitude}
+            longitude={project.longitude}
+          />
 
           <div className="details-content">
             <div className="details-section-heading">

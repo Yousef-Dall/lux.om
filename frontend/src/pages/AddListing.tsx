@@ -26,6 +26,7 @@ import SectionHeader from '../components/SectionHeader';
 import EmailVerificationBanner from '../components/EmailVerificationBanner';
 import CreationReadinessPanel, { type CreationReadinessCheck } from '../components/CreationReadinessPanel';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { parseCoordinatesFromMapInput } from '../utils/mapLocation';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
   formatListingBuyerEligibility,
@@ -116,6 +117,11 @@ const initialForm = {
   transaction: 'Rent',
   buyerEligibility: [] as ListingBuyerEligibility[],
   location: '',
+  mapPlaceLabel: '',
+  mapAddress: '',
+  mapGoogleUrl: '',
+  latitude: '',
+  longitude: '',
   priceAmount: '',
   priceCurrency: 'OMR',
   priceQualifier: 'FIXED' as PriceQualifier,
@@ -262,6 +268,17 @@ export default function AddListing() {
           noLandmark: 'بدون معلم محدد',
           distance: 'المسافة من المعلم',
           distancePlaceholder: 'مثال: 5 دقائق بالسيارة، داخل المنطقة',
+          mapLocation: 'موقع Google Maps',
+          mapLocationText: 'الصق رابط Google Maps أو أضف الإحداثيات ليظهر العقار على خريطة lux.om.',
+          mapPlaceLabel: 'اسم النقطة على الخريطة',
+          mapPlaceLabelPlaceholder: 'مثال: القرم هايتس، مبنى ب',
+          mapAddress: 'عنوان الخريطة',
+          mapAddressPlaceholder: 'العنوان أو اسم الشارع كما يظهر للعميل',
+          googleMapsUrl: 'رابط Google Maps',
+          googleMapsUrlPlaceholder: 'الصق رابط Google Maps وسيتم التقاط الإحداثيات إن وجدت',
+          latitude: 'خط العرض',
+          longitude: 'خط الطول',
+          coordinatesHint: 'الإحداثيات اختيارية لكنها مطلوبة لإظهار دبوس العقار على صفحة الخريطة.',
           submitting: 'جاري الإرسال...',
           submitError: 'تعذر إرسال العقار للمراجعة. حاولي مرة أخرى.',
           authError: 'يجب تسجيل الدخول قبل إضافة عقار.',
@@ -326,6 +343,17 @@ export default function AddListing() {
           noLandmark: 'No landmark selected',
           distance: 'Distance from landmark',
           distancePlaceholder: 'Example: 5 min drive, inside district',
+          mapLocation: 'Google Maps location',
+          mapLocationText: 'Paste a Google Maps link or add coordinates so this property can appear on the lux.om map.',
+          mapPlaceLabel: 'Map place label',
+          mapPlaceLabelPlaceholder: 'Example: Qurum Heights, Building B',
+          mapAddress: 'Map address',
+          mapAddressPlaceholder: 'Street address or area name customers should see',
+          googleMapsUrl: 'Google Maps URL',
+          googleMapsUrlPlaceholder: 'Paste a Google Maps URL; coordinates will auto-fill when available',
+          latitude: 'Latitude',
+          longitude: 'Longitude',
+          coordinatesHint: 'Coordinates are optional, but needed to pin this property on the public map.',
           submitting: 'Submitting...',
           submitError: 'Could not submit this listing for review. Please try again.',
           authError: 'You must be logged in before adding a listing.',
@@ -533,7 +561,12 @@ export default function AddListing() {
       key: 'location',
       title: copy.locationReady,
       description: copy.locationReadyText,
-      done: Boolean(form.nearestLandmarkId || form.distanceFromLandmark.trim())
+      done: Boolean(
+        form.nearestLandmarkId ||
+          form.distanceFromLandmark.trim() ||
+          (form.latitude.trim() && form.longitude.trim()) ||
+          form.mapGoogleUrl.trim()
+      )
     },
     {
       key: 'trust',
@@ -552,6 +585,19 @@ export default function AddListing() {
     setForm((current) => ({
       ...current,
       [field]: value
+    }));
+  }
+
+  function handleMapUrlChange(value: string) {
+    const coordinates = parseCoordinatesFromMapInput(value);
+
+    setSubmitted(false);
+    setSubmitError('');
+    setForm((current) => ({
+      ...current,
+      mapGoogleUrl: value,
+      latitude: coordinates?.latitude ?? current.latitude,
+      longitude: coordinates?.longitude ?? current.longitude
     }));
   }
 
@@ -670,6 +716,11 @@ export default function AddListing() {
     buyerEligibility:
       form.transaction === 'Sale' ? form.buyerEligibility : undefined,
     location: form.location,
+    mapPlaceLabel: optionalText(form.mapPlaceLabel),
+    mapAddress: optionalText(form.mapAddress),
+    mapGoogleUrl: optionalText(form.mapGoogleUrl),
+    latitude: optionalText(form.latitude),
+    longitude: optionalText(form.longitude),
     priceAmount:
       form.priceQualifier === 'ON_REQUEST'
         ? undefined
@@ -1162,6 +1213,68 @@ export default function AddListing() {
                 onChange={(event) => updateForm('distanceFromLandmark', event.target.value)}
               />
             </label>
+          </div>
+
+          <div className="map-location-card">
+            <div>
+              <p className="eyebrow">{copy.mapLocation}</p>
+              <h3>{copy.mapLocationText}</h3>
+              <small>{copy.coordinatesHint}</small>
+            </div>
+
+            <div className="form-grid">
+              <label>
+                {copy.mapPlaceLabel}
+                <input
+                  placeholder={copy.mapPlaceLabelPlaceholder}
+                  value={form.mapPlaceLabel}
+                  onChange={(event) => updateForm('mapPlaceLabel', event.target.value)}
+                />
+              </label>
+
+              <label>
+                {copy.mapAddress}
+                <input
+                  placeholder={copy.mapAddressPlaceholder}
+                  value={form.mapAddress}
+                  onChange={(event) => updateForm('mapAddress', event.target.value)}
+                />
+              </label>
+
+              <label className="form-grid__wide">
+                {copy.googleMapsUrl}
+                <input
+                  inputMode="url"
+                  placeholder={copy.googleMapsUrlPlaceholder}
+                  value={form.mapGoogleUrl}
+                  onChange={(event) => handleMapUrlChange(event.target.value)}
+                />
+              </label>
+
+              <label>
+                {copy.latitude}
+                <input
+                  type="number"
+                  step="0.0000001"
+                  min="-90"
+                  max="90"
+                  value={form.latitude}
+                  onChange={(event) => updateForm('latitude', event.target.value)}
+                />
+              </label>
+
+              <label>
+                {copy.longitude}
+                <input
+                  type="number"
+                  step="0.0000001"
+                  min="-180"
+                  max="180"
+                  value={form.longitude}
+                  onChange={(event) => updateForm('longitude', event.target.value)}
+                />
+              </label>
+            </div>
           </div>
         </section>
 

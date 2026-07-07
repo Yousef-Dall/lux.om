@@ -33,6 +33,29 @@ const optionalProjectDateSchema = z.preprocess((value) => {
   return value;
 }, z.coerce.date().optional()).optional();
 
+const optionalProjectMapTextSchema = z.preprocess((value) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  return value;
+}, z.string().trim().max(240).optional()).optional();
+
+const optionalProjectMapUrlSchema = z.preprocess((value) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  return value;
+}, z.string().trim().max(1000).url().refine(
+  (url) => url.startsWith('https://www.google.') || url.startsWith('https://maps.google.') || url.startsWith('https://goo.gl/maps/') || url.startsWith('https://maps.app.goo.gl/'),
+  'Use a valid Google Maps URL'
+).optional()).optional();
+
+const optionalProjectLatitudeSchema = z.preprocess((value) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  return value;
+}, z.coerce.number().finite().min(-90).max(90).optional()).optional();
+
+const optionalProjectLongitudeSchema = z.preprocess((value) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  return value;
+}, z.coerce.number().finite().min(-180).max(180).optional()).optional();
+
 const safeProjectUrlSchema = z
   .string()
   .trim()
@@ -144,6 +167,11 @@ const developerProjectCreateSchema = z
     descriptionAr: z.string().trim().max(5000).optional(),
     locationEn: z.string().trim().min(2).max(180),
     locationAr: z.string().trim().max(180).optional(),
+    mapPlaceLabel: optionalProjectMapTextSchema,
+    mapAddress: optionalProjectMapTextSchema,
+    mapGoogleUrl: optionalProjectMapUrlSchema,
+    latitude: optionalProjectLatitudeSchema,
+    longitude: optionalProjectLongitudeSchema,
     completionStatus: z.string().trim().max(120).optional(),
     handoverDate: optionalProjectDateSchema,
     totalUnits: z.coerce.number().int().min(0).max(10000).optional(),
@@ -185,6 +213,14 @@ const developerProjectCreateSchema = z
         code: z.ZodIssueCode.custom,
         path: ['availableUnits'],
         message: 'Available units cannot exceed total units'
+      });
+    }
+
+    if ((data.latitude === undefined) !== (data.longitude === undefined)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['latitude'],
+        message: 'Latitude and longitude must be provided together'
       });
     }
   });
@@ -732,6 +768,11 @@ developersRouter.post(
           descriptionAr: data.descriptionAr,
           locationEn: data.locationEn,
           locationAr: data.locationAr,
+          mapPlaceLabel: data.mapPlaceLabel,
+          mapAddress: data.mapAddress,
+          mapGoogleUrl: data.mapGoogleUrl,
+          latitude: data.latitude,
+          longitude: data.longitude,
           completionStatus: data.completionStatus,
           handoverDate: data.handoverDate,
           totalUnits: data.totalUnits,

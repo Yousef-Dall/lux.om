@@ -18,6 +18,7 @@ import { getListingBySlug, getRelatedListingsBySlug } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
 import InvestorWatchlistForm from '../components/InvestorWatchlistForm';
 import { ListingCard } from '../components/Cards';
+import MapLocationPanel from '../components/MapLocationPanel';
 import MediaQualityGuidance from '../components/MediaQualityGuidance';
 import ReportModal from '../components/ReportModal';
 import ReviewSection from '../components/ReviewSection';
@@ -430,6 +431,16 @@ notSpecified: 'Not specified',
               </div>
             </section>
           ) : null}
+
+          <MapLocationPanel
+            title={listing.title}
+            location={listing.location}
+            placeLabel={listing.mapPlaceLabel}
+            address={listing.mapAddress}
+            googleMapsUrl={listing.mapGoogleUrl}
+            latitude={listing.latitude}
+            longitude={listing.longitude}
+          />
 
           <div className="details-content">
             <div className="details-section-heading">

@@ -17,6 +17,11 @@ export type CreateListingPayload = {
   transaction: ListingTransaction;
   buyerEligibility?: ListingBuyerEligibility[];
   location: string;
+  mapPlaceLabel?: string;
+  mapAddress?: string;
+  mapGoogleUrl?: string;
+  latitude?: string | number;
+  longitude?: string | number;
 
   /**
    * Legacy display price remains supported while forms migrate.

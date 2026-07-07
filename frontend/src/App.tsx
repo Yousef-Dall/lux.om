@@ -21,6 +21,7 @@ import Developers from './pages/Developers';
 import Home from './pages/Home';
 import ListingDetails from './pages/ListingDetails';
 import MarketInsights from './pages/MarketInsights';
+import MapDiscovery from './pages/MapDiscovery';
 import Listings from './pages/Listings';
 import Projects from './pages/Projects';
 import Login from './pages/Login';
@@ -141,6 +142,10 @@ const seoCopy = {
       title: 'Oman market insights | lux.om',
       description: 'Explore Oman real estate market signals based on approved lux.om listings and conservative comparable data.'
     },
+    map: {
+      title: 'Oman property and project map | lux.om',
+      description: 'Explore approved lux.om properties and developer projects pinned by Google Maps coordinates across Oman.'
+    },
     projects: {
       title: 'Oman property projects and developments | lux.om',
       description:
@@ -228,6 +233,10 @@ const seoCopy = {
       title: 'أنشطة وباقات سفر مختارة في عُمان | lux.om',
       description: 'احجز أنشطة وتجارب مميزة في عُمان وباقات سفر مختارة من مزودين موثوقين.'
     },
+    map: {
+      title: 'خريطة عقارات ومشاريع عُمان | lux.om',
+      description: 'استكشف العقارات والمشاريع المنشورة على lux.om والمثبتة بإحداثيات Google Maps في عُمان.'
+    },
     projects: {
       title: 'مشاريع عقارية في عُمان | lux.om',
       description: 'استكشف مشاريع مطورين معتمدة ومخططات ووحدات وتفاصيل مشاريع في عُمان.'
@@ -301,6 +310,7 @@ function getSeoKey(pathname: string) {
   if (pathname.startsWith('/listings')) return 'listings';
   if (pathname.startsWith('/activities')) return 'activities';
   if (pathname.startsWith('/market-insights')) return 'marketInsights';
+  if (pathname.startsWith('/map')) return 'map';
   if (pathname.startsWith('/projects') || pathname.startsWith('/developer-projects')) return 'projects';
   if (pathname.startsWith('/developers')) return 'developers';
   if (pathname.startsWith('/travel-agencies')) return 'travelAgencies';
@@ -671,6 +681,7 @@ export default function App() {
           />
 
           <Route path="/market-insights" element={<MarketInsights />} />
+          <Route path="/map" element={<MapDiscovery />} />
 
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:slug" element={<DeveloperProjectDetails />} />

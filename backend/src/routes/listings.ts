@@ -60,6 +60,39 @@ const optionalLongTextSchema = z
   .optional()
   .transform((value) => value || undefined);
 
+const optionalMapTextSchema = z
+  .string()
+  .trim()
+  .max(240)
+  .optional()
+  .transform((value) => value || undefined);
+
+const optionalMapUrlSchema = z.preprocess(
+  (value) =>
+    value === '' || value === null || value === undefined ? undefined : value,
+  z
+    .string()
+    .trim()
+    .max(1000)
+    .url()
+    .refine((value) => value.startsWith('https://www.google.') || value.startsWith('https://maps.google.') || value.startsWith('https://goo.gl/maps/') || value.startsWith('https://maps.app.goo.gl/'), {
+      message: 'Use a valid Google Maps URL'
+    })
+    .optional()
+).optional();
+
+const optionalLatitudeSchema = z.preprocess(
+  (value) =>
+    value === '' || value === null || value === undefined ? undefined : value,
+  z.coerce.number().finite().min(-90).max(90).optional()
+).optional();
+
+const optionalLongitudeSchema = z.preprocess(
+  (value) =>
+    value === '' || value === null || value === undefined ? undefined : value,
+  z.coerce.number().finite().min(-180).max(180).optional()
+).optional();
+
 const optionalNumberSchema = z
   .union([z.coerce.number().int(), z.undefined(), z.null()])
   .optional()
@@ -238,6 +271,11 @@ const listingSchema = z
       .max(12)
       .default([]),
     location: z.string().trim().min(2).max(120),
+    mapPlaceLabel: optionalMapTextSchema,
+    mapAddress: optionalMapTextSchema,
+    mapGoogleUrl: optionalMapUrlSchema,
+    latitude: optionalLatitudeSchema,
+    longitude: optionalLongitudeSchema,
     price: z.string().trim().min(1).max(80).optional(),
     priceAmount: optionalPriceAmountSchema,
     priceCurrency: optionalCurrencySchema,
@@ -332,6 +370,14 @@ const listingSchema = z
         code: z.ZodIssueCode.custom,
         path: ['buyerEligibility'],
         message: 'Buyer eligibility is only available for sale listings'
+      });
+    }
+
+    if ((data.latitude === undefined) !== (data.longitude === undefined)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['latitude'],
+        message: 'Latitude and longitude must be provided together'
       });
     }
   });
@@ -468,6 +514,11 @@ const listingUpdateSchema = z
       .max(12)
       .optional(),
     location: z.string().trim().min(2).max(120).optional(),
+    mapPlaceLabel: optionalMapTextSchema,
+    mapAddress: optionalMapTextSchema,
+    mapGoogleUrl: optionalMapUrlSchema.nullable(),
+    latitude: optionalLatitudeSchema,
+    longitude: optionalLongitudeSchema,
 
     price: z.string().trim().min(1).max(80).optional(),
     priceAmount: optionalPriceAmountSchema,
@@ -516,7 +567,16 @@ const listingUpdateSchema = z
     view: optionalTextSchema,
     paymentFrequency: optionalTextSchema
   })
-  .strict();
+  .strict()
+  .superRefine((data, context) => {
+    if ((data.latitude === undefined) !== (data.longitude === undefined)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['latitude'],
+        message: 'Latitude and longitude must be provided together'
+      });
+    }
+  });
 
 type ListingUpdateData = z.infer<typeof listingUpdateSchema>;
 
@@ -749,6 +809,11 @@ const sensitiveListingUpdateKeys = [
   'eligibilityDisclaimer',
   'investorHighlights',
   'location',
+  'mapPlaceLabel',
+  'mapAddress',
+  'mapGoogleUrl',
+  'latitude',
+  'longitude',
   'developerId',
   'developerNameEn',
   'developerNameAr',
@@ -2640,6 +2705,12 @@ listingsRouter.patch('/:id', requireAuth(), async (req, res, next) => {
       updateData.locationEn = data.location;
     }
 
+    if (hasOwnProperty(data, 'mapPlaceLabel')) updateData.mapPlaceLabel = data.mapPlaceLabel ?? null;
+    if (hasOwnProperty(data, 'mapAddress')) updateData.mapAddress = data.mapAddress ?? null;
+    if (hasOwnProperty(data, 'mapGoogleUrl')) updateData.mapGoogleUrl = data.mapGoogleUrl ?? null;
+    if (hasOwnProperty(data, 'latitude')) updateData.latitude = data.latitude ?? null;
+    if (hasOwnProperty(data, 'longitude')) updateData.longitude = data.longitude ?? null;
+
     if (hasOwnProperty(data, 'buyerEligibility') || data.transaction !== undefined) {
       updateData.buyerEligibility =
         mergedTransaction === 'Sale'
@@ -3130,6 +3201,11 @@ listingsRouter.post(
         investorHighlights:
           data.transaction === 'Sale' ? data.investorHighlights : [],
         location: data.location,
+        mapPlaceLabel: data.mapPlaceLabel,
+        mapAddress: data.mapAddress,
+        mapGoogleUrl: data.mapGoogleUrl,
+        latitude: data.latitude,
+        longitude: data.longitude,
         price: resolvedPrice.price,
         priceAmount: resolvedPrice.priceAmount,
         priceCurrency: resolvedPrice.priceCurrency,

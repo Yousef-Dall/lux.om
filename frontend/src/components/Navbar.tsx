@@ -43,12 +43,14 @@ language === 'ar'
 ? {
 investorInsights: 'رؤى المستثمر',
 travelAgencies: 'وكالات السفر',
-projects: 'المشاريع'
+projects: 'المشاريع',
+map: 'الخريطة'
 }
 : {
 investorInsights: 'Investor insights',
 travelAgencies: 'Travel agencies',
-projects: 'Projects'
+projects: 'Projects',
+map: 'Map'
 };
 
 const links = useMemo(
@@ -56,6 +58,7 @@ const links = useMemo(
 { to: '/listings', label: t.nav.listings },
 { to: '/market-insights', label: navCopy.investorInsights },
 { to: '/projects', label: navCopy.projects },
+{ to: '/map', label: navCopy.map },
 { to: '/activities', label: t.nav.activities },
 { to: '/developers', label: t.nav.developers },
 { to: '/travel-agencies', label: navCopy.travelAgencies },
@@ -65,6 +68,7 @@ const links = useMemo(
 [
 navCopy.investorInsights,
 navCopy.projects,
+navCopy.map,
 navCopy.travelAgencies,
 t.nav.about,
 t.nav.activities,

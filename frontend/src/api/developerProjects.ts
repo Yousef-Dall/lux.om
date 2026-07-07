@@ -24,6 +24,11 @@ export type CreateDeveloperProjectPayload = {
   descriptionAr?: string;
   locationEn: string;
   locationAr?: string;
+  mapPlaceLabel?: string;
+  mapAddress?: string;
+  mapGoogleUrl?: string;
+  latitude?: string | number;
+  longitude?: string | number;
   completionStatus?: string;
   handoverDate?: string;
   totalUnits?: number;

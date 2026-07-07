@@ -10,6 +10,7 @@ import EmailVerificationBanner from '../components/EmailVerificationBanner';
 import CreationReadinessPanel, { type CreationReadinessCheck } from '../components/CreationReadinessPanel';
 import SectionHeader from '../components/SectionHeader';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { parseCoordinatesFromMapInput } from '../utils/mapLocation';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { DevelopmentCompany, Landmark, PriceQualifier } from '../types';
 
@@ -22,6 +23,11 @@ const initialForm = {
   descriptionAr: '',
   locationEn: '',
   locationAr: '',
+  mapPlaceLabel: '',
+  mapAddress: '',
+  mapGoogleUrl: '',
+  latitude: '',
+  longitude: '',
   completionStatus: 'Off-plan',
   handoverDate: '',
   totalUnits: '',
@@ -116,6 +122,17 @@ export default function AddProject() {
           developerNameAr: 'اسم المطور بالعربية',
           landmark: 'أقرب معلم أو منطقة',
           noLandmark: 'بدون معلم محدد',
+          mapLocation: 'موقع Google Maps',
+          mapLocationText: 'الصق رابط Google Maps أو أضف الإحداثيات ليظهر المشروع على خريطة lux.om.',
+          mapPlaceLabel: 'اسم النقطة على الخريطة',
+          mapPlaceLabelPlaceholder: 'مثال: الواجهة البحرية، المرحلة الأولى',
+          mapAddress: 'عنوان الخريطة',
+          mapAddressPlaceholder: 'العنوان أو اسم الشارع كما يظهر للعملاء',
+          googleMapsUrl: 'رابط Google Maps',
+          googleMapsUrlPlaceholder: 'الصق رابط Google Maps وسيتم التقاط الإحداثيات إن وجدت',
+          latitude: 'خط العرض',
+          longitude: 'خط الطول',
+          coordinatesHint: 'الإحداثيات اختيارية لكنها مطلوبة لإظهار دبوس المشروع على صفحة الخريطة.',
           totalUnits: 'إجمالي الوحدات',
           availableUnits: 'الوحدات المتاحة',
           bedroomsSummary: 'ملخص الغرف',
@@ -179,6 +196,17 @@ export default function AddProject() {
           developerNameAr: 'Developer name in Arabic',
           landmark: 'Nearest landmark or area',
           noLandmark: 'No landmark selected',
+          mapLocation: 'Google Maps location',
+          mapLocationText: 'Paste a Google Maps link or add coordinates so this project can appear on the lux.om map.',
+          mapPlaceLabel: 'Map place label',
+          mapPlaceLabelPlaceholder: 'Example: Waterfront District, Phase 1',
+          mapAddress: 'Map address',
+          mapAddressPlaceholder: 'Street address or area name customers should see',
+          googleMapsUrl: 'Google Maps URL',
+          googleMapsUrlPlaceholder: 'Paste a Google Maps URL; coordinates will auto-fill when available',
+          latitude: 'Latitude',
+          longitude: 'Longitude',
+          coordinatesHint: 'Coordinates are optional, but needed to pin this project on the public map.',
           totalUnits: 'Total units',
           availableUnits: 'Available units',
           bedroomsSummary: 'Bedroom mix summary',
@@ -257,7 +285,13 @@ export default function AddProject() {
       key: 'identity',
       title: copy.identityReady,
       description: copy.identityReadyText,
-      done: Boolean(form.nameEn.trim() && form.locationEn.trim() && form.handoverDate && hasDeveloperIdentity),
+      done: Boolean(
+        form.nameEn.trim() &&
+          form.locationEn.trim() &&
+          form.handoverDate &&
+          hasDeveloperIdentity &&
+          (form.nearestLandmarkId || form.mapGoogleUrl.trim() || (form.latitude.trim() && form.longitude.trim()))
+      ),
       critical: true
     },
     {
@@ -337,6 +371,19 @@ export default function AddProject() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function handleMapUrlChange(value: string) {
+    const coordinates = parseCoordinatesFromMapInput(value);
+
+    setSubmitError('');
+    setCreatedSlug('');
+    setForm((current) => ({
+      ...current,
+      mapGoogleUrl: value,
+      latitude: coordinates?.latitude ?? current.latitude,
+      longitude: coordinates?.longitude ?? current.longitude
+    }));
+  }
+
   function getSubmitErrorMessage(error: unknown) {
     if (error instanceof ApiError) {
       const payload = error.payload as {
@@ -384,6 +431,11 @@ export default function AddProject() {
           descriptionAr: optionalText(form.descriptionAr),
           locationEn: form.locationEn,
           locationAr: optionalText(form.locationAr),
+          mapPlaceLabel: optionalText(form.mapPlaceLabel),
+          mapAddress: optionalText(form.mapAddress),
+          mapGoogleUrl: optionalText(form.mapGoogleUrl),
+          latitude: optionalText(form.latitude),
+          longitude: optionalText(form.longitude),
           completionStatus: optionalText(form.completionStatus),
           handoverDate: optionalText(form.handoverDate),
           totalUnits: optionalNumber(form.totalUnits),
@@ -499,6 +551,22 @@ export default function AddProject() {
             {form.developerMode === 'existing' ? <label>{copy.selectDeveloper}<select required disabled={loadingOptions} value={form.developerId} onChange={(event) => updateForm('developerId', event.target.value)}><option value="">{copy.selectDeveloper}</option>{developers.map((developer) => <option key={developer.id} value={developer.id}>{developer.name}</option>)}</select></label> : null}
             {form.developerMode === 'manual' ? <><label>{copy.developerNameEn}<input required value={form.developerNameEn} onChange={(event) => updateForm('developerNameEn', event.target.value)} /></label><label>{copy.developerNameAr}<input value={form.developerNameAr} onChange={(event) => updateForm('developerNameAr', event.target.value)} /></label></> : null}
             <label>{copy.landmark}<select disabled={loadingOptions} value={form.nearestLandmarkId} onChange={(event) => updateForm('nearestLandmarkId', event.target.value)}><option value="">{copy.noLandmark}</option>{landmarks.map((landmark) => <option key={landmark.id} value={landmark.id}>{landmark.name} · {landmark.city}</option>)}</select></label>
+          </div>
+
+          <div className="map-location-card">
+            <div>
+              <p className="eyebrow">{copy.mapLocation}</p>
+              <h3>{copy.mapLocationText}</h3>
+              <small>{copy.coordinatesHint}</small>
+            </div>
+
+            <div className="form-grid">
+              <label>{copy.mapPlaceLabel}<input placeholder={copy.mapPlaceLabelPlaceholder} value={form.mapPlaceLabel} onChange={(event) => updateForm('mapPlaceLabel', event.target.value)} /></label>
+              <label>{copy.mapAddress}<input placeholder={copy.mapAddressPlaceholder} value={form.mapAddress} onChange={(event) => updateForm('mapAddress', event.target.value)} /></label>
+              <label className="form-grid__wide">{copy.googleMapsUrl}<input inputMode="url" placeholder={copy.googleMapsUrlPlaceholder} value={form.mapGoogleUrl} onChange={(event) => handleMapUrlChange(event.target.value)} /></label>
+              <label>{copy.latitude}<input type="number" step="0.0000001" min="-90" max="90" value={form.latitude} onChange={(event) => updateForm('latitude', event.target.value)} /></label>
+              <label>{copy.longitude}<input type="number" step="0.0000001" min="-180" max="180" value={form.longitude} onChange={(event) => updateForm('longitude', event.target.value)} /></label>
+            </div>
           </div>
         </section>
 
