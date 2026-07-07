@@ -576,6 +576,113 @@ function hasOwnProperty<T extends object, K extends PropertyKey>(
   return Object.prototype.hasOwnProperty.call(object, key);
 }
 
+
+function normalizeRelatedText(value?: string | null) {
+  return value?.toLowerCase().trim() ?? '';
+}
+
+function hasRelatedTextMatch(
+  candidateValue?: string | null,
+  currentValue?: string | null
+) {
+  const candidate = normalizeRelatedText(candidateValue);
+  const current = normalizeRelatedText(currentValue);
+
+  return Boolean(candidate && current && candidate === current);
+}
+
+function getRelatedNumber(value?: { toString(): string } | string | number | null) {
+  if (value === null || value === undefined) return null;
+
+  const parsed = Number(value.toString());
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getRelatedPriceScore(
+  currentPrice?: { toString(): string } | string | number | null,
+  candidatePrice?: { toString(): string } | string | number | null
+) {
+  const current = getRelatedNumber(currentPrice);
+  const candidate = getRelatedNumber(candidatePrice);
+
+  if (current === null || candidate === null || current <= 0) return 0;
+
+  const differenceRatio = Math.abs(current - candidate) / current;
+
+  if (differenceRatio <= 0.15) return 3;
+  if (differenceRatio <= 0.3) return 2;
+  if (differenceRatio <= 0.5) return 1;
+
+  return 0;
+}
+
+function getRelatedListingScore(
+  current: Prisma.ListingGetPayload<{ include: typeof listingInclude }>,
+  candidate: Prisma.ListingGetPayload<{ include: typeof listingInclude }>
+) {
+  let score = 0;
+
+  if (
+    current.developerProjectId &&
+    candidate.developerProjectId === current.developerProjectId
+  ) {
+    score += 8;
+  }
+
+  if (current.developerId && candidate.developerId === current.developerId) {
+    score += 6;
+  }
+
+  if (
+    current.nearestLandmarkId &&
+    candidate.nearestLandmarkId === current.nearestLandmarkId
+  ) {
+    score += 5;
+  }
+
+  if (candidate.transaction === current.transaction) score += 4;
+
+  if (
+    hasRelatedTextMatch(candidate.type, current.type) ||
+    hasRelatedTextMatch(candidate.typeEn, current.typeEn) ||
+    hasRelatedTextMatch(candidate.typeAr, current.typeAr)
+  ) {
+    score += 4;
+  }
+
+  if (
+    hasRelatedTextMatch(candidate.location, current.location) ||
+    hasRelatedTextMatch(candidate.locationEn, current.locationEn) ||
+    hasRelatedTextMatch(candidate.locationAr, current.locationAr)
+  ) {
+    score += 4;
+  }
+
+  score += getRelatedPriceScore(current.priceAmount, candidate.priceAmount);
+
+  if (Math.abs(candidate.beds - current.beds) <= 1) score += 1;
+  if (Math.abs(candidate.baths - current.baths) <= 1) score += 1;
+
+  const currentAmenities = new Set(
+    current.amenities.map((amenity) =>
+      normalizeRelatedText(amenity.nameEn || amenity.nameAr || amenity.name)
+    )
+  );
+
+  const sharedAmenityCount = candidate.amenities.filter((amenity) =>
+    currentAmenities.has(normalizeRelatedText(amenity.nameEn || amenity.nameAr || amenity.name))
+  ).length;
+
+  score += Math.min(sharedAmenityCount, 3);
+  score += candidate.partnerTier;
+  score += getVerificationTrustScore(candidate.verificationStatus);
+  score += candidate.mediaQualityStatus === 'EXCELLENT' ? 2 : 0;
+  score += candidate.mediaQualityStatus === 'ACCEPTABLE' ? 1 : 0;
+
+  return score;
+}
+
 function createPremiumMediaData(
   premiumMedia: z.infer<typeof premiumMediaInputSchema>[]
 ) {
@@ -2738,6 +2845,129 @@ listingsRouter.patch('/:id', requireAuth(), async (req, res, next) => {
 
     res.json({
       listing
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+listingsRouter.get('/:slug/related', async (req, res, next) => {
+  try {
+    const { slug } = slugParamsSchema.parse(req.params);
+
+    const listing = await prisma.listing.findUnique({
+      where: {
+        slug
+      },
+      include: listingInclude
+    });
+
+    if (!listing || listing.status !== 'APPROVED') {
+      throw new AppError(404, 'Listing not found');
+    }
+
+    const relatedSignals: Prisma.ListingWhereInput[] = [
+      {
+        transaction: listing.transaction
+      },
+      {
+        type: listing.type
+      },
+      {
+        location: listing.location
+      }
+    ];
+
+    if (listing.typeEn) {
+      relatedSignals.push({
+        typeEn: listing.typeEn
+      });
+    }
+
+    if (listing.typeAr) {
+      relatedSignals.push({
+        typeAr: listing.typeAr
+      });
+    }
+
+    if (listing.locationEn) {
+      relatedSignals.push({
+        locationEn: listing.locationEn
+      });
+    }
+
+    if (listing.locationAr) {
+      relatedSignals.push({
+        locationAr: listing.locationAr
+      });
+    }
+
+    if (listing.developerId) {
+      relatedSignals.push({
+        developerId: listing.developerId
+      });
+    }
+
+    if (listing.developerProjectId) {
+      relatedSignals.push({
+        developerProjectId: listing.developerProjectId
+      });
+    }
+
+    if (listing.nearestLandmarkId) {
+      relatedSignals.push({
+        nearestLandmarkId: listing.nearestLandmarkId
+      });
+    }
+
+    const candidates = await prisma.listing.findMany({
+      where: {
+        status: 'APPROVED',
+        id: {
+          not: listing.id
+        },
+        OR: relatedSignals
+      },
+      include: listingInclude,
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: 32
+    });
+
+    const fallbackCandidates =
+      candidates.length >= 4
+        ? []
+        : await prisma.listing.findMany({
+            where: {
+              status: 'APPROVED',
+              id: {
+                notIn: [listing.id, ...candidates.map((candidate) => candidate.id)]
+              }
+            },
+            include: listingInclude,
+            orderBy: {
+              createdAt: 'desc'
+            },
+            take: 12
+          });
+
+    const listings = [...candidates, ...fallbackCandidates]
+      .map((candidate) => ({
+        candidate,
+        score: getRelatedListingScore(listing, candidate)
+      }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+
+        return b.candidate.createdAt.getTime() - a.candidate.createdAt.getTime();
+      })
+      .slice(0, 4)
+      .map(({ candidate }) => candidate);
+
+    res.json({
+      listings
     });
   } catch (error) {
     next(error);

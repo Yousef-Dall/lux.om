@@ -26,9 +26,10 @@ type ActivityAvailability
 } from '../api/activities';
 import { createBooking } from '../api/bookings';
 import { ApiError } from '../api/client';
-import { getActivityBySlug } from '../api/marketplace';
+import { getActivityBySlug, getRelatedActivitiesBySlug } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import ButtonLink from '../components/ButtonLink';
+import { ActivityCard } from '../components/Cards';
 import MediaQualityGuidance from '../components/MediaQualityGuidance';
 import ReportModal from '../components/ReportModal';
 import ReviewSection from '../components/ReviewSection';
@@ -51,6 +52,8 @@ const { token, user, isAuthenticated } = useAuth();
 const { slug } = useParams();
 
 const [activity, setActivity] = useState<Activity | null>(null);
+const [relatedActivities, setRelatedActivities] = useState<Activity[]>([]);
+const [relatedLoading, setRelatedLoading] = useState(false);
 const [loading, setLoading] = useState(true);
 const [loadError, setLoadError] = useState('');
 const [bookingDate, setBookingDate] = useState('');
@@ -155,6 +158,12 @@ availableSeats: 'مقاعد متاحة',
 unlimitedAvailability: 'التوفر مفتوح لهذا النشاط.',
 availabilityUnavailable: 'لا يوجد توفر كافٍ لهذا التاريخ والوقت.',
 availabilityError: 'تعذر فحص التوفر حالياً.',
+relatedEyebrow: 'اقتراحات مشابهة',
+relatedTitle: 'أنشطة وباقات مشابهة',
+relatedText: 'اقتراحات مبنية على الوجهة، التصنيف، الجهة المنظمة، السعر، ونطاق السفر.',
+relatedLoading: 'جاري تحميل أنشطة مشابهة...',
+viewAllRelated: 'عرض كل الأنشطة',
+noRelated: 'لا توجد أنشطة مشابهة كافية حالياً.',
 requiredBookingFields: 'يرجى تعبئة تاريخ الحجز واسم التواصل والبريد الإلكتروني.',
 loading: 'جاري تحميل النشاط...',
 error: 'تعذر تحميل تفاصيل النشاط. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
@@ -242,6 +251,12 @@ availableSeats: 'seats available',
 unlimitedAvailability: 'Availability is open for this activity.',
 availabilityUnavailable: 'Not enough availability for this date and time.',
 availabilityError: 'Could not check availability right now.',
+relatedEyebrow: 'Related picks',
+relatedTitle: 'Similar activities and packages',
+relatedText: 'Matched by destination, category, organizer, price band, and travel region.',
+relatedLoading: 'Loading related activities...',
+viewAllRelated: 'View all activities',
+noRelated: 'No strong related activities are available yet.',
 requiredBookingFields: 'Please fill booking date, contact name, and contact email.',
 loading: 'Loading activity...',
 error: 'Could not load activity details. Make sure the backend is running and try again.'
@@ -267,6 +282,7 @@ async function loadActivity() {
     if (!isMounted) return;
 
     setActivity(apiActivity);
+    setRelatedLoading(true);
   } catch (error) {
     if (!isMounted) return;
 
@@ -288,6 +304,42 @@ return () => {
 
 
 }, [slug, language, copy.error]);
+
+useEffect(() => {
+let isMounted = true;
+
+async function loadRelatedActivities() {
+  if (!slug || !activity?.id) {
+    setRelatedActivities([]);
+    setRelatedLoading(false);
+    return;
+  }
+
+  try {
+    setRelatedLoading(true);
+    const activities = await getRelatedActivitiesBySlug(slug, language);
+
+    if (!isMounted) return;
+
+    setRelatedActivities(activities.filter((item) => item.id !== activity.id));
+  } catch (error) {
+    if (!isMounted) return;
+
+    console.error(error);
+    setRelatedActivities([]);
+  } finally {
+    if (isMounted) {
+      setRelatedLoading(false);
+    }
+  }
+}
+
+void loadRelatedActivities();
+
+return () => {
+  isMounted = false;
+};
+}, [slug, language, activity?.id]);
 
 useEffect(() => {
 if (!user) return;
@@ -1210,6 +1262,36 @@ return ( <article className="details-page details-page--activity-detail"> <secti
 
       <p>{activityCopy.finalConfirmation}</p>
     </aside>
+  </section>
+
+  <section className="container related-results-section" aria-labelledby="related-activities-title">
+    <div className="related-results-header">
+      <div>
+        <p className="eyebrow">{copy.relatedEyebrow}</p>
+        <h2 id="related-activities-title">{copy.relatedTitle}</h2>
+        <p>{copy.relatedText}</p>
+      </div>
+
+      <ButtonLink to="/activities" variant="secondary">
+        {copy.viewAllRelated}
+        <MoveRight size={16} aria-hidden="true" />
+      </ButtonLink>
+    </div>
+
+    {relatedLoading ? (
+      <p className="related-results-status">{copy.relatedLoading}</p>
+    ) : relatedActivities.length > 0 ? (
+      <div className="listing-grid related-results-grid">
+        {relatedActivities.map((relatedActivity) => (
+          <ActivityCard key={relatedActivity.id} activity={relatedActivity} />
+        ))}
+      </div>
+    ) : (
+      <div className="related-results-empty">
+        <Sparkles size={20} aria-hidden="true" />
+        <p>{copy.noRelated}</p>
+      </div>
+    )}
   </section>
 
   <section className="container stage8-review-wrap" id="activity-reviews">

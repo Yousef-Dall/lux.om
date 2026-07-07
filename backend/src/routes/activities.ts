@@ -619,6 +619,124 @@ function hasOwnProperty<T extends object, K extends PropertyKey>(
   return Object.prototype.hasOwnProperty.call(object, key);
 }
 
+
+function normalizeRelatedText(value?: string | null) {
+  return value?.toLowerCase().trim() ?? '';
+}
+
+function hasRelatedTextMatch(
+  candidateValue?: string | null,
+  currentValue?: string | null
+) {
+  const candidate = normalizeRelatedText(candidateValue);
+  const current = normalizeRelatedText(currentValue);
+
+  return Boolean(candidate && current && candidate === current);
+}
+
+function getRelatedNumber(value?: { toString(): string } | string | number | null) {
+  if (value === null || value === undefined) return null;
+
+  const parsed = Number(value.toString());
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getRelatedPriceScore(
+  currentPrice?: { toString(): string } | string | number | null,
+  candidatePrice?: { toString(): string } | string | number | null
+) {
+  const current = getRelatedNumber(currentPrice);
+  const candidate = getRelatedNumber(candidatePrice);
+
+  if (current === null || candidate === null || current <= 0) return 0;
+
+  const differenceRatio = Math.abs(current - candidate) / current;
+
+  if (differenceRatio <= 0.15) return 3;
+  if (differenceRatio <= 0.3) return 2;
+  if (differenceRatio <= 0.5) return 1;
+
+  return 0;
+}
+
+function getRelatedActivityScore(
+  current: Prisma.ActivityGetPayload<{ include: typeof activityInclude }>,
+  candidate: Prisma.ActivityGetPayload<{ include: typeof activityInclude }>
+) {
+  let score = 0;
+
+  if (current.travelAgencyId && candidate.travelAgencyId === current.travelAgencyId) {
+    score += 7;
+  }
+
+  if (
+    current.nearestLandmarkId &&
+    candidate.nearestLandmarkId === current.nearestLandmarkId
+  ) {
+    score += 5;
+  }
+
+  if (candidate.travelRegion === current.travelRegion) score += 5;
+
+  if (
+    hasRelatedTextMatch(candidate.categoryEn, current.categoryEn) ||
+    hasRelatedTextMatch(candidate.categoryAr, current.categoryAr)
+  ) {
+    score += 4;
+  }
+
+  if (
+    hasRelatedTextMatch(candidate.locationEn, current.locationEn) ||
+    hasRelatedTextMatch(candidate.locationAr, current.locationAr)
+  ) {
+    score += 4;
+  }
+
+  if (
+    current.travelRegion === 'OUTSIDE_OMAN' &&
+    hasRelatedTextMatch(candidate.destinationCountry, current.destinationCountry)
+  ) {
+    score += 4;
+  }
+
+  if (
+    current.travelRegion === 'OUTSIDE_OMAN' &&
+    hasRelatedTextMatch(candidate.destinationCity, current.destinationCity)
+  ) {
+    score += 3;
+  }
+
+  if (candidate.activityType && candidate.activityType === current.activityType) score += 2;
+  if (candidate.difficulty && candidate.difficulty === current.difficulty) score += 2;
+  if (candidate.durationType && candidate.durationType === current.durationType) score += 1;
+
+  if (candidate.familyFriendly === current.familyFriendly) score += 1;
+  if (candidate.outdoor === current.outdoor) score += 1;
+  if (candidate.includesTransfer === current.includesTransfer) score += 1;
+  if (candidate.mealIncluded === current.mealIncluded) score += 1;
+
+  score += getRelatedPriceScore(current.priceAmount, candidate.priceAmount);
+
+  const currentHighlights = new Set(
+    current.highlights.map((highlight) =>
+      normalizeRelatedText(highlight.textEn || highlight.textAr)
+    )
+  );
+
+  const sharedHighlightCount = candidate.highlights.filter((highlight) =>
+    currentHighlights.has(normalizeRelatedText(highlight.textEn || highlight.textAr))
+  ).length;
+
+  score += Math.min(sharedHighlightCount, 3);
+  score += candidate.partnerTier;
+  score += getVerificationTrustScore(candidate.verificationStatus);
+  score += candidate.mediaQualityStatus === 'EXCELLENT' ? 2 : 0;
+  score += candidate.mediaQualityStatus === 'ACCEPTABLE' ? 1 : 0;
+
+  return score;
+}
+
 function createPremiumMediaData(
   premiumMedia: z.infer<typeof premiumMediaInputSchema>[]
 ) {
@@ -2546,6 +2664,129 @@ activitiesRouter.patch('/:id', requireAuth(), async (req, res, next) => {
 
     res.json({
       activity
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+activitiesRouter.get('/:slug/related', async (req, res, next) => {
+  try {
+    const { slug } = slugParamsSchema.parse(req.params);
+
+    const activity = await prisma.activity.findUnique({
+      where: {
+        slug
+      },
+      include: activityInclude
+    });
+
+    if (!activity || activity.status !== 'APPROVED') {
+      throw new AppError(404, 'Activity not found');
+    }
+
+    const relatedSignals: Prisma.ActivityWhereInput[] = [
+      {
+        travelRegion: activity.travelRegion
+      },
+      {
+        categoryEn: activity.categoryEn
+      },
+      {
+        locationEn: activity.locationEn
+      }
+    ];
+
+    if (activity.categoryAr) {
+      relatedSignals.push({
+        categoryAr: activity.categoryAr
+      });
+    }
+
+    if (activity.locationAr) {
+      relatedSignals.push({
+        locationAr: activity.locationAr
+      });
+    }
+
+    if (activity.travelAgencyId) {
+      relatedSignals.push({
+        travelAgencyId: activity.travelAgencyId
+      });
+    }
+
+    if (activity.nearestLandmarkId) {
+      relatedSignals.push({
+        nearestLandmarkId: activity.nearestLandmarkId
+      });
+    }
+
+    if (activity.destinationCountry) {
+      relatedSignals.push({
+        destinationCountry: activity.destinationCountry
+      });
+    }
+
+    if (activity.destinationCity) {
+      relatedSignals.push({
+        destinationCity: activity.destinationCity
+      });
+    }
+
+    if (activity.activityType) {
+      relatedSignals.push({
+        activityType: activity.activityType
+      });
+    }
+
+    const candidates = await prisma.activity.findMany({
+      where: {
+        status: 'APPROVED',
+        id: {
+          not: activity.id
+        },
+        OR: relatedSignals
+      },
+      include: activityInclude,
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: 32
+    });
+
+    const fallbackCandidates =
+      candidates.length >= 4
+        ? []
+        : await prisma.activity.findMany({
+            where: {
+              status: 'APPROVED',
+              id: {
+                notIn: [activity.id, ...candidates.map((candidate) => candidate.id)]
+              }
+            },
+            include: activityInclude,
+            orderBy: {
+              createdAt: 'desc'
+            },
+            take: 12
+          });
+
+    const activities = [...candidates, ...fallbackCandidates]
+      .map((candidate) => ({
+        candidate,
+        score: getRelatedActivityScore(activity, candidate)
+      }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+
+        return b.candidate.createdAt.getTime() - a.candidate.createdAt.getTime();
+      })
+      .slice(0, 4)
+      .map(({ candidate }) => candidate);
+
+    res.json({
+      activities
     });
   } catch (error) {
     next(error);

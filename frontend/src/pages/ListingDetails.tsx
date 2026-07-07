@@ -14,9 +14,10 @@ import {
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
-import { getListingBySlug } from '../api/marketplace';
+import { getListingBySlug, getRelatedListingsBySlug } from '../api/marketplace';
 import ButtonLink from '../components/ButtonLink';
 import InvestorWatchlistForm from '../components/InvestorWatchlistForm';
+import { ListingCard } from '../components/Cards';
 import MediaQualityGuidance from '../components/MediaQualityGuidance';
 import ReportModal from '../components/ReportModal';
 import ReviewSection from '../components/ReviewSection';
@@ -37,6 +38,8 @@ export default function ListingDetails() {
   const { slug } = useParams();
 
   const [listing, setListing] = useState<Listing | null>(null);
+  const [relatedListings, setRelatedListings] = useState<Listing[]>([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
@@ -80,6 +83,12 @@ notSpecified: 'غير محدد',
             requestTour: 'طلب زيارة أو تفاصيل',
             compareReviews: 'قراءة التقييمات',
             safeNextStepText: 'اطلبي التفاصيل، راجعي الأهلية والمستندات، ولا تحولي أي مبالغ خارج القنوات المتفق عليها.',
+          relatedEyebrow: 'اقتراحات مشابهة',
+          relatedTitle: 'عقارات مشابهة قد تناسبك',
+          relatedText: 'اختيارات قريبة حسب الموقع، النوع، السعر، المطور، وجودة البيانات.',
+          relatedLoading: 'جاري تحميل عقارات مشابهة...',
+          viewAllRelated: 'عرض كل العقارات',
+          noRelated: 'لا توجد عقارات مشابهة كافية حالياً.',
           loading: 'جاري تحميل العقار...',
           error: 'تعذر تحميل تفاصيل العقار. تأكدي أن الخادم يعمل ثم حاولي مرة أخرى.'
         }
@@ -119,6 +128,12 @@ notSpecified: 'Not specified',
             requestTour: 'Request viewing or details',
             compareReviews: 'Read reviews',
             safeNextStepText: 'Request details, review eligibility and documents, and avoid sending money outside agreed channels.',
+          relatedEyebrow: 'Related picks',
+          relatedTitle: 'Similar properties you may like',
+          relatedText: 'Matched by location, property type, price band, developer, and trust signals.',
+          relatedLoading: 'Loading related listings...',
+          viewAllRelated: 'View all listings',
+          noRelated: 'No strong related listings are available yet.',
           loading: 'Loading listing...',
           error: 'Could not load listing details. Make sure the backend is running and try again.'
         };
@@ -142,6 +157,7 @@ notSpecified: 'Not specified',
         if (!isMounted) return;
 
         setListing(apiListing);
+        setRelatedLoading(true);
       } catch (error) {
         if (!isMounted) return;
 
@@ -161,6 +177,42 @@ notSpecified: 'Not specified',
       isMounted = false;
     };
   }, [slug, language, copy.error]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadRelatedListings() {
+      if (!slug || !listing?.id) {
+        setRelatedListings([]);
+        setRelatedLoading(false);
+        return;
+      }
+
+      try {
+        setRelatedLoading(true);
+        const listings = await getRelatedListingsBySlug(slug, language);
+
+        if (!isMounted) return;
+
+        setRelatedListings(listings.filter((item) => item.id !== listing.id));
+      } catch (error) {
+        if (!isMounted) return;
+
+        console.error(error);
+        setRelatedListings([]);
+      } finally {
+        if (isMounted) {
+          setRelatedLoading(false);
+        }
+      }
+    }
+
+    void loadRelatedListings();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [slug, language, listing?.id]);
 
   if (loading) {
     return (
@@ -699,6 +751,36 @@ notSpecified: 'Not specified',
 
             <p>{t.listings.contactHint}</p>
         </aside>
+      </section>
+
+      <section className="container related-results-section" aria-labelledby="related-listings-title">
+        <div className="related-results-header">
+          <div>
+            <p className="eyebrow">{copy.relatedEyebrow}</p>
+            <h2 id="related-listings-title">{copy.relatedTitle}</h2>
+            <p>{copy.relatedText}</p>
+          </div>
+
+          <ButtonLink to="/listings" variant="secondary">
+            {copy.viewAllRelated}
+            <MoveRight size={16} aria-hidden="true" />
+          </ButtonLink>
+        </div>
+
+        {relatedLoading ? (
+          <p className="related-results-status">{copy.relatedLoading}</p>
+        ) : relatedListings.length > 0 ? (
+          <div className="listing-grid related-results-grid">
+            {relatedListings.map((relatedListing) => (
+              <ListingCard key={relatedListing.id} listing={relatedListing} />
+            ))}
+          </div>
+        ) : (
+          <div className="related-results-empty">
+            <Sparkles size={20} aria-hidden="true" />
+            <p>{copy.noRelated}</p>
+          </div>
+        )}
       </section>
 
       <section className="container stage8-review-wrap" id="listing-reviews">

@@ -190,6 +190,17 @@ export async function getListingBySlug(
   return mapListing(response.listing, language);
 }
 
+export async function getRelatedListingsBySlug(
+  slug: string,
+  language: Language
+): Promise<Listing[]> {
+  const response = await apiClient.get<{ listings: ApiListing[] }>(
+    `/api/listings/${slug}/related`
+  );
+
+  return response.listings.map((listing) => mapListing(listing, language));
+}
+
 export async function getActivitiesPage(
   language: Language,
   params?: ActivityParams
@@ -224,6 +235,17 @@ export async function getActivityBySlug(
   const response = await apiClient.get<{ activity: ApiActivity }>(`/api/activities/${slug}`);
 
   return mapActivity(response.activity, language);
+}
+
+export async function getRelatedActivitiesBySlug(
+  slug: string,
+  language: Language
+): Promise<Activity[]> {
+  const response = await apiClient.get<{ activities: ApiActivity[] }>(
+    `/api/activities/${slug}/related`
+  );
+
+  return response.activities.map((activity) => mapActivity(activity, language));
 }
 
 export async function getDevelopers(

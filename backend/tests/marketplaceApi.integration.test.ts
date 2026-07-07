@@ -1769,6 +1769,21 @@ describe('GET /api/listings', () => {
     ).toEqual([500, 400, 200, 80]);
   });
 
+
+  it('returns related listings without the current or pending listing', async () => {
+    const response = await request(app)
+      .get('/api/listings/integration-villa-heights/related')
+      .expect(200);
+
+    const slugs = response.body.listings.map(
+      (listing: { slug: string }) => listing.slug
+    );
+
+    expect(slugs).toContain('integration-type-only-villa');
+    expect(slugs).not.toContain('integration-villa-heights');
+    expect(slugs).not.toContain('integration-pending-listing');
+  });
+
   it('returns empty records with valid out-of-range metadata', async () => {
     const response = await request(app)
       .get('/api/listings')
@@ -1991,6 +2006,21 @@ describe('GET /api/activities', () => {
       'integration-desert-escape',
       'integration-muscat'
     ]);
+  });
+
+
+  it('returns related activities without the current or pending activity', async () => {
+    const response = await request(app)
+      .get('/api/activities/integration-desert-escape/related')
+      .expect(200);
+
+    const slugs = response.body.activities.map(
+      (activity: { slug: string }) => activity.slug
+    );
+
+    expect(slugs).toContain('integration-muscat');
+    expect(slugs).not.toContain('integration-desert-escape');
+    expect(slugs).not.toContain('integration-pending-activity');
   });
 
   it('parses optional boolean filters correctly', async () => {
