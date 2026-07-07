@@ -10,6 +10,7 @@ ShieldCheck,
 AlertTriangle,
 ArrowUpRight,
 Users,
+Building2,
 UserCircle,
 X
 } from 'lucide-react';
@@ -34,7 +35,7 @@ const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
 const { pathname } = useLocation();
 const navigate = useNavigate();
 const { t, toggleLanguage, language } = useLanguage();
-const { user, token, isAuthenticated, isAdmin, logout } = useAuth();
+const { user, token, isAuthenticated, isAdmin, canAccessPms, logout } = useAuth();
 const accountRoleLabel = user ? getMarketplacePersonaLabel(user.role, language) : '';
 const accountPersonaActions = user ? getMarketplacePersonaPrimaryActions(user.role, language) : [];
 
@@ -89,6 +90,7 @@ language: 'تغيير اللغة',
 login: 'تسجيل الدخول',
 register: 'إنشاء حساب',
 dashboard: 'لوحة التحكم',
+pms: 'lux PMS',
 profile: 'الملف الشخصي',
 notifications: 'الإشعارات',
 admin: 'الأدمن',
@@ -108,6 +110,7 @@ language: 'Change language',
 login: 'Login',
 register: 'Register',
 dashboard: 'Dashboard',
+pms: 'lux PMS',
 profile: 'Profile',
 notifications: 'Notifications',
 admin: 'Admin',
@@ -276,6 +279,17 @@ return (
                 </NavLink>
               ))}
 
+              {canAccessPms ? (
+                <NavLink
+                  to="/pms"
+                  className="nav-account__item"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <Building2 size={17} aria-hidden="true" />
+                  {accessibilityCopy.pms}
+                </NavLink>
+              ) : null}
+
               <NavLink
                 to="/profile"
                 className="nav-account__item"
@@ -326,6 +340,15 @@ return (
                   >
                     <Mail size={17} aria-hidden="true" />
                     {accessibilityCopy.emailDeliveries}
+                  </NavLink>
+
+                  <NavLink
+                    to="/admin/pms"
+                    className="nav-account__item"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    <Building2 size={17} aria-hidden="true" />
+                    {accessibilityCopy.pms}
                   </NavLink>
 
                   <NavLink

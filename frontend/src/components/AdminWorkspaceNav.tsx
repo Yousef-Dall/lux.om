@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  Building2,
   LayoutDashboard,
   Mail,
   ShieldCheck,
@@ -27,6 +28,11 @@ const adminWorkspaceLinks = [
     icon: Mail
   },
   {
+    to: '/admin/pms',
+    key: 'pms',
+    icon: Building2
+  },
+  {
     to: '/admin/reports',
     key: 'reports',
     icon: AlertTriangle
@@ -46,6 +52,7 @@ export default function AdminWorkspaceNav() {
           users: 'المستخدمون',
           emailDeliveries: 'سجل البريد',
           reports: 'البلاغات',
+          pms: 'صلاحيات PMS',
           aria: 'تنقل مساحة الإدارة'
         }
       : {
@@ -56,6 +63,7 @@ export default function AdminWorkspaceNav() {
           users: 'Users',
           emailDeliveries: 'Email deliveries',
           reports: 'Reports',
+          pms: 'PMS access',
           aria: 'Admin workspace navigation'
         };
 

@@ -33,6 +33,7 @@ import { inquiriesRouter } from './routes/inquiries';
 import { landmarksRouter } from './routes/landmarks';
 import { listingsRouter } from './routes/listings';
 import { notificationsRouter } from './routes/notifications';
+import { pmsRouter } from './routes/pms';
 import { travelAgenciesRouter } from './routes/travelAgencies';
 import { uploadsRouter } from './routes/uploads';
 import {
@@ -115,7 +116,8 @@ const SENSITIVE_API_PREFIXES = [
   '/api/reports',
   '/api/saved',
   '/api/inquiries',
-  '/api/media-quality'
+  '/api/media-quality',
+  '/api/pms'
 ];
 
 const PUBLIC_CACHEABLE_API_PREFIXES = [
@@ -512,6 +514,7 @@ export function createApp() {
   app.use('/api/reports', reportsRouter);
   app.use('/api/reviews', reviewsRouter);
   app.use('/api/saved', savedRouter);
+  app.use('/api/pms', pmsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

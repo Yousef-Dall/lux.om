@@ -116,7 +116,24 @@ enum AccountSecurityEventType {
   ADMIN_USER_UNSUSPENDED
   ADMIN_EMAIL_VERIFIED
   ADMIN_EMAIL_UNVERIFIED
+  ADMIN_PMS_ACCESS_UPDATED
   ACCOUNT_DEACTIVATED
+}
+
+enum PmsEntitlementStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+  EXPIRED
+}
+
+enum PmsMemberRole {
+  PMS_OWNER
+  PMS_MANAGER
+  PMS_ACCOUNTANT
+  PMS_MAINTENANCE
+  PMS_AGENT
+  PMS_VIEWER
 }
 
 enum BookingEventType {
@@ -405,6 +422,11 @@ model User {
   bookingEvents BookingEvent[] @relation("BookingEventActor")
   oauthLoginCodes OauthLoginCode[]
 
+  pmsMembershipsCreated PmsCompanyMember[] @relation("PmsMemberCreatedBy")
+  pmsMemberships        PmsCompanyMember[] @relation("PmsMemberUser")
+  pmsEntitlementsCreated PmsCompanyEntitlement[] @relation("PmsEntitlementCreatedBy")
+  pmsEntitlementsUpdated PmsCompanyEntitlement[] @relation("PmsEntitlementUpdatedBy")
+
   eligibilityMarkedListings       Listing[]          @relation("ListingEligibilityMarkedBy")
   listingVerificationReviews      Listing[]          @relation("ListingVerificationReviewedBy")
   activityVerificationReviews     Activity[]         @relation("ActivityVerificationReviewedBy")
@@ -513,6 +535,8 @@ model DeveloperCompany {
   listings Listing[]
   projects DeveloperProject[]
   reviews  Review[]
+  pmsEntitlement PmsCompanyEntitlement?
+  pmsMembers     PmsCompanyMember[]
 
   @@index([verified])
   @@index([featured])
@@ -1554,6 +1578,58 @@ model DocumentChecklistItem {
   @@index([targetType, targetId])
   @@index([status])
   @@index([reviewedById])
+}
+
+model PmsCompanyEntitlement {
+  id        String               @id @default(cuid())
+  status    PmsEntitlementStatus @default(TRIAL)
+  notes     String?
+
+  enabledAt   DateTime?
+  disabledAt  DateTime?
+  trialEndsAt DateTime?
+
+  companyId String           @unique
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User?   @relation("PmsEntitlementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  updatedById String?
+  updatedBy   User?   @relation("PmsEntitlementUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdById])
+  @@index([updatedById])
+}
+
+model PmsCompanyMember {
+  id     String        @id @default(cuid())
+  role   PmsMemberRole @default(PMS_VIEWER)
+  active Boolean       @default(true)
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation("PmsMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  invitedEmail String?
+
+  createdById String?
+  createdBy   User?   @relation("PmsMemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, userId])
+  @@index([companyId, active])
+  @@index([userId, active])
+  @@index([role])
+  @@index([createdById])
 }
 
 model TrustReport {

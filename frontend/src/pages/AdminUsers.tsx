@@ -113,6 +113,10 @@ function getEventLabel(type: string, language: 'en' | 'ar') {
       en: 'Admin removed email verification',
       ar: 'إزالة تأكيد البريد من الأدمن'
     },
+    ADMIN_PMS_ACCESS_UPDATED: {
+      en: 'PMS access updated',
+      ar: 'تحديث صلاحية PMS'
+    },
     ACCOUNT_DEACTIVATED: {
       en: 'Account deleted by user',
       ar: 'حذف الحساب من المستخدم'

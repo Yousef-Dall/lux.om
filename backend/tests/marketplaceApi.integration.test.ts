@@ -55,6 +55,8 @@ async function clearTestDatabase() {
   }
 
   await prisma.inquiry.deleteMany();
+  await prisma.pmsCompanyMember.deleteMany();
+  await prisma.pmsCompanyEntitlement.deleteMany();
   await prisma.accountSecurityEvent.deleteMany();
   await prisma.emailDeliveryEvent.deleteMany();
   await prisma.notification.deleteMany();

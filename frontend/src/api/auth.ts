@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import type { PublicUser, UserRole } from '../types';
+import type { PmsAccessSummary } from './pms';
 
 export type PublicRegistrationRole = Exclude<UserRole, 'ADMIN'>;
 
@@ -13,6 +14,7 @@ export type AuthUser = PublicUser & {
   emailBookingUpdates?: boolean;
   emailSavedSearchUpdates?: boolean;
   emailMarketingUpdates?: boolean;
+  pmsAccess?: PmsAccessSummary;
 };
 
 export type AuthVerificationResponse = {

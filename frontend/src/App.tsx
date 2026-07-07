@@ -40,8 +40,10 @@ const AddListing = lazy(() => import('./pages/AddListing'));
 const AddProject = lazy(() => import('./pages/AddProject'));
 const Admin = lazy(() => import('./pages/Admin'));
 const AdminUsers = lazy(() => import('./pages/AdminUsers'));
+const AdminPmsAccess = lazy(() => import('./pages/AdminPmsAccess'));
 const AdminEmailDeliveries = lazy(() => import('./pages/AdminEmailDeliveries'));
 const AdminTrustReports = lazy(() => import('./pages/AdminTrustReports'));
+const PmsPortal = lazy(() => import('./pages/PmsPortal'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const DeveloperProjectDetails = lazy(() => import('./pages/DeveloperProjectDetails'));
 const Profile = lazy(() => import('./pages/Profile'));
@@ -209,6 +211,10 @@ const seoCopy = {
       title: 'Admin | lux.om',
       description: 'Manage lux.om marketplace publishing, bookings, finance, partners, and inquiries.'
     },
+    pms: {
+      title: 'lux PMS | Property Management System',
+      description: 'Private lux.om Property Management System portal for entitled property companies and managers.'
+    },
     auth: {
       title: 'Account access | lux.om',
       description: 'Sign in or create your lux.om account.'
@@ -289,6 +295,10 @@ const seoCopy = {
       title: 'الإدارة | lux.om',
       description: 'إدارة النشر والحجوزات والمالية والشركاء والاستفسارات في lux.om.'
     },
+    pms: {
+      title: 'lux PMS | بوابة إدارة العقارات',
+      description: 'بوابة خاصة لإدارة العقارات للشركات والمديرين المخولين في lux.om.'
+    },
     auth: {
       title: 'الدخول إلى الحساب | lux.om',
       description: 'سجّل الدخول أو أنشئ حسابك في lux.om.'
@@ -325,6 +335,7 @@ function getSeoKey(pathname: string) {
   if (pathname.startsWith('/dashboard')) return 'dashboard';
   if (pathname.startsWith('/notifications')) return 'dashboard';
   if (pathname.startsWith('/admin')) return 'admin';
+  if (pathname.startsWith('/pms')) return 'pms';
   if (pathname.startsWith('/login') || pathname.startsWith('/register') || pathname.startsWith('/forgot-password') || pathname.startsWith('/reset-password')) return 'auth';
 
   return 'fallback';
@@ -333,6 +344,7 @@ function getSeoKey(pathname: string) {
 
 const NO_INDEX_ROUTE_PREFIXES = [
   '/admin',
+  '/pms',
   '/dashboard',
   '/profile',
   '/notifications',
@@ -544,6 +556,25 @@ function RequireActivityProvider({ children }: { children: ReactNode }) {
   return children;
 }
 
+function RequirePms({ children }: { children: ReactNode }) {
+  const { canAccessPms, isAuthenticated, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return <LoadingPage />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!canAccessPms) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
 function RequireAdmin({ children }: { children: ReactNode }) {
   const { isAdmin, isAuthenticated, loading } = useAuth();
   const location = useLocation();
@@ -622,8 +653,10 @@ export default function App() {
   const { pathname } = useLocation();
   const { language } = useLanguage();
   const isAdminRoute = pathname.startsWith('/admin');
+  const isPmsRoute = pathname.startsWith('/pms');
   const isWorkspaceRoute =
     isAdminRoute ||
+    isPmsRoute ||
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/profile') ||
     pathname.startsWith('/notifications') ||
@@ -799,6 +832,33 @@ export default function App() {
               <RequireAdmin>
                 <AdminTrustReports />
               </RequireAdmin>
+            }
+          />
+
+          <Route
+            path="/admin/pms"
+            element={
+              <RequireAdmin>
+                <AdminPmsAccess />
+              </RequireAdmin>
+            }
+          />
+
+          <Route
+            path="/pms"
+            element={
+              <RequirePms>
+                <PmsPortal />
+              </RequirePms>
+            }
+          />
+
+          <Route
+            path="/pms/overview"
+            element={
+              <RequirePms>
+                <PmsPortal />
+              </RequirePms>
             }
           />
 

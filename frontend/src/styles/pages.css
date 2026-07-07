@@ -18147,3 +18147,325 @@ transition: none;
     justify-content: center;
   }
 }
+
+/* =========================================================
+   Stage 10A PMS access architecture and portal shell
+   ========================================================= */
+
+.pms-portal {
+  display: grid;
+  grid-template-columns: minmax(250px, 290px) 1fr;
+  min-height: calc(100vh - var(--header-height, 80px));
+  background:
+    radial-gradient(circle at 88% 0%, rgba(194, 154, 82, 0.14), transparent 32rem),
+    linear-gradient(135deg, rgba(3, 38, 42, 0.98), rgba(8, 60, 66, 0.96));
+  color: #f9f4e8;
+}
+
+.pms-sidebar {
+  position: sticky;
+  top: var(--header-height, 80px);
+  align-self: start;
+  min-height: calc(100vh - var(--header-height, 80px));
+  padding: clamp(20px, 3vw, 32px);
+  border-inline-end: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(3, 29, 33, 0.72);
+  backdrop-filter: blur(22px);
+}
+
+.pms-sidebar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+  color: #fff7df;
+  text-decoration: none;
+}
+
+.pms-sidebar__brand span {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 15px;
+  background: linear-gradient(145deg, #d5ad5f, #8f6828);
+  color: #062d32;
+  font-weight: 900;
+}
+
+.pms-sidebar__brand strong {
+  font-size: 1.05rem;
+  letter-spacing: 0.08em;
+}
+
+.pms-sidebar__nav {
+  display: grid;
+  gap: 8px;
+}
+
+.pms-sidebar__link {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 11px 12px;
+  border: 1px solid transparent;
+  border-radius: 15px;
+  color: rgba(255, 247, 223, 0.74);
+  text-decoration: none;
+  font-weight: 760;
+}
+
+.pms-sidebar__link:hover,
+.pms-sidebar__link--active {
+  border-color: rgba(226, 193, 122, 0.38);
+  background: rgba(255, 255, 255, 0.09);
+  color: #fff7df;
+}
+
+.pms-sidebar__link--disabled {
+  cursor: not-allowed;
+  opacity: 0.54;
+}
+
+.pms-sidebar__link small {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 0.68rem;
+}
+
+.pms-main {
+  min-width: 0;
+  padding: clamp(22px, 4vw, 46px);
+}
+
+.pms-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.pms-header h1 {
+  max-width: 760px;
+  margin: 0;
+  color: #fff7df;
+  font-size: clamp(2rem, 4vw, 4rem);
+  letter-spacing: -0.07em;
+}
+
+.pms-header p:not(.eyebrow) {
+  max-width: 720px;
+  color: rgba(255, 247, 223, 0.72);
+}
+
+.pms-company-card,
+.pms-company-switcher,
+.pms-hero-card,
+.pms-metric-card,
+.pms-next-actions {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.17);
+  backdrop-filter: blur(18px);
+}
+
+.pms-company-card {
+  min-width: min(100%, 300px);
+  padding: 16px;
+  border-radius: 22px;
+}
+
+.pms-company-card span,
+.pms-company-card small {
+  display: block;
+  color: rgba(255, 247, 223, 0.68);
+}
+
+.pms-company-card strong {
+  display: block;
+  margin-top: 4px;
+  color: #fff7df;
+  font-size: 1.05rem;
+}
+
+.pms-company-card em {
+  display: inline-flex;
+  margin-top: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(226, 193, 122, 0.18);
+  color: #f7d88d;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.pms-company-switcher {
+  display: inline-grid;
+  gap: 8px;
+  width: min(100%, 360px);
+  margin-bottom: 22px;
+  padding: 14px;
+  border-radius: 18px;
+  color: rgba(255, 247, 223, 0.72);
+  font-weight: 760;
+}
+
+.pms-company-switcher select {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(3, 29, 33, 0.78);
+  color: #fff7df;
+}
+
+.pms-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(255, 247, 223, 0.76);
+}
+
+.pms-loading svg {
+  animation: spin 1.1s linear infinite;
+}
+
+.pms-content-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.pms-hero-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.8fr);
+  gap: 24px;
+  padding: clamp(20px, 3vw, 32px);
+  border-radius: 30px;
+}
+
+.pms-hero-card h2,
+.pms-next-actions h2 {
+  margin: 0;
+  color: #fff7df;
+  letter-spacing: -0.05em;
+}
+
+.pms-hero-card p:not(.eyebrow) {
+  color: rgba(255, 247, 223, 0.72);
+}
+
+.pms-readiness-list {
+  display: grid;
+  gap: 10px;
+  align-content: center;
+}
+
+.pms-readiness-list > div,
+.pms-empty-state-list > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 247, 223, 0.82);
+}
+
+.pms-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.pms-metric-card {
+  min-height: 126px;
+  padding: 18px;
+  border-radius: 24px;
+}
+
+.pms-metric-card span {
+  display: block;
+  color: rgba(255, 247, 223, 0.68);
+  font-weight: 760;
+}
+
+.pms-metric-card strong {
+  display: block;
+  margin-top: 14px;
+  color: #fff7df;
+  font-size: clamp(2rem, 4vw, 3.25rem);
+  letter-spacing: -0.07em;
+}
+
+.pms-next-actions {
+  padding: clamp(18px, 3vw, 26px);
+  border-radius: 26px;
+}
+
+.pms-next-actions__header {
+  margin-bottom: 14px;
+}
+
+.pms-empty-state-list {
+  display: grid;
+  gap: 10px;
+}
+
+.pms-empty-state-list > div {
+  justify-content: space-between;
+}
+
+.admin-pms-layout {
+  align-items: start;
+}
+
+.admin-pms-detail input,
+.admin-pms-detail select {
+  width: 100%;
+}
+
+.admin-pms-members h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 980px) {
+  .pms-portal {
+    grid-template-columns: 1fr;
+  }
+
+  .pms-sidebar {
+    position: static;
+    min-height: auto;
+  }
+
+  .pms-sidebar__nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pms-header,
+  .pms-hero-card {
+    grid-template-columns: 1fr;
+  }
+
+  .pms-header {
+    display: grid;
+  }
+
+  .pms-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .pms-main {
+    padding: 18px;
+  }
+
+  .pms-sidebar__nav,
+  .pms-metric-grid {
+    grid-template-columns: 1fr;
+  }
+}
