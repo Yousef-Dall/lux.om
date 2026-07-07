@@ -24,6 +24,26 @@ export type PmsRentDueStatus =
   | "PAID"
   | "CANCELLED";
 export type PmsRentFrequency = "ONE_TIME" | "MONTHLY" | "QUARTERLY" | "YEARLY";
+export type PmsMaintenancePriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+export type PmsMaintenanceStatus =
+  | "OPEN"
+  | "IN_PROGRESS"
+  | "WAITING_VENDOR"
+  | "RESOLVED"
+  | "CANCELLED";
+export type PmsCommunicationChannel = "EMAIL" | "WHATSAPP" | "SMS" | "INTERNAL";
+export type PmsPolicyCategory =
+  | "GENERAL"
+  | "RENT"
+  | "MAINTENANCE"
+  | "PAYMENT"
+  | "MOVE_IN_OUT"
+  | "SAFETY";
+export type PmsInspectionStatus =
+  | "SCHEDULED"
+  | "COMPLETED"
+  | "NEEDS_ACTION"
+  | "CANCELLED";
 
 export type PmsCompanySummary = {
   id: string;
@@ -197,6 +217,80 @@ export type PmsRentDueItem = {
   updatedAt: string;
 };
 
+export type PmsWorkOrder = {
+  id: string;
+  companyId: string;
+  propertyId: string;
+  property: Pick<PmsProperty, "id" | "name" | "code" | "companyId">;
+  unitId?: string | null;
+  unit?: Pick<PmsUnit, "id" | "unitNumber" | "unitName"> | null;
+  tenantId?: string | null;
+  tenant?: Pick<PmsTenant, "id" | "fullName" | "phone" | "email"> | null;
+  title: string;
+  description?: string | null;
+  priority: PmsMaintenancePriority;
+  status: PmsMaintenanceStatus;
+  assignedToText?: string | null;
+  vendorText?: string | null;
+  cost?: string | null;
+  currency: string;
+  scheduledFor?: string | null;
+  resolvedAt?: string | null;
+  imageUrls: string[];
+  documentUrls: string[];
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsCommunicationTemplate = {
+  id: string;
+  companyId: string;
+  name: string;
+  channel: PmsCommunicationChannel;
+  type?: string | null;
+  subject?: string | null;
+  body: string;
+  active: boolean;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsPolicy = {
+  id: string;
+  companyId: string;
+  title: string;
+  category: PmsPolicyCategory;
+  body: string;
+  active: boolean;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsInspection = {
+  id: string;
+  companyId: string;
+  propertyId: string;
+  property: Pick<PmsProperty, "id" | "name" | "code" | "companyId">;
+  unitId?: string | null;
+  unit?: Pick<PmsUnit, "id" | "unitNumber" | "unitName"> | null;
+  tenantId?: string | null;
+  tenant?: Pick<PmsTenant, "id" | "fullName" | "phone" | "email"> | null;
+  leaseId?: string | null;
+  lease?: Pick<PmsLease, "id" | "title" | "status" | "startDate" | "endDate"> | null;
+  title: string;
+  status: PmsInspectionStatus;
+  scheduledFor?: string | null;
+  completedAt?: string | null;
+  notes?: string | null;
+  feedback?: string | null;
+  rating?: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PmsWorkspaceOverview = {
   workspace: {
     company: PmsCompanySummary;
@@ -251,6 +345,14 @@ export type PmsWorkspaceOverview = {
     paidPmsRentDueItems: number;
     pmsRentDueAmount?: string | null;
     pmsRentCollectedAmount?: string | null;
+    openPmsWorkOrders: number;
+    inProgressPmsWorkOrders: number;
+    urgentPmsWorkOrders: number;
+    pmsMaintenanceCostAmount?: string | null;
+    scheduledPmsInspections: number;
+    needsActionPmsInspections: number;
+    activePmsCommunicationTemplates: number;
+    activePmsPolicies: number;
     pmsOccupancyRate: number;
   };
   alerts: {
@@ -263,6 +365,8 @@ export type PmsWorkspaceOverview = {
     rentals: boolean;
     contracts: boolean;
     accounting: boolean;
+    maintenance?: boolean;
+    settings?: boolean;
   };
 };
 
@@ -396,6 +500,107 @@ export type PmsRentDueUpdatePayload = {
   paidAmount?: number | string;
   paidAt?: string | null;
   notes?: string | null;
+};
+
+export type PmsWorkOrderPayload = {
+  companyId?: string;
+  propertyId: string;
+  unitId?: string | null;
+  tenantId?: string | null;
+  title: string;
+  description?: string | null;
+  priority?: PmsMaintenancePriority;
+  status?: PmsMaintenanceStatus;
+  assignedToText?: string | null;
+  vendorText?: string | null;
+  cost?: number | string | null;
+  currency?: string;
+  scheduledFor?: string | null;
+  resolvedAt?: string | null;
+  imageUrls?: string[];
+  documentUrls?: string[];
+  notes?: string | null;
+};
+
+export type PmsCommunicationTemplatePayload = {
+  companyId?: string;
+  name: string;
+  channel?: PmsCommunicationChannel;
+  type?: string | null;
+  subject?: string | null;
+  body: string;
+  active?: boolean;
+  notes?: string | null;
+};
+
+export type PmsPolicyPayload = {
+  companyId?: string;
+  title: string;
+  category?: PmsPolicyCategory;
+  body: string;
+  active?: boolean;
+  notes?: string | null;
+};
+
+export type PmsInspectionPayload = {
+  companyId?: string;
+  propertyId: string;
+  unitId?: string | null;
+  tenantId?: string | null;
+  leaseId?: string | null;
+  title: string;
+  status?: PmsInspectionStatus;
+  scheduledFor?: string | null;
+  completedAt?: string | null;
+  notes?: string | null;
+  feedback?: string | null;
+  rating?: number | null;
+};
+
+export type PmsReportsSummary = {
+  workspace: PmsWorkspaceOverview["workspace"];
+  accounting: {
+    incomeCollected?: string | null;
+    outstandingRent?: string | null;
+    overdueRent?: string | null;
+    expenses?: string | null;
+    maintenanceCosts?: string | null;
+    lateFeeFoundationEnabled: boolean;
+    lateFeeNote: string;
+  };
+  reports: {
+    occupancy: {
+      totalUnits: number;
+      occupiedUnits: number;
+      vacantUnits: number;
+      occupancyRate: number;
+    };
+    revenue: {
+      collected?: string | null;
+      outstanding?: string | null;
+      overdue?: string | null;
+    };
+    overdueTopList: PmsRentDueItem[];
+    maintenance: {
+      open: number;
+      inProgress: number;
+      resolved: number;
+      urgent: number;
+      costs?: string | null;
+    };
+    leaseRenewals: PmsLease[];
+    inspections: {
+      scheduled: number;
+      completed: number;
+      needsAction: number;
+    };
+    communications: {
+      activeTemplates: number;
+    };
+    policies: {
+      activePolicies: number;
+    };
+  };
 };
 
 export async function getPmsOverview(token: string, companyId?: string) {
@@ -707,6 +912,138 @@ export async function updatePmsRentDueItem(
     payload,
     { token },
   );
+}
+
+export async function listPmsWorkOrders(
+  token: string,
+  params: {
+    companyId?: string;
+    propertyId?: string;
+    unitId?: string;
+    tenantId?: string;
+    search?: string;
+    status?: "ALL" | PmsMaintenanceStatus;
+    priority?: "ALL" | PmsMaintenancePriority;
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    workOrders: PmsWorkOrder[];
+    pagination: { take: number; skip: number; count: number; total: number };
+  }>("/api/pms/maintenance", { token, params });
+}
+
+export async function createPmsWorkOrder(
+  token: string,
+  payload: PmsWorkOrderPayload & { companyId: string },
+) {
+  return apiClient.post<{ workOrder: PmsWorkOrder }>("/api/pms/maintenance", payload, {
+    token,
+  });
+}
+
+export async function updatePmsWorkOrder(
+  token: string,
+  workOrderId: string,
+  payload: Partial<PmsWorkOrderPayload>,
+) {
+  return apiClient.patch<{ workOrder: PmsWorkOrder }>(
+    `/api/pms/maintenance/${workOrderId}`,
+    payload,
+    { token },
+  );
+}
+
+export async function getPmsReportsSummary(token: string, companyId?: string) {
+  return apiClient.get<PmsReportsSummary>("/api/pms/reports/summary", {
+    token,
+    params: { companyId },
+  });
+}
+
+export async function listPmsCommunicationTemplates(
+  token: string,
+  params: {
+    companyId?: string;
+    active?: "ALL" | "ACTIVE" | "INACTIVE";
+    channel?: "ALL" | PmsCommunicationChannel;
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    templates: PmsCommunicationTemplate[];
+    pagination: { take: number; skip: number; count: number; total: number };
+  }>("/api/pms/communication-templates", { token, params });
+}
+
+export async function createPmsCommunicationTemplate(
+  token: string,
+  payload: PmsCommunicationTemplatePayload & { companyId: string },
+) {
+  return apiClient.post<{ template: PmsCommunicationTemplate }>(
+    "/api/pms/communication-templates",
+    payload,
+    { token },
+  );
+}
+
+export async function listPmsPolicies(
+  token: string,
+  params: {
+    companyId?: string;
+    active?: "ALL" | "ACTIVE" | "INACTIVE";
+    category?: "ALL" | PmsPolicyCategory;
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    policies: PmsPolicy[];
+    pagination: { take: number; skip: number; count: number; total: number };
+  }>("/api/pms/policies", { token, params });
+}
+
+export async function createPmsPolicy(
+  token: string,
+  payload: PmsPolicyPayload & { companyId: string },
+) {
+  return apiClient.post<{ policy: PmsPolicy }>("/api/pms/policies", payload, {
+    token,
+  });
+}
+
+export async function listPmsInspections(
+  token: string,
+  params: {
+    companyId?: string;
+    propertyId?: string;
+    unitId?: string;
+    tenantId?: string;
+    leaseId?: string;
+    status?: "ALL" | PmsInspectionStatus;
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    inspections: PmsInspection[];
+    pagination: { take: number; skip: number; count: number; total: number };
+  }>("/api/pms/inspections", { token, params });
+}
+
+export async function createPmsInspection(
+  token: string,
+  payload: PmsInspectionPayload & { companyId: string },
+) {
+  return apiClient.post<{ inspection: PmsInspection }>("/api/pms/inspections", payload, {
+    token,
+  });
 }
 
 export async function listAdminPmsCompanies(

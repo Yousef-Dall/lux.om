@@ -33,6 +33,10 @@ async function clearPmsTestDatabase() {
   await prisma.activity.deleteMany();
   await prisma.listingImage.deleteMany();
   await prisma.amenity.deleteMany();
+  await prisma.pmsInspection.deleteMany();
+  await prisma.pmsWorkOrder.deleteMany();
+  await prisma.pmsCommunicationTemplate.deleteMany();
+  await prisma.pmsPolicy.deleteMany();
   await prisma.pmsRentDueItem.deleteMany();
   await prisma.pmsLease.deleteMany();
   await prisma.pmsTenant.deleteMany();
@@ -855,6 +859,364 @@ describe("PMS company entitlement access architecture", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ paidAmount: 500 })
       .expect(403);
+  });
+
+
+  it("lets PMS managers create work orders, templates, policies, inspections, and real reports", async () => {
+    const admin = await prisma.user.create({
+      data: {
+        name: "PMS Ops Admin",
+        email: "pms-ops-admin@lux.test",
+        password: "test-password",
+        role: "ADMIN",
+        emailVerified: true,
+      },
+    });
+
+    const manager = await prisma.user.create({
+      data: {
+        name: "PMS Ops Manager",
+        email: "pms-ops-manager@lux.test",
+        password: "test-password",
+        role: "DEVELOPER",
+        emailVerified: true,
+      },
+    });
+
+    const company = await prisma.developerCompany.create({
+      data: {
+        slug: "pms-ops-company",
+        nameEn: "PMS Ops Company",
+        verified: true,
+      },
+    });
+
+    await prisma.pmsCompanyEntitlement.create({
+      data: {
+        companyId: company.id,
+        status: "ACTIVE",
+        enabledAt: new Date(),
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    await prisma.pmsCompanyMember.create({
+      data: {
+        companyId: company.id,
+        userId: manager.id,
+        role: "PMS_MANAGER",
+        active: true,
+        createdById: admin.id,
+      },
+    });
+
+    const property = await prisma.pmsProperty.create({
+      data: {
+        companyId: company.id,
+        name: "Operations Tower",
+        code: "OPS-TOWER",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const unit = await prisma.pmsUnit.create({
+      data: {
+        companyId: company.id,
+        propertyId: property.id,
+        unitNumber: "OPS-101",
+        status: "OCCUPIED",
+        occupancyStatus: "OCCUPIED",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const tenant = await prisma.pmsTenant.create({
+      data: {
+        companyId: company.id,
+        fullName: "Ops Tenant",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const lease = await prisma.pmsLease.create({
+      data: {
+        companyId: company.id,
+        tenantId: tenant.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        startDate: new Date("2026-07-01T00:00:00.000Z"),
+        endDate: new Date("2026-12-31T00:00:00.000Z"),
+        rentFrequency: "MONTHLY",
+        rentAmount: 900,
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    await prisma.pmsRentDueItem.create({
+      data: {
+        companyId: company.id,
+        leaseId: lease.id,
+        tenantId: tenant.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        dueDate: new Date("2026-07-01T00:00:00.000Z"),
+        amount: 900,
+        paidAmount: 900,
+        status: "PAID",
+        currency: "OMR",
+        paidAt: new Date("2026-07-02T00:00:00.000Z"),
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    await prisma.pmsRentDueItem.create({
+      data: {
+        companyId: company.id,
+        leaseId: lease.id,
+        tenantId: tenant.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        dueDate: new Date("2026-07-03T00:00:00.000Z"),
+        amount: 900,
+        paidAmount: 0,
+        status: "OVERDUE",
+        currency: "OMR",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const token = signToken(manager);
+    const workOrderResponse = await request(app)
+      .post("/api/pms/maintenance")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        companyId: company.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        tenantId: tenant.id,
+        title: "AC repair",
+        description: "Tenant reported cooling issue.",
+        priority: "HIGH",
+        assignedToText: "Internal maintenance",
+        vendorText: "Vendor A",
+        cost: 120,
+        currency: "OMR",
+      })
+      .expect(201);
+
+    expect(workOrderResponse.body.workOrder.title).toBe("AC repair");
+    expect(workOrderResponse.body.workOrder.property.id).toBe(property.id);
+
+    const resolvedResponse = await request(app)
+      .patch(`/api/pms/maintenance/${workOrderResponse.body.workOrder.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        status: "RESOLVED",
+        cost: 125,
+      })
+      .expect(200);
+
+    expect(resolvedResponse.body.workOrder.status).toBe("RESOLVED");
+    expect(resolvedResponse.body.workOrder.resolvedAt).toBeTruthy();
+
+    const templateResponse = await request(app)
+      .post("/api/pms/communication-templates")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        companyId: company.id,
+        name: "Overdue rent WhatsApp",
+        channel: "WHATSAPP",
+        type: "OVERDUE_RENT",
+        body: "Hello {{tenantName}}, your rent is overdue.",
+      })
+      .expect(201);
+
+    expect(templateResponse.body.template.channel).toBe("WHATSAPP");
+
+    const policyResponse = await request(app)
+      .post("/api/pms/policies")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        companyId: company.id,
+        title: "Late fee policy foundation",
+        category: "PAYMENT",
+        body: "Late fee rules are reviewed manually before posting.",
+      })
+      .expect(201);
+
+    expect(policyResponse.body.policy.category).toBe("PAYMENT");
+
+    const inspectionResponse = await request(app)
+      .post("/api/pms/inspections")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        companyId: company.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        tenantId: tenant.id,
+        leaseId: lease.id,
+        title: "Move-in inspection",
+        status: "NEEDS_ACTION",
+        feedback: "Paint touch-up needed.",
+        rating: 3,
+      })
+      .expect(201);
+
+    expect(inspectionResponse.body.inspection.status).toBe("NEEDS_ACTION");
+
+    const reportsResponse = await request(app)
+      .get(`/api/pms/reports/summary?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(reportsResponse.body.accounting.incomeCollected).toBe("900");
+    expect(reportsResponse.body.accounting.maintenanceCosts).toBe("125");
+    expect(reportsResponse.body.reports.maintenance.resolved).toBe(1);
+    expect(reportsResponse.body.reports.inspections.needsAction).toBe(1);
+    expect(reportsResponse.body.reports.communications.activeTemplates).toBe(1);
+    expect(reportsResponse.body.reports.policies.activePolicies).toBe(1);
+    expect(reportsResponse.body.reports.overdueTopList).toHaveLength(1);
+  });
+
+  it("keeps PMS operational resources company-scoped and role restricted", async () => {
+    const admin = await prisma.user.create({
+      data: {
+        name: "PMS Ops Scope Admin",
+        email: "pms-ops-scope-admin@lux.test",
+        password: "test-password",
+        role: "ADMIN",
+        emailVerified: true,
+      },
+    });
+
+    const manager = await prisma.user.create({
+      data: {
+        name: "PMS Ops Scope Manager",
+        email: "pms-ops-scope-manager@lux.test",
+        password: "test-password",
+        role: "DEVELOPER",
+        emailVerified: true,
+      },
+    });
+
+    const viewer = await prisma.user.create({
+      data: {
+        name: "PMS Ops Viewer",
+        email: "pms-ops-viewer@lux.test",
+        password: "test-password",
+        role: "OWNER",
+        emailVerified: true,
+      },
+    });
+
+    const companyA = await prisma.developerCompany.create({
+      data: {
+        slug: "pms-ops-scope-a",
+        nameEn: "PMS Ops Scope A",
+        verified: true,
+      },
+    });
+    const companyB = await prisma.developerCompany.create({
+      data: {
+        slug: "pms-ops-scope-b",
+        nameEn: "PMS Ops Scope B",
+        verified: true,
+      },
+    });
+
+    await prisma.pmsCompanyEntitlement.createMany({
+      data: [
+        {
+          companyId: companyA.id,
+          status: "ACTIVE",
+          enabledAt: new Date(),
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+        {
+          companyId: companyB.id,
+          status: "ACTIVE",
+          enabledAt: new Date(),
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+      ],
+    });
+
+    await prisma.pmsCompanyMember.createMany({
+      data: [
+        {
+          companyId: companyA.id,
+          userId: manager.id,
+          role: "PMS_MANAGER",
+          active: true,
+          createdById: admin.id,
+        },
+        {
+          companyId: companyA.id,
+          userId: viewer.id,
+          role: "PMS_VIEWER",
+          active: true,
+          createdById: admin.id,
+        },
+      ],
+    });
+
+    const companyBProperty = await prisma.pmsProperty.create({
+      data: {
+        companyId: companyB.id,
+        name: "Company B ops property",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const companyBWorkOrder = await prisma.pmsWorkOrder.create({
+      data: {
+        companyId: companyB.id,
+        propertyId: companyBProperty.id,
+        title: "Company B private issue",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const managerToken = signToken(manager);
+    const viewerToken = signToken(viewer);
+
+    await request(app)
+      .get(`/api/pms/maintenance?companyId=${companyB.id}`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .expect(403);
+
+    await request(app)
+      .patch(`/api/pms/maintenance/${companyBWorkOrder.id}`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .send({ status: "RESOLVED" })
+      .expect(403);
+
+    await request(app)
+      .post("/api/pms/policies")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .send({
+        companyId: companyA.id,
+        title: "Viewer cannot create policy",
+        category: "GENERAL",
+        body: "Should fail.",
+      })
+      .expect(403);
+
+    await request(app)
+      .get(`/api/pms/reports/summary?companyId=${companyA.id}`)
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .expect(200);
   });
 
 });

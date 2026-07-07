@@ -925,6 +925,30 @@ export default function App() {
               </RequirePms>
             }
           />
+          <Route
+            path="/pms/maintenance"
+            element={
+              <RequirePms>
+                <PmsPortal />
+              </RequirePms>
+            }
+          />
+          <Route
+            path="/pms/reports"
+            element={
+              <RequirePms>
+                <PmsPortal />
+              </RequirePms>
+            }
+          />
+          <Route
+            path="/pms/settings"
+            element={
+              <RequirePms>
+                <PmsPortal />
+              </RequirePms>
+            }
+          />
 
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

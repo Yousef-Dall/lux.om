@@ -1,10 +1,15 @@
 import {
   AccountSecurityEventType,
   PaymentScheduleFrequency,
+  PmsCommunicationChannel,
   PmsEntitlementStatus,
+  PmsInspectionStatus,
   PmsLeaseStatus,
+  PmsMaintenancePriority,
+  PmsMaintenanceStatus,
   PmsMemberRole,
   PmsOccupancyStatus,
+  PmsPolicyCategory,
   PmsRentDueStatus,
   PmsUnitStatus,
   type Prisma,
@@ -185,6 +190,86 @@ const pmsRentDueParamsSchema = z.object({
   rentDueItemId: z.string().trim().min(1),
 });
 
+const pmsWorkOrderListQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+  unitId: z.string().trim().min(1).optional(),
+  tenantId: z.string().trim().min(1).optional(),
+  search: z.string().trim().max(120).optional(),
+  status: z
+    .enum(["ALL", ...Object.values(PmsMaintenanceStatus)] as [
+      "ALL",
+      ...PmsMaintenanceStatus[],
+    ])
+    .default("ALL"),
+  priority: z
+    .enum(["ALL", ...Object.values(PmsMaintenancePriority)] as [
+      "ALL",
+      ...PmsMaintenancePriority[],
+    ])
+    .default("ALL"),
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  skip: z.coerce.number().int().min(0).default(0),
+});
+
+const pmsWorkOrderParamsSchema = z.object({
+  workOrderId: z.string().trim().min(1),
+});
+
+const pmsCommunicationTemplateListQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  active: z.enum(["ALL", "ACTIVE", "INACTIVE"]).default("ALL"),
+  channel: z
+    .enum(["ALL", ...Object.values(PmsCommunicationChannel)] as [
+      "ALL",
+      ...PmsCommunicationChannel[],
+    ])
+    .default("ALL"),
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  skip: z.coerce.number().int().min(0).default(0),
+});
+
+const pmsCommunicationTemplateParamsSchema = z.object({
+  templateId: z.string().trim().min(1),
+});
+
+const pmsPolicyListQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  active: z.enum(["ALL", "ACTIVE", "INACTIVE"]).default("ALL"),
+  category: z
+    .enum(["ALL", ...Object.values(PmsPolicyCategory)] as [
+      "ALL",
+      ...PmsPolicyCategory[],
+    ])
+    .default("ALL"),
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  skip: z.coerce.number().int().min(0).default(0),
+});
+
+const pmsPolicyParamsSchema = z.object({
+  policyId: z.string().trim().min(1),
+});
+
+const pmsInspectionListQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+  unitId: z.string().trim().min(1).optional(),
+  tenantId: z.string().trim().min(1).optional(),
+  leaseId: z.string().trim().min(1).optional(),
+  status: z
+    .enum(["ALL", ...Object.values(PmsInspectionStatus)] as [
+      "ALL",
+      ...PmsInspectionStatus[],
+    ])
+    .default("ALL"),
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  skip: z.coerce.number().int().min(0).default(0),
+});
+
+const pmsInspectionParamsSchema = z.object({
+  inspectionId: z.string().trim().min(1),
+});
+
 const pmsTenantCreateSchema = z
   .object({
     companyId: z.string().trim().min(1),
@@ -275,6 +360,102 @@ const pmsRentDueUpdateSchema = z
   .strict()
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one rent due item field is required.",
+  });
+
+const nullableUrlList = z
+  .array(z.string().trim().url().max(1000))
+  .max(20)
+  .optional();
+
+const pmsWorkOrderCreateSchema = z
+  .object({
+    companyId: z.string().trim().min(1),
+    propertyId: z.string().trim().min(1),
+    unitId: nullableId,
+    tenantId: nullableId,
+    title: z.string().trim().min(2).max(180),
+    description: nullableTrimmedString(4000),
+    priority: z.nativeEnum(PmsMaintenancePriority).default(PmsMaintenancePriority.MEDIUM),
+    status: z.nativeEnum(PmsMaintenanceStatus).default(PmsMaintenanceStatus.OPEN),
+    assignedToText: nullableTrimmedString(180),
+    vendorText: nullableTrimmedString(180),
+    cost: z.coerce.number().min(0).max(100000000).optional().nullable(),
+    currency: z.string().trim().length(3).toUpperCase().default("OMR"),
+    scheduledFor: z.coerce.date().optional().nullable(),
+    resolvedAt: z.coerce.date().optional().nullable(),
+    imageUrls: nullableUrlList,
+    documentUrls: nullableUrlList,
+    notes: nullableTrimmedString(2000),
+  })
+  .strict();
+
+const pmsWorkOrderUpdateSchema = pmsWorkOrderCreateSchema
+  .omit({ companyId: true, propertyId: true })
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one work order field is required.",
+  });
+
+const pmsCommunicationTemplateCreateSchema = z
+  .object({
+    companyId: z.string().trim().min(1),
+    name: z.string().trim().min(2).max(180),
+    channel: z.nativeEnum(PmsCommunicationChannel).default(PmsCommunicationChannel.EMAIL),
+    type: nullableTrimmedString(120),
+    subject: nullableTrimmedString(180),
+    body: z.string().trim().min(2).max(5000),
+    active: z.boolean().default(true),
+    notes: nullableTrimmedString(2000),
+  })
+  .strict();
+
+const pmsCommunicationTemplateUpdateSchema = pmsCommunicationTemplateCreateSchema
+  .omit({ companyId: true })
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one communication template field is required.",
+  });
+
+const pmsPolicyCreateSchema = z
+  .object({
+    companyId: z.string().trim().min(1),
+    title: z.string().trim().min(2).max(180),
+    category: z.nativeEnum(PmsPolicyCategory).default(PmsPolicyCategory.GENERAL),
+    body: z.string().trim().min(2).max(8000),
+    active: z.boolean().default(true),
+    notes: nullableTrimmedString(2000),
+  })
+  .strict();
+
+const pmsPolicyUpdateSchema = pmsPolicyCreateSchema
+  .omit({ companyId: true })
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one policy field is required.",
+  });
+
+const pmsInspectionCreateSchema = z
+  .object({
+    companyId: z.string().trim().min(1),
+    propertyId: z.string().trim().min(1),
+    unitId: nullableId,
+    tenantId: nullableId,
+    leaseId: nullableId,
+    title: z.string().trim().min(2).max(180),
+    status: z.nativeEnum(PmsInspectionStatus).default(PmsInspectionStatus.SCHEDULED),
+    scheduledFor: z.coerce.date().optional().nullable(),
+    completedAt: z.coerce.date().optional().nullable(),
+    notes: nullableTrimmedString(2000),
+    feedback: nullableTrimmedString(4000),
+    rating: z.coerce.number().int().min(1).max(5).optional().nullable(),
+  })
+  .strict();
+
+const pmsInspectionUpdateSchema = pmsInspectionCreateSchema
+  .omit({ companyId: true, propertyId: true })
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one inspection field is required.",
   });
 
 const adminPmsCompaniesQuerySchema = z.object({
@@ -897,6 +1078,37 @@ function assertCanCollectPmsRent(role: PmsMemberRole) {
   }
 }
 
+function canManagePmsMaintenance(role: PmsMemberRole) {
+  return (
+    role === "PMS_OWNER" ||
+    role === "PMS_MANAGER" ||
+    role === "PMS_MAINTENANCE" ||
+    role === "PMS_AGENT"
+  );
+}
+
+function assertCanManagePmsMaintenance(role: PmsMemberRole) {
+  if (!canManagePmsMaintenance(role)) {
+    throw new AppError(
+      403,
+      "Your PMS role can view maintenance records but cannot change them.",
+    );
+  }
+}
+
+function canManagePmsOperations(role: PmsMemberRole) {
+  return role === "PMS_OWNER" || role === "PMS_MANAGER";
+}
+
+function assertCanManagePmsOperations(role: PmsMemberRole) {
+  if (!canManagePmsOperations(role)) {
+    throw new AppError(
+      403,
+      "Your PMS role can view operational settings but cannot change them.",
+    );
+  }
+}
+
 function defaultOccupancyForUnitStatus(status: PmsUnitStatus) {
   if (status === PmsUnitStatus.OCCUPIED) return PmsOccupancyStatus.OCCUPIED;
   if (status === PmsUnitStatus.RESERVED) return PmsOccupancyStatus.RESERVED;
@@ -1191,6 +1403,260 @@ function pmsRentDueItemResponse(item: PmsRentDueItemWithRelations) {
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };
+}
+
+
+const pmsWorkOrderInclude = {
+  property: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      companyId: true,
+    },
+  },
+  unit: {
+    select: {
+      id: true,
+      unitNumber: true,
+      unitName: true,
+    },
+  },
+  tenant: {
+    select: {
+      id: true,
+      fullName: true,
+      phone: true,
+      email: true,
+    },
+  },
+};
+
+type PmsWorkOrderWithRelations = Prisma.PmsWorkOrderGetPayload<{
+  include: typeof pmsWorkOrderInclude;
+}>;
+
+const pmsInspectionInclude = {
+  property: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      companyId: true,
+    },
+  },
+  unit: {
+    select: {
+      id: true,
+      unitNumber: true,
+      unitName: true,
+    },
+  },
+  tenant: {
+    select: {
+      id: true,
+      fullName: true,
+      phone: true,
+      email: true,
+    },
+  },
+  lease: {
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      startDate: true,
+      endDate: true,
+    },
+  },
+};
+
+type PmsInspectionWithRelations = Prisma.PmsInspectionGetPayload<{
+  include: typeof pmsInspectionInclude;
+}>;
+
+function pmsWorkOrderResponse(workOrder: PmsWorkOrderWithRelations) {
+  return {
+    id: workOrder.id,
+    companyId: workOrder.companyId,
+    propertyId: workOrder.propertyId,
+    property: workOrder.property,
+    unitId: workOrder.unitId,
+    unit: workOrder.unit,
+    tenantId: workOrder.tenantId,
+    tenant: workOrder.tenant,
+    title: workOrder.title,
+    description: workOrder.description,
+    priority: workOrder.priority,
+    status: workOrder.status,
+    assignedToText: workOrder.assignedToText,
+    vendorText: workOrder.vendorText,
+    cost: decimalToString(workOrder.cost),
+    currency: workOrder.currency,
+    scheduledFor: workOrder.scheduledFor,
+    resolvedAt: workOrder.resolvedAt,
+    imageUrls: workOrder.imageUrls,
+    documentUrls: workOrder.documentUrls,
+    notes: workOrder.notes,
+    createdAt: workOrder.createdAt,
+    updatedAt: workOrder.updatedAt,
+  };
+}
+
+function pmsCommunicationTemplateResponse(template: {
+  id: string;
+  companyId: string;
+  name: string;
+  channel: PmsCommunicationChannel;
+  type: string | null;
+  subject: string | null;
+  body: string;
+  active: boolean;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: template.id,
+    companyId: template.companyId,
+    name: template.name,
+    channel: template.channel,
+    type: template.type,
+    subject: template.subject,
+    body: template.body,
+    active: template.active,
+    notes: template.notes,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
+  };
+}
+
+function pmsPolicyResponse(policy: {
+  id: string;
+  companyId: string;
+  title: string;
+  category: PmsPolicyCategory;
+  body: string;
+  active: boolean;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: policy.id,
+    companyId: policy.companyId,
+    title: policy.title,
+    category: policy.category,
+    body: policy.body,
+    active: policy.active,
+    notes: policy.notes,
+    createdAt: policy.createdAt,
+    updatedAt: policy.updatedAt,
+  };
+}
+
+function pmsInspectionResponse(inspection: PmsInspectionWithRelations) {
+  return {
+    id: inspection.id,
+    companyId: inspection.companyId,
+    propertyId: inspection.propertyId,
+    property: inspection.property,
+    unitId: inspection.unitId,
+    unit: inspection.unit,
+    tenantId: inspection.tenantId,
+    tenant: inspection.tenant,
+    leaseId: inspection.leaseId,
+    lease: inspection.lease,
+    title: inspection.title,
+    status: inspection.status,
+    scheduledFor: inspection.scheduledFor,
+    completedAt: inspection.completedAt,
+    notes: inspection.notes,
+    feedback: inspection.feedback,
+    rating: inspection.rating,
+    createdAt: inspection.createdAt,
+    updatedAt: inspection.updatedAt,
+  };
+}
+
+async function assertPmsOperationalLinksBelongToCompany(input: {
+  companyId: string;
+  propertyId: string;
+  unitId?: string | null;
+  tenantId?: string | null;
+  leaseId?: string | null;
+}) {
+  const property = await prisma.pmsProperty.findFirst({
+    where: {
+      id: input.propertyId,
+      companyId: input.companyId,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!property) {
+    throw new AppError(400, "PMS property must belong to the PMS company.");
+  }
+
+  if (input.unitId) {
+    const unit = await prisma.pmsUnit.findFirst({
+      where: {
+        id: input.unitId,
+        companyId: input.companyId,
+        propertyId: input.propertyId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!unit) {
+      throw new AppError(
+        400,
+        "PMS unit must belong to the selected PMS property and company.",
+      );
+    }
+  }
+
+  if (input.tenantId) {
+    const tenant = await prisma.pmsTenant.findFirst({
+      where: {
+        id: input.tenantId,
+        companyId: input.companyId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!tenant) {
+      throw new AppError(400, "PMS tenant must belong to the PMS company.");
+    }
+  }
+
+  if (input.leaseId) {
+    const lease = await prisma.pmsLease.findFirst({
+      where: {
+        id: input.leaseId,
+        companyId: input.companyId,
+        propertyId: input.propertyId,
+        ...(input.unitId ? { unitId: input.unitId } : {}),
+        ...(input.tenantId ? { tenantId: input.tenantId } : {}),
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!lease) {
+      throw new AppError(
+        400,
+        "PMS lease must belong to the selected PMS company context.",
+      );
+    }
+  }
 }
 
 function buildPmsPropertyWriteData(
@@ -2076,6 +2542,803 @@ pmsRouter.patch("/rent-due/:rentDueItemId", requireAuth(), async (req, res, next
   }
 });
 
+
+function buildPmsWorkOrderUpdateData(
+  data: z.infer<typeof pmsWorkOrderUpdateSchema>,
+  userId: string,
+): Prisma.PmsWorkOrderUncheckedUpdateInput {
+  return {
+    ...(data.unitId !== undefined ? { unitId: data.unitId } : {}),
+    ...(data.tenantId !== undefined ? { tenantId: data.tenantId } : {}),
+    ...(data.title !== undefined ? { title: data.title } : {}),
+    ...(data.description !== undefined
+      ? { description: normalizeNullableText(data.description) }
+      : {}),
+    ...(data.priority !== undefined ? { priority: data.priority } : {}),
+    ...(data.status !== undefined ? { status: data.status } : {}),
+    ...(data.assignedToText !== undefined
+      ? { assignedToText: normalizeNullableText(data.assignedToText) }
+      : {}),
+    ...(data.vendorText !== undefined
+      ? { vendorText: normalizeNullableText(data.vendorText) }
+      : {}),
+    ...(data.cost !== undefined ? { cost: data.cost } : {}),
+    ...(data.currency !== undefined ? { currency: data.currency } : {}),
+    ...(data.scheduledFor !== undefined ? { scheduledFor: data.scheduledFor } : {}),
+    ...(data.resolvedAt !== undefined ? { resolvedAt: data.resolvedAt } : {}),
+    ...(data.imageUrls !== undefined ? { imageUrls: data.imageUrls } : {}),
+    ...(data.documentUrls !== undefined ? { documentUrls: data.documentUrls } : {}),
+    ...(data.notes !== undefined ? { notes: normalizeNullableText(data.notes) } : {}),
+    updatedById: userId,
+  };
+}
+
+function buildPmsCommunicationTemplateUpdateData(
+  data: z.infer<typeof pmsCommunicationTemplateUpdateSchema>,
+  userId: string,
+): Prisma.PmsCommunicationTemplateUncheckedUpdateInput {
+  return {
+    ...(data.name !== undefined ? { name: data.name } : {}),
+    ...(data.channel !== undefined ? { channel: data.channel } : {}),
+    ...(data.type !== undefined ? { type: normalizeNullableText(data.type) } : {}),
+    ...(data.subject !== undefined
+      ? { subject: normalizeNullableText(data.subject) }
+      : {}),
+    ...(data.body !== undefined ? { body: data.body } : {}),
+    ...(data.active !== undefined ? { active: data.active } : {}),
+    ...(data.notes !== undefined ? { notes: normalizeNullableText(data.notes) } : {}),
+    updatedById: userId,
+  };
+}
+
+function buildPmsPolicyUpdateData(
+  data: z.infer<typeof pmsPolicyUpdateSchema>,
+  userId: string,
+): Prisma.PmsPolicyUncheckedUpdateInput {
+  return {
+    ...(data.title !== undefined ? { title: data.title } : {}),
+    ...(data.category !== undefined ? { category: data.category } : {}),
+    ...(data.body !== undefined ? { body: data.body } : {}),
+    ...(data.active !== undefined ? { active: data.active } : {}),
+    ...(data.notes !== undefined ? { notes: normalizeNullableText(data.notes) } : {}),
+    updatedById: userId,
+  };
+}
+
+function buildPmsInspectionUpdateData(
+  data: z.infer<typeof pmsInspectionUpdateSchema>,
+  userId: string,
+): Prisma.PmsInspectionUncheckedUpdateInput {
+  return {
+    ...(data.unitId !== undefined ? { unitId: data.unitId } : {}),
+    ...(data.tenantId !== undefined ? { tenantId: data.tenantId } : {}),
+    ...(data.leaseId !== undefined ? { leaseId: data.leaseId } : {}),
+    ...(data.title !== undefined ? { title: data.title } : {}),
+    ...(data.status !== undefined ? { status: data.status } : {}),
+    ...(data.scheduledFor !== undefined ? { scheduledFor: data.scheduledFor } : {}),
+    ...(data.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
+    ...(data.notes !== undefined ? { notes: normalizeNullableText(data.notes) } : {}),
+    ...(data.feedback !== undefined
+      ? { feedback: normalizeNullableText(data.feedback) }
+      : {}),
+    ...(data.rating !== undefined ? { rating: data.rating } : {}),
+    updatedById: userId,
+  };
+}
+
+async function buildPmsReportsSummary(companyId: string) {
+  const now = new Date();
+  const renewalWindowEnd = new Date(now);
+  renewalWindowEnd.setDate(renewalWindowEnd.getDate() + 60);
+
+  const [
+    totalUnits,
+    occupiedUnits,
+    vacantUnits,
+    rentCollected,
+    outstandingRent,
+    overdueRent,
+    maintenanceCosts,
+    openMaintenance,
+    inProgressMaintenance,
+    resolvedMaintenance,
+    urgentMaintenance,
+    scheduledInspections,
+    completedInspections,
+    needsActionInspections,
+    communicationTemplateCount,
+    activePolicyCount,
+    overdueTopList,
+    expiringLeases,
+  ] = await prisma.$transaction([
+    prisma.pmsUnit.count({ where: { companyId } }),
+    prisma.pmsUnit.count({ where: { companyId, status: PmsUnitStatus.OCCUPIED } }),
+    prisma.pmsUnit.count({ where: { companyId, status: PmsUnitStatus.VACANT } }),
+    prisma.pmsRentDueItem.aggregate({
+      where: {
+        companyId,
+        status: { in: [PmsRentDueStatus.PAID, PmsRentDueStatus.PARTIALLY_PAID] },
+      },
+      _sum: { paidAmount: true },
+    }),
+    prisma.pmsRentDueItem.aggregate({
+      where: {
+        companyId,
+        status: { notIn: [PmsRentDueStatus.PAID, PmsRentDueStatus.CANCELLED] },
+      },
+      _sum: { amount: true },
+    }),
+    prisma.pmsRentDueItem.aggregate({
+      where: {
+        companyId,
+        OR: [
+          { status: PmsRentDueStatus.OVERDUE },
+          {
+            dueDate: { lt: now },
+            status: {
+              in: [
+                PmsRentDueStatus.UNPAID,
+                PmsRentDueStatus.DUE_SOON,
+                PmsRentDueStatus.PARTIALLY_PAID,
+              ],
+            },
+          },
+        ],
+      },
+      _sum: { amount: true },
+    }),
+    prisma.pmsWorkOrder.aggregate({
+      where: {
+        companyId,
+        status: { not: PmsMaintenanceStatus.CANCELLED },
+      },
+      _sum: { cost: true },
+    }),
+    prisma.pmsWorkOrder.count({ where: { companyId, status: PmsMaintenanceStatus.OPEN } }),
+    prisma.pmsWorkOrder.count({ where: { companyId, status: PmsMaintenanceStatus.IN_PROGRESS } }),
+    prisma.pmsWorkOrder.count({ where: { companyId, status: PmsMaintenanceStatus.RESOLVED } }),
+    prisma.pmsWorkOrder.count({ where: { companyId, priority: PmsMaintenancePriority.URGENT } }),
+    prisma.pmsInspection.count({ where: { companyId, status: PmsInspectionStatus.SCHEDULED } }),
+    prisma.pmsInspection.count({ where: { companyId, status: PmsInspectionStatus.COMPLETED } }),
+    prisma.pmsInspection.count({ where: { companyId, status: PmsInspectionStatus.NEEDS_ACTION } }),
+    prisma.pmsCommunicationTemplate.count({ where: { companyId, active: true } }),
+    prisma.pmsPolicy.count({ where: { companyId, active: true } }),
+    prisma.pmsRentDueItem.findMany({
+      where: {
+        companyId,
+        OR: [
+          { status: PmsRentDueStatus.OVERDUE },
+          {
+            dueDate: { lt: now },
+            status: {
+              in: [
+                PmsRentDueStatus.UNPAID,
+                PmsRentDueStatus.DUE_SOON,
+                PmsRentDueStatus.PARTIALLY_PAID,
+              ],
+            },
+          },
+        ],
+      },
+      include: pmsRentDueItemInclude,
+      orderBy: [{ dueDate: "asc" }],
+      take: 5,
+    }),
+    prisma.pmsLease.findMany({
+      where: {
+        companyId,
+        status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] },
+        endDate: { gte: now, lte: renewalWindowEnd },
+      },
+      include: pmsLeaseInclude,
+      orderBy: [{ endDate: "asc" }],
+      take: 5,
+    }),
+  ]);
+
+  const maintenanceCost = maintenanceCosts._sum.cost;
+
+  return {
+    accounting: {
+      incomeCollected: decimalToString(rentCollected._sum.paidAmount),
+      outstandingRent: decimalToString(outstandingRent._sum.amount),
+      overdueRent: decimalToString(overdueRent._sum.amount),
+      expenses: decimalToString(maintenanceCost),
+      maintenanceCosts: decimalToString(maintenanceCost),
+      lateFeeFoundationEnabled: false,
+      lateFeeNote:
+        "Late fee policy records are available, but automatic fee posting is not enabled yet.",
+    },
+    reports: {
+      occupancy: {
+        totalUnits,
+        occupiedUnits,
+        vacantUnits,
+        occupancyRate:
+          totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 1000) / 10 : 0,
+      },
+      revenue: {
+        collected: decimalToString(rentCollected._sum.paidAmount),
+        outstanding: decimalToString(outstandingRent._sum.amount),
+        overdue: decimalToString(overdueRent._sum.amount),
+      },
+      overdueTopList: overdueTopList.map(pmsRentDueItemResponse),
+      maintenance: {
+        open: openMaintenance,
+        inProgress: inProgressMaintenance,
+        resolved: resolvedMaintenance,
+        urgent: urgentMaintenance,
+        costs: decimalToString(maintenanceCost),
+      },
+      leaseRenewals: expiringLeases.map(pmsLeaseResponse),
+      inspections: {
+        scheduled: scheduledInspections,
+        completed: completedInspections,
+        needsAction: needsActionInspections,
+      },
+      communications: {
+        activeTemplates: communicationTemplateCount,
+      },
+      policies: {
+        activePolicies: activePolicyCount,
+      },
+    },
+  };
+}
+
+pmsRouter.get("/maintenance", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const query = pmsWorkOrderListQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: query.companyId,
+    });
+    const search = query.search?.trim();
+    const where: Prisma.PmsWorkOrderWhereInput = {
+      companyId: access.company.id,
+      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.unitId ? { unitId: query.unitId } : {}),
+      ...(query.tenantId ? { tenantId: query.tenantId } : {}),
+      ...(query.status !== "ALL" ? { status: query.status } : {}),
+      ...(query.priority !== "ALL" ? { priority: query.priority } : {}),
+      ...(search
+        ? {
+            OR: [
+              { title: { contains: search, mode: "insensitive" } },
+              { description: { contains: search, mode: "insensitive" } },
+              { assignedToText: { contains: search, mode: "insensitive" } },
+              { vendorText: { contains: search, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    };
+
+    const [workOrders, total] = await prisma.$transaction([
+      prisma.pmsWorkOrder.findMany({
+        where,
+        include: pmsWorkOrderInclude,
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsWorkOrder.count({ where }),
+    ]);
+
+    res.json({
+      workspace: {
+        company: access.company,
+        member: access.member,
+        entitlement: access.entitlement,
+      },
+      workOrders: workOrders.map(pmsWorkOrderResponse),
+      pagination: {
+        take: query.take,
+        skip: query.skip,
+        count: workOrders.length,
+        total,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/maintenance", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const data = pmsWorkOrderCreateSchema.parse(req.body);
+    const userId = req.user.id;
+    const access = await resolvePmsAccessOrThrow({
+      userId,
+      companyId: data.companyId,
+    });
+    assertCanManagePmsMaintenance(access.member.role);
+    await assertPmsOperationalLinksBelongToCompany({
+      companyId: access.company.id,
+      propertyId: data.propertyId,
+      unitId: data.unitId,
+      tenantId: data.tenantId,
+    });
+
+    const workOrder = await prisma.pmsWorkOrder.create({
+      data: {
+        companyId: access.company.id,
+        propertyId: data.propertyId,
+        unitId: data.unitId ?? null,
+        tenantId: data.tenantId ?? null,
+        title: data.title,
+        description: normalizeNullableText(data.description),
+        priority: data.priority,
+        status: data.status,
+        assignedToText: normalizeNullableText(data.assignedToText),
+        vendorText: normalizeNullableText(data.vendorText),
+        cost: data.cost ?? null,
+        currency: data.currency,
+        scheduledFor: data.scheduledFor ?? null,
+        resolvedAt:
+          data.resolvedAt ??
+          (data.status === PmsMaintenanceStatus.RESOLVED ? new Date() : null),
+        imageUrls: data.imageUrls ?? [],
+        documentUrls: data.documentUrls ?? [],
+        notes: normalizeNullableText(data.notes),
+        createdById: userId,
+        updatedById: userId,
+      },
+      include: pmsWorkOrderInclude,
+    });
+
+    res.status(201).json({ workOrder: pmsWorkOrderResponse(workOrder) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/maintenance/:workOrderId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { workOrderId } = pmsWorkOrderParamsSchema.parse(req.params);
+    const workOrder = await prisma.pmsWorkOrder.findUnique({
+      where: { id: workOrderId },
+      include: pmsWorkOrderInclude,
+    });
+
+    if (!workOrder) {
+      throw new AppError(404, "PMS maintenance work order not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: workOrder.companyId,
+    });
+
+    res.json({
+      workspace: {
+        company: access.company,
+        member: access.member,
+        entitlement: access.entitlement,
+      },
+      workOrder: pmsWorkOrderResponse(workOrder),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.patch("/maintenance/:workOrderId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { workOrderId } = pmsWorkOrderParamsSchema.parse(req.params);
+    const data = pmsWorkOrderUpdateSchema.parse(req.body);
+    const userId = req.user.id;
+    const existing = await prisma.pmsWorkOrder.findUnique({
+      where: { id: workOrderId },
+      select: { id: true, companyId: true, propertyId: true },
+    });
+
+    if (!existing) {
+      throw new AppError(404, "PMS maintenance work order not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({
+      userId,
+      companyId: existing.companyId,
+    });
+    assertCanManagePmsMaintenance(access.member.role);
+    await assertPmsOperationalLinksBelongToCompany({
+      companyId: existing.companyId,
+      propertyId: existing.propertyId,
+      unitId: data.unitId,
+      tenantId: data.tenantId,
+    });
+
+    const workOrder = await prisma.pmsWorkOrder.update({
+      where: { id: workOrderId },
+      data: {
+        ...buildPmsWorkOrderUpdateData(data, userId),
+        ...(data.status === PmsMaintenanceStatus.RESOLVED && !data.resolvedAt
+          ? { resolvedAt: new Date() }
+          : {}),
+      },
+      include: pmsWorkOrderInclude,
+    });
+
+    res.json({ workOrder: pmsWorkOrderResponse(workOrder) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/reports/summary", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const query = pmsOverviewQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: query.companyId,
+    });
+    const summary = await buildPmsReportsSummary(access.company.id);
+
+    res.json({
+      workspace: {
+        company: access.company,
+        member: access.member,
+        entitlement: access.entitlement,
+      },
+      ...summary,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/communication-templates", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const query = pmsCommunicationTemplateListQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: query.companyId,
+    });
+    const where: Prisma.PmsCommunicationTemplateWhereInput = {
+      companyId: access.company.id,
+      ...(query.active === "ACTIVE" ? { active: true } : {}),
+      ...(query.active === "INACTIVE" ? { active: false } : {}),
+      ...(query.channel !== "ALL" ? { channel: query.channel } : {}),
+    };
+
+    const [templates, total] = await prisma.$transaction([
+      prisma.pmsCommunicationTemplate.findMany({
+        where,
+        orderBy: [{ updatedAt: "desc" }, { name: "asc" }],
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsCommunicationTemplate.count({ where }),
+    ]);
+
+    res.json({
+      workspace: {
+        company: access.company,
+        member: access.member,
+        entitlement: access.entitlement,
+      },
+      templates: templates.map(pmsCommunicationTemplateResponse),
+      pagination: { take: query.take, skip: query.skip, count: templates.length, total },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/communication-templates", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const data = pmsCommunicationTemplateCreateSchema.parse(req.body);
+    const userId = req.user.id;
+    const access = await resolvePmsAccessOrThrow({ userId, companyId: data.companyId });
+    assertCanManagePmsOperations(access.member.role);
+
+    const template = await prisma.pmsCommunicationTemplate.create({
+      data: {
+        companyId: access.company.id,
+        name: data.name,
+        channel: data.channel,
+        type: normalizeNullableText(data.type),
+        subject: normalizeNullableText(data.subject),
+        body: data.body,
+        active: data.active,
+        notes: normalizeNullableText(data.notes),
+        createdById: userId,
+        updatedById: userId,
+      },
+    });
+
+    res.status(201).json({ template: pmsCommunicationTemplateResponse(template) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.patch("/communication-templates/:templateId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { templateId } = pmsCommunicationTemplateParamsSchema.parse(req.params);
+    const data = pmsCommunicationTemplateUpdateSchema.parse(req.body);
+    const userId = req.user.id;
+    const existing = await prisma.pmsCommunicationTemplate.findUnique({
+      where: { id: templateId },
+      select: { id: true, companyId: true },
+    });
+
+    if (!existing) {
+      throw new AppError(404, "PMS communication template not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({ userId, companyId: existing.companyId });
+    assertCanManagePmsOperations(access.member.role);
+
+    const template = await prisma.pmsCommunicationTemplate.update({
+      where: { id: templateId },
+      data: buildPmsCommunicationTemplateUpdateData(data, userId),
+    });
+
+    res.json({ template: pmsCommunicationTemplateResponse(template) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/policies", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const query = pmsPolicyListQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    const where: Prisma.PmsPolicyWhereInput = {
+      companyId: access.company.id,
+      ...(query.active === "ACTIVE" ? { active: true } : {}),
+      ...(query.active === "INACTIVE" ? { active: false } : {}),
+      ...(query.category !== "ALL" ? { category: query.category } : {}),
+    };
+
+    const [policies, total] = await prisma.$transaction([
+      prisma.pmsPolicy.findMany({
+        where,
+        orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsPolicy.count({ where }),
+    ]);
+
+    res.json({
+      workspace: { company: access.company, member: access.member, entitlement: access.entitlement },
+      policies: policies.map(pmsPolicyResponse),
+      pagination: { take: query.take, skip: query.skip, count: policies.length, total },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/policies", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const data = pmsPolicyCreateSchema.parse(req.body);
+    const userId = req.user.id;
+    const access = await resolvePmsAccessOrThrow({ userId, companyId: data.companyId });
+    assertCanManagePmsOperations(access.member.role);
+
+    const policy = await prisma.pmsPolicy.create({
+      data: {
+        companyId: access.company.id,
+        title: data.title,
+        category: data.category,
+        body: data.body,
+        active: data.active,
+        notes: normalizeNullableText(data.notes),
+        createdById: userId,
+        updatedById: userId,
+      },
+    });
+
+    res.status(201).json({ policy: pmsPolicyResponse(policy) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.patch("/policies/:policyId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { policyId } = pmsPolicyParamsSchema.parse(req.params);
+    const data = pmsPolicyUpdateSchema.parse(req.body);
+    const userId = req.user.id;
+    const existing = await prisma.pmsPolicy.findUnique({
+      where: { id: policyId },
+      select: { id: true, companyId: true },
+    });
+
+    if (!existing) {
+      throw new AppError(404, "PMS policy not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({ userId, companyId: existing.companyId });
+    assertCanManagePmsOperations(access.member.role);
+
+    const policy = await prisma.pmsPolicy.update({
+      where: { id: policyId },
+      data: buildPmsPolicyUpdateData(data, userId),
+    });
+
+    res.json({ policy: pmsPolicyResponse(policy) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/inspections", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const query = pmsInspectionListQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    const where: Prisma.PmsInspectionWhereInput = {
+      companyId: access.company.id,
+      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.unitId ? { unitId: query.unitId } : {}),
+      ...(query.tenantId ? { tenantId: query.tenantId } : {}),
+      ...(query.leaseId ? { leaseId: query.leaseId } : {}),
+      ...(query.status !== "ALL" ? { status: query.status } : {}),
+    };
+
+    const [inspections, total] = await prisma.$transaction([
+      prisma.pmsInspection.findMany({
+        where,
+        include: pmsInspectionInclude,
+        orderBy: [{ scheduledFor: "asc" }, { updatedAt: "desc" }],
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsInspection.count({ where }),
+    ]);
+
+    res.json({
+      workspace: { company: access.company, member: access.member, entitlement: access.entitlement },
+      inspections: inspections.map(pmsInspectionResponse),
+      pagination: { take: query.take, skip: query.skip, count: inspections.length, total },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/inspections", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const data = pmsInspectionCreateSchema.parse(req.body);
+    const userId = req.user.id;
+    const access = await resolvePmsAccessOrThrow({ userId, companyId: data.companyId });
+    assertCanManagePmsMaintenance(access.member.role);
+    await assertPmsOperationalLinksBelongToCompany({
+      companyId: access.company.id,
+      propertyId: data.propertyId,
+      unitId: data.unitId,
+      tenantId: data.tenantId,
+      leaseId: data.leaseId,
+    });
+
+    const inspection = await prisma.pmsInspection.create({
+      data: {
+        companyId: access.company.id,
+        propertyId: data.propertyId,
+        unitId: data.unitId ?? null,
+        tenantId: data.tenantId ?? null,
+        leaseId: data.leaseId ?? null,
+        title: data.title,
+        status: data.status,
+        scheduledFor: data.scheduledFor ?? null,
+        completedAt:
+          data.completedAt ??
+          (data.status === PmsInspectionStatus.COMPLETED ? new Date() : null),
+        notes: normalizeNullableText(data.notes),
+        feedback: normalizeNullableText(data.feedback),
+        rating: data.rating ?? null,
+        createdById: userId,
+        updatedById: userId,
+      },
+      include: pmsInspectionInclude,
+    });
+
+    res.status(201).json({ inspection: pmsInspectionResponse(inspection) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.patch("/inspections/:inspectionId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { inspectionId } = pmsInspectionParamsSchema.parse(req.params);
+    const data = pmsInspectionUpdateSchema.parse(req.body);
+    const userId = req.user.id;
+    const existing = await prisma.pmsInspection.findUnique({
+      where: { id: inspectionId },
+      select: { id: true, companyId: true, propertyId: true },
+    });
+
+    if (!existing) {
+      throw new AppError(404, "PMS inspection not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({ userId, companyId: existing.companyId });
+    assertCanManagePmsMaintenance(access.member.role);
+    await assertPmsOperationalLinksBelongToCompany({
+      companyId: existing.companyId,
+      propertyId: existing.propertyId,
+      unitId: data.unitId,
+      tenantId: data.tenantId,
+      leaseId: data.leaseId,
+    });
+
+    const inspection = await prisma.pmsInspection.update({
+      where: { id: inspectionId },
+      data: {
+        ...buildPmsInspectionUpdateData(data, userId),
+        ...(data.status === PmsInspectionStatus.COMPLETED && !data.completedAt
+          ? { completedAt: new Date() }
+          : {}),
+      },
+      include: pmsInspectionInclude,
+    });
+
+    res.json({ inspection: pmsInspectionResponse(inspection) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 pmsRouter.get("/properties", requireAuth(), async (req, res, next) => {
   try {
     if (!req.user) {
@@ -2613,6 +3876,14 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
       paidPmsRentDueItems,
       pmsRentDueAggregate,
       pmsRentCollectedAggregate,
+      openPmsWorkOrders,
+      inProgressPmsWorkOrders,
+      urgentPmsWorkOrders,
+      pmsMaintenanceCostAggregate,
+      scheduledPmsInspections,
+      needsActionPmsInspections,
+      activePmsCommunicationTemplates,
+      activePmsPolicies,
       expiringPmsLeaseAlerts,
     ] = await prisma.$transaction([
       prisma.pmsCompanyMember.findMany({
@@ -2838,6 +4109,62 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
           paidAmount: true,
         },
       }),
+      prisma.pmsWorkOrder.count({
+        where: {
+          companyId,
+          status: PmsMaintenanceStatus.OPEN,
+        },
+      }),
+      prisma.pmsWorkOrder.count({
+        where: {
+          companyId,
+          status: PmsMaintenanceStatus.IN_PROGRESS,
+        },
+      }),
+      prisma.pmsWorkOrder.count({
+        where: {
+          companyId,
+          priority: PmsMaintenancePriority.URGENT,
+          status: {
+            notIn: [PmsMaintenanceStatus.RESOLVED, PmsMaintenanceStatus.CANCELLED],
+          },
+        },
+      }),
+      prisma.pmsWorkOrder.aggregate({
+        where: {
+          companyId,
+          status: {
+            not: PmsMaintenanceStatus.CANCELLED,
+          },
+        },
+        _sum: {
+          cost: true,
+        },
+      }),
+      prisma.pmsInspection.count({
+        where: {
+          companyId,
+          status: PmsInspectionStatus.SCHEDULED,
+        },
+      }),
+      prisma.pmsInspection.count({
+        where: {
+          companyId,
+          status: PmsInspectionStatus.NEEDS_ACTION,
+        },
+      }),
+      prisma.pmsCommunicationTemplate.count({
+        where: {
+          companyId,
+          active: true,
+        },
+      }),
+      prisma.pmsPolicy.count({
+        where: {
+          companyId,
+          active: true,
+        },
+      }),
       prisma.pmsLease.findMany({
         where: {
           companyId,
@@ -2896,6 +4223,16 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
         pmsRentCollectedAmount: decimalToString(
           pmsRentCollectedAggregate._sum.paidAmount,
         ),
+        openPmsWorkOrders,
+        inProgressPmsWorkOrders,
+        urgentPmsWorkOrders,
+        pmsMaintenanceCostAmount: decimalToString(
+          pmsMaintenanceCostAggregate._sum.cost,
+        ),
+        scheduledPmsInspections,
+        needsActionPmsInspections,
+        activePmsCommunicationTemplates,
+        activePmsPolicies,
         pmsOccupancyRate:
           totalPmsUnits > 0
             ? Math.round((occupiedPmsUnits / totalPmsUnits) * 1000) / 10
@@ -2912,6 +4249,8 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
         contracts: openContracts === 0,
         accounting:
           unpaidPmsRentDueItems + overduePmsRentDueItems + partiallyPaidPmsRentDueItems === 0,
+        maintenance: openPmsWorkOrders + inProgressPmsWorkOrders === 0,
+        settings: activePmsCommunicationTemplates + activePmsPolicies === 0,
       },
     });
   } catch (error) {

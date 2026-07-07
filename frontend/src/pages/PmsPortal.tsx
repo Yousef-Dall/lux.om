@@ -27,34 +27,55 @@ import {
 
 import { ApiError } from "../api/client";
 import {
+  createPmsCommunicationTemplate,
+  createPmsInspection,
   createPmsLease,
+  createPmsPolicy,
   createPmsProperty,
   createPmsTenant,
   createPmsUnit,
+  createPmsWorkOrder,
   getPmsLease,
   getPmsOverview,
   getPmsProperty,
+  getPmsReportsSummary,
+  listPmsCommunicationTemplates,
+  listPmsInspections,
   listPmsLeaseRentDueItems,
   listPmsLeases,
+  listPmsPolicies,
   listPmsProperties,
   listPmsPropertyUnits,
   listPmsRentDueItems,
   listPmsTenants,
   listPmsUnits,
+  listPmsWorkOrders,
   updatePmsRentDueItem,
   updatePmsProperty,
   updatePmsUnit,
+  updatePmsWorkOrder,
+  type PmsCommunicationTemplate,
+  type PmsCommunicationTemplatePayload,
+  type PmsInspection,
+  type PmsInspectionPayload,
   type PmsLease,
   type PmsLeasePayload,
+  type PmsMaintenancePriority,
+  type PmsMaintenanceStatus,
+  type PmsPolicy,
+  type PmsPolicyPayload,
   type PmsProperty,
   type PmsPropertyPayload,
   type PmsRentDueItem,
+  type PmsReportsSummary,
   type PmsTenant,
   type PmsTenantPayload,
   type PmsUnit,
   type PmsUnitPayload,
   type PmsUnitStatus,
   type PmsWorkspaceOverview,
+  type PmsWorkOrder,
+  type PmsWorkOrderPayload,
 } from "../api/pms";
 import { useAuth } from "../auth/AuthContext";
 import MapLocationPanel from "../components/MapLocationPanel";
@@ -83,7 +104,7 @@ const pmsNavigation = [
     to: "/pms/maintenance",
     key: "maintenance",
     icon: Wrench,
-    available: false,
+    available: true,
   },
   {
     to: "/pms/accounting",
@@ -91,8 +112,8 @@ const pmsNavigation = [
     icon: CreditCard,
     available: true,
   },
-  { to: "/pms/reports", key: "reports", icon: BarChart3, available: false },
-  { to: "/pms/settings", key: "settings", icon: Settings, available: false },
+  { to: "/pms/reports", key: "reports", icon: BarChart3, available: true },
+  { to: "/pms/settings", key: "settings", icon: Settings, available: true },
 ] as const;
 
 const unitStatuses: PmsUnitStatus[] = [
@@ -107,6 +128,21 @@ const rentFrequencies: Array<NonNullable<PmsLeasePayload["rentFrequency"]>> = [
   "MONTHLY",
   "QUARTERLY",
   "YEARLY",
+];
+
+const maintenancePriorities: PmsMaintenancePriority[] = [
+  "LOW",
+  "MEDIUM",
+  "HIGH",
+  "URGENT",
+];
+
+const maintenanceStatuses: PmsMaintenanceStatus[] = [
+  "OPEN",
+  "IN_PROGRESS",
+  "WAITING_VENDOR",
+  "RESOLVED",
+  "CANCELLED",
 ];
 
 const emptyPropertyForm: PmsPropertyPayload = {
@@ -176,6 +212,53 @@ const emptyLeaseForm: PmsLeasePayload = {
   generateRentDueItems: true,
 };
 
+const emptyWorkOrderForm: PmsWorkOrderPayload = {
+  propertyId: "",
+  unitId: "",
+  tenantId: "",
+  title: "",
+  description: "",
+  priority: "MEDIUM",
+  status: "OPEN",
+  assignedToText: "",
+  vendorText: "",
+  cost: "",
+  currency: "OMR",
+  scheduledFor: "",
+  notes: "",
+};
+
+const emptyTemplateForm: PmsCommunicationTemplatePayload = {
+  name: "",
+  channel: "EMAIL",
+  type: "",
+  subject: "",
+  body: "",
+  active: true,
+  notes: "",
+};
+
+const emptyPolicyForm: PmsPolicyPayload = {
+  title: "",
+  category: "GENERAL",
+  body: "",
+  active: true,
+  notes: "",
+};
+
+const emptyInspectionForm: PmsInspectionPayload = {
+  propertyId: "",
+  unitId: "",
+  tenantId: "",
+  leaseId: "",
+  title: "",
+  status: "SCHEDULED",
+  scheduledFor: "",
+  notes: "",
+  feedback: "",
+  rating: null,
+};
+
 function formatNumber(value: number, language: "en" | "ar") {
   return new Intl.NumberFormat(language === "ar" ? "ar-OM" : "en-GB").format(
     value,
@@ -225,6 +308,19 @@ function canEditTenancies(role?: string) {
 
 function canCollectRent(role?: string) {
   return role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_ACCOUNTANT";
+}
+
+function canEditMaintenance(role?: string) {
+  return (
+    role === "PMS_OWNER" ||
+    role === "PMS_MANAGER" ||
+    role === "PMS_MAINTENANCE" ||
+    role === "PMS_AGENT"
+  );
+}
+
+function canEditOperations(role?: string) {
+  return role === "PMS_OWNER" || role === "PMS_MANAGER";
 }
 
 function getUnitStatusLabel(status: PmsUnitStatus, language: "en" | "ar") {
@@ -374,6 +470,70 @@ function cleanLeasePayload(
   };
 }
 
+function cleanWorkOrderPayload(
+  form: PmsWorkOrderPayload,
+  companyId: string,
+): PmsWorkOrderPayload & { companyId: string } {
+  return {
+    ...form,
+    companyId,
+    unitId: form.unitId || null,
+    tenantId: form.tenantId || null,
+    description: form.description || null,
+    assignedToText: form.assignedToText || null,
+    vendorText: form.vendorText || null,
+    cost: numberOrNull(form.cost),
+    currency: form.currency || "OMR",
+    scheduledFor: form.scheduledFor || null,
+    resolvedAt: form.resolvedAt || null,
+    notes: form.notes || null,
+  };
+}
+
+function cleanTemplatePayload(
+  form: PmsCommunicationTemplatePayload,
+  companyId: string,
+): PmsCommunicationTemplatePayload & { companyId: string } {
+  return {
+    ...form,
+    companyId,
+    type: form.type || null,
+    subject: form.subject || null,
+    notes: form.notes || null,
+    active: form.active ?? true,
+  };
+}
+
+function cleanPolicyPayload(
+  form: PmsPolicyPayload,
+  companyId: string,
+): PmsPolicyPayload & { companyId: string } {
+  return {
+    ...form,
+    companyId,
+    notes: form.notes || null,
+    active: form.active ?? true,
+  };
+}
+
+function cleanInspectionPayload(
+  form: PmsInspectionPayload,
+  companyId: string,
+): PmsInspectionPayload & { companyId: string } {
+  return {
+    ...form,
+    companyId,
+    unitId: form.unitId || null,
+    tenantId: form.tenantId || null,
+    leaseId: form.leaseId || null,
+    scheduledFor: form.scheduledFor || null,
+    completedAt: form.completedAt || null,
+    notes: form.notes || null,
+    feedback: form.feedback || null,
+    rating: numberOrNull(form.rating),
+  };
+}
+
 function formatDate(value?: string | null, language: "en" | "ar" = "en") {
   if (!value) return "—";
   return new Intl.DateTimeFormat(language === "ar" ? "ar-OM" : "en-GB", {
@@ -431,6 +591,11 @@ export default function PmsPortal() {
   const [tenants, setTenants] = useState<PmsTenant[]>([]);
   const [leases, setLeases] = useState<PmsLease[]>([]);
   const [rentDueItems, setRentDueItems] = useState<PmsRentDueItem[]>([]);
+  const [workOrders, setWorkOrders] = useState<PmsWorkOrder[]>([]);
+  const [reportsSummary, setReportsSummary] = useState<PmsReportsSummary | null>(null);
+  const [templates, setTemplates] = useState<PmsCommunicationTemplate[]>([]);
+  const [policies, setPolicies] = useState<PmsPolicy[]>([]);
+  const [inspections, setInspections] = useState<PmsInspection[]>([]);
   const [activeProperty, setActiveProperty] = useState<PmsProperty | null>(
     null,
   );
@@ -441,6 +606,14 @@ export default function PmsPortal() {
   const [tenantForm, setTenantForm] =
     useState<PmsTenantPayload>(emptyTenantForm);
   const [leaseForm, setLeaseForm] = useState<PmsLeasePayload>(emptyLeaseForm);
+  const [workOrderForm, setWorkOrderForm] =
+    useState<PmsWorkOrderPayload>(emptyWorkOrderForm);
+  const [templateForm, setTemplateForm] =
+    useState<PmsCommunicationTemplatePayload>(emptyTemplateForm);
+  const [policyForm, setPolicyForm] =
+    useState<PmsPolicyPayload>(emptyPolicyForm);
+  const [inspectionForm, setInspectionForm] =
+    useState<PmsInspectionPayload>(emptyInspectionForm);
   const [unitDrafts, setUnitDrafts] = useState<
     Record<string, Partial<PmsUnitPayload>>
   >({});
@@ -561,6 +734,43 @@ export default function PmsPortal() {
           emptyTenants: "لا يوجد مستأجرون بعد.",
           emptyLeases: "لا توجد عقود PMS بعد.",
           emptyRentDue: "لا توجد دفعات إيجار PMS بعد.",
+          createWorkOrder: "إضافة طلب صيانة",
+          workOrderTitle: "عنوان طلب الصيانة",
+          priority: "الأولوية",
+          assignedTo: "المسؤول",
+          vendor: "المورّد",
+          cost: "التكلفة",
+          scheduledFor: "موعد مجدول",
+          maintenanceRequests: "طلبات الصيانة",
+          emptyMaintenance: "لا توجد طلبات صيانة بعد.",
+          resolve: "إنهاء",
+          createTemplate: "إضافة قالب تواصل",
+          templateName: "اسم القالب",
+          channel: "القناة",
+          subject: "الموضوع",
+          body: "النص",
+          createPolicy: "إضافة سياسة",
+          policyTitle: "عنوان السياسة",
+          category: "التصنيف",
+          createInspection: "إضافة فحص",
+          inspectionTitle: "عنوان الفحص",
+          feedback: "ملاحظات/تقييم",
+          rating: "التقييم",
+          accountingSummary: "ملخص المحاسبة",
+          incomeCollected: "الدخل المحصل",
+          outstandingRent: "إيجار مستحق",
+          overdueAmount: "مبالغ متأخرة",
+          expenses: "المصروفات",
+          maintenanceCosts: "تكاليف الصيانة",
+          lateFeeFoundation: "أساس رسوم التأخير",
+          occupancyReport: "تقرير الإشغال",
+          revenueReport: "تقرير الإيرادات",
+          overdueTopList: "أعلى المتأخرات",
+          leaseRenewals: "تجديدات العقود",
+          inspections: "الفحوصات",
+          communications: "التواصل",
+          policies: "السياسات",
+          emptyReports: "لا توجد بيانات تقارير كافية بعد.",
         }
       : {
           eyebrow: "lux PMS",
@@ -672,6 +882,43 @@ export default function PmsPortal() {
           emptyTenants: "No PMS tenants yet.",
           emptyLeases: "No PMS leases yet.",
           emptyRentDue: "No PMS rent due items yet.",
+          createWorkOrder: "Create work order",
+          workOrderTitle: "Work order title",
+          priority: "Priority",
+          assignedTo: "Assigned to",
+          vendor: "Vendor",
+          cost: "Cost",
+          scheduledFor: "Scheduled for",
+          maintenanceRequests: "Maintenance requests",
+          emptyMaintenance: "No maintenance requests yet.",
+          resolve: "Resolve",
+          createTemplate: "Create communication template",
+          templateName: "Template name",
+          channel: "Channel",
+          subject: "Subject",
+          body: "Body",
+          createPolicy: "Create policy",
+          policyTitle: "Policy title",
+          category: "Category",
+          createInspection: "Create inspection",
+          inspectionTitle: "Inspection title",
+          feedback: "Feedback",
+          rating: "Rating",
+          accountingSummary: "Accounting summary",
+          incomeCollected: "Income collected",
+          outstandingRent: "Outstanding rent",
+          overdueAmount: "Overdue amount",
+          expenses: "Expenses",
+          maintenanceCosts: "Maintenance costs",
+          lateFeeFoundation: "Late fee foundation",
+          occupancyReport: "Occupancy report",
+          revenueReport: "Revenue report",
+          overdueTopList: "Overdue top list",
+          leaseRenewals: "Lease renewals",
+          inspections: "Inspections",
+          communications: "Communications",
+          policies: "Policies",
+          emptyReports: "Not enough PMS report data yet.",
         };
 
   const section = selectedLeaseId
@@ -686,13 +933,21 @@ export default function PmsPortal() {
             ? "tenants"
             : location.pathname.startsWith("/pms/rentals")
               ? "rentals"
-              : location.pathname.startsWith("/pms/accounting")
-                ? "accounting"
-                : "overview";
+              : location.pathname.startsWith("/pms/maintenance")
+                ? "maintenance"
+                : location.pathname.startsWith("/pms/accounting")
+                  ? "accounting"
+                  : location.pathname.startsWith("/pms/reports")
+                    ? "reports"
+                    : location.pathname.startsWith("/pms/settings")
+                      ? "settings"
+                      : "overview";
 
   const canEdit = canEditInventory(overview?.workspace.member.role);
   const canEditTenantRecords = canEditTenancies(overview?.workspace.member.role);
   const canCollect = canCollectRent(overview?.workspace.member.role);
+  const canManageMaintenance = canEditMaintenance(overview?.workspace.member.role);
+  const canManageOperations = canEditOperations(overview?.workspace.member.role);
 
   async function loadPortal() {
     if (!token) return;
@@ -763,12 +1018,55 @@ export default function PmsPortal() {
         setActiveLease(leaseResponse.lease);
         setRentDueItems(rentDueResponse.rentDueItems);
         setActiveProperty(null);
+      } else if (section === "maintenance") {
+        const [propertiesResponse, unitsResponse, tenantsResponse, workOrdersResponse] =
+          await Promise.all([
+            listPmsProperties(token, { companyId, take: 100 }),
+            listPmsUnits(token, { companyId, take: 200 }),
+            listPmsTenants(token, { companyId, take: 100 }),
+            listPmsWorkOrders(token, { companyId, take: 100 }),
+          ]);
+        setProperties(propertiesResponse.properties);
+        setUnits(unitsResponse.units);
+        setTenants(tenantsResponse.tenants);
+        setWorkOrders(workOrdersResponse.workOrders);
+        setActiveProperty(null);
+        setActiveLease(null);
       } else if (section === "accounting") {
-        const rentDueResponse = await listPmsRentDueItems(token, {
-          companyId,
-          take: 200,
-        });
+        const [rentDueResponse, summaryResponse] = await Promise.all([
+          listPmsRentDueItems(token, {
+            companyId,
+            take: 200,
+          }),
+          getPmsReportsSummary(token, companyId),
+        ]);
         setRentDueItems(rentDueResponse.rentDueItems);
+        setReportsSummary(summaryResponse);
+        setActiveProperty(null);
+        setActiveLease(null);
+      } else if (section === "reports") {
+        const summaryResponse = await getPmsReportsSummary(token, companyId);
+        setReportsSummary(summaryResponse);
+        setActiveProperty(null);
+        setActiveLease(null);
+      } else if (section === "settings") {
+        const [propertiesResponse, unitsResponse, tenantsResponse, leasesResponse, templatesResponse, policiesResponse, inspectionsResponse] =
+          await Promise.all([
+            listPmsProperties(token, { companyId, take: 100 }),
+            listPmsUnits(token, { companyId, take: 200 }),
+            listPmsTenants(token, { companyId, take: 100 }),
+            listPmsLeases(token, { companyId, take: 100 }),
+            listPmsCommunicationTemplates(token, { companyId, take: 100 }),
+            listPmsPolicies(token, { companyId, take: 100 }),
+            listPmsInspections(token, { companyId, take: 100 }),
+          ]);
+        setProperties(propertiesResponse.properties);
+        setUnits(unitsResponse.units);
+        setTenants(tenantsResponse.tenants);
+        setLeases(leasesResponse.leases);
+        setTemplates(templatesResponse.templates);
+        setPolicies(policiesResponse.policies);
+        setInspections(inspectionsResponse.inspections);
         setActiveProperty(null);
         setActiveLease(null);
       } else {
@@ -777,6 +1075,11 @@ export default function PmsPortal() {
         setTenants([]);
         setLeases([]);
         setRentDueItems([]);
+        setWorkOrders([]);
+        setReportsSummary(null);
+        setTemplates([]);
+        setPolicies([]);
+        setInspections([]);
         setActiveProperty(null);
         setActiveLease(null);
       }
@@ -858,6 +1161,21 @@ export default function PmsPortal() {
         key: "paidPmsRentDueItems",
         label: copy.paidRent,
         value: formatNumber(overview.metrics.paidPmsRentDueItems, language),
+      },
+      {
+        key: "openPmsWorkOrders",
+        label: copy.maintenanceRequests,
+        value: formatNumber(overview.metrics.openPmsWorkOrders, language),
+      },
+      {
+        key: "urgentPmsWorkOrders",
+        label: copy.priority,
+        value: formatNumber(overview.metrics.urgentPmsWorkOrders, language),
+      },
+      {
+        key: "scheduledPmsInspections",
+        label: copy.inspections,
+        value: formatNumber(overview.metrics.scheduledPmsInspections, language),
       },
       {
         key: "totalListings",
@@ -1066,6 +1384,127 @@ export default function PmsPortal() {
       await updatePmsRentDueItem(token, item.id, {
         paidAmount: item.amount,
       });
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+
+  async function handleCreateWorkOrder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !overview) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await createPmsWorkOrder(
+        token,
+        cleanWorkOrderPayload(workOrderForm, overview.workspace.company.id),
+      );
+      setWorkOrderForm(emptyWorkOrderForm);
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleResolveWorkOrder(workOrder: PmsWorkOrder) {
+    if (!token) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await updatePmsWorkOrder(token, workOrder.id, { status: "RESOLVED" });
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCreateTemplate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !overview) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await createPmsCommunicationTemplate(
+        token,
+        cleanTemplatePayload(templateForm, overview.workspace.company.id),
+      );
+      setTemplateForm(emptyTemplateForm);
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCreatePolicy(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !overview) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await createPmsPolicy(
+        token,
+        cleanPolicyPayload(policyForm, overview.workspace.company.id),
+      );
+      setPolicyForm(emptyPolicyForm);
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCreateInspection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !overview) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await createPmsInspection(
+        token,
+        cleanInspectionPayload(inspectionForm, overview.workspace.company.id),
+      );
+      setInspectionForm(emptyInspectionForm);
       setSuccess(copy.saved);
       await loadPortal();
     } catch (saveError) {
@@ -1532,15 +1971,153 @@ export default function PmsPortal() {
               </section>
             ) : null}
 
+            {section === "maintenance" ? (
+              <section className="pms-panel-grid pms-panel-grid--inventory">
+                <MaintenanceTable
+                  copy={copy}
+                  workOrders={workOrders}
+                  language={language}
+                  canManage={canManageMaintenance}
+                  saving={saving}
+                  onResolve={handleResolveWorkOrder}
+                />
+
+                <form className="pms-form-card" onSubmit={handleCreateWorkOrder}>
+                  <div>
+                    <p className="eyebrow">{copy.maintenance}</p>
+                    <h2>{copy.createWorkOrder}</h2>
+                  </div>
+                  {!canManageMaintenance ? (
+                    <p className="form-error">{copy.cannotEdit}</p>
+                  ) : null}
+                  <WorkOrderFields
+                    copy={copy}
+                    form={workOrderForm}
+                    setForm={setWorkOrderForm}
+                    properties={properties}
+                    units={units}
+                    tenants={tenants}
+                  />
+                  <button
+                    className="button-link button-link--primary"
+                    type="submit"
+                    disabled={!canManageMaintenance || saving}
+                  >
+                    <Plus size={16} aria-hidden="true" />
+                    {copy.createWorkOrder}
+                  </button>
+                </form>
+              </section>
+            ) : null}
+
             {section === "accounting" ? (
-              <RentDueTable
+              <section className="pms-panel-grid">
+                <ReportsSummaryPanel
+                  copy={copy}
+                  summary={reportsSummary}
+                  language={language}
+                />
+                <RentDueTable
+                  copy={copy}
+                  items={rentDueItems}
+                  language={language}
+                  canCollect={canCollect}
+                  saving={saving}
+                  onMarkPaid={handleMarkRentPaid}
+                />
+              </section>
+            ) : null}
+
+            {section === "reports" ? (
+              <ReportsSummaryPanel
                 copy={copy}
-                items={rentDueItems}
+                summary={reportsSummary}
                 language={language}
-                canCollect={canCollect}
-                saving={saving}
-                onMarkPaid={handleMarkRentPaid}
               />
+            ) : null}
+
+            {section === "settings" ? (
+              <section className="pms-panel-grid pms-panel-grid--inventory">
+                <div className="pms-next-actions">
+                  <div className="pms-next-actions__header">
+                    <p className="eyebrow">{copy.communications}</p>
+                    <h2>{copy.settings}</h2>
+                  </div>
+                  <div className="pms-inventory-list">
+                    {templates.map((template) => (
+                      <article key={template.id} className="pms-inventory-card">
+                        <div>
+                          <strong>{template.name}</strong>
+                          <span>{template.channel} · {template.type || copy.communications}</span>
+                        </div>
+                      </article>
+                    ))}
+                    {policies.map((policy) => (
+                      <article key={policy.id} className="pms-inventory-card">
+                        <div>
+                          <strong>{policy.title}</strong>
+                          <span>{policy.category}</span>
+                        </div>
+                      </article>
+                    ))}
+                    {inspections.map((inspection) => (
+                      <article key={inspection.id} className="pms-inventory-card">
+                        <div>
+                          <strong>{inspection.title}</strong>
+                          <span>{inspection.status} · {inspection.property.name}</span>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+
+                <form className="pms-form-card" onSubmit={handleCreateTemplate}>
+                  <div>
+                    <p className="eyebrow">{copy.communications}</p>
+                    <h2>{copy.createTemplate}</h2>
+                  </div>
+                  {!canManageOperations ? <p className="form-error">{copy.cannotEdit}</p> : null}
+                  <TemplateFields copy={copy} form={templateForm} setForm={setTemplateForm} />
+                  <button className="button-link button-link--primary" type="submit" disabled={!canManageOperations || saving}>
+                    <Plus size={16} aria-hidden="true" />
+                    {copy.createTemplate}
+                  </button>
+                </form>
+
+                <form className="pms-form-card" onSubmit={handleCreatePolicy}>
+                  <div>
+                    <p className="eyebrow">{copy.policies}</p>
+                    <h2>{copy.createPolicy}</h2>
+                  </div>
+                  {!canManageOperations ? <p className="form-error">{copy.cannotEdit}</p> : null}
+                  <PolicyFields copy={copy} form={policyForm} setForm={setPolicyForm} />
+                  <button className="button-link button-link--primary" type="submit" disabled={!canManageOperations || saving}>
+                    <Plus size={16} aria-hidden="true" />
+                    {copy.createPolicy}
+                  </button>
+                </form>
+
+                <form className="pms-form-card" onSubmit={handleCreateInspection}>
+                  <div>
+                    <p className="eyebrow">{copy.inspections}</p>
+                    <h2>{copy.createInspection}</h2>
+                  </div>
+                  {!canManageMaintenance ? <p className="form-error">{copy.cannotEdit}</p> : null}
+                  <InspectionFields
+                    copy={copy}
+                    form={inspectionForm}
+                    setForm={setInspectionForm}
+                    properties={properties}
+                    units={units}
+                    tenants={tenants}
+                    leases={leases}
+                  />
+                  <button className="button-link button-link--primary" type="submit" disabled={!canManageMaintenance || saving}>
+                    <Plus size={16} aria-hidden="true" />
+                    {copy.createInspection}
+                  </button>
+                </form>
+              </section>
             ) : null}
           </div>
         ) : null}
@@ -2338,6 +2915,474 @@ function LeaseTable({
         </div>
       ) : null}
     </section>
+  );
+}
+
+
+function MaintenanceTable({
+  copy,
+  workOrders,
+  language,
+  canManage,
+  saving,
+  onResolve,
+}: {
+  copy: PmsCopy;
+  workOrders: PmsWorkOrder[];
+  language: "en" | "ar";
+  canManage: boolean;
+  saving: boolean;
+  onResolve: (workOrder: PmsWorkOrder) => Promise<void>;
+}) {
+  return (
+    <section className="pms-next-actions pms-unit-table-card">
+      <div className="pms-next-actions__header">
+        <p className="eyebrow">{copy.maintenance}</p>
+        <h2>{copy.maintenanceRequests}</h2>
+      </div>
+      {workOrders.length === 0 ? <p>{copy.emptyMaintenance}</p> : null}
+      {workOrders.length > 0 ? (
+        <div className="pms-table-scroll">
+          <table className="pms-table">
+            <thead>
+              <tr>
+                <th>{copy.workOrderTitle}</th>
+                <th>{copy.propertyName}</th>
+                <th>{copy.unitNumber}</th>
+                <th>{copy.priority}</th>
+                <th>{copy.status}</th>
+                <th>{copy.cost}</th>
+                <th>{copy.update}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {workOrders.map((workOrder) => (
+                <tr key={workOrder.id}>
+                  <td>{workOrder.title}</td>
+                  <td>{workOrder.property.name}</td>
+                  <td>{workOrder.unit?.unitNumber ?? "—"}</td>
+                  <td>{workOrder.priority}</td>
+                  <td>{workOrder.status}</td>
+                  <td>{workOrder.cost ? `${workOrder.cost} ${workOrder.currency}` : "—"}</td>
+                  <td>
+                    <button
+                      className="button-link button-link--secondary"
+                      type="button"
+                      disabled={!canManage || saving || workOrder.status === "RESOLVED"}
+                      onClick={() => void onResolve(workOrder)}
+                    >
+                      {copy.resolve}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      <small>{formatDate(new Date().toISOString(), language)}</small>
+    </section>
+  );
+}
+
+function WorkOrderFields({
+  copy,
+  form,
+  setForm,
+  properties,
+  units,
+  tenants,
+}: {
+  copy: PmsCopy;
+  form: PmsWorkOrderPayload;
+  setForm: (updater: (current: PmsWorkOrderPayload) => PmsWorkOrderPayload) => void;
+  properties: PmsProperty[];
+  units: PmsUnit[];
+  tenants: PmsTenant[];
+}) {
+  const propertyUnits = form.propertyId
+    ? units.filter((unit) => unit.propertyId === form.propertyId)
+    : units;
+
+  return (
+    <div className="pms-form-grid">
+      <label>
+        {copy.propertyName}
+        <select
+          required
+          value={form.propertyId}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              propertyId: event.target.value,
+              unitId: "",
+            }))
+          }
+        >
+          <option value="">—</option>
+          {properties.map((property) => (
+            <option key={property.id} value={property.id}>
+              {property.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {copy.unitNumber}
+        <select
+          value={form.unitId ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, unitId: event.target.value }))
+          }
+        >
+          <option value="">—</option>
+          {propertyUnits.map((unit) => (
+            <option key={unit.id} value={unit.id}>
+              {unit.unitNumber}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {copy.tenantName}
+        <select
+          value={form.tenantId ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, tenantId: event.target.value }))
+          }
+        >
+          <option value="">—</option>
+          {tenants.map((tenant) => (
+            <option key={tenant.id} value={tenant.id}>
+              {tenant.fullName}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {copy.workOrderTitle}
+        <input
+          required
+          value={form.title}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, title: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.priority}
+        <select
+          value={form.priority ?? "MEDIUM"}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              priority: event.target.value as PmsMaintenancePriority,
+            }))
+          }
+        >
+          {maintenancePriorities.map((priority) => (
+            <option key={priority} value={priority}>
+              {priority}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {copy.status}
+        <select
+          value={form.status ?? "OPEN"}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              status: event.target.value as PmsMaintenanceStatus,
+            }))
+          }
+        >
+          {maintenanceStatuses.map((status) => (
+            <option key={status} value={status}>
+              {status}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {copy.assignedTo}
+        <input
+          value={form.assignedToText ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, assignedToText: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.vendor}
+        <input
+          value={form.vendorText ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, vendorText: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.cost}
+        <input
+          type="number"
+          min="0"
+          value={form.cost ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, cost: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.scheduledFor}
+        <input
+          type="date"
+          value={form.scheduledFor ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, scheduledFor: event.target.value }))
+          }
+        />
+      </label>
+      <label className="pms-form-grid__wide">
+        {copy.description}
+        <textarea
+          value={form.description ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, description: event.target.value }))
+          }
+        />
+      </label>
+    </div>
+  );
+}
+
+function ReportsSummaryPanel({
+  copy,
+  summary,
+  language,
+}: {
+  copy: PmsCopy;
+  summary: PmsReportsSummary | null;
+  language: "en" | "ar";
+}) {
+  if (!summary) {
+    return <p>{copy.emptyReports}</p>;
+  }
+
+  return (
+    <section className="pms-next-actions pms-unit-table-card">
+      <div className="pms-next-actions__header">
+        <p className="eyebrow">{copy.reports}</p>
+        <h2>{copy.accountingSummary}</h2>
+      </div>
+      <div className="pms-metric-grid">
+        <article className="pms-metric-card">
+          <span>{copy.incomeCollected}</span>
+          <strong>{summary.accounting.incomeCollected ?? "0"} OMR</strong>
+        </article>
+        <article className="pms-metric-card">
+          <span>{copy.outstandingRent}</span>
+          <strong>{summary.accounting.outstandingRent ?? "0"} OMR</strong>
+        </article>
+        <article className="pms-metric-card">
+          <span>{copy.overdueAmount}</span>
+          <strong>{summary.accounting.overdueRent ?? "0"} OMR</strong>
+        </article>
+        <article className="pms-metric-card">
+          <span>{copy.maintenanceCosts}</span>
+          <strong>{summary.accounting.maintenanceCosts ?? "0"} OMR</strong>
+        </article>
+        <article className="pms-metric-card">
+          <span>{copy.occupancyReport}</span>
+          <strong>{formatPercent(summary.reports.occupancy.occupancyRate, language)}</strong>
+        </article>
+        <article className="pms-metric-card">
+          <span>{copy.inspections}</span>
+          <strong>{formatNumber(summary.reports.inspections.needsAction, language)}</strong>
+        </article>
+      </div>
+      <div className="pms-detail-list">
+        <span>{copy.lateFeeFoundation}: <strong>{summary.accounting.lateFeeNote}</strong></span>
+        <span>{copy.maintenanceRequests}: <strong>{formatNumber(summary.reports.maintenance.open + summary.reports.maintenance.inProgress, language)}</strong></span>
+        <span>{copy.communications}: <strong>{formatNumber(summary.reports.communications.activeTemplates, language)}</strong></span>
+        <span>{copy.policies}: <strong>{formatNumber(summary.reports.policies.activePolicies, language)}</strong></span>
+      </div>
+      {summary.reports.overdueTopList.length > 0 ? (
+        <div className="pms-table-scroll">
+          <h3>{copy.overdueTopList}</h3>
+          <table className="pms-table">
+            <tbody>
+              {summary.reports.overdueTopList.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.tenant.fullName}</td>
+                  <td>{item.unit.unitNumber}</td>
+                  <td>{formatDate(item.dueDate, language)}</td>
+                  <td>{item.amount} {item.currency}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {summary.reports.leaseRenewals.length > 0 ? (
+        <div className="pms-table-scroll">
+          <h3>{copy.leaseRenewals}</h3>
+          <table className="pms-table">
+            <tbody>
+              {summary.reports.leaseRenewals.map((lease) => (
+                <tr key={lease.id}>
+                  <td>{lease.tenant.fullName}</td>
+                  <td>{lease.unit.unitNumber}</td>
+                  <td>{formatDate(lease.endDate, language)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function TemplateFields({
+  copy,
+  form,
+  setForm,
+}: {
+  copy: PmsCopy;
+  form: PmsCommunicationTemplatePayload;
+  setForm: (updater: (current: PmsCommunicationTemplatePayload) => PmsCommunicationTemplatePayload) => void;
+}) {
+  return (
+    <div className="pms-form-grid">
+      <label>
+        {copy.templateName}
+        <input required value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+      </label>
+      <label>
+        {copy.channel}
+        <select value={form.channel ?? "EMAIL"} onChange={(event) => setForm((current) => ({ ...current, channel: event.target.value as PmsCommunicationTemplatePayload["channel"] }))}>
+          {(["EMAIL", "WHATSAPP", "SMS", "INTERNAL"] as const).map((channel) => <option key={channel} value={channel}>{channel}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.type}
+        <input value={form.type ?? ""} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))} />
+      </label>
+      <label>
+        {copy.subject}
+        <input value={form.subject ?? ""} onChange={(event) => setForm((current) => ({ ...current, subject: event.target.value }))} />
+      </label>
+      <label className="pms-form-grid__wide">
+        {copy.body}
+        <textarea required value={form.body} onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))} />
+      </label>
+    </div>
+  );
+}
+
+function PolicyFields({
+  copy,
+  form,
+  setForm,
+}: {
+  copy: PmsCopy;
+  form: PmsPolicyPayload;
+  setForm: (updater: (current: PmsPolicyPayload) => PmsPolicyPayload) => void;
+}) {
+  return (
+    <div className="pms-form-grid">
+      <label>
+        {copy.policyTitle}
+        <input required value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} />
+      </label>
+      <label>
+        {copy.category}
+        <select value={form.category ?? "GENERAL"} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value as PmsPolicyPayload["category"] }))}>
+          {(["GENERAL", "RENT", "MAINTENANCE", "PAYMENT", "MOVE_IN_OUT", "SAFETY"] as const).map((category) => <option key={category} value={category}>{category}</option>)}
+        </select>
+      </label>
+      <label className="pms-form-grid__wide">
+        {copy.body}
+        <textarea required value={form.body} onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))} />
+      </label>
+    </div>
+  );
+}
+
+function InspectionFields({
+  copy,
+  form,
+  setForm,
+  properties,
+  units,
+  tenants,
+  leases,
+}: {
+  copy: PmsCopy;
+  form: PmsInspectionPayload;
+  setForm: (updater: (current: PmsInspectionPayload) => PmsInspectionPayload) => void;
+  properties: PmsProperty[];
+  units: PmsUnit[];
+  tenants: PmsTenant[];
+  leases: PmsLease[];
+}) {
+  const propertyUnits = form.propertyId ? units.filter((unit) => unit.propertyId === form.propertyId) : units;
+
+  return (
+    <div className="pms-form-grid">
+      <label>
+        {copy.propertyName}
+        <select required value={form.propertyId} onChange={(event) => setForm((current) => ({ ...current, propertyId: event.target.value, unitId: "" }))}>
+          <option value="">—</option>
+          {properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.unitNumber}
+        <select value={form.unitId ?? ""} onChange={(event) => setForm((current) => ({ ...current, unitId: event.target.value }))}>
+          <option value="">—</option>
+          {propertyUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.unitNumber}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.tenantName}
+        <select value={form.tenantId ?? ""} onChange={(event) => setForm((current) => ({ ...current, tenantId: event.target.value }))}>
+          <option value="">—</option>
+          {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.fullName}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.lease}
+        <select value={form.leaseId ?? ""} onChange={(event) => setForm((current) => ({ ...current, leaseId: event.target.value }))}>
+          <option value="">—</option>
+          {leases.map((lease) => <option key={lease.id} value={lease.id}>{lease.title || lease.unit.unitNumber}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.inspectionTitle}
+        <input required value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} />
+      </label>
+      <label>
+        {copy.status}
+        <select value={form.status ?? "SCHEDULED"} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as PmsInspectionPayload["status"] }))}>
+          {(["SCHEDULED", "COMPLETED", "NEEDS_ACTION", "CANCELLED"] as const).map((status) => <option key={status} value={status}>{status}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.scheduledFor}
+        <input type="date" value={form.scheduledFor ?? ""} onChange={(event) => setForm((current) => ({ ...current, scheduledFor: event.target.value }))} />
+      </label>
+      <label>
+        {copy.rating}
+        <input type="number" min="1" max="5" value={form.rating ?? ""} onChange={(event) => setForm((current) => ({ ...current, rating: numberOrNull(event.target.value) }))} />
+      </label>
+      <label className="pms-form-grid__wide">
+        {copy.feedback}
+        <textarea value={form.feedback ?? ""} onChange={(event) => setForm((current) => ({ ...current, feedback: event.target.value }))} />
+      </label>
+    </div>
   );
 }
 
