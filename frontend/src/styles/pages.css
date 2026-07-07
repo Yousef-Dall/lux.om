@@ -18685,3 +18685,25 @@ transition: none;
     justify-content: center;
   }
 }
+
+.pms-detail-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.pms-detail-list span {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.72);
+  color: #475569;
+}
+
+.pms-detail-list strong {
+  color: #0f172a;
+  text-align: end;
+}

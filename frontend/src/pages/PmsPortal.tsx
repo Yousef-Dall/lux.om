@@ -27,17 +27,30 @@ import {
 
 import { ApiError } from "../api/client";
 import {
+  createPmsLease,
   createPmsProperty,
+  createPmsTenant,
   createPmsUnit,
+  getPmsLease,
   getPmsOverview,
   getPmsProperty,
+  listPmsLeaseRentDueItems,
+  listPmsLeases,
   listPmsProperties,
   listPmsPropertyUnits,
+  listPmsRentDueItems,
+  listPmsTenants,
   listPmsUnits,
+  updatePmsRentDueItem,
   updatePmsProperty,
   updatePmsUnit,
+  type PmsLease,
+  type PmsLeasePayload,
   type PmsProperty,
   type PmsPropertyPayload,
+  type PmsRentDueItem,
+  type PmsTenant,
+  type PmsTenantPayload,
   type PmsUnit,
   type PmsUnitPayload,
   type PmsUnitStatus,
@@ -63,9 +76,9 @@ const pmsNavigation = [
     to: "/pms/tenants",
     key: "tenants",
     icon: UserRoundCheck,
-    available: false,
+    available: true,
   },
-  { to: "/pms/rentals", key: "rentals", icon: ClipboardList, available: false },
+  { to: "/pms/rentals", key: "rentals", icon: ClipboardList, available: true },
   {
     to: "/pms/maintenance",
     key: "maintenance",
@@ -76,7 +89,7 @@ const pmsNavigation = [
     to: "/pms/accounting",
     key: "accounting",
     icon: CreditCard,
-    available: false,
+    available: true,
   },
   { to: "/pms/reports", key: "reports", icon: BarChart3, available: false },
   { to: "/pms/settings", key: "settings", icon: Settings, available: false },
@@ -88,6 +101,12 @@ const unitStatuses: PmsUnitStatus[] = [
   "RESERVED",
   "MAINTENANCE",
   "UNAVAILABLE",
+];
+
+const rentFrequencies: Array<NonNullable<PmsLeasePayload["rentFrequency"]>> = [
+  "MONTHLY",
+  "QUARTERLY",
+  "YEARLY",
 ];
 
 const emptyPropertyForm: PmsPropertyPayload = {
@@ -123,6 +142,38 @@ const emptyUnitForm: PmsUnitPayload = {
   notes: "",
   developerProjectId: "",
   publicListingId: "",
+};
+
+const emptyTenantForm: PmsTenantPayload = {
+  fullName: "",
+  phone: "",
+  email: "",
+  nationality: "",
+  nationalId: "",
+  passportNumber: "",
+  emergencyContactName: "",
+  emergencyContactPhone: "",
+  emergencyContactEmail: "",
+  notes: "",
+  active: true,
+};
+
+const emptyLeaseForm: PmsLeasePayload = {
+  tenantId: "",
+  propertyId: "",
+  unitId: "",
+  title: "",
+  status: "ACTIVE",
+  startDate: "",
+  endDate: "",
+  rentFrequency: "MONTHLY",
+  rentAmount: "",
+  currency: "OMR",
+  securityDeposit: "",
+  dueDayOfMonth: null,
+  contractDraftId: "",
+  notes: "",
+  generateRentDueItems: true,
 };
 
 function formatNumber(value: number, language: "en" | "ar") {
@@ -161,6 +212,19 @@ function getCompanyName(
 
 function canEditInventory(role?: string) {
   return role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_AGENT";
+}
+
+function canEditTenancies(role?: string) {
+  return (
+    role === "PMS_OWNER" ||
+    role === "PMS_MANAGER" ||
+    role === "PMS_ACCOUNTANT" ||
+    role === "PMS_AGENT"
+  );
+}
+
+function canCollectRent(role?: string) {
+  return role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_ACCOUNTANT";
 }
 
 function getUnitStatusLabel(status: PmsUnitStatus, language: "en" | "ar") {
@@ -271,6 +335,54 @@ function cleanUnitUpdatePayload(
   return payload;
 }
 
+function cleanTenantPayload(
+  form: PmsTenantPayload,
+  companyId: string,
+): PmsTenantPayload & { companyId: string } {
+  return {
+    ...form,
+    companyId,
+    phone: form.phone || null,
+    email: form.email || null,
+    nationality: form.nationality || null,
+    nationalId: form.nationalId || null,
+    passportNumber: form.passportNumber || null,
+    emergencyContactName: form.emergencyContactName || null,
+    emergencyContactPhone: form.emergencyContactPhone || null,
+    emergencyContactEmail: form.emergencyContactEmail || null,
+    notes: form.notes || null,
+    active: form.active ?? true,
+  };
+}
+
+function cleanLeasePayload(
+  form: PmsLeasePayload,
+  companyId: string,
+): PmsLeasePayload & { companyId: string } {
+  return {
+    ...form,
+    companyId,
+    title: form.title || null,
+    endDate: form.endDate || null,
+    rentAmount: numberOrNull(form.rentAmount) ?? 0,
+    currency: form.currency || "OMR",
+    securityDeposit: numberOrNull(form.securityDeposit),
+    dueDayOfMonth: numberOrNull(form.dueDayOfMonth),
+    contractDraftId: form.contractDraftId || null,
+    notes: form.notes || null,
+    generateRentDueItems: form.generateRentDueItems ?? true,
+  };
+}
+
+function formatDate(value?: string | null, language: "en" | "ar" = "en") {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat(language === "ar" ? "ar-OM" : "en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
 function propertyToForm(property: PmsProperty): PmsPropertyPayload {
   return {
     name: property.name,
@@ -311,16 +423,24 @@ export default function PmsPortal() {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedCompanyId = searchParams.get("companyId") ?? undefined;
   const selectedPropertyId = params.propertyId;
+  const selectedLeaseId = params.leaseId;
 
   const [overview, setOverview] = useState<PmsWorkspaceOverview | null>(null);
   const [properties, setProperties] = useState<PmsProperty[]>([]);
   const [units, setUnits] = useState<PmsUnit[]>([]);
+  const [tenants, setTenants] = useState<PmsTenant[]>([]);
+  const [leases, setLeases] = useState<PmsLease[]>([]);
+  const [rentDueItems, setRentDueItems] = useState<PmsRentDueItem[]>([]);
   const [activeProperty, setActiveProperty] = useState<PmsProperty | null>(
     null,
   );
+  const [activeLease, setActiveLease] = useState<PmsLease | null>(null);
   const [propertyForm, setPropertyForm] =
     useState<PmsPropertyPayload>(emptyPropertyForm);
   const [unitForm, setUnitForm] = useState<PmsUnitPayload>(emptyUnitForm);
+  const [tenantForm, setTenantForm] =
+    useState<PmsTenantPayload>(emptyTenantForm);
+  const [leaseForm, setLeaseForm] = useState<PmsLeasePayload>(emptyLeaseForm);
   const [unitDrafts, setUnitDrafts] = useState<
     Record<string, Partial<PmsUnitPayload>>
   >({});
@@ -411,6 +531,36 @@ export default function PmsPortal() {
           view: "عرض",
           update: "تحديث",
           cannotEdit: "صلاحيتك تسمح بالعرض فقط.",
+          tenantName: "اسم المستأجر",
+          phone: "الهاتف",
+          email: "البريد الإلكتروني",
+          nationality: "الجنسية",
+          nationalId: "رقم الهوية",
+          passportNumber: "رقم الجواز",
+          emergencyContact: "جهة اتصال للطوارئ",
+          createTenant: "إضافة مستأجر",
+          createLease: "إضافة عقد إيجار",
+          lease: "العقد",
+          leaseTitle: "عنوان العقد",
+          startDate: "تاريخ البداية",
+          endDate: "تاريخ النهاية",
+          frequency: "الدورية",
+          deposit: "التأمين",
+          dueDay: "يوم الاستحقاق",
+          activeLeases: "عقود نشطة",
+          expiringLeases: "عقود قاربت الانتهاء",
+          unpaidRent: "دفعات غير مدفوعة",
+          overdueRent: "دفعات متأخرة",
+          paidRent: "دفعات مدفوعة",
+          rentCollection: "تحصيل الإيجار",
+          markPaid: "تسجيل مدفوع",
+          paidAmount: "المبلغ المدفوع",
+          dueDate: "تاريخ الاستحقاق",
+          amount: "المبلغ",
+          partiallyPaid: "مدفوع جزئياً",
+          emptyTenants: "لا يوجد مستأجرون بعد.",
+          emptyLeases: "لا توجد عقود PMS بعد.",
+          emptyRentDue: "لا توجد دفعات إيجار PMS بعد.",
         }
       : {
           eyebrow: "lux PMS",
@@ -492,17 +642,57 @@ export default function PmsPortal() {
           view: "View",
           update: "Update",
           cannotEdit: "Your PMS role is view-only for inventory changes.",
+          tenantName: "Tenant name",
+          phone: "Phone",
+          email: "Email",
+          nationality: "Nationality",
+          nationalId: "National ID",
+          passportNumber: "Passport number",
+          emergencyContact: "Emergency contact",
+          createTenant: "Create tenant",
+          createLease: "Create lease",
+          lease: "Lease",
+          leaseTitle: "Lease title",
+          startDate: "Start date",
+          endDate: "End date",
+          frequency: "Frequency",
+          deposit: "Deposit",
+          dueDay: "Due day",
+          activeLeases: "Active leases",
+          expiringLeases: "Expiring leases",
+          unpaidRent: "Unpaid rent",
+          overdueRent: "Overdue rent",
+          paidRent: "Paid rent",
+          rentCollection: "Rent collection",
+          markPaid: "Mark paid",
+          paidAmount: "Paid amount",
+          dueDate: "Due date",
+          amount: "Amount",
+          partiallyPaid: "Partially paid",
+          emptyTenants: "No PMS tenants yet.",
+          emptyLeases: "No PMS leases yet.",
+          emptyRentDue: "No PMS rent due items yet.",
         };
 
-  const section = selectedPropertyId
-    ? "propertyDetail"
-    : location.pathname.startsWith("/pms/units")
-      ? "units"
-      : location.pathname.startsWith("/pms/properties")
-        ? "properties"
-        : "overview";
+  const section = selectedLeaseId
+    ? "leaseDetail"
+    : selectedPropertyId
+      ? "propertyDetail"
+      : location.pathname.startsWith("/pms/units")
+        ? "units"
+        : location.pathname.startsWith("/pms/properties")
+          ? "properties"
+          : location.pathname.startsWith("/pms/tenants")
+            ? "tenants"
+            : location.pathname.startsWith("/pms/rentals")
+              ? "rentals"
+              : location.pathname.startsWith("/pms/accounting")
+                ? "accounting"
+                : "overview";
 
   const canEdit = canEditInventory(overview?.workspace.member.role);
+  const canEditTenantRecords = canEditTenancies(overview?.workspace.member.role);
+  const canCollect = canCollectRent(overview?.workspace.member.role);
 
   async function loadPortal() {
     if (!token) return;
@@ -521,7 +711,11 @@ export default function PmsPortal() {
         });
         setProperties(propertyResponse.properties);
         setActiveProperty(null);
+        setActiveLease(null);
         setUnits([]);
+        setTenants([]);
+        setLeases([]);
+        setRentDueItems([]);
       } else if (section === "propertyDetail" && selectedPropertyId) {
         const [propertyResponse, unitsResponse] = await Promise.all([
           getPmsProperty(token, selectedPropertyId),
@@ -530,6 +724,7 @@ export default function PmsPortal() {
         setActiveProperty(propertyResponse.property);
         setPropertyForm(propertyToForm(propertyResponse.property));
         setUnits(unitsResponse.units);
+        setActiveLease(null);
       } else if (section === "units") {
         const unitsResponse = await listPmsUnits(token, {
           companyId,
@@ -537,10 +732,53 @@ export default function PmsPortal() {
         });
         setUnits(unitsResponse.units);
         setActiveProperty(null);
+        setActiveLease(null);
+      } else if (section === "tenants") {
+        const tenantsResponse = await listPmsTenants(token, {
+          companyId,
+          take: 100,
+        });
+        setTenants(tenantsResponse.tenants);
+        setActiveProperty(null);
+        setActiveLease(null);
+      } else if (section === "rentals") {
+        const [tenantsResponse, propertiesResponse, unitsResponse, leasesResponse] =
+          await Promise.all([
+            listPmsTenants(token, { companyId, take: 100 }),
+            listPmsProperties(token, { companyId, take: 100 }),
+            listPmsUnits(token, { companyId, take: 200 }),
+            listPmsLeases(token, { companyId, take: 100 }),
+          ]);
+        setTenants(tenantsResponse.tenants);
+        setProperties(propertiesResponse.properties);
+        setUnits(unitsResponse.units);
+        setLeases(leasesResponse.leases);
+        setActiveProperty(null);
+        setActiveLease(null);
+      } else if (section === "leaseDetail" && selectedLeaseId) {
+        const [leaseResponse, rentDueResponse] = await Promise.all([
+          getPmsLease(token, selectedLeaseId),
+          listPmsLeaseRentDueItems(token, selectedLeaseId, { take: 200 }),
+        ]);
+        setActiveLease(leaseResponse.lease);
+        setRentDueItems(rentDueResponse.rentDueItems);
+        setActiveProperty(null);
+      } else if (section === "accounting") {
+        const rentDueResponse = await listPmsRentDueItems(token, {
+          companyId,
+          take: 200,
+        });
+        setRentDueItems(rentDueResponse.rentDueItems);
+        setActiveProperty(null);
+        setActiveLease(null);
       } else {
         setProperties([]);
         setUnits([]);
+        setTenants([]);
+        setLeases([]);
+        setRentDueItems([]);
         setActiveProperty(null);
+        setActiveLease(null);
       }
     } catch (loadError) {
       console.error(loadError);
@@ -555,7 +793,7 @@ export default function PmsPortal() {
   useEffect(() => {
     void loadPortal();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [copy.unavailable, selectedCompanyId, selectedPropertyId, section, token]);
+  }, [copy.unavailable, selectedCompanyId, selectedLeaseId, selectedPropertyId, section, token]);
 
   const overviewMetrics = useMemo(() => {
     if (!overview) return [];
@@ -590,6 +828,36 @@ export default function PmsPortal() {
         key: "pmsOccupancyRate",
         label: copy.occupancyRate,
         value: formatPercent(overview.metrics.pmsOccupancyRate, language),
+      },
+      {
+        key: "totalPmsTenants",
+        label: copy.tenants,
+        value: formatNumber(overview.metrics.totalPmsTenants, language),
+      },
+      {
+        key: "activePmsLeases",
+        label: copy.activeLeases,
+        value: formatNumber(overview.metrics.activePmsLeases, language),
+      },
+      {
+        key: "expiringPmsLeases",
+        label: copy.expiringLeases,
+        value: formatNumber(overview.metrics.expiringPmsLeases, language),
+      },
+      {
+        key: "unpaidPmsRentDueItems",
+        label: copy.unpaidRent,
+        value: formatNumber(overview.metrics.unpaidPmsRentDueItems, language),
+      },
+      {
+        key: "overduePmsRentDueItems",
+        label: copy.overdueRent,
+        value: formatNumber(overview.metrics.overduePmsRentDueItems, language),
+      },
+      {
+        key: "paidPmsRentDueItems",
+        label: copy.paidRent,
+        value: formatNumber(overview.metrics.paidPmsRentDueItems, language),
       },
       {
         key: "totalListings",
@@ -724,6 +992,81 @@ export default function PmsPortal() {
         delete next[unit.id];
         return next;
       });
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+
+  async function handleCreateTenant(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !overview) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await createPmsTenant(
+        token,
+        cleanTenantPayload(tenantForm, overview.workspace.company.id),
+      );
+      setTenantForm(emptyTenantForm);
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCreateLease(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !overview) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      const response = await createPmsLease(
+        token,
+        cleanLeasePayload(leaseForm, overview.workspace.company.id),
+      );
+      setLeaseForm(emptyLeaseForm);
+      setSuccess(copy.saved);
+      navigate(
+        `/pms/rentals/${response.lease.id}?companyId=${overview.workspace.company.id}`,
+      );
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleMarkRentPaid(item: PmsRentDueItem) {
+    if (!token) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await updatePmsRentDueItem(token, item.id, {
+        paidAmount: item.amount,
+      });
+      setSuccess(copy.saved);
       await loadPortal();
     } catch (saveError) {
       console.error(saveError);
@@ -1070,6 +1413,133 @@ export default function PmsPortal() {
                 unitDrafts={unitDrafts}
                 setUnitDrafts={setUnitDrafts}
                 onUpdateUnit={handleUpdateUnit}
+              />
+            ) : null}
+
+            {section === "tenants" ? (
+              <section className="pms-panel-grid pms-panel-grid--inventory">
+                <div className="pms-next-actions">
+                  <div className="pms-next-actions__header">
+                    <p className="eyebrow">{copy.tenants}</p>
+                    <h2>{copy.tenants}</h2>
+                  </div>
+                  {tenants.length === 0 ? <p>{copy.emptyTenants}</p> : null}
+                  <div className="pms-inventory-list">
+                    {tenants.map((tenant) => (
+                      <article key={tenant.id} className="pms-inventory-card">
+                        <div>
+                          <strong>{tenant.fullName}</strong>
+                          <span>
+                            {[tenant.phone, tenant.email, tenant.nationality]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        </div>
+                        <small>
+                          {formatNumber(tenant.counts.leases, language)} {copy.rentals}
+                        </small>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+
+                <form className="pms-form-card" onSubmit={handleCreateTenant}>
+                  <div>
+                    <p className="eyebrow">{copy.privateNote}</p>
+                    <h2>{copy.createTenant}</h2>
+                  </div>
+                  {!canEditTenantRecords ? (
+                    <p className="form-error">{copy.cannotEdit}</p>
+                  ) : null}
+                  <TenantFields
+                    copy={copy}
+                    form={tenantForm}
+                    setForm={setTenantForm}
+                  />
+                  <button
+                    className="button-link button-link--primary"
+                    type="submit"
+                    disabled={!canEditTenantRecords || saving}
+                  >
+                    <Plus size={16} aria-hidden="true" />
+                    {copy.createTenant}
+                  </button>
+                </form>
+              </section>
+            ) : null}
+
+            {section === "rentals" ? (
+              <section className="pms-panel-grid pms-panel-grid--inventory">
+                <LeaseTable
+                  copy={copy}
+                  leases={leases}
+                  language={language}
+                />
+
+                <form className="pms-form-card" onSubmit={handleCreateLease}>
+                  <div>
+                    <p className="eyebrow">{copy.rentals}</p>
+                    <h2>{copy.createLease}</h2>
+                  </div>
+                  {!canEditTenantRecords ? (
+                    <p className="form-error">{copy.cannotEdit}</p>
+                  ) : null}
+                  <LeaseFields
+                    copy={copy}
+                    form={leaseForm}
+                    setForm={setLeaseForm}
+                    tenants={tenants}
+                    properties={properties}
+                    units={units}
+                  />
+                  <button
+                    className="button-link button-link--primary"
+                    type="submit"
+                    disabled={!canEditTenantRecords || saving}
+                  >
+                    <Plus size={16} aria-hidden="true" />
+                    {copy.createLease}
+                  </button>
+                </form>
+              </section>
+            ) : null}
+
+            {section === "leaseDetail" && activeLease ? (
+              <section className="pms-panel-grid">
+                <div className="pms-next-actions">
+                  <div className="pms-next-actions__header">
+                    <p className="eyebrow">{copy.lease}</p>
+                    <h2>{activeLease.title || activeLease.unit.unitNumber}</h2>
+                  </div>
+                  <div className="pms-detail-list">
+                    <span>{copy.tenantName}: <strong>{activeLease.tenant.fullName}</strong></span>
+                    <span>{copy.propertyName}: <strong>{activeLease.property.name}</strong></span>
+                    <span>{copy.unitNumber}: <strong>{activeLease.unit.unitNumber}</strong></span>
+                    <span>{copy.startDate}: <strong>{formatDate(activeLease.startDate, language)}</strong></span>
+                    <span>{copy.endDate}: <strong>{formatDate(activeLease.endDate, language)}</strong></span>
+                    <span>{copy.rent}: <strong>{activeLease.rentAmount} {activeLease.currency}</strong></span>
+                    <span>{copy.status}: <strong>{activeLease.status}</strong></span>
+                  </div>
+                </div>
+                <RentDueTable
+                  copy={copy}
+                  items={rentDueItems}
+                  language={language}
+                  canCollect={canCollect}
+                  saving={saving}
+                  onMarkPaid={handleMarkRentPaid}
+                />
+              </section>
+            ) : null}
+
+            {section === "accounting" ? (
+              <RentDueTable
+                copy={copy}
+                items={rentDueItems}
+                language={language}
+                canCollect={canCollect}
+                saving={saving}
+                onMarkPaid={handleMarkRentPaid}
               />
             ) : null}
           </div>
@@ -1503,6 +1973,431 @@ function UnitTable({
                   </tr>
                 );
               })}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function TenantFields({
+  copy,
+  form,
+  setForm,
+}: {
+  copy: PmsCopy;
+  form: PmsTenantPayload;
+  setForm: (updater: (current: PmsTenantPayload) => PmsTenantPayload) => void;
+}) {
+  return (
+    <div className="pms-form-grid">
+      <label>
+        {copy.tenantName}
+        <input
+          required
+          value={form.fullName}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, fullName: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.phone}
+        <input
+          value={form.phone ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, phone: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.email}
+        <input
+          type="email"
+          value={form.email ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, email: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.nationality}
+        <input
+          value={form.nationality ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              nationality: event.target.value,
+            }))
+          }
+        />
+      </label>
+      <label>
+        {copy.nationalId}
+        <input
+          value={form.nationalId ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, nationalId: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.passportNumber}
+        <input
+          value={form.passportNumber ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              passportNumber: event.target.value,
+            }))
+          }
+        />
+      </label>
+      <label>
+        {copy.emergencyContact}
+        <input
+          value={form.emergencyContactName ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              emergencyContactName: event.target.value,
+            }))
+          }
+        />
+      </label>
+      <label>
+        {copy.phone}
+        <input
+          value={form.emergencyContactPhone ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              emergencyContactPhone: event.target.value,
+            }))
+          }
+        />
+      </label>
+      <label className="pms-form-grid__wide">
+        {copy.notes}
+        <textarea
+          value={form.notes ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, notes: event.target.value }))
+          }
+        />
+      </label>
+    </div>
+  );
+}
+
+function LeaseFields({
+  copy,
+  form,
+  setForm,
+  tenants,
+  properties,
+  units,
+}: {
+  copy: PmsCopy;
+  form: PmsLeasePayload;
+  setForm: (updater: (current: PmsLeasePayload) => PmsLeasePayload) => void;
+  tenants: PmsTenant[];
+  properties: PmsProperty[];
+  units: PmsUnit[];
+}) {
+  const availableUnits = units.filter(
+    (unit) => !form.propertyId || unit.propertyId === form.propertyId,
+  );
+
+  return (
+    <div className="pms-form-grid">
+      <label>
+        {copy.tenantName}
+        <select
+          required
+          value={form.tenantId}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, tenantId: event.target.value }))
+          }
+        >
+          <option value="">—</option>
+          {tenants.map((tenant) => (
+            <option key={tenant.id} value={tenant.id}>
+              {tenant.fullName}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {copy.propertyName}
+        <select
+          required
+          value={form.propertyId}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              propertyId: event.target.value,
+              unitId: "",
+            }))
+          }
+        >
+          <option value="">—</option>
+          {properties.map((property) => (
+            <option key={property.id} value={property.id}>
+              {property.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {copy.unitNumber}
+        <select
+          required
+          value={form.unitId}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, unitId: event.target.value }))
+          }
+        >
+          <option value="">—</option>
+          {availableUnits.map((unit) => (
+            <option key={unit.id} value={unit.id}>
+              {unit.unitNumber} · {unit.status}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {copy.leaseTitle}
+        <input
+          value={form.title ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, title: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.startDate}
+        <input
+          required
+          type="date"
+          value={form.startDate}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, startDate: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.endDate}
+        <input
+          type="date"
+          value={form.endDate ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, endDate: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.frequency}
+        <select
+          value={form.rentFrequency ?? "MONTHLY"}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              rentFrequency: event.target.value as NonNullable<
+                PmsLeasePayload["rentFrequency"]
+              >,
+            }))
+          }
+        >
+          {rentFrequencies.map((frequency) => (
+            <option key={frequency} value={frequency}>
+              {frequency}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {copy.rent}
+        <input
+          required
+          type="number"
+          min="0"
+          value={form.rentAmount}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, rentAmount: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.deposit}
+        <input
+          type="number"
+          min="0"
+          value={form.securityDeposit ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              securityDeposit: event.target.value,
+            }))
+          }
+        />
+      </label>
+      <label>
+        {copy.dueDay}
+        <input
+          type="number"
+          min="1"
+          max="31"
+          value={form.dueDayOfMonth ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              dueDayOfMonth: numberOrNull(event.target.value),
+            }))
+          }
+        />
+      </label>
+      <label>
+        {copy.currency}
+        <input
+          maxLength={3}
+          value={form.currency ?? "OMR"}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              currency: event.target.value.toUpperCase(),
+            }))
+          }
+        />
+      </label>
+      <label className="pms-form-grid__wide">
+        {copy.notes}
+        <textarea
+          value={form.notes ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, notes: event.target.value }))
+          }
+        />
+      </label>
+    </div>
+  );
+}
+
+function LeaseTable({
+  copy,
+  leases,
+  language,
+}: {
+  copy: PmsCopy;
+  leases: PmsLease[];
+  language: "en" | "ar";
+}) {
+  return (
+    <section className="pms-next-actions pms-unit-table-card">
+      <div className="pms-next-actions__header">
+        <p className="eyebrow">{copy.rentals}</p>
+        <h2>{copy.rentals}</h2>
+      </div>
+      {leases.length === 0 ? <p>{copy.emptyLeases}</p> : null}
+      {leases.length > 0 ? (
+        <div className="pms-table-scroll">
+          <table className="pms-table">
+            <thead>
+              <tr>
+                <th>{copy.tenantName}</th>
+                <th>{copy.propertyName}</th>
+                <th>{copy.unitNumber}</th>
+                <th>{copy.rent}</th>
+                <th>{copy.endDate}</th>
+                <th>{copy.status}</th>
+                <th>{copy.view}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leases.map((lease) => (
+                <tr key={lease.id}>
+                  <td>{lease.tenant.fullName}</td>
+                  <td>{lease.property.name}</td>
+                  <td>{lease.unit.unitNumber}</td>
+                  <td>{lease.rentAmount} {lease.currency}</td>
+                  <td>{formatDate(lease.endDate, language)}</td>
+                  <td>{lease.status}</td>
+                  <td>
+                    <Link
+                      className="button-link button-link--secondary"
+                      to={`/pms/rentals/${lease.id}?companyId=${lease.companyId}`}
+                    >
+                      {copy.view}
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function RentDueTable({
+  copy,
+  items,
+  language,
+  canCollect,
+  saving,
+  onMarkPaid,
+}: {
+  copy: PmsCopy;
+  items: PmsRentDueItem[];
+  language: "en" | "ar";
+  canCollect: boolean;
+  saving: boolean;
+  onMarkPaid: (item: PmsRentDueItem) => Promise<void>;
+}) {
+  return (
+    <section className="pms-next-actions pms-unit-table-card">
+      <div className="pms-next-actions__header">
+        <p className="eyebrow">{copy.accounting}</p>
+        <h2>{copy.rentCollection}</h2>
+      </div>
+      {items.length === 0 ? <p>{copy.emptyRentDue}</p> : null}
+      {items.length > 0 ? (
+        <div className="pms-table-scroll">
+          <table className="pms-table">
+            <thead>
+              <tr>
+                <th>{copy.dueDate}</th>
+                <th>{copy.tenantName}</th>
+                <th>{copy.unitNumber}</th>
+                <th>{copy.amount}</th>
+                <th>{copy.paidAmount}</th>
+                <th>{copy.status}</th>
+                <th>{copy.update}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id}>
+                  <td>{formatDate(item.dueDate, language)}</td>
+                  <td>{item.tenant.fullName}</td>
+                  <td>{item.unit.unitNumber}</td>
+                  <td>{item.amount} {item.currency}</td>
+                  <td>{item.paidAmount} {item.currency}</td>
+                  <td>{item.status}</td>
+                  <td>
+                    <button
+                      className="button-link button-link--secondary"
+                      type="button"
+                      disabled={!canCollect || saving || item.status === "PAID"}
+                      onClick={() => void onMarkPaid(item)}
+                    >
+                      {copy.markPaid}
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

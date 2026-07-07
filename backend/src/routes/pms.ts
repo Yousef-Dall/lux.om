@@ -1,8 +1,11 @@
 import {
   AccountSecurityEventType,
+  PaymentScheduleFrequency,
   PmsEntitlementStatus,
+  PmsLeaseStatus,
   PmsMemberRole,
   PmsOccupancyStatus,
+  PmsRentDueStatus,
   PmsUnitStatus,
   type Prisma,
 } from "@prisma/client";
@@ -129,6 +132,149 @@ const pmsUnitUpdateSchema = pmsUnitCreateSchema
   .partial()
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one PMS unit field is required.",
+  });
+
+const pmsTenantListQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  search: z.string().trim().max(120).optional(),
+  active: z.enum(["ALL", "ACTIVE", "INACTIVE"]).default("ALL"),
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  skip: z.coerce.number().int().min(0).default(0),
+});
+
+const pmsLeaseListQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  tenantId: z.string().trim().min(1).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+  unitId: z.string().trim().min(1).optional(),
+  status: z
+    .enum(["ALL", ...Object.values(PmsLeaseStatus)] as [
+      "ALL",
+      ...PmsLeaseStatus[],
+    ])
+    .default("ALL"),
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  skip: z.coerce.number().int().min(0).default(0),
+});
+
+const pmsRentDueListQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  leaseId: z.string().trim().min(1).optional(),
+  tenantId: z.string().trim().min(1).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+  unitId: z.string().trim().min(1).optional(),
+  status: z
+    .enum(["ALL", ...Object.values(PmsRentDueStatus)] as [
+      "ALL",
+      ...PmsRentDueStatus[],
+    ])
+    .default("ALL"),
+  take: z.coerce.number().int().min(1).max(200).default(100),
+  skip: z.coerce.number().int().min(0).default(0),
+});
+
+const pmsTenantParamsSchema = z.object({
+  tenantId: z.string().trim().min(1),
+});
+
+const pmsLeaseParamsSchema = z.object({
+  leaseId: z.string().trim().min(1),
+});
+
+const pmsRentDueParamsSchema = z.object({
+  rentDueItemId: z.string().trim().min(1),
+});
+
+const pmsTenantCreateSchema = z
+  .object({
+    companyId: z.string().trim().min(1),
+    fullName: z.string().trim().min(2).max(180),
+    phone: nullableTrimmedString(80),
+    email: z.string().trim().email().optional().nullable(),
+    nationality: nullableTrimmedString(120),
+    nationalId: nullableTrimmedString(120),
+    passportNumber: nullableTrimmedString(120),
+    emergencyContactName: nullableTrimmedString(180),
+    emergencyContactPhone: nullableTrimmedString(80),
+    emergencyContactEmail: z.string().trim().email().optional().nullable(),
+    notes: nullableTrimmedString(2000),
+    active: z.boolean().default(true),
+  })
+  .strict();
+
+const pmsTenantUpdateSchema = pmsTenantCreateSchema
+  .omit({ companyId: true })
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one PMS tenant field is required.",
+  });
+
+const pmsLeaseCreateSchema = z
+  .object({
+    companyId: z.string().trim().min(1),
+    tenantId: z.string().trim().min(1),
+    propertyId: z.string().trim().min(1),
+    unitId: z.string().trim().min(1),
+    title: nullableTrimmedString(180),
+    status: z.nativeEnum(PmsLeaseStatus).default(PmsLeaseStatus.ACTIVE),
+    startDate: z.coerce.date(),
+    endDate: z.coerce.date().optional().nullable(),
+    rentFrequency: z
+      .nativeEnum(PaymentScheduleFrequency)
+      .default(PaymentScheduleFrequency.MONTHLY),
+    rentAmount: z.coerce.number().min(0).max(100000000),
+    currency: z.string().trim().length(3).toUpperCase().default("OMR"),
+    securityDeposit: z.coerce
+      .number()
+      .min(0)
+      .max(100000000)
+      .optional()
+      .nullable(),
+    dueDayOfMonth: z.coerce.number().int().min(1).max(31).optional().nullable(),
+    contractDraftId: nullableId,
+    notes: nullableTrimmedString(2000),
+    generateRentDueItems: z.boolean().default(true),
+  })
+  .strict()
+  .refine((data) => !data.endDate || data.endDate >= data.startDate, {
+    path: ["endDate"],
+    message: "Lease end date must be after the start date.",
+  });
+
+const pmsLeaseUpdateSchema = z
+  .object({
+    title: nullableTrimmedString(180),
+    status: z.nativeEnum(PmsLeaseStatus).optional(),
+    startDate: z.coerce.date().optional(),
+    endDate: z.coerce.date().optional().nullable(),
+    rentFrequency: z.nativeEnum(PaymentScheduleFrequency).optional(),
+    rentAmount: z.coerce.number().min(0).max(100000000).optional(),
+    currency: z.string().trim().length(3).toUpperCase().optional(),
+    securityDeposit: z.coerce
+      .number()
+      .min(0)
+      .max(100000000)
+      .optional()
+      .nullable(),
+    dueDayOfMonth: z.coerce.number().int().min(1).max(31).optional().nullable(),
+    contractDraftId: nullableId,
+    notes: nullableTrimmedString(2000),
+  })
+  .strict()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one PMS lease field is required.",
+  });
+
+const pmsRentDueUpdateSchema = z
+  .object({
+    status: z.nativeEnum(PmsRentDueStatus).optional(),
+    paidAmount: z.coerce.number().min(0).max(100000000).optional(),
+    paidAt: z.coerce.date().optional().nullable(),
+    notes: nullableTrimmedString(2000),
+  })
+  .strict()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one rent due item field is required.",
   });
 
 const adminPmsCompaniesQuerySchema = z.object({
@@ -716,6 +862,41 @@ function assertCanManagePmsInventory(role: PmsMemberRole) {
   }
 }
 
+function canManagePmsTenancies(role: PmsMemberRole) {
+  return (
+    role === "PMS_OWNER" ||
+    role === "PMS_MANAGER" ||
+    role === "PMS_ACCOUNTANT" ||
+    role === "PMS_AGENT"
+  );
+}
+
+function assertCanManagePmsTenancies(role: PmsMemberRole) {
+  if (!canManagePmsTenancies(role)) {
+    throw new AppError(
+      403,
+      "Your PMS role can view tenancy records but cannot change them.",
+    );
+  }
+}
+
+function canCollectPmsRent(role: PmsMemberRole) {
+  return (
+    role === "PMS_OWNER" ||
+    role === "PMS_MANAGER" ||
+    role === "PMS_ACCOUNTANT"
+  );
+}
+
+function assertCanCollectPmsRent(role: PmsMemberRole) {
+  if (!canCollectPmsRent(role)) {
+    throw new AppError(
+      403,
+      "Your PMS role cannot update rent collection records.",
+    );
+  }
+}
+
 function defaultOccupancyForUnitStatus(status: PmsUnitStatus) {
   if (status === PmsUnitStatus.OCCUPIED) return PmsOccupancyStatus.OCCUPIED;
   if (status === PmsUnitStatus.RESERVED) return PmsOccupancyStatus.RESERVED;
@@ -836,6 +1017,182 @@ function pmsUnitResponse(unit: PmsUnitWithRelations) {
   };
 }
 
+const pmsTenantInclude = {
+  _count: {
+    select: {
+      leases: true,
+    },
+  },
+};
+
+type PmsTenantWithRelations = Prisma.PmsTenantGetPayload<{
+  include: typeof pmsTenantInclude;
+}>;
+
+const pmsLeaseInclude = {
+  tenant: {
+    select: {
+      id: true,
+      fullName: true,
+      phone: true,
+      email: true,
+      active: true,
+    },
+  },
+  property: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      companyId: true,
+    },
+  },
+  unit: {
+    select: {
+      id: true,
+      unitNumber: true,
+      unitName: true,
+      status: true,
+      occupancyStatus: true,
+    },
+  },
+  contractDraft: {
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      registrationStatus: true,
+    },
+  },
+  _count: {
+    select: {
+      rentDueItems: true,
+    },
+  },
+};
+
+type PmsLeaseWithRelations = Prisma.PmsLeaseGetPayload<{
+  include: typeof pmsLeaseInclude;
+}>;
+
+const pmsRentDueItemInclude = {
+  tenant: {
+    select: {
+      id: true,
+      fullName: true,
+      phone: true,
+      email: true,
+    },
+  },
+  property: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+    },
+  },
+  unit: {
+    select: {
+      id: true,
+      unitNumber: true,
+      unitName: true,
+    },
+  },
+  lease: {
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      startDate: true,
+      endDate: true,
+      rentFrequency: true,
+    },
+  },
+};
+
+type PmsRentDueItemWithRelations = Prisma.PmsRentDueItemGetPayload<{
+  include: typeof pmsRentDueItemInclude;
+}>;
+
+function pmsTenantResponse(tenant: PmsTenantWithRelations) {
+  return {
+    id: tenant.id,
+    companyId: tenant.companyId,
+    fullName: tenant.fullName,
+    phone: tenant.phone,
+    email: tenant.email,
+    nationality: tenant.nationality,
+    nationalId: tenant.nationalId,
+    passportNumber: tenant.passportNumber,
+    emergencyContactName: tenant.emergencyContactName,
+    emergencyContactPhone: tenant.emergencyContactPhone,
+    emergencyContactEmail: tenant.emergencyContactEmail,
+    notes: tenant.notes,
+    active: tenant.active,
+    counts: {
+      leases: tenant._count.leases,
+    },
+    createdAt: tenant.createdAt,
+    updatedAt: tenant.updatedAt,
+  };
+}
+
+function pmsLeaseResponse(lease: PmsLeaseWithRelations) {
+  return {
+    id: lease.id,
+    companyId: lease.companyId,
+    tenantId: lease.tenantId,
+    tenant: lease.tenant,
+    propertyId: lease.propertyId,
+    property: lease.property,
+    unitId: lease.unitId,
+    unit: lease.unit,
+    contractDraftId: lease.contractDraftId,
+    contractDraft: lease.contractDraft,
+    title: lease.title,
+    status: lease.status,
+    startDate: lease.startDate,
+    endDate: lease.endDate,
+    rentFrequency: lease.rentFrequency,
+    rentAmount: decimalToString(lease.rentAmount),
+    currency: lease.currency,
+    securityDeposit: decimalToString(lease.securityDeposit),
+    dueDayOfMonth: lease.dueDayOfMonth,
+    notes: lease.notes,
+    counts: {
+      rentDueItems: lease._count.rentDueItems,
+    },
+    createdAt: lease.createdAt,
+    updatedAt: lease.updatedAt,
+  };
+}
+
+function pmsRentDueItemResponse(item: PmsRentDueItemWithRelations) {
+  return {
+    id: item.id,
+    companyId: item.companyId,
+    leaseId: item.leaseId,
+    lease: item.lease,
+    tenantId: item.tenantId,
+    tenant: item.tenant,
+    propertyId: item.propertyId,
+    property: item.property,
+    unitId: item.unitId,
+    unit: item.unit,
+    dueDate: item.dueDate,
+    periodStart: item.periodStart,
+    periodEnd: item.periodEnd,
+    amount: decimalToString(item.amount),
+    paidAmount: decimalToString(item.paidAmount),
+    currency: item.currency,
+    status: item.status,
+    paidAt: item.paidAt,
+    notes: item.notes,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
 function buildPmsPropertyWriteData(
   data: z.infer<typeof pmsPropertyUpdateSchema>,
   userId: string,
@@ -922,6 +1279,802 @@ function buildPmsUnitWriteData(
     updatedById: userId,
   };
 }
+
+
+function buildPmsTenantWriteData(
+  data: z.infer<typeof pmsTenantUpdateSchema>,
+  userId: string,
+): Prisma.PmsTenantUncheckedUpdateInput {
+  return {
+    ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
+    ...(data.phone !== undefined
+      ? { phone: normalizeNullableText(data.phone) }
+      : {}),
+    ...(data.email !== undefined
+      ? { email: normalizeNullableText(data.email) }
+      : {}),
+    ...(data.nationality !== undefined
+      ? { nationality: normalizeNullableText(data.nationality) }
+      : {}),
+    ...(data.nationalId !== undefined
+      ? { nationalId: normalizeNullableText(data.nationalId) }
+      : {}),
+    ...(data.passportNumber !== undefined
+      ? { passportNumber: normalizeNullableText(data.passportNumber) }
+      : {}),
+    ...(data.emergencyContactName !== undefined
+      ? { emergencyContactName: normalizeNullableText(data.emergencyContactName) }
+      : {}),
+    ...(data.emergencyContactPhone !== undefined
+      ? { emergencyContactPhone: normalizeNullableText(data.emergencyContactPhone) }
+      : {}),
+    ...(data.emergencyContactEmail !== undefined
+      ? { emergencyContactEmail: normalizeNullableText(data.emergencyContactEmail) }
+      : {}),
+    ...(data.notes !== undefined
+      ? { notes: normalizeNullableText(data.notes) }
+      : {}),
+    ...(data.active !== undefined ? { active: data.active } : {}),
+    updatedById: userId,
+  };
+}
+
+function buildPmsLeaseWriteData(
+  data: z.infer<typeof pmsLeaseUpdateSchema>,
+  userId: string,
+): Prisma.PmsLeaseUncheckedUpdateInput {
+  return {
+    ...(data.title !== undefined
+      ? { title: normalizeNullableText(data.title) }
+      : {}),
+    ...(data.status !== undefined ? { status: data.status } : {}),
+    ...(data.startDate !== undefined ? { startDate: data.startDate } : {}),
+    ...(data.endDate !== undefined ? { endDate: data.endDate } : {}),
+    ...(data.rentFrequency !== undefined
+      ? { rentFrequency: data.rentFrequency }
+      : {}),
+    ...(data.rentAmount !== undefined ? { rentAmount: data.rentAmount } : {}),
+    ...(data.currency !== undefined ? { currency: data.currency } : {}),
+    ...(data.securityDeposit !== undefined
+      ? { securityDeposit: data.securityDeposit }
+      : {}),
+    ...(data.dueDayOfMonth !== undefined
+      ? { dueDayOfMonth: data.dueDayOfMonth }
+      : {}),
+    ...(data.contractDraftId !== undefined
+      ? { contractDraftId: data.contractDraftId }
+      : {}),
+    ...(data.notes !== undefined
+      ? { notes: normalizeNullableText(data.notes) }
+      : {}),
+    updatedById: userId,
+  };
+}
+
+function addMonthsClamped(date: Date, months: number, preferredDay: number) {
+  const next = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+  const lastDay = new Date(
+    Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  next.setUTCDate(Math.min(preferredDay, lastDay));
+  return next;
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function normalizeDateOnly(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function monthsForFrequency(frequency: PaymentScheduleFrequency) {
+  if (frequency === PaymentScheduleFrequency.QUARTERLY) return 3;
+  if (frequency === PaymentScheduleFrequency.YEARLY) return 12;
+  if (frequency === PaymentScheduleFrequency.ONE_TIME) return 0;
+  return 1;
+}
+
+function generatePmsRentDueItems(input: {
+  companyId: string;
+  leaseId: string;
+  tenantId: string;
+  propertyId: string;
+  unitId: string;
+  startDate: Date;
+  endDate?: Date | null;
+  frequency: PaymentScheduleFrequency;
+  amount: number;
+  currency: string;
+  dueDayOfMonth?: number | null;
+  createdById: string;
+}): Prisma.PmsRentDueItemUncheckedCreateInput[] {
+  const startDate = normalizeDateOnly(input.startDate);
+  const endDate = input.endDate ? normalizeDateOnly(input.endDate) : null;
+  const stepMonths = monthsForFrequency(input.frequency);
+  const preferredDay = input.dueDayOfMonth ?? startDate.getUTCDate();
+  const maxItems = input.frequency === PaymentScheduleFrequency.ONE_TIME ? 1 : 36;
+  const items: Prisma.PmsRentDueItemUncheckedCreateInput[] = [];
+  let periodStart = startDate;
+
+  for (let index = 0; index < maxItems; index += 1) {
+    const dueDate =
+      input.frequency === PaymentScheduleFrequency.ONE_TIME
+        ? startDate
+        : addMonthsClamped(startDate, index * stepMonths, preferredDay);
+
+    if (endDate && dueDate > endDate) break;
+
+    const nextPeriodStart =
+      input.frequency === PaymentScheduleFrequency.ONE_TIME
+        ? endDate ?? startDate
+        : addMonthsClamped(periodStart, stepMonths, periodStart.getUTCDate());
+    const periodEnd = endDate && nextPeriodStart > endDate ? endDate : addDays(nextPeriodStart, -1);
+
+    items.push({
+      companyId: input.companyId,
+      leaseId: input.leaseId,
+      tenantId: input.tenantId,
+      propertyId: input.propertyId,
+      unitId: input.unitId,
+      dueDate,
+      periodStart,
+      periodEnd,
+      amount: input.amount,
+      paidAmount: 0,
+      currency: input.currency,
+      status: PmsRentDueStatus.UNPAID,
+      createdById: input.createdById,
+      updatedById: input.createdById,
+    });
+
+    if (input.frequency === PaymentScheduleFrequency.ONE_TIME) break;
+    periodStart = addDays(periodEnd, 1);
+  }
+
+  return items;
+}
+
+function getLeaseOccupancyStatus(status: PmsLeaseStatus) {
+  return status === PmsLeaseStatus.ACTIVE || status === PmsLeaseStatus.EXPIRING;
+}
+
+pmsRouter.get("/tenants", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const query = pmsTenantListQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: query.companyId,
+    });
+    const search = query.search?.trim();
+    const where: Prisma.PmsTenantWhereInput = {
+      companyId: access.company.id,
+      ...(query.active === "ACTIVE" ? { active: true } : {}),
+      ...(query.active === "INACTIVE" ? { active: false } : {}),
+      ...(search
+        ? {
+            OR: [
+              { fullName: { contains: search, mode: "insensitive" } },
+              { email: { contains: search, mode: "insensitive" } },
+              { phone: { contains: search, mode: "insensitive" } },
+              { nationalId: { contains: search, mode: "insensitive" } },
+              { passportNumber: { contains: search, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    };
+
+    const [tenants, total] = await prisma.$transaction([
+      prisma.pmsTenant.findMany({
+        where,
+        include: pmsTenantInclude,
+        orderBy: [{ updatedAt: "desc" }, { fullName: "asc" }],
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsTenant.count({ where }),
+    ]);
+
+    res.json({
+      workspace: {
+        company: access.company,
+        member: access.member,
+        entitlement: access.entitlement,
+      },
+      tenants: tenants.map(pmsTenantResponse),
+      pagination: {
+        take: query.take,
+        skip: query.skip,
+        count: tenants.length,
+        total,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/tenants", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const data = pmsTenantCreateSchema.parse(req.body);
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: data.companyId,
+    });
+    assertCanManagePmsTenancies(access.member.role);
+
+    const tenant = await prisma.pmsTenant.create({
+      data: {
+        companyId: access.company.id,
+        fullName: data.fullName,
+        phone: normalizeNullableText(data.phone),
+        email: normalizeNullableText(data.email),
+        nationality: normalizeNullableText(data.nationality),
+        nationalId: normalizeNullableText(data.nationalId),
+        passportNumber: normalizeNullableText(data.passportNumber),
+        emergencyContactName: normalizeNullableText(data.emergencyContactName),
+        emergencyContactPhone: normalizeNullableText(data.emergencyContactPhone),
+        emergencyContactEmail: normalizeNullableText(data.emergencyContactEmail),
+        notes: normalizeNullableText(data.notes),
+        active: data.active,
+        createdById: req.user.id,
+        updatedById: req.user.id,
+      },
+      include: pmsTenantInclude,
+    });
+
+    res.status(201).json({ tenant: pmsTenantResponse(tenant) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/tenants/:tenantId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { tenantId } = pmsTenantParamsSchema.parse(req.params);
+    const tenant = await prisma.pmsTenant.findUnique({
+      where: { id: tenantId },
+      include: pmsTenantInclude,
+    });
+
+    if (!tenant) {
+      throw new AppError(404, "PMS tenant not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: tenant.companyId,
+    });
+
+    res.json({
+      workspace: {
+        company: access.company,
+        member: access.member,
+        entitlement: access.entitlement,
+      },
+      tenant: pmsTenantResponse(tenant),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.patch("/tenants/:tenantId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { tenantId } = pmsTenantParamsSchema.parse(req.params);
+    const data = pmsTenantUpdateSchema.parse(req.body);
+    const existing = await prisma.pmsTenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, companyId: true },
+    });
+
+    if (!existing) {
+      throw new AppError(404, "PMS tenant not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: existing.companyId,
+    });
+    assertCanManagePmsTenancies(access.member.role);
+
+    const tenant = await prisma.pmsTenant.update({
+      where: { id: tenantId },
+      data: buildPmsTenantWriteData(data, req.user.id),
+      include: pmsTenantInclude,
+    });
+
+    res.json({ tenant: pmsTenantResponse(tenant) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/leases", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const query = pmsLeaseListQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: query.companyId,
+    });
+    const where: Prisma.PmsLeaseWhereInput = {
+      companyId: access.company.id,
+      ...(query.status !== "ALL" ? { status: query.status } : {}),
+      ...(query.tenantId ? { tenantId: query.tenantId } : {}),
+      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.unitId ? { unitId: query.unitId } : {}),
+    };
+
+    const [leases, total] = await prisma.$transaction([
+      prisma.pmsLease.findMany({
+        where,
+        include: pmsLeaseInclude,
+        orderBy: [{ updatedAt: "desc" }, { startDate: "desc" }],
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsLease.count({ where }),
+    ]);
+
+    res.json({
+      workspace: {
+        company: access.company,
+        member: access.member,
+        entitlement: access.entitlement,
+      },
+      leases: leases.map(pmsLeaseResponse),
+      pagination: {
+        take: query.take,
+        skip: query.skip,
+        count: leases.length,
+        total,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/leases", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const data = pmsLeaseCreateSchema.parse(req.body);
+    const userId = req.user.id;
+    const access = await resolvePmsAccessOrThrow({
+      userId,
+      companyId: data.companyId,
+    });
+    assertCanManagePmsTenancies(access.member.role);
+
+    const [tenant, property, unit] = await Promise.all([
+      prisma.pmsTenant.findFirst({
+        where: { id: data.tenantId, companyId: access.company.id, active: true },
+        select: { id: true },
+      }),
+      prisma.pmsProperty.findFirst({
+        where: { id: data.propertyId, companyId: access.company.id, active: true },
+        select: { id: true },
+      }),
+      prisma.pmsUnit.findFirst({
+        where: {
+          id: data.unitId,
+          propertyId: data.propertyId,
+          companyId: access.company.id,
+        },
+        select: { id: true, status: true },
+      }),
+    ]);
+
+    if (!tenant) throw new AppError(400, "PMS tenant must belong to the selected company.");
+    if (!property) throw new AppError(400, "PMS property must belong to the selected company.");
+    if (!unit) throw new AppError(400, "PMS unit must belong to the selected property and company.");
+
+    if (data.contractDraftId) {
+      const contractDraft = await prisma.rentalContractDraft.findFirst({
+        where: {
+          id: data.contractDraftId,
+          OR: [
+            { createdById: userId },
+            { listing: { developerId: access.company.id } },
+          ],
+        },
+        select: { id: true },
+      });
+
+      if (!contractDraft) {
+        throw new AppError(400, "Linked contract draft is not available for this PMS workspace.");
+      }
+    }
+
+    const existingActiveLease = await prisma.pmsLease.findFirst({
+      where: {
+        unitId: data.unitId,
+        status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] },
+      },
+      select: { id: true },
+    });
+
+    if (existingActiveLease && getLeaseOccupancyStatus(data.status)) {
+      throw new AppError(409, "This unit already has an active PMS lease.");
+    }
+
+    const lease = await prisma.$transaction(async (tx) => {
+      const createdLease = await tx.pmsLease.create({
+        data: {
+          companyId: access.company.id,
+          tenantId: data.tenantId,
+          propertyId: data.propertyId,
+          unitId: data.unitId,
+          title: normalizeNullableText(data.title),
+          status: data.status,
+          startDate: data.startDate,
+          endDate: data.endDate ?? null,
+          rentFrequency: data.rentFrequency,
+          rentAmount: data.rentAmount,
+          currency: data.currency,
+          securityDeposit: data.securityDeposit ?? null,
+          dueDayOfMonth: data.dueDayOfMonth ?? data.startDate.getUTCDate(),
+          contractDraftId: data.contractDraftId ?? null,
+          notes: normalizeNullableText(data.notes),
+          createdById: userId,
+          updatedById: userId,
+        },
+      });
+
+      if (data.generateRentDueItems) {
+        const dueItems = generatePmsRentDueItems({
+          companyId: access.company.id,
+          leaseId: createdLease.id,
+          tenantId: data.tenantId,
+          propertyId: data.propertyId,
+          unitId: data.unitId,
+          startDate: data.startDate,
+          endDate: data.endDate,
+          frequency: data.rentFrequency,
+          amount: data.rentAmount,
+          currency: data.currency,
+          dueDayOfMonth: data.dueDayOfMonth ?? data.startDate.getUTCDate(),
+          createdById: userId,
+        });
+
+        if (dueItems.length > 0) {
+          await tx.pmsRentDueItem.createMany({ data: dueItems });
+        }
+      }
+
+      if (getLeaseOccupancyStatus(data.status)) {
+        await tx.pmsUnit.update({
+          where: { id: data.unitId },
+          data: {
+            status: PmsUnitStatus.OCCUPIED,
+            occupancyStatus: PmsOccupancyStatus.OCCUPIED,
+            updatedById: userId,
+          },
+        });
+      }
+
+      return tx.pmsLease.findUniqueOrThrow({
+        where: { id: createdLease.id },
+        include: pmsLeaseInclude,
+      });
+    });
+
+    res.status(201).json({ lease: pmsLeaseResponse(lease) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/leases/:leaseId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { leaseId } = pmsLeaseParamsSchema.parse(req.params);
+    const lease = await prisma.pmsLease.findUnique({
+      where: { id: leaseId },
+      include: pmsLeaseInclude,
+    });
+
+    if (!lease) {
+      throw new AppError(404, "PMS lease not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: lease.companyId,
+    });
+
+    res.json({
+      workspace: {
+        company: access.company,
+        member: access.member,
+        entitlement: access.entitlement,
+      },
+      lease: pmsLeaseResponse(lease),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.patch("/leases/:leaseId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { leaseId } = pmsLeaseParamsSchema.parse(req.params);
+    const data = pmsLeaseUpdateSchema.parse(req.body);
+    const userId = req.user.id;
+    const existing = await prisma.pmsLease.findUnique({
+      where: { id: leaseId },
+      select: { id: true, companyId: true, unitId: true, startDate: true, endDate: true },
+    });
+
+    if (!existing) {
+      throw new AppError(404, "PMS lease not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({
+      userId,
+      companyId: existing.companyId,
+    });
+    assertCanManagePmsTenancies(access.member.role);
+
+    if (data.startDate && data.endDate && data.endDate < data.startDate) {
+      throw new AppError(400, "Lease end date must be after the start date.");
+    }
+    if (data.startDate && !data.endDate && existing.endDate && existing.endDate < data.startDate) {
+      throw new AppError(400, "Lease end date must be after the start date.");
+    }
+    if (data.endDate && !data.startDate && data.endDate < existing.startDate) {
+      throw new AppError(400, "Lease end date must be after the start date.");
+    }
+
+    const lease = await prisma.$transaction(async (tx) => {
+      const updated = await tx.pmsLease.update({
+        where: { id: leaseId },
+        data: buildPmsLeaseWriteData(data, userId),
+        include: pmsLeaseInclude,
+      });
+
+      if (data.status) {
+        if (getLeaseOccupancyStatus(data.status)) {
+          await tx.pmsUnit.update({
+            where: { id: existing.unitId },
+            data: {
+              status: PmsUnitStatus.OCCUPIED,
+              occupancyStatus: PmsOccupancyStatus.OCCUPIED,
+              updatedById: userId,
+            },
+          });
+        } else if (
+          data.status === PmsLeaseStatus.ENDED ||
+          data.status === PmsLeaseStatus.TERMINATED
+        ) {
+          const otherActiveLease = await tx.pmsLease.findFirst({
+            where: {
+              id: { not: leaseId },
+              unitId: existing.unitId,
+              status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] },
+            },
+            select: { id: true },
+          });
+
+          if (!otherActiveLease) {
+            await tx.pmsUnit.update({
+              where: { id: existing.unitId },
+              data: {
+                status: PmsUnitStatus.VACANT,
+                occupancyStatus: PmsOccupancyStatus.VACANT,
+                updatedById: userId,
+              },
+            });
+          }
+        }
+      }
+
+      return updated;
+    });
+
+    res.json({ lease: pmsLeaseResponse(lease) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/leases/:leaseId/rent-due", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { leaseId } = pmsLeaseParamsSchema.parse(req.params);
+    const query = pmsRentDueListQuerySchema.omit({ leaseId: true }).parse(req.query);
+    const lease = await prisma.pmsLease.findUnique({
+      where: { id: leaseId },
+      select: { id: true, companyId: true },
+    });
+
+    if (!lease) {
+      throw new AppError(404, "PMS lease not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: lease.companyId,
+    });
+    const where: Prisma.PmsRentDueItemWhereInput = {
+      companyId: access.company.id,
+      leaseId,
+      ...(query.status !== "ALL" ? { status: query.status } : {}),
+    };
+
+    const [rentDueItems, total] = await prisma.$transaction([
+      prisma.pmsRentDueItem.findMany({
+        where,
+        include: pmsRentDueItemInclude,
+        orderBy: [{ dueDate: "asc" }],
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsRentDueItem.count({ where }),
+    ]);
+
+    res.json({
+      workspace: {
+        company: access.company,
+        member: access.member,
+        entitlement: access.entitlement,
+      },
+      rentDueItems: rentDueItems.map(pmsRentDueItemResponse),
+      pagination: {
+        take: query.take,
+        skip: query.skip,
+        count: rentDueItems.length,
+        total,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/rent-due", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const query = pmsRentDueListQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: query.companyId,
+    });
+    const where: Prisma.PmsRentDueItemWhereInput = {
+      companyId: access.company.id,
+      ...(query.leaseId ? { leaseId: query.leaseId } : {}),
+      ...(query.tenantId ? { tenantId: query.tenantId } : {}),
+      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.unitId ? { unitId: query.unitId } : {}),
+      ...(query.status !== "ALL" ? { status: query.status } : {}),
+    };
+
+    const [rentDueItems, total] = await prisma.$transaction([
+      prisma.pmsRentDueItem.findMany({
+        where,
+        include: pmsRentDueItemInclude,
+        orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsRentDueItem.count({ where }),
+    ]);
+
+    res.json({
+      workspace: {
+        company: access.company,
+        member: access.member,
+        entitlement: access.entitlement,
+      },
+      rentDueItems: rentDueItems.map(pmsRentDueItemResponse),
+      pagination: {
+        take: query.take,
+        skip: query.skip,
+        count: rentDueItems.length,
+        total,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.patch("/rent-due/:rentDueItemId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { rentDueItemId } = pmsRentDueParamsSchema.parse(req.params);
+    const data = pmsRentDueUpdateSchema.parse(req.body);
+    const existing = await prisma.pmsRentDueItem.findUnique({
+      where: { id: rentDueItemId },
+      select: { id: true, companyId: true, amount: true },
+    });
+
+    if (!existing) {
+      throw new AppError(404, "PMS rent due item not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: existing.companyId,
+    });
+    assertCanCollectPmsRent(access.member.role);
+
+    const paidAmount = data.paidAmount;
+    const amountNumber = Number(existing.amount);
+    const inferredStatus =
+      paidAmount !== undefined
+        ? paidAmount >= amountNumber
+          ? PmsRentDueStatus.PAID
+          : paidAmount > 0
+            ? PmsRentDueStatus.PARTIALLY_PAID
+            : PmsRentDueStatus.UNPAID
+        : undefined;
+    const nextStatus = data.status ?? inferredStatus;
+
+    const rentDueItem = await prisma.pmsRentDueItem.update({
+      where: { id: rentDueItemId },
+      data: {
+        ...(nextStatus ? { status: nextStatus } : {}),
+        ...(paidAmount !== undefined ? { paidAmount } : {}),
+        ...(data.paidAt !== undefined
+          ? { paidAt: data.paidAt }
+          : nextStatus === PmsRentDueStatus.PAID
+            ? { paidAt: new Date() }
+            : {}),
+        ...(data.notes !== undefined
+          ? { notes: normalizeNullableText(data.notes) }
+          : {}),
+        updatedById: req.user.id,
+      },
+      include: pmsRentDueItemInclude,
+    });
+
+    res.json({ rentDueItem: pmsRentDueItemResponse(rentDueItem) });
+  } catch (error) {
+    next(error);
+  }
+});
 
 pmsRouter.get("/properties", requireAuth(), async (req, res, next) => {
   try {
@@ -1431,6 +2584,10 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
     }
 
     const companyId = access.company.id;
+    const now = new Date();
+    const expiringWindowEnd = new Date(now);
+    expiringWindowEnd.setDate(expiringWindowEnd.getDate() + 60);
+
     const [
       companies,
       totalListings,
@@ -1447,6 +2604,16 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
       vacantPmsUnits,
       occupiedPmsUnits,
       maintenancePmsUnits,
+      totalPmsTenants,
+      activePmsLeases,
+      expiringPmsLeases,
+      unpaidPmsRentDueItems,
+      overduePmsRentDueItems,
+      partiallyPaidPmsRentDueItems,
+      paidPmsRentDueItems,
+      pmsRentDueAggregate,
+      pmsRentCollectedAggregate,
+      expiringPmsLeaseAlerts,
     ] = await prisma.$transaction([
       prisma.pmsCompanyMember.findMany({
         where: {
@@ -1585,6 +2752,109 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
           status: PmsUnitStatus.MAINTENANCE,
         },
       }),
+      prisma.pmsTenant.count({
+        where: {
+          companyId,
+          active: true,
+        },
+      }),
+      prisma.pmsLease.count({
+        where: {
+          companyId,
+          status: {
+            in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING],
+          },
+        },
+      }),
+      prisma.pmsLease.count({
+        where: {
+          companyId,
+          status: {
+            in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING],
+          },
+          endDate: {
+            gte: now,
+            lte: expiringWindowEnd,
+          },
+        },
+      }),
+      prisma.pmsRentDueItem.count({
+        where: {
+          companyId,
+          status: {
+            in: [PmsRentDueStatus.UNPAID, PmsRentDueStatus.DUE_SOON],
+          },
+        },
+      }),
+      prisma.pmsRentDueItem.count({
+        where: {
+          companyId,
+          OR: [
+            { status: PmsRentDueStatus.OVERDUE },
+            {
+              dueDate: { lt: now },
+              status: {
+                in: [
+                  PmsRentDueStatus.UNPAID,
+                  PmsRentDueStatus.DUE_SOON,
+                  PmsRentDueStatus.PARTIALLY_PAID,
+                ],
+              },
+            },
+          ],
+        },
+      }),
+      prisma.pmsRentDueItem.count({
+        where: {
+          companyId,
+          status: PmsRentDueStatus.PARTIALLY_PAID,
+        },
+      }),
+      prisma.pmsRentDueItem.count({
+        where: {
+          companyId,
+          status: PmsRentDueStatus.PAID,
+        },
+      }),
+      prisma.pmsRentDueItem.aggregate({
+        where: {
+          companyId,
+          status: {
+            notIn: [PmsRentDueStatus.PAID, PmsRentDueStatus.CANCELLED],
+          },
+        },
+        _sum: {
+          amount: true,
+        },
+      }),
+      prisma.pmsRentDueItem.aggregate({
+        where: {
+          companyId,
+          status: {
+            in: [PmsRentDueStatus.PAID, PmsRentDueStatus.PARTIALLY_PAID],
+          },
+        },
+        _sum: {
+          paidAmount: true,
+        },
+      }),
+      prisma.pmsLease.findMany({
+        where: {
+          companyId,
+          status: {
+            in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING],
+          },
+          endDate: {
+            gte: now,
+            lte: expiringWindowEnd,
+          },
+        },
+        include: pmsLeaseInclude,
+        orderBy: {
+          endDate: "asc",
+        },
+        take: 5,
+      }),
     ]);
 
     res.json({
@@ -1615,17 +2885,33 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
         vacantPmsUnits,
         occupiedPmsUnits,
         maintenancePmsUnits,
+        totalPmsTenants,
+        activePmsLeases,
+        expiringPmsLeases,
+        unpaidPmsRentDueItems,
+        overduePmsRentDueItems,
+        partiallyPaidPmsRentDueItems,
+        paidPmsRentDueItems,
+        pmsRentDueAmount: decimalToString(pmsRentDueAggregate._sum.amount),
+        pmsRentCollectedAmount: decimalToString(
+          pmsRentCollectedAggregate._sum.paidAmount,
+        ),
         pmsOccupancyRate:
           totalPmsUnits > 0
             ? Math.round((occupiedPmsUnits / totalPmsUnits) * 1000) / 10
             : 0,
       },
+      alerts: {
+        expiringLeases: expiringPmsLeaseAlerts.map(pmsLeaseResponse),
+      },
       emptyStates: {
         properties: totalPmsProperties === 0,
+        tenants: totalPmsTenants === 0,
         marketplaceListings: totalListings === 0,
-        rentals: activeRentSchedules === 0,
+        rentals: activePmsLeases === 0,
         contracts: openContracts === 0,
-        accounting: pendingRentDueItems + overdueRentDueItems === 0,
+        accounting:
+          unpaidPmsRentDueItems + overduePmsRentDueItems + partiallyPaidPmsRentDueItems === 0,
       },
     });
   } catch (error) {

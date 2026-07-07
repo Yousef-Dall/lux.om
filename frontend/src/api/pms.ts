@@ -15,6 +15,16 @@ export type PmsUnitStatus =
   "VACANT" | "OCCUPIED" | "RESERVED" | "MAINTENANCE" | "UNAVAILABLE";
 export type PmsOccupancyStatus = "VACANT" | "OCCUPIED" | "RESERVED" | "UNKNOWN";
 
+export type PmsLeaseStatus = "DRAFT" | "ACTIVE" | "EXPIRING" | "ENDED" | "TERMINATED";
+export type PmsRentDueStatus =
+  | "UNPAID"
+  | "DUE_SOON"
+  | "OVERDUE"
+  | "PARTIALLY_PAID"
+  | "PAID"
+  | "CANCELLED";
+export type PmsRentFrequency = "ONE_TIME" | "MONTHLY" | "QUARTERLY" | "YEARLY";
+
 export type PmsCompanySummary = {
   id: string;
   slug: string;
@@ -109,6 +119,84 @@ export type PmsUnit = {
   updatedAt: string;
 };
 
+export type PmsTenant = {
+  id: string;
+  companyId: string;
+  fullName: string;
+  phone?: string | null;
+  email?: string | null;
+  nationality?: string | null;
+  nationalId?: string | null;
+  passportNumber?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  emergencyContactEmail?: string | null;
+  notes?: string | null;
+  active: boolean;
+  counts: {
+    leases: number;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsLease = {
+  id: string;
+  companyId: string;
+  tenantId: string;
+  tenant: Pick<PmsTenant, "id" | "fullName" | "phone" | "email" | "active">;
+  propertyId: string;
+  property: Pick<PmsProperty, "id" | "name" | "code" | "companyId">;
+  unitId: string;
+  unit: Pick<PmsUnit, "id" | "unitNumber" | "unitName" | "status" | "occupancyStatus">;
+  contractDraftId?: string | null;
+  contractDraft?: {
+    id: string;
+    title: string;
+    status: string;
+    registrationStatus: string;
+  } | null;
+  title?: string | null;
+  status: PmsLeaseStatus;
+  startDate: string;
+  endDate?: string | null;
+  rentFrequency: PmsRentFrequency;
+  rentAmount: string;
+  currency: string;
+  securityDeposit?: string | null;
+  dueDayOfMonth?: number | null;
+  notes?: string | null;
+  counts: {
+    rentDueItems: number;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsRentDueItem = {
+  id: string;
+  companyId: string;
+  leaseId: string;
+  lease: Pick<PmsLease, "id" | "title" | "status" | "startDate" | "endDate" | "rentFrequency">;
+  tenantId: string;
+  tenant: Pick<PmsTenant, "id" | "fullName" | "phone" | "email">;
+  propertyId: string;
+  property: Pick<PmsProperty, "id" | "name" | "code">;
+  unitId: string;
+  unit: Pick<PmsUnit, "id" | "unitNumber" | "unitName">;
+  dueDate: string;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  amount: string;
+  paidAmount: string;
+  currency: string;
+  status: PmsRentDueStatus;
+  paidAt?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PmsWorkspaceOverview = {
   workspace: {
     company: PmsCompanySummary;
@@ -154,10 +242,23 @@ export type PmsWorkspaceOverview = {
     vacantPmsUnits: number;
     occupiedPmsUnits: number;
     maintenancePmsUnits: number;
+    totalPmsTenants: number;
+    activePmsLeases: number;
+    expiringPmsLeases: number;
+    unpaidPmsRentDueItems: number;
+    overduePmsRentDueItems: number;
+    partiallyPaidPmsRentDueItems: number;
+    paidPmsRentDueItems: number;
+    pmsRentDueAmount?: string | null;
+    pmsRentCollectedAmount?: string | null;
     pmsOccupancyRate: number;
+  };
+  alerts: {
+    expiringLeases: PmsLease[];
   };
   emptyStates: {
     properties: boolean;
+    tenants: boolean;
     marketplaceListings?: boolean;
     rentals: boolean;
     contracts: boolean;
@@ -254,6 +355,47 @@ export type PmsUnitPayload = {
   notes?: string | null;
   developerProjectId?: string | null;
   publicListingId?: string | null;
+};
+
+export type PmsTenantPayload = {
+  companyId?: string;
+  fullName: string;
+  phone?: string | null;
+  email?: string | null;
+  nationality?: string | null;
+  nationalId?: string | null;
+  passportNumber?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  emergencyContactEmail?: string | null;
+  notes?: string | null;
+  active?: boolean;
+};
+
+export type PmsLeasePayload = {
+  companyId?: string;
+  tenantId: string;
+  propertyId: string;
+  unitId: string;
+  title?: string | null;
+  status?: PmsLeaseStatus;
+  startDate: string;
+  endDate?: string | null;
+  rentFrequency?: PmsRentFrequency;
+  rentAmount: number | string;
+  currency?: string;
+  securityDeposit?: number | string | null;
+  dueDayOfMonth?: number | null;
+  contractDraftId?: string | null;
+  notes?: string | null;
+  generateRentDueItems?: boolean;
+};
+
+export type PmsRentDueUpdatePayload = {
+  status?: PmsRentDueStatus;
+  paidAmount?: number | string;
+  paidAt?: string | null;
+  notes?: string | null;
 };
 
 export async function getPmsOverview(token: string, companyId?: string) {
@@ -401,6 +543,167 @@ export async function updatePmsUnit(
 ) {
   return apiClient.patch<{ unit: PmsUnit }>(
     `/api/pms/units/${unitId}`,
+    payload,
+    { token },
+  );
+}
+
+
+export async function listPmsTenants(
+  token: string,
+  params: {
+    companyId?: string;
+    search?: string;
+    active?: "ALL" | "ACTIVE" | "INACTIVE";
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    tenants: PmsTenant[];
+    pagination: {
+      take: number;
+      skip: number;
+      count: number;
+      total: number;
+    };
+  }>("/api/pms/tenants", { token, params });
+}
+
+export async function createPmsTenant(
+  token: string,
+  payload: PmsTenantPayload & { companyId: string },
+) {
+  return apiClient.post<{ tenant: PmsTenant }>("/api/pms/tenants", payload, {
+    token,
+  });
+}
+
+export async function getPmsTenant(token: string, tenantId: string) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    tenant: PmsTenant;
+  }>(`/api/pms/tenants/${tenantId}`, { token });
+}
+
+export async function updatePmsTenant(
+  token: string,
+  tenantId: string,
+  payload: Partial<PmsTenantPayload>,
+) {
+  return apiClient.patch<{ tenant: PmsTenant }>(
+    `/api/pms/tenants/${tenantId}`,
+    payload,
+    { token },
+  );
+}
+
+export async function listPmsLeases(
+  token: string,
+  params: {
+    companyId?: string;
+    tenantId?: string;
+    propertyId?: string;
+    unitId?: string;
+    status?: "ALL" | PmsLeaseStatus;
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    leases: PmsLease[];
+    pagination: {
+      take: number;
+      skip: number;
+      count: number;
+      total: number;
+    };
+  }>("/api/pms/leases", { token, params });
+}
+
+export async function createPmsLease(
+  token: string,
+  payload: PmsLeasePayload & { companyId: string },
+) {
+  return apiClient.post<{ lease: PmsLease }>("/api/pms/leases", payload, {
+    token,
+  });
+}
+
+export async function getPmsLease(token: string, leaseId: string) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    lease: PmsLease;
+  }>(`/api/pms/leases/${leaseId}`, { token });
+}
+
+export async function updatePmsLease(
+  token: string,
+  leaseId: string,
+  payload: Partial<PmsLeasePayload>,
+) {
+  return apiClient.patch<{ lease: PmsLease }>(
+    `/api/pms/leases/${leaseId}`,
+    payload,
+    { token },
+  );
+}
+
+export async function listPmsRentDueItems(
+  token: string,
+  params: {
+    companyId?: string;
+    leaseId?: string;
+    tenantId?: string;
+    propertyId?: string;
+    unitId?: string;
+    status?: "ALL" | PmsRentDueStatus;
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    rentDueItems: PmsRentDueItem[];
+    pagination: {
+      take: number;
+      skip: number;
+      count: number;
+      total: number;
+    };
+  }>("/api/pms/rent-due", { token, params });
+}
+
+export async function listPmsLeaseRentDueItems(
+  token: string,
+  leaseId: string,
+  params: {
+    status?: "ALL" | PmsRentDueStatus;
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    rentDueItems: PmsRentDueItem[];
+    pagination: {
+      take: number;
+      skip: number;
+      count: number;
+      total: number;
+    };
+  }>(`/api/pms/leases/${leaseId}/rent-due`, { token, params });
+}
+
+export async function updatePmsRentDueItem(
+  token: string,
+  rentDueItemId: string,
+  payload: PmsRentDueUpdatePayload,
+) {
+  return apiClient.patch<{ rentDueItem: PmsRentDueItem }>(
+    `/api/pms/rent-due/${rentDueItemId}`,
     payload,
     { token },
   );
