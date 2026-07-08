@@ -46,6 +46,7 @@ type AuthContextValue = {
   canUsePerformance: boolean;
   canAccessAdmin: boolean;
   canAccessPms: boolean;
+  canAccessTenantPortal: boolean;
   loading: boolean;
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
@@ -215,6 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canUsePerformance: marketplaceCapabilities.canUsePerformance,
       canAccessAdmin: marketplaceCapabilities.canAccessAdmin,
       canAccessPms: Boolean(user?.pmsAccess?.hasAccess),
+      canAccessTenantPortal: Boolean(user?.tenantAccess?.hasAccess),
       loading,
       login,
       register,

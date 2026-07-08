@@ -11,6 +11,7 @@ AlertTriangle,
 ArrowUpRight,
 Users,
 Building2,
+Home,
 UserCircle,
 X
 } from 'lucide-react';
@@ -35,7 +36,7 @@ const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
 const { pathname } = useLocation();
 const navigate = useNavigate();
 const { t, toggleLanguage, language } = useLanguage();
-const { user, token, isAuthenticated, isAdmin, canAccessPms, logout } = useAuth();
+const { user, token, isAuthenticated, isAdmin, canAccessPms, canAccessTenantPortal, logout } = useAuth();
 const accountRoleLabel = user ? getMarketplacePersonaLabel(user.role, language) : '';
 const accountPersonaActions = user ? getMarketplacePersonaPrimaryActions(user.role, language) : [];
 
@@ -91,6 +92,7 @@ login: 'تسجيل الدخول',
 register: 'إنشاء حساب',
 dashboard: 'لوحة التحكم',
 pms: 'lux PMS',
+tenantPortal: 'بوابة المستأجر',
 profile: 'الملف الشخصي',
 notifications: 'الإشعارات',
 admin: 'الأدمن',
@@ -111,6 +113,7 @@ login: 'Login',
 register: 'Register',
 dashboard: 'Dashboard',
 pms: 'lux PMS',
+tenantPortal: 'Tenant portal',
 profile: 'Profile',
 notifications: 'Notifications',
 admin: 'Admin',
@@ -287,6 +290,17 @@ return (
                 >
                   <Building2 size={17} aria-hidden="true" />
                   {accessibilityCopy.pms}
+                </NavLink>
+              ) : null}
+
+              {canAccessTenantPortal ? (
+                <NavLink
+                  to="/tenant"
+                  className="nav-account__item"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <Home size={17} aria-hidden="true" />
+                  {accessibilityCopy.tenantPortal}
                 </NavLink>
               ) : null}
 

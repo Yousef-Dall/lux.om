@@ -93,6 +93,7 @@ enum NotificationType {
   BOOKING_PAYMENT_PAID
   BOOKING_PAYMENT_FAILED
   RENT_PAYMENT_DUE
+  PMS_MAINTENANCE_REQUEST_CREATED
   TRANSACTION_STATUS_UPDATED
   REVIEW_STATUS_UPDATED
   VERIFICATION_STATUS_UPDATED
@@ -494,6 +495,8 @@ model User {
 
   pmsMembershipsCreated PmsCompanyMember[] @relation("PmsMemberCreatedBy")
   pmsMemberships        PmsCompanyMember[] @relation("PmsMemberUser")
+  pmsTenantPortalAccesses PmsTenantPortalAccess[] @relation("PmsTenantPortalAccessUser")
+  pmsTenantPortalAccessesCreated PmsTenantPortalAccess[] @relation("PmsTenantPortalAccessCreatedBy")
   pmsEntitlementsCreated PmsCompanyEntitlement[] @relation("PmsEntitlementCreatedBy")
   pmsEntitlementsUpdated PmsCompanyEntitlement[] @relation("PmsEntitlementUpdatedBy")
   pmsPropertiesCreated   PmsProperty[] @relation("PmsPropertyCreatedBy")
@@ -625,6 +628,7 @@ model DeveloperCompany {
   reviews  Review[]
   pmsEntitlement PmsCompanyEntitlement?
   pmsMembers     PmsCompanyMember[]
+  pmsTenantPortalAccesses PmsTenantPortalAccess[]
   pmsProperties  PmsProperty[]
   pmsUnits       PmsUnit[]
   pmsTenants     PmsTenant[]
@@ -1734,6 +1738,32 @@ model PmsCompanyMember {
   @@index([createdById])
 }
 
+model PmsTenantPortalAccess {
+  id     String  @id @default(cuid())
+  active Boolean @default(true)
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  tenantId String
+  tenant   PmsTenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation("PmsTenantPortalAccessUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User? @relation("PmsTenantPortalAccessCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, userId])
+  @@index([companyId, active])
+  @@index([tenantId, active])
+  @@index([userId, active])
+  @@index([createdById])
+}
+
 model PmsProperty {
   id          String  @id @default(cuid())
   name        String
@@ -1866,6 +1896,7 @@ model PmsTenant {
   rentDueItems PmsRentDueItem[]
   pmsWorkOrders PmsWorkOrder[]
   pmsInspections PmsInspection[]
+  pmsTenantPortalAccesses PmsTenantPortalAccess[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

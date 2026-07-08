@@ -117,6 +117,7 @@ export default function Notifications() {
             REPORT: 'بلاغ ثقة وسلامة',
             VERIFICATION: 'تحقق',
             RENT_PAYMENT: 'دفعات الإيجار',
+            PMS: 'إدارة العقارات',
             TRANSACTION: 'معاملة',
             SAVED_SEARCH: 'بحث محفوظ',
             DASHBOARD: 'لوحة التحكم'
@@ -141,6 +142,7 @@ export default function Notifications() {
             BOOKING_PAYMENT_PAID: 'دفع ناجح',
             BOOKING_PAYMENT_FAILED: 'دفع فاشل',
             RENT_PAYMENT_DUE: 'دفعة إيجار',
+            PMS_MAINTENANCE_REQUEST_CREATED: 'طلب صيانة',
             TRANSACTION_STATUS_UPDATED: 'تحديث معاملة',
             REVIEW_STATUS_UPDATED: 'تحديث مراجعة',
             VERIFICATION_STATUS_UPDATED: 'تحديث تحقق',
@@ -175,6 +177,7 @@ export default function Notifications() {
             REPORT: 'Trust report',
             VERIFICATION: 'Verification',
             RENT_PAYMENT: 'Rent payment',
+            PMS: 'Property management',
             TRANSACTION: 'Transaction',
             SAVED_SEARCH: 'Saved search',
             DASHBOARD: 'Dashboard'
@@ -199,6 +202,7 @@ export default function Notifications() {
             BOOKING_PAYMENT_PAID: 'Payment paid',
             BOOKING_PAYMENT_FAILED: 'Payment failed',
             RENT_PAYMENT_DUE: 'Rent payment',
+            PMS_MAINTENANCE_REQUEST_CREATED: 'Maintenance request',
             TRANSACTION_STATUS_UPDATED: 'Transaction update',
             REVIEW_STATUS_UPDATED: 'Review update',
             VERIFICATION_STATUS_UPDATED: 'Verification update',

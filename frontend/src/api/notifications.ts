@@ -11,6 +11,7 @@ export type NotificationActionContext =
   | 'REPORT'
   | 'VERIFICATION'
   | 'RENT_PAYMENT'
+  | 'PMS'
   | 'TRANSACTION'
   | 'SAVED_SEARCH'
   | 'DASHBOARD';

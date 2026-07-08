@@ -325,6 +325,18 @@ const pmsTenantUpdateSchema = pmsTenantCreateSchema
     message: "At least one PMS tenant field is required.",
   });
 
+const pmsTenantPortalAccessUpsertSchema = z
+  .object({
+    userId: z.string().trim().min(1).optional(),
+    email: z.string().trim().email().toLowerCase().optional(),
+    active: z.boolean().default(true),
+  })
+  .strict()
+  .refine((data) => Boolean(data.userId || data.email), {
+    path: ["userId"],
+    message: "Provide a user id or email for tenant portal access.",
+  });
+
 const pmsLeaseCreateSchema = z
   .object({
     companyId: z.string().trim().min(1),
@@ -2344,6 +2356,113 @@ pmsRouter.patch("/tenants/:tenantId", requireAuth(), async (req, res, next) => {
     });
 
     res.json({ tenant: pmsTenantResponse(tenant) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/tenants/:tenantId/portal-access", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { tenantId } = pmsTenantParamsSchema.parse(req.params);
+    const data = pmsTenantPortalAccessUpsertSchema.parse(req.body);
+    const tenant = await prisma.pmsTenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, companyId: true, fullName: true, email: true, active: true },
+    });
+
+    if (!tenant) {
+      throw new AppError(404, "PMS tenant not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: tenant.companyId,
+    });
+    assertCanManagePmsTenancies(access.member.role);
+
+    const targetUser = await prisma.user.findFirst({
+      where: data.userId ? { id: data.userId } : { email: data.email ?? '' },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        suspendedAt: true,
+        deactivatedAt: true,
+      },
+    });
+
+    if (!targetUser) {
+      throw new AppError(404, "User not found");
+    }
+
+    if (targetUser.suspendedAt || targetUser.deactivatedAt) {
+      throw new AppError(400, "Suspended or deleted users cannot receive tenant portal access.");
+    }
+
+    const tenantAccess = await prisma.pmsTenantPortalAccess.upsert({
+      where: {
+        tenantId_userId: {
+          tenantId: tenant.id,
+          userId: targetUser.id,
+        },
+      },
+      create: {
+        companyId: access.company.id,
+        tenantId: tenant.id,
+        userId: targetUser.id,
+        active: data.active,
+        createdById: req.user.id,
+      },
+      update: {
+        active: data.active,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      targetUserId: targetUser.id,
+      title: "PMS tenant portal access updated",
+      message: `Your tenant portal access for ${tenant.fullName} was updated.`,
+      metadata: {
+        action: "upsert",
+        resourceType: "pmsTenantPortalAccess",
+        tenantAccessId: tenantAccess.id,
+        tenantId: tenant.id,
+        targetUserId: targetUser.id,
+        targetEmail: targetUser.email,
+        active: tenantAccess.active,
+      },
+    });
+
+    res.status(201).json({
+      tenantAccess: {
+        id: tenantAccess.id,
+        companyId: tenantAccess.companyId,
+        tenantId: tenantAccess.tenantId,
+        userId: tenantAccess.userId,
+        active: tenantAccess.active,
+        user: tenantAccess.user,
+        createdAt: tenantAccess.createdAt,
+        updatedAt: tenantAccess.updatedAt,
+      },
+    });
   } catch (error) {
     next(error);
   }

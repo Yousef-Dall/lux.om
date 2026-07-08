@@ -1151,3 +1151,35 @@ export async function updateAdminPmsMember(
     { token },
   );
 }
+
+export type PmsTenantPortalAccess = {
+  id: string;
+  companyId: string;
+  tenantId: string;
+  userId: string;
+  active: boolean;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: UserRole;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function upsertPmsTenantPortalAccess(
+  tenantId: string,
+  payload: {
+    userId?: string;
+    email?: string;
+    active?: boolean;
+  },
+  token: string,
+) {
+  return apiClient.post<{ tenantAccess: PmsTenantPortalAccess }>(
+    `/api/pms/tenants/${tenantId}/portal-access`,
+    payload,
+    { token },
+  );
+}

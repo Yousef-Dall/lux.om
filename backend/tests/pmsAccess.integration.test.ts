@@ -35,6 +35,7 @@ async function clearPmsTestDatabase() {
   await prisma.amenity.deleteMany();
   await prisma.pmsInspection.deleteMany();
   await prisma.pmsWorkOrder.deleteMany();
+  await prisma.pmsTenantPortalAccess.deleteMany();
   await prisma.pmsCommunicationTemplate.deleteMany();
   await prisma.pmsPolicy.deleteMany();
   await prisma.pmsRentDueItem.deleteMany();
@@ -47,6 +48,7 @@ async function clearPmsTestDatabase() {
   await prisma.developerProject.deleteMany();
   await prisma.pmsRentDueItem.deleteMany();
   await prisma.pmsLease.deleteMany();
+  await prisma.pmsTenantPortalAccess.deleteMany();
   await prisma.pmsTenant.deleteMany();
   await prisma.pmsUnit.deleteMany();
   await prisma.pmsProperty.deleteMany();
@@ -1686,6 +1688,296 @@ describe("PMS company entitlement access architecture", () => {
 
     expect(inspectionsResponse.body.pagination.total).toBe(1);
     expect(inspectionsResponse.body.inspections[0].title).toBe("Move in inspection");
+  });
+
+
+  it("scopes tenant portal access to the linked tenant records only", async () => {
+    const admin = await prisma.user.create({
+      data: {
+        name: "Tenant Portal Admin",
+        email: "tenant-portal-admin@lux.test",
+        password: "test-password",
+        role: "ADMIN",
+        emailVerified: true,
+      },
+    });
+
+    const manager = await prisma.user.create({
+      data: {
+        name: "Tenant Portal Manager",
+        email: "tenant-portal-manager@lux.test",
+        password: "test-password",
+        role: "DEVELOPER",
+        emailVerified: true,
+      },
+    });
+
+    const tenantUser = await prisma.user.create({
+      data: {
+        name: "Portal Tenant User",
+        email: "portal-tenant@lux.test",
+        password: "test-password",
+        role: "USER",
+        emailVerified: true,
+      },
+    });
+
+    const otherTenantUser = await prisma.user.create({
+      data: {
+        name: "Other Tenant User",
+        email: "other-tenant@lux.test",
+        password: "test-password",
+        role: "USER",
+        emailVerified: true,
+      },
+    });
+
+    const company = await prisma.developerCompany.create({
+      data: {
+        slug: "tenant-portal-company",
+        nameEn: "Tenant Portal Company",
+        verified: true,
+      },
+    });
+
+    await prisma.pmsCompanyEntitlement.create({
+      data: {
+        companyId: company.id,
+        status: "ACTIVE",
+        enabledAt: new Date(),
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    await prisma.pmsCompanyMember.create({
+      data: {
+        companyId: company.id,
+        userId: manager.id,
+        role: "PMS_MANAGER",
+        active: true,
+        createdById: admin.id,
+      },
+    });
+
+    const property = await prisma.pmsProperty.create({
+      data: {
+        companyId: company.id,
+        name: "Tenant Portal Tower",
+        code: "TPT",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const [unit, otherUnit] = await Promise.all([
+      prisma.pmsUnit.create({
+        data: {
+          companyId: company.id,
+          propertyId: property.id,
+          unitNumber: "TPT-101",
+          status: "OCCUPIED",
+          occupancyStatus: "OCCUPIED",
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+      }),
+      prisma.pmsUnit.create({
+        data: {
+          companyId: company.id,
+          propertyId: property.id,
+          unitNumber: "TPT-202",
+          status: "OCCUPIED",
+          occupancyStatus: "OCCUPIED",
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+      }),
+    ]);
+
+    const [tenant, otherTenant] = await Promise.all([
+      prisma.pmsTenant.create({
+        data: {
+          companyId: company.id,
+          fullName: "Portal Linked Tenant",
+          email: tenantUser.email,
+          active: true,
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+      }),
+      prisma.pmsTenant.create({
+        data: {
+          companyId: company.id,
+          fullName: "Portal Other Tenant",
+          email: otherTenantUser.email,
+          active: true,
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+      }),
+    ]);
+
+    const lease = await prisma.pmsLease.create({
+      data: {
+        companyId: company.id,
+        tenantId: tenant.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        title: "Linked tenant lease",
+        status: "ACTIVE",
+        startDate: new Date("2026-07-01T00:00:00.000Z"),
+        endDate: new Date("2027-06-30T00:00:00.000Z"),
+        rentFrequency: "MONTHLY",
+        rentAmount: 850,
+        currency: "OMR",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const otherLease = await prisma.pmsLease.create({
+      data: {
+        companyId: company.id,
+        tenantId: otherTenant.id,
+        propertyId: property.id,
+        unitId: otherUnit.id,
+        title: "Other tenant lease",
+        status: "ACTIVE",
+        startDate: new Date("2026-07-01T00:00:00.000Z"),
+        rentFrequency: "MONTHLY",
+        rentAmount: 920,
+        currency: "OMR",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    await prisma.pmsRentDueItem.createMany({
+      data: [
+        {
+          companyId: company.id,
+          leaseId: lease.id,
+          tenantId: tenant.id,
+          propertyId: property.id,
+          unitId: unit.id,
+          dueDate: new Date("2026-08-01T00:00:00.000Z"),
+          amount: 850,
+          paidAmount: 0,
+          status: "UNPAID",
+          currency: "OMR",
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+        {
+          companyId: company.id,
+          leaseId: otherLease.id,
+          tenantId: otherTenant.id,
+          propertyId: property.id,
+          unitId: otherUnit.id,
+          dueDate: new Date("2026-08-01T00:00:00.000Z"),
+          amount: 920,
+          paidAmount: 0,
+          status: "UNPAID",
+          currency: "OMR",
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+      ],
+    });
+
+    const managerToken = signToken(manager);
+    const grantResponse = await request(app)
+      .post(`/api/pms/tenants/${tenant.id}/portal-access`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .send({ email: tenantUser.email })
+      .expect(201);
+
+    expect(grantResponse.body.tenantAccess.tenantId).toBe(tenant.id);
+
+    const tenantToken = signToken(tenantUser);
+    const meResponse = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .expect(200);
+
+    expect(meResponse.body.user.tenantAccess.hasAccess).toBe(true);
+    expect(meResponse.body.user.pmsAccess.hasAccess).toBe(false);
+
+    const leaseResponse = await request(app)
+      .get("/api/tenant/lease")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .expect(200);
+
+    expect(leaseResponse.body.leases).toHaveLength(1);
+    expect(leaseResponse.body.leases[0].id).toBe(lease.id);
+    expect(JSON.stringify(leaseResponse.body)).not.toContain(otherLease.id);
+
+    const rentResponse = await request(app)
+      .get("/api/tenant/rent")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .expect(200);
+
+    expect(rentResponse.body.rentDueItems).toHaveLength(1);
+    expect(rentResponse.body.rentDueItems[0].leaseId).toBe(lease.id);
+
+    const blockedForeignMaintenanceResponse = await request(app)
+      .post("/api/tenant/maintenance")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({
+        leaseId: otherLease.id,
+        title: "Foreign lease repair",
+      })
+      .expect(400);
+
+    expect(blockedForeignMaintenanceResponse.body.message).toContain("No active tenant lease");
+
+    const maintenanceResponse = await request(app)
+      .post("/api/tenant/maintenance")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({
+        title: "Kitchen leak",
+        description: "Leak under the sink.",
+        priority: "HIGH",
+      })
+      .expect(201);
+
+    expect(maintenanceResponse.body.workOrder.tenantId).toBe(tenant.id);
+    expect(maintenanceResponse.body.workOrder.unitId).toBe(unit.id);
+
+    const tenantMaintenanceList = await request(app)
+      .get("/api/tenant/maintenance")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .expect(200);
+
+    expect(tenantMaintenanceList.body.workOrders).toHaveLength(1);
+    expect(tenantMaintenanceList.body.workOrders[0].title).toBe("Kitchen leak");
+
+    await request(app)
+      .get("/api/pms/overview")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .expect(403);
+
+    await request(app)
+      .get("/api/tenant/overview")
+      .set("Authorization", `Bearer ${signToken(otherTenantUser)}`)
+      .expect(403);
+
+    const pmsMaintenanceResponse = await request(app)
+      .get(`/api/pms/maintenance?companyId=${company.id}&search=Kitchen`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .expect(200);
+
+    expect(pmsMaintenanceResponse.body.workOrders[0].title).toBe("Kitchen leak");
+
+    const notificationCount = await prisma.notification.count({
+      where: {
+        userId: manager.id,
+        type: "PMS_MAINTENANCE_REQUEST_CREATED",
+      },
+    });
+
+    expect(notificationCount).toBe(1);
   });
 
 });

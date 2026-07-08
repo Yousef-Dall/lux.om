@@ -52,6 +52,7 @@ type NotificationActionContext =
   | 'REPORT'
   | 'VERIFICATION'
   | 'RENT_PAYMENT'
+  | 'PMS'
   | 'TRANSACTION'
   | 'SAVED_SEARCH'
   | 'DASHBOARD';
@@ -213,6 +214,16 @@ function getNotificationAction(
   userRole: Role
 ) {
   const isAdmin = userRole === Role.ADMIN;
+
+  if (notification.type === NotificationType.PMS_MAINTENANCE_REQUEST_CREATED) {
+    return {
+      actionUrl: buildAppPath('/pms/maintenance'),
+      actionLabel: 'Open PMS maintenance',
+      actionContext: 'PMS' as const,
+      targetType: 'PMS_WORK_ORDER',
+      targetId: notification.id
+    };
+  }
 
   if (
     notification.type === NotificationType.BOOKING_CREATED ||

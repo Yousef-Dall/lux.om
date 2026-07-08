@@ -44,6 +44,7 @@ const AdminPmsAccess = lazy(() => import('./pages/AdminPmsAccess'));
 const AdminEmailDeliveries = lazy(() => import('./pages/AdminEmailDeliveries'));
 const AdminTrustReports = lazy(() => import('./pages/AdminTrustReports'));
 const PmsPortal = lazy(() => import('./pages/PmsPortal'));
+const TenantPortal = lazy(() => import('./pages/TenantPortal'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const DeveloperProjectDetails = lazy(() => import('./pages/DeveloperProjectDetails'));
 const Profile = lazy(() => import('./pages/Profile'));
@@ -215,6 +216,10 @@ const seoCopy = {
       title: 'lux PMS | Property Management System',
       description: 'Private lux.om Property Management System portal for entitled property companies and managers.'
     },
+    tenant: {
+      title: 'Tenant portal | lux.om',
+      description: 'Secure tenant portal for lease, rent, maintenance, documents, and contact details.'
+    },
     auth: {
       title: 'Account access | lux.om',
       description: 'Sign in or create your lux.om account.'
@@ -299,6 +304,10 @@ const seoCopy = {
       title: 'lux PMS | بوابة إدارة العقارات',
       description: 'بوابة خاصة لإدارة العقارات للشركات والمديرين المخولين في lux.om.'
     },
+    tenant: {
+      title: 'بوابة المستأجر | lux.om',
+      description: 'بوابة آمنة للمستأجرين لعرض العقد والإيجارات والصيانة والبيانات الشخصية.'
+    },
     auth: {
       title: 'الدخول إلى الحساب | lux.om',
       description: 'سجّل الدخول أو أنشئ حسابك في lux.om.'
@@ -336,6 +345,7 @@ function getSeoKey(pathname: string) {
   if (pathname.startsWith('/notifications')) return 'dashboard';
   if (pathname.startsWith('/admin')) return 'admin';
   if (pathname.startsWith('/pms')) return 'pms';
+  if (pathname.startsWith('/tenant')) return 'tenant';
   if (pathname.startsWith('/login') || pathname.startsWith('/register') || pathname.startsWith('/forgot-password') || pathname.startsWith('/reset-password')) return 'auth';
 
   return 'fallback';
@@ -345,6 +355,7 @@ function getSeoKey(pathname: string) {
 const NO_INDEX_ROUTE_PREFIXES = [
   '/admin',
   '/pms',
+  '/tenant',
   '/dashboard',
   '/profile',
   '/notifications',
@@ -556,6 +567,25 @@ function RequireActivityProvider({ children }: { children: ReactNode }) {
   return children;
 }
 
+function RequireTenantPortal({ children }: { children: ReactNode }) {
+  const { canAccessTenantPortal, isAuthenticated, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return <LoadingPage />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!canAccessTenantPortal) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
 function RequirePms({ children }: { children: ReactNode }) {
   const { canAccessPms, isAuthenticated, loading } = useAuth();
   const location = useLocation();
@@ -654,9 +684,11 @@ export default function App() {
   const { language } = useLanguage();
   const isAdminRoute = pathname.startsWith('/admin');
   const isPmsRoute = pathname.startsWith('/pms');
+  const isTenantRoute = pathname.startsWith('/tenant');
   const isWorkspaceRoute =
     isAdminRoute ||
     isPmsRoute ||
+    isTenantRoute ||
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/profile') ||
     pathname.startsWith('/notifications') ||
@@ -949,6 +981,19 @@ export default function App() {
               </RequirePms>
             }
           />
+
+
+          {['/tenant', '/tenant/overview', '/tenant/lease', '/tenant/rent', '/tenant/maintenance', '/tenant/documents', '/tenant/profile'].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <RequireTenantPortal>
+                  <TenantPortal />
+                </RequireTenantPortal>
+              }
+            />
+          ))}
 
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
