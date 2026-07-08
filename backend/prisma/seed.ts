@@ -38,6 +38,10 @@ function getSeedConfig() {
         'Refusing to run destructive seed in production. Set ALLOW_DESTRUCTIVE_SEED=true and CONFIRM_SEED_DATABASE_RESET=RESET_LUX_OM_DATABASE only if you intentionally want to wipe and reseed the database.'
       );
     }
+
+    if (process.env.SEED_INCLUDE_PMS_DEMO === 'true') {
+      throw new Error('SEED_INCLUDE_PMS_DEMO is local/demo-only and cannot be used in production.');
+    }
   }
 
   const seedPassword = optionalSeedValue('SEED_PASSWORD') ?? createGeneratedSeedPassword();
@@ -93,6 +97,372 @@ function getSeedConfig() {
 
 const seedConfig = getSeedConfig();
 const seedPassword = seedConfig.seedPassword;
+
+async function seedPmsDemoData(input: {
+  companyId: string;
+  managerId: string;
+  hashedPassword: string;
+}) {
+  if (process.env.SEED_INCLUDE_PMS_DEMO !== 'true') {
+    return null;
+  }
+
+  const tenantEmail = optionalSeedValue('SEED_PMS_TENANT_EMAIL') ?? 'local-pms-tenant@example.test';
+  assertValidEmail('SEED_PMS_TENANT_EMAIL', tenantEmail);
+
+  const now = new Date();
+  const leaseStart = new Date(now);
+  leaseStart.setMonth(leaseStart.getMonth() - 1);
+  leaseStart.setDate(1);
+
+  const leaseEnd = new Date(leaseStart);
+  leaseEnd.setFullYear(leaseEnd.getFullYear() + 1);
+
+  const lastMonthDue = new Date(leaseStart);
+  lastMonthDue.setDate(5);
+
+  const nextDue = new Date(now);
+  nextDue.setMonth(nextDue.getMonth() + 1);
+  nextDue.setDate(5);
+
+  const tenantUser = await prisma.user.create({
+    data: {
+      name: 'PMS Demo Tenant',
+      email: tenantEmail,
+      password: input.hashedPassword,
+      role: 'USER',
+      emailVerified: true,
+      emailVerifiedAt: now,
+      phone: '+968 9888 0000'
+    }
+  });
+
+  await prisma.pmsCompanyEntitlement.create({
+    data: {
+      companyId: input.companyId,
+      status: 'ACTIVE',
+      notes: 'Local PMS demo entitlement for onboarding and QA smoke testing.',
+      enabledAt: now,
+      createdById: input.managerId,
+      updatedById: input.managerId
+    }
+  });
+
+  await prisma.pmsCompanyMember.create({
+    data: {
+      companyId: input.companyId,
+      userId: input.managerId,
+      invitedEmail: seedConfig.ownerEmail,
+      role: 'PMS_OWNER',
+      active: true,
+      createdById: input.managerId
+    }
+  });
+
+  const property = await prisma.pmsProperty.create({
+    data: {
+      companyId: input.companyId,
+      name: 'PMS Demo Tower',
+      code: 'PMS-DEMO-TOWER',
+      propertyType: 'Residential tower',
+      city: 'Muscat',
+      area: 'Al Mouj',
+      addressLine: 'Demo PMS onboarding address',
+      notes: 'Local seed property for PMS beta demos.',
+      createdById: input.managerId,
+      updatedById: input.managerId
+    }
+  });
+
+  const unit = await prisma.pmsUnit.create({
+    data: {
+      companyId: input.companyId,
+      propertyId: property.id,
+      unitNumber: '1204',
+      unitName: 'Sea View Suite',
+      floor: '12',
+      bedrooms: 2,
+      bathrooms: 2,
+      areaSqm: 118,
+      status: 'OCCUPIED',
+      occupancyStatus: 'OCCUPIED',
+      rentAmount: '850',
+      currency: 'OMR',
+      createdById: input.managerId,
+      updatedById: input.managerId
+    }
+  });
+
+  const tenant = await prisma.pmsTenant.create({
+    data: {
+      companyId: input.companyId,
+      fullName: 'PMS Demo Tenant',
+      phone: '+968 9888 0000',
+      email: tenantEmail,
+      nationality: 'Oman',
+      notes: 'Local seed tenant linked to the tenant portal.',
+      createdById: input.managerId,
+      updatedById: input.managerId
+    }
+  });
+
+  await prisma.pmsTenantPortalAccess.create({
+    data: {
+      companyId: input.companyId,
+      tenantId: tenant.id,
+      userId: tenantUser.id,
+      active: true,
+      createdById: input.managerId
+    }
+  });
+
+  const lease = await prisma.pmsLease.create({
+    data: {
+      companyId: input.companyId,
+      tenantId: tenant.id,
+      propertyId: property.id,
+      unitId: unit.id,
+      title: 'PMS Demo Lease',
+      status: 'ACTIVE',
+      startDate: leaseStart,
+      endDate: leaseEnd,
+      rentFrequency: 'MONTHLY',
+      rentAmount: '850',
+      currency: 'OMR',
+      securityDeposit: '850',
+      dueDayOfMonth: 5,
+      notes: 'Local seed lease for PMS onboarding checks.',
+      createdById: input.managerId,
+      updatedById: input.managerId
+    }
+  });
+
+  const paidDueItem = await prisma.pmsRentDueItem.create({
+    data: {
+      companyId: input.companyId,
+      leaseId: lease.id,
+      tenantId: tenant.id,
+      propertyId: property.id,
+      unitId: unit.id,
+      dueDate: lastMonthDue,
+      periodStart: leaseStart,
+      periodEnd: now,
+      amount: '850',
+      paidAmount: '850',
+      currency: 'OMR',
+      status: 'PAID',
+      paidAt: now,
+      createdById: input.managerId,
+      updatedById: input.managerId
+    }
+  });
+
+  const upcomingDueItem = await prisma.pmsRentDueItem.create({
+    data: {
+      companyId: input.companyId,
+      leaseId: lease.id,
+      tenantId: tenant.id,
+      propertyId: property.id,
+      unitId: unit.id,
+      dueDate: nextDue,
+      amount: '850',
+      paidAmount: '0',
+      currency: 'OMR',
+      status: 'DUE_SOON',
+      createdById: input.managerId,
+      updatedById: input.managerId
+    }
+  });
+
+  const payment = await prisma.pmsRentPayment.create({
+    data: {
+      companyId: input.companyId,
+      rentDueItemId: paidDueItem.id,
+      leaseId: lease.id,
+      tenantId: tenant.id,
+      propertyId: property.id,
+      unitId: unit.id,
+      amount: '850',
+      currency: 'OMR',
+      method: 'BANK_TRANSFER',
+      status: 'CONFIRMED',
+      referenceNumber: 'DEMO-RENT-001',
+      paidAt: now,
+      confirmedAt: now,
+      receiptNumber: `PMS-DEMO-${Date.now()}`,
+      recordedById: input.managerId
+    }
+  });
+
+  await prisma.pmsAccountingLedgerEntry.createMany({
+    data: [
+      {
+        companyId: input.companyId,
+        propertyId: property.id,
+        unitId: unit.id,
+        tenantId: tenant.id,
+        leaseId: lease.id,
+        rentDueItemId: paidDueItem.id,
+        rentPaymentId: payment.id,
+        type: 'INCOME',
+        source: 'RENT_PAYMENT',
+        category: 'Rent collection',
+        amount: '850',
+        currency: 'OMR',
+        transactionDate: now,
+        referenceNumber: 'DEMO-RENT-001',
+        notes: 'Seeded rent payment ledger entry.',
+        createdById: input.managerId,
+        updatedById: input.managerId
+      },
+      {
+        companyId: input.companyId,
+        propertyId: property.id,
+        unitId: unit.id,
+        tenantId: tenant.id,
+        leaseId: lease.id,
+        type: 'DEPOSIT',
+        source: 'SECURITY_DEPOSIT',
+        category: 'Security deposit held',
+        amount: '850',
+        currency: 'OMR',
+        transactionDate: leaseStart,
+        referenceNumber: 'DEMO-DEPOSIT-001',
+        notes: 'Seeded deposit ledger foundation.',
+        createdById: input.managerId,
+        updatedById: input.managerId
+      }
+    ]
+  });
+
+  const vendor = await prisma.pmsVendor.create({
+    data: {
+      companyId: input.companyId,
+      name: 'PMS Demo Maintenance Co.',
+      phone: '+968 9777 0000',
+      email: 'maintenance@example.test',
+      trade: 'HVAC',
+      active: true,
+      createdById: input.managerId,
+      updatedById: input.managerId
+    }
+  });
+
+  const workOrder = await prisma.pmsWorkOrder.create({
+    data: {
+      companyId: input.companyId,
+      propertyId: property.id,
+      unitId: unit.id,
+      tenantId: tenant.id,
+      vendorId: vendor.id,
+      title: 'AC service before peak season',
+      description: 'Seeded work order for maintenance workflow demos.',
+      priority: 'HIGH',
+      status: 'IN_PROGRESS',
+      targetDate: nextDue,
+      cost: '120',
+      currency: 'OMR',
+      recurrenceType: 'QUARTERLY',
+      nextScheduledDate: nextDue,
+      createdById: input.managerId,
+      updatedById: input.managerId
+    }
+  });
+
+  await prisma.pmsMaintenanceQuote.create({
+    data: {
+      companyId: input.companyId,
+      workOrderId: workOrder.id,
+      vendorId: vendor.id,
+      amount: '120',
+      currency: 'OMR',
+      description: 'Quarterly AC service quote.',
+      status: 'APPROVED',
+      submittedAt: now,
+      approvedAt: now,
+      createdById: input.managerId,
+      updatedById: input.managerId,
+      approvedById: input.managerId
+    }
+  });
+
+  await prisma.pmsPolicy.create({
+    data: {
+      companyId: input.companyId,
+      title: 'Demo rent and maintenance policy',
+      category: 'RENT',
+      body: 'Rent is due on the 5th of each month. Maintenance requests should be submitted through the tenant portal.',
+      active: true,
+      createdById: input.managerId,
+      updatedById: input.managerId
+    }
+  });
+
+  await prisma.pmsCommunicationTemplate.create({
+    data: {
+      companyId: input.companyId,
+      name: 'Rent due reminder',
+      channel: 'EMAIL',
+      type: 'rent',
+      subject: 'Rent due reminder for {{unitLabel}}',
+      body: 'Hello {{tenantName}}, your rent of {{amount}} {{currency}} is due on {{dueDate}}.',
+      active: true,
+      createdById: input.managerId,
+      updatedById: input.managerId
+    }
+  });
+
+  await prisma.pmsDocument.create({
+    data: {
+      companyId: input.companyId,
+      propertyId: property.id,
+      unitId: unit.id,
+      tenantId: tenant.id,
+      leaseId: lease.id,
+      type: 'LEASE_AGREEMENT',
+      title: 'Demo lease agreement placeholder',
+      fileUrl: '/uploads/pms-demo-lease.pdf',
+      status: 'ACTIVE',
+      expiryDate: leaseEnd,
+      notes: 'Placeholder file path for local PMS demo data.',
+      uploadedById: input.managerId,
+      updatedById: input.managerId
+    }
+  });
+
+  await prisma.pmsInspection.create({
+    data: {
+      companyId: input.companyId,
+      propertyId: property.id,
+      unitId: unit.id,
+      tenantId: tenant.id,
+      leaseId: lease.id,
+      title: 'Demo move-in inspection',
+      status: 'COMPLETED',
+      scheduledFor: leaseStart,
+      completedAt: leaseStart,
+      rating: 5,
+      notes: 'Seeded inspection record for launch QA.',
+      createdById: input.managerId,
+      updatedById: input.managerId
+    }
+  });
+
+  await prisma.pmsImportBatch.create({
+    data: {
+      companyId: input.companyId,
+      type: 'TENANTS',
+      filename: 'demo-tenants.csv',
+      status: 'COMMITTED',
+      totalRows: 1,
+      successfulRows: 1,
+      failedRows: 0,
+      createdById: input.managerId
+    }
+  });
+
+  return { property, unit, tenant, lease, upcomingDueItem, workOrder };
+}
 
 async function main() {
   await prisma.inquiry.deleteMany();
@@ -459,12 +829,25 @@ availabilityEndTime: '19:00',
     }
   });
 
-    console.log('Seed complete');
+  const pmsDemo = await seedPmsDemoData({
+    companyId: developer.id,
+    managerId: owner.id,
+    hashedPassword,
+  });
+
+  console.log('Seed complete');
   console.log({
     admin: admin.email,
     owner: owner.email,
     activityProvider: activityProvider.email,
-    user: user.email
+    user: user.email,
+    pmsDemo: pmsDemo
+      ? {
+          property: pmsDemo.property.name,
+          unit: pmsDemo.unit.unitNumber,
+          tenant: pmsDemo.tenant.email
+        }
+      : 'set SEED_INCLUDE_PMS_DEMO=true for local PMS demo data'
   });
 
   if (process.env.NODE_ENV !== 'production') {

@@ -2226,6 +2226,7 @@ model PmsLease {
   updatedAt DateTime @updatedAt
 
   @@index([companyId, status])
+  @@index([companyId, status, endDate], name: "PmsLease_company_status_endDate_idx")
   @@index([tenantId])
   @@index([propertyId])
   @@index([unitId])
@@ -2281,6 +2282,7 @@ model PmsRentDueItem {
   @@unique([leaseId, dueDate])
   @@index([companyId, status])
   @@index([companyId, dueDate])
+  @@index([companyId, status, dueDate], name: "PmsRentDueItem_company_status_dueDate_idx")
   @@index([leaseId])
   @@index([tenantId])
   @@index([propertyId])
@@ -2334,6 +2336,7 @@ model PmsRentPayment {
   updatedAt DateTime @updatedAt
 
   @@index([companyId, status])
+  @@index([companyId, status, paidAt], name: "PmsRentPayment_company_status_paidAt_idx")
   @@index([rentDueItemId, status])
   @@index([tenantId, status])
   @@index([leaseId])
@@ -2389,6 +2392,7 @@ model PmsAccountingLedgerEntry {
 
   @@index([companyId, transactionDate])
   @@index([companyId, type])
+  @@index([companyId, transactionDate, type], name: "PmsAccounting_company_date_type_idx")
   @@index([companyId, category])
   @@index([propertyId])
   @@index([unitId])
@@ -2466,6 +2470,7 @@ model PmsWorkOrder {
   @@index([companyId, priority])
   @@index([companyId, vendorId])
   @@index([companyId, targetDate])
+  @@index([companyId, status, targetDate], name: "PmsWorkOrder_company_status_targetDate_idx")
   @@index([companyId, nextScheduledDate])
   @@index([propertyId])
   @@index([unitId])
@@ -2617,6 +2622,7 @@ model PmsCommunicationLog {
   @@index([companyId, createdAt])
   @@index([companyId, channel])
   @@index([companyId, status])
+  @@index([companyId, status, createdAt], name: "PmsCommunicationLog_company_status_createdAt_idx")
   @@index([templateId])
   @@index([tenantId])
   @@index([leaseId])
@@ -2647,6 +2653,7 @@ model PmsImportBatch {
 
   @@index([companyId, type])
   @@index([companyId, status])
+  @@index([companyId, status, createdAt], name: "PmsImportBatch_company_status_createdAt_idx")
   @@index([createdById])
   @@index([createdAt])
 }
@@ -2764,6 +2771,7 @@ model PmsDocument {
   @@index([companyId, type])
   @@index([companyId, status])
   @@index([companyId, expiryDate])
+  @@index([companyId, status, expiryDate], name: "PmsDocument_company_status_expiryDate_idx")
   @@index([propertyId])
   @@index([unitId])
   @@index([tenantId])

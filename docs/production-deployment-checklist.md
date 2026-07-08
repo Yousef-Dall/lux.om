@@ -147,3 +147,17 @@ If a database restore is required:
 - Thawani production keys and HTTPS checkout/API URLs must be configured before paid bookings are enabled.
 - Google OAuth redirect URL must exactly end with `/api/auth/google/callback` on the production API origin.
 - Keep backups, deployment logs, and request IDs available for incident review.
+
+## PMS beta launch checks
+
+Before enabling PMS for a real company:
+
+- [ ] `npm run test:pms-smoke` passes against the test database.
+- [ ] PMS entitlement is enabled only for approved companies.
+- [ ] At least one `PMS_OWNER` or `PMS_MANAGER` exists for the company.
+- [ ] Property-scoped staff access was reviewed.
+- [ ] Tenant portal access is granted only to verified lux.om user accounts.
+- [ ] Import batches were previewed before commit.
+- [ ] Rent roll, accounting summary, and owner statement preview were checked.
+- [ ] Communication templates were previewed before sending/logging notices.
+- [ ] WhatsApp/SMS remain copy-only unless a production integration is configured.

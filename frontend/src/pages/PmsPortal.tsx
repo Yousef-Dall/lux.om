@@ -915,6 +915,18 @@ export default function PmsPortal() {
           approvedListings: "إعلانات منشورة",
           totalProjects: "مشاريع مرتبطة",
           readiness: "جاهزية المساحة",
+          launchChecklist: "قائمة جاهزية الإطلاق",
+          launchChecklistText: "استخدم هذه القائمة قبل دعوة أول شركة أو مستأجرين إلى التجربة.",
+          launchDocs: "مستندات التشغيل",
+          launchDocsText: "راجع دليل الإعداد وقائمة QA و runbook الإنتاج قبل الإطلاق.",
+          checklistPmsAccess: "تفعيل PMS وإضافة مسؤول للشركة",
+          checklistInventory: "إضافة عقارات ووحدات أو استيرادها",
+          checklistTenancy: "إضافة مستأجرين وعقود وجدولة الإيجارات",
+          checklistFinance: "اختبار التحصيل والإيصال والمحاسبة",
+          checklistOperations: "إضافة صيانة ومستندات وقوالب تواصل",
+          checklistPermissions: "مراجعة صلاحيات الفريق ونطاق العقارات",
+          checklistComplete: "جاهز",
+          checklistPending: "يحتاج مراجعة",
           entitlementReady: "تم تفعيل صلاحية PMS للشركة.",
           accessScoped:
             "صلاحيتك مرتبطة بهذه الشركة فقط وليست صلاحية عامة على المنصة.",
@@ -1148,6 +1160,18 @@ export default function PmsPortal() {
           approvedListings: "Published listings",
           totalProjects: "Linked projects",
           readiness: "Workspace readiness",
+          launchChecklist: "Launch readiness checklist",
+          launchChecklistText: "Use this before inviting the first beta company or tenant users.",
+          launchDocs: "Operating docs",
+          launchDocsText: "Review the setup guide, QA checklist, and production runbook before launch.",
+          checklistPmsAccess: "Enable PMS and add company owner",
+          checklistInventory: "Add or import properties and units",
+          checklistTenancy: "Add tenants, leases, and rent schedule",
+          checklistFinance: "Test rent payment, receipt, and accounting",
+          checklistOperations: "Add maintenance, documents, and communication templates",
+          checklistPermissions: "Review staff roles and property scopes",
+          checklistComplete: "Ready",
+          checklistPending: "Needs review",
           entitlementReady: "PMS entitlement is enabled for this company.",
           accessScoped:
             "Your PMS access is scoped to this company, not global marketplace power.",
@@ -1699,6 +1723,48 @@ export default function PmsPortal() {
       },
     ];
   }, [copy, language, overview]);
+
+  const launchChecklistItems = useMemo(() => {
+    if (!overview) return [];
+
+    return [
+      {
+        key: "access",
+        label: copy.checklistPmsAccess,
+        complete: Boolean(overview.workspace.entitlement.status && overview.workspace.member.role),
+      },
+      {
+        key: "inventory",
+        label: copy.checklistInventory,
+        complete: overview.metrics.totalPmsProperties > 0 && overview.metrics.totalPmsUnits > 0,
+      },
+      {
+        key: "tenancy",
+        label: copy.checklistTenancy,
+        complete: overview.metrics.totalPmsTenants > 0 && overview.metrics.activePmsLeases > 0,
+      },
+      {
+        key: "finance",
+        label: copy.checklistFinance,
+        complete:
+          Number(overview.metrics.pmsRentCollectedAmount) > 0 ||
+          overview.metrics.paidPmsRentDueItems > 0,
+      },
+      {
+        key: "operations",
+        label: copy.checklistOperations,
+        complete:
+          overview.metrics.openPmsWorkOrders > 0 ||
+          overview.metrics.activePmsCommunicationTemplates > 0 ||
+          overview.metrics.activePmsPolicies > 0,
+      },
+      {
+        key: "permissions",
+        label: copy.checklistPermissions,
+        complete: true,
+      },
+    ];
+  }, [copy, overview]);
 
   const statusLabel =
     overview?.workspace.entitlement.status === "ACTIVE"
@@ -2717,6 +2783,40 @@ export default function PmsPortal() {
                         <ChevronRight size={16} aria-hidden="true" />
                       </div>
                     ) : null}
+                  </div>
+                </section>
+
+                <section className="pms-next-actions pms-launch-checklist">
+                  <div className="pms-next-actions__header">
+                    <p className="eyebrow">{copy.readiness}</p>
+                    <h2>{copy.launchChecklist}</h2>
+                    <p>{copy.launchChecklistText}</p>
+                  </div>
+
+                  <div className="pms-empty-state-list">
+                    {launchChecklistItems.map((item) => (
+                      <div key={item.key}>
+                        <ShieldCheck size={18} aria-hidden="true" />
+                        <span>{item.label}</span>
+                        <small className={item.complete ? "pms-status-badge pms-status-badge--completed" : "pms-status-badge"}>
+                          {item.complete ? copy.checklistComplete : copy.checklistPending}
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="pms-next-actions pms-launch-docs">
+                  <div className="pms-next-actions__header">
+                    <p className="eyebrow">{copy.launchDocs}</p>
+                    <h2>{copy.launchDocs}</h2>
+                    <p>{copy.launchDocsText}</p>
+                  </div>
+                  <div className="pms-empty-state-list">
+                    <div>docs/pms-admin-setup-guide.md</div>
+                    <div>docs/pms-company-onboarding-guide.md</div>
+                    <div>docs/pms-qa-checklist.md</div>
+                    <div>docs/pms-production-runbook.md</div>
                   </div>
                 </section>
               </>

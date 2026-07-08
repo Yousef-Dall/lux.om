@@ -32,7 +32,8 @@
     "verify:seo": "npm run verify:seo -w frontend",
     "test:marketplace-smoke": "npm run test:marketplace-smoke -w backend",
     "verify:deployment-checklist": "node scripts/verifyDeploymentChecklist.mjs",
-    "verify:release-candidate": "node scripts/verifyReleaseCandidate.mjs"
+    "verify:release-candidate": "node scripts/verifyReleaseCandidate.mjs",
+    "test:pms-smoke": "npm run test:pms-smoke -w backend"
   },
   "workspaces": [
     "backend",

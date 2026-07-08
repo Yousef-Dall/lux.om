@@ -428,3 +428,32 @@ npm run verify:frontend-polish
 ```
 
 The production verification chain also runs this check so launch builds fail if core accessibility and mobile polish guardrails regress.
+
+## PMS beta launch package
+
+The private PMS module is now prepared for controlled beta onboarding. PMS records are company-scoped and remain separate from public marketplace listings unless a property or unit is explicitly linked.
+
+PMS launch documentation:
+
+- [PMS admin setup guide](docs/pms-admin-setup-guide.md)
+- [PMS company onboarding guide](docs/pms-company-onboarding-guide.md)
+- [PMS QA checklist](docs/pms-qa-checklist.md)
+- [PMS production runbook](docs/pms-production-runbook.md)
+
+Useful PMS launch commands:
+
+```bash
+npm run typecheck
+npm run build
+cd backend && npm test && cd ..
+npm run test
+npm run test:pms-smoke
+```
+
+Optional local PMS demo data can be seeded outside production with:
+
+```bash
+SEED_INCLUDE_PMS_DEMO=true npm run db:seed
+```
+
+Never run demo seed data in production. PMS production data should be onboarded through admin entitlement setup, PMS staff assignment, validated CSV import, and normal PMS forms.
