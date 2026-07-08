@@ -27,6 +27,7 @@ import {
 
 import { ApiError } from "../api/client";
 import {
+  createPmsAccountingLedgerEntry,
   createPmsCommunicationTemplate,
   createPmsInspection,
   createPmsLease,
@@ -38,7 +39,9 @@ import {
   getPmsLease,
   getPmsOverview,
   getPmsProperty,
+  getPmsOwnerStatement,
   getPmsReportsSummary,
+  listPmsAccountingLedger,
   listPmsCommunicationTemplates,
   listPmsInspections,
   listPmsLeaseRentDueItems,
@@ -55,6 +58,8 @@ import {
   updatePmsUnit,
   updatePmsWorkOrder,
   upsertPmsTenantPortalAccess,
+  type PmsAccountingLedgerEntry,
+  type PmsAccountingLedgerPayload,
   type PmsCommunicationTemplate,
   type PmsCommunicationTemplatePayload,
   type PmsInspection,
@@ -68,6 +73,7 @@ import {
   type PmsProperty,
   type PmsPropertyPayload,
   type PmsRentDueItem,
+  type PmsOwnerStatement,
   type PmsRentReceipt,
   type PmsReportsSummary,
   type PmsTenant,
@@ -231,6 +237,22 @@ const emptyWorkOrderForm: PmsWorkOrderPayload = {
   notes: "",
 };
 
+const emptyLedgerForm: PmsAccountingLedgerPayload = {
+  propertyId: "",
+  unitId: "",
+  tenantId: "",
+  leaseId: "",
+  rentDueItemId: "",
+  workOrderId: "",
+  type: "EXPENSE",
+  category: "Repairs",
+  amount: 0,
+  currency: "OMR",
+  transactionDate: new Date().toISOString().slice(0, 10),
+  referenceNumber: "",
+  notes: "",
+};
+
 const emptyTemplateForm: PmsCommunicationTemplatePayload = {
   name: "",
   channel: "EMAIL",
@@ -306,6 +328,15 @@ function canEditTenancies(role?: string) {
 
 function canCollectRent(role?: string) {
   return role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_ACCOUNTANT";
+}
+
+function canViewAccounting(role?: string) {
+  return (
+    role === "PMS_OWNER" ||
+    role === "PMS_MANAGER" ||
+    role === "PMS_ACCOUNTANT" ||
+    role === "PMS_VIEWER"
+  );
 }
 
 function canEditMaintenance(role?: string) {
@@ -599,6 +630,8 @@ export default function PmsPortal() {
   const [rentDueItems, setRentDueItems] = useState<PmsRentDueItem[]>([]);
   const [workOrders, setWorkOrders] = useState<PmsWorkOrder[]>([]);
   const [reportsSummary, setReportsSummary] = useState<PmsReportsSummary | null>(null);
+  const [ledgerEntries, setLedgerEntries] = useState<PmsAccountingLedgerEntry[]>([]);
+  const [ownerStatement, setOwnerStatement] = useState<PmsOwnerStatement | null>(null);
   const [rentReceipt, setRentReceipt] = useState<PmsRentReceipt | null>(null);
   const [templates, setTemplates] = useState<PmsCommunicationTemplate[]>([]);
   const [policies, setPolicies] = useState<PmsPolicy[]>([]);
@@ -617,6 +650,8 @@ export default function PmsPortal() {
   const [leaseForm, setLeaseForm] = useState<PmsLeasePayload>(emptyLeaseForm);
   const [workOrderForm, setWorkOrderForm] =
     useState<PmsWorkOrderPayload>(emptyWorkOrderForm);
+  const [ledgerForm, setLedgerForm] =
+    useState<PmsAccountingLedgerPayload>(emptyLedgerForm);
   const [templateForm, setTemplateForm] =
     useState<PmsCommunicationTemplatePayload>(emptyTemplateForm);
   const [policyForm, setPolicyForm] =
@@ -785,6 +820,15 @@ export default function PmsPortal() {
           feedback: "ملاحظات/تقييم",
           rating: "التقييم",
           accountingSummary: "ملخص المحاسبة",
+          accountingLedger: "دفتر القيود",
+          ownerStatement: "كشف المالك",
+          createLedgerEntry: "إضافة قيد",
+          ledgerEntryType: "نوع القيد",
+          transactionDate: "تاريخ العملية",
+          referenceNumber: "رقم المرجع",
+          netAmount: "الصافي",
+          depositHeld: "التأمين المحتفظ به",
+          manualEntry: "قيد يدوي",
           incomeCollected: "الدخل المحصل",
           outstandingRent: "إيجار مستحق",
           overdueAmount: "مبالغ متأخرة",
@@ -952,6 +996,15 @@ export default function PmsPortal() {
           feedback: "Feedback",
           rating: "Rating",
           accountingSummary: "Accounting summary",
+          accountingLedger: "Accounting ledger",
+          ownerStatement: "Owner statement",
+          createLedgerEntry: "Create ledger entry",
+          ledgerEntryType: "Entry type",
+          transactionDate: "Transaction date",
+          referenceNumber: "Reference number",
+          netAmount: "Net amount",
+          depositHeld: "Deposit held",
+          manualEntry: "Manual entry",
           incomeCollected: "Income collected",
           outstandingRent: "Outstanding rent",
           overdueAmount: "Overdue amount",
@@ -993,6 +1046,7 @@ export default function PmsPortal() {
   const canEdit = canEditInventory(overview?.workspace.member.role);
   const canEditTenantRecords = canEditTenancies(overview?.workspace.member.role);
   const canCollect = canCollectRent(overview?.workspace.member.role);
+  const canSeeAccounting = canViewAccounting(overview?.workspace.member.role);
   const canManageMaintenance = canEditMaintenance(overview?.workspace.member.role);
   const canManageOperations = canEditOperations(overview?.workspace.member.role);
 
@@ -1080,15 +1134,29 @@ export default function PmsPortal() {
         setActiveProperty(null);
         setActiveLease(null);
       } else if (section === "accounting") {
-        const [rentDueResponse, summaryResponse] = await Promise.all([
+        const [rentDueResponse, summaryResponse, ledgerResponse, statementResponse, propertiesResponse, unitsResponse, tenantsResponse, leasesResponse, workOrdersResponse] = await Promise.all([
           listPmsRentDueItems(token, {
             companyId,
             take: 200,
           }),
           getPmsReportsSummary(token, companyId),
+          listPmsAccountingLedger(token, { companyId, take: 100 }),
+          getPmsOwnerStatement(token, { companyId }),
+          listPmsProperties(token, { companyId, take: 100 }),
+          listPmsUnits(token, { companyId, take: 200 }),
+          listPmsTenants(token, { companyId, take: 100 }),
+          listPmsLeases(token, { companyId, take: 100 }),
+          listPmsWorkOrders(token, { companyId, take: 100 }),
         ]);
         setRentDueItems(rentDueResponse.rentDueItems);
         setReportsSummary(summaryResponse);
+        setLedgerEntries(ledgerResponse.ledgerEntries);
+        setOwnerStatement(statementResponse.statement);
+        setProperties(propertiesResponse.properties);
+        setUnits(unitsResponse.units);
+        setTenants(tenantsResponse.tenants);
+        setLeases(leasesResponse.leases);
+        setWorkOrders(workOrdersResponse.workOrders);
         setActiveProperty(null);
         setActiveLease(null);
       } else if (section === "reports") {
@@ -1555,6 +1623,37 @@ export default function PmsPortal() {
     }
   }
 
+
+  async function handleCreateLedgerEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !overview) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await createPmsAccountingLedgerEntry(token, {
+        ...ledgerForm,
+        companyId: overview.workspace.company.id,
+        propertyId: ledgerForm.propertyId || null,
+        unitId: ledgerForm.unitId || null,
+        tenantId: ledgerForm.tenantId || null,
+        leaseId: ledgerForm.leaseId || null,
+        rentDueItemId: ledgerForm.rentDueItemId || null,
+        workOrderId: ledgerForm.workOrderId || null,
+        referenceNumber: ledgerForm.referenceNumber || null,
+        notes: ledgerForm.notes || null,
+      });
+      setLedgerForm({ ...emptyLedgerForm, transactionDate: new Date().toISOString().slice(0, 10) });
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(saveError instanceof ApiError ? saveError.message : copy.unavailable);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function handleCreateWorkOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2258,14 +2357,34 @@ export default function PmsPortal() {
 
             {section === "accounting" ? (
               <section className="pms-panel-grid">
+                {!canSeeAccounting ? <p className="form-error">{copy.cannotEdit}</p> : null}
                 <ReportsSummaryPanel
                   copy={copy}
                   summary={reportsSummary}
                   language={language}
                 />
+                <OwnerStatementPanel copy={copy} statement={ownerStatement} />
                 {rentReceipt ? (
                   <PmsRentReceiptPanel copy={copy} receipt={rentReceipt} language={language} />
                 ) : null}
+                <LedgerEntryForm
+                  copy={copy}
+                  form={ledgerForm}
+                  setForm={setLedgerForm}
+                  properties={properties}
+                  units={units}
+                  tenants={tenants}
+                  leases={leases}
+                  workOrders={workOrders}
+                  saving={saving}
+                  canManage={canCollect}
+                  onSubmit={handleCreateLedgerEntry}
+                />
+                <AccountingLedgerTable
+                  copy={copy}
+                  entries={ledgerEntries}
+                  language={language}
+                />
                 <RentDueTable
                   copy={copy}
                   items={rentDueItems}
@@ -3406,6 +3525,194 @@ function WorkOrderFields({
         />
       </label>
     </div>
+  );
+}
+
+function LedgerEntryForm({
+  copy,
+  form,
+  setForm,
+  properties,
+  units,
+  tenants,
+  leases,
+  workOrders,
+  saving,
+  canManage,
+  onSubmit,
+}: {
+  copy: PmsCopy;
+  form: PmsAccountingLedgerPayload;
+  setForm: (updater: (current: PmsAccountingLedgerPayload) => PmsAccountingLedgerPayload) => void;
+  properties: PmsProperty[];
+  units: PmsUnit[];
+  tenants: PmsTenant[];
+  leases: PmsLease[];
+  workOrders: PmsWorkOrder[];
+  saving: boolean;
+  canManage: boolean;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+}) {
+  const propertyUnits = form.propertyId ? units.filter((unit) => unit.propertyId === form.propertyId) : units;
+
+  return (
+    <form className="pms-form-card" onSubmit={onSubmit}>
+      <div>
+        <p className="eyebrow">{copy.manualEntry}</p>
+        <h2>{copy.createLedgerEntry}</h2>
+      </div>
+      {!canManage ? <p className="form-error">{copy.cannotEdit}</p> : null}
+      <div className="pms-form-grid">
+        <label>
+          {copy.ledgerEntryType}
+          <select value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as PmsAccountingLedgerPayload["type"] }))}>
+            {(["INCOME", "EXPENSE", "DEPOSIT", "ADJUSTMENT", "REFUND", "LATE_FEE", "TRANSFER"] as const).map((type) => (
+              <option key={type} value={type}>{type}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {copy.category}
+          <input required value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} />
+        </label>
+        <label>
+          {copy.amount}
+          <input required type="number" min="0.001" step="0.001" value={form.amount || ""} onChange={(event) => setForm((current) => ({ ...current, amount: Number(event.target.value) }))} />
+        </label>
+        <label>
+          {copy.currency}
+          <input required maxLength={3} value={form.currency ?? "OMR"} onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value.toUpperCase() }))} />
+        </label>
+        <label>
+          {copy.transactionDate}
+          <input required type="date" value={form.transactionDate} onChange={(event) => setForm((current) => ({ ...current, transactionDate: event.target.value }))} />
+        </label>
+        <label>
+          {copy.propertyName}
+          <select value={form.propertyId ?? ""} onChange={(event) => setForm((current) => ({ ...current, propertyId: event.target.value, unitId: "" }))}>
+            <option value="">—</option>
+            {properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
+          </select>
+        </label>
+        <label>
+          {copy.unitNumber}
+          <select value={form.unitId ?? ""} onChange={(event) => setForm((current) => ({ ...current, unitId: event.target.value }))}>
+            <option value="">—</option>
+            {propertyUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.unitNumber}</option>)}
+          </select>
+        </label>
+        <label>
+          {copy.tenantName}
+          <select value={form.tenantId ?? ""} onChange={(event) => setForm((current) => ({ ...current, tenantId: event.target.value }))}>
+            <option value="">—</option>
+            {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.fullName}</option>)}
+          </select>
+        </label>
+        <label>
+          {copy.lease}
+          <select value={form.leaseId ?? ""} onChange={(event) => setForm((current) => ({ ...current, leaseId: event.target.value }))}>
+            <option value="">—</option>
+            {leases.map((lease) => <option key={lease.id} value={lease.id}>{lease.title || lease.unit.unitNumber}</option>)}
+          </select>
+        </label>
+        <label>
+          {copy.maintenanceRequests}
+          <select value={form.workOrderId ?? ""} onChange={(event) => setForm((current) => ({ ...current, workOrderId: event.target.value }))}>
+            <option value="">—</option>
+            {workOrders.map((workOrder) => <option key={workOrder.id} value={workOrder.id}>{workOrder.title}</option>)}
+          </select>
+        </label>
+        <label>
+          {copy.referenceNumber}
+          <input value={form.referenceNumber ?? ""} onChange={(event) => setForm((current) => ({ ...current, referenceNumber: event.target.value }))} />
+        </label>
+        <label className="pms-form-grid__wide">
+          {copy.notes}
+          <textarea value={form.notes ?? ""} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} />
+        </label>
+      </div>
+      <button className="button-link button-link--primary" type="submit" disabled={!canManage || saving}>
+        <Plus size={16} aria-hidden="true" />
+        {copy.createLedgerEntry}
+      </button>
+    </form>
+  );
+}
+
+function OwnerStatementPanel({ copy, statement }: { copy: PmsCopy; statement: PmsOwnerStatement | null }) {
+  if (!statement) {
+    return (
+      <section className="pms-next-actions pms-unit-table-card">
+        <div className="pms-next-actions__header">
+          <p className="eyebrow">{copy.accounting}</p>
+          <h2>{copy.ownerStatement}</h2>
+        </div>
+        <p>{copy.emptyReports}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="pms-next-actions pms-unit-table-card">
+      <div className="pms-next-actions__header">
+        <p className="eyebrow">{copy.accounting}</p>
+        <h2>{copy.ownerStatement}</h2>
+      </div>
+      <div className="pms-metric-grid">
+        <article className="pms-metric-card"><span>{copy.incomeCollected}</span><strong>{statement.totals.income} OMR</strong></article>
+        <article className="pms-metric-card"><span>{copy.expenses}</span><strong>{statement.totals.expenses} OMR</strong></article>
+        <article className="pms-metric-card"><span>{copy.netAmount}</span><strong>{statement.totals.netAmount} OMR</strong></article>
+        <article className="pms-metric-card"><span>{copy.outstandingRent}</span><strong>{statement.totals.outstandingRent} OMR</strong></article>
+        <article className="pms-metric-card"><span>{copy.depositHeld}</span><strong>{statement.totals.depositHeld} OMR</strong></article>
+        <article className="pms-metric-card"><span>{copy.maintenanceCosts}</span><strong>{statement.totals.maintenanceCosts} OMR</strong></article>
+      </div>
+    </section>
+  );
+}
+
+function AccountingLedgerTable({
+  copy,
+  entries,
+  language,
+}: {
+  copy: PmsCopy;
+  entries: PmsAccountingLedgerEntry[];
+  language: "en" | "ar";
+}) {
+  return (
+    <section className="pms-next-actions pms-unit-table-card">
+      <div className="pms-next-actions__header">
+        <p className="eyebrow">{copy.accounting}</p>
+        <h2>{copy.accountingLedger}</h2>
+      </div>
+      {entries.length === 0 ? <p>{copy.emptyReports}</p> : null}
+      {entries.length > 0 ? (
+        <div className="pms-table-scroll">
+          <table className="pms-table">
+            <thead>
+              <tr>
+                <th>{copy.transactionDate}</th>
+                <th>{copy.ledgerEntryType}</th>
+                <th>{copy.category}</th>
+                <th>{copy.propertyName}</th>
+                <th>{copy.amount}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr key={entry.id}>
+                  <td>{formatDate(entry.transactionDate, language)}</td>
+                  <td><StatusBadge status={entry.type} /></td>
+                  <td>{entry.category}</td>
+                  <td>{entry.property?.name || "—"}</td>
+                  <td>{entry.amount} {entry.currency}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

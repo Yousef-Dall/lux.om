@@ -1,6 +1,8 @@
 import {
   AccountSecurityEventType,
   PaymentScheduleFrequency,
+  PmsAccountingEntryType,
+  PmsAccountingSource,
   PmsCommunicationChannel,
   PmsEntitlementStatus,
   PmsInspectionStatus,
@@ -27,7 +29,9 @@ import {
 } from "../lib/pmsAccess";
 import {
   assertCanCollectPmsRent,
+  assertCanManagePmsAccounting,
   assertCanManagePmsInventory,
+  assertCanViewPmsAccounting,
   assertCanManagePmsMaintenance,
   assertCanManagePmsOperations,
   assertCanManagePmsTenancies,
@@ -222,6 +226,63 @@ const pmsRentDueParamsSchema = z.object({
 const pmsRentPaymentParamsSchema = z.object({
   rentPaymentId: z.string().trim().min(1),
 });
+
+const pmsAccountingLedgerParamsSchema = z.object({
+  ledgerEntryId: z.string().trim().min(1),
+});
+
+const pmsAccountingQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+  unitId: z.string().trim().min(1).optional(),
+  tenantId: z.string().trim().min(1).optional(),
+  leaseId: z.string().trim().min(1).optional(),
+  rentDueItemId: z.string().trim().min(1).optional(),
+  workOrderId: z.string().trim().min(1).optional(),
+  type: z.enum(["ALL", ...Object.values(PmsAccountingEntryType)] as [
+    "ALL",
+    ...PmsAccountingEntryType[],
+  ]).default("ALL"),
+  category: z.string().trim().max(120).optional(),
+  dateFrom: z.coerce.date().optional(),
+  dateTo: z.coerce.date().optional(),
+  sortBy: z.enum(["transactionDate", "createdAt", "updatedAt", "amount", "type", "category"]).optional(),
+  direction: z.enum(["asc", "desc"]).default("desc"),
+  take: z.coerce.number().int().min(1).max(200).default(100),
+  skip: z.coerce.number().int().min(0).default(0),
+});
+
+const pmsAccountingStatementQuerySchema = pmsAccountingQuerySchema
+  .pick({ companyId: true, propertyId: true, unitId: true, dateFrom: true, dateTo: true })
+  .extend({
+    month: z.string().trim().regex(/^\d{4}-\d{2}$/).optional(),
+  });
+
+const pmsAccountingLedgerEntrySchema = z
+  .object({
+    companyId: z.string().trim().min(1),
+    propertyId: nullableId,
+    unitId: nullableId,
+    tenantId: nullableId,
+    leaseId: nullableId,
+    rentDueItemId: nullableId,
+    workOrderId: nullableId,
+    type: z.nativeEnum(PmsAccountingEntryType),
+    category: z.string().trim().min(2).max(120),
+    amount: z.coerce.number().min(0.001).max(100000000),
+    currency: z.string().trim().length(3).toUpperCase().default("OMR"),
+    transactionDate: z.coerce.date(),
+    referenceNumber: nullableTrimmedString(180),
+    notes: nullableTrimmedString(2000),
+  })
+  .strict();
+
+const pmsAccountingLedgerEntryUpdateSchema = pmsAccountingLedgerEntrySchema
+  .omit({ companyId: true })
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one accounting ledger field is required.",
+  });
 
 const pmsWorkOrderListQuerySchema = z.object({
   companyId: z.string().trim().min(1).optional(),
@@ -1319,12 +1380,83 @@ function buildPmsRentDueDateFilter(
   };
 }
 
+function buildPmsAccountingDateFilter(input: {
+  dateFrom?: Date;
+  dateTo?: Date;
+}): Prisma.DateTimeFilter | undefined {
+  if (!input.dateFrom && !input.dateTo) return undefined;
+
+  return {
+    ...(input.dateFrom ? { gte: input.dateFrom } : {}),
+    ...(input.dateTo ? { lte: input.dateTo } : {}),
+  };
+}
+
+function buildPmsAccountingOrderBy(
+  query: z.infer<typeof pmsAccountingQuerySchema>,
+): Prisma.PmsAccountingLedgerEntryOrderByWithRelationInput[] {
+  const direction = query.direction as PmsSortDirection;
+
+  switch (query.sortBy) {
+    case "amount":
+      return [{ amount: direction }, { transactionDate: "desc" }];
+    case "type":
+      return [{ type: direction }, { transactionDate: "desc" }];
+    case "category":
+      return [{ category: direction }, { transactionDate: "desc" }];
+    case "createdAt":
+      return [{ createdAt: direction }, { transactionDate: "desc" }];
+    case "updatedAt":
+      return [{ updatedAt: direction }, { transactionDate: "desc" }];
+    case "transactionDate":
+    default:
+      return [{ transactionDate: direction }, { createdAt: "desc" }];
+  }
+}
+
+function getPmsStatementRange(input: { month?: string; dateFrom?: Date; dateTo?: Date }) {
+  if (input.month) {
+    const [year, month] = input.month.split("-").map(Number);
+    const start = new Date(Date.UTC(year, month - 1, 1));
+    const end = new Date(Date.UTC(year, month, 1));
+    return { start, end };
+  }
+
+  return {
+    start: input.dateFrom,
+    end: input.dateTo,
+  };
+}
+
+function sumDecimal(values: Array<Prisma.Decimal | null | undefined>) {
+  return values.reduce((total, value) => total + Number(value ?? 0), 0);
+}
+
+function moneyString(value: number) {
+  return String(Math.round(value * 1000) / 1000);
+}
+
+function isPmsAccountingIncomeType(type: PmsAccountingEntryType) {
+  return (
+    type === PmsAccountingEntryType.INCOME ||
+    type === PmsAccountingEntryType.LATE_FEE ||
+    type === PmsAccountingEntryType.ADJUSTMENT ||
+    type === PmsAccountingEntryType.DEPOSIT
+  );
+}
+
+function isPmsAccountingExpenseType(type: PmsAccountingEntryType) {
+  return type === PmsAccountingEntryType.EXPENSE || type === PmsAccountingEntryType.REFUND;
+}
+
 async function assertPmsFilterLinksBelongToCompany(input: {
   companyId: string;
-  propertyId?: string;
-  unitId?: string;
-  tenantId?: string;
-  leaseId?: string;
+  propertyId?: string | null;
+  unitId?: string | null;
+  tenantId?: string | null;
+  leaseId?: string | null;
+  rentDueItemId?: string | null;
+  workOrderId?: string | null;
 }) {
   if (input.propertyId) {
     const property = await prisma.pmsProperty.findFirst({
@@ -1377,6 +1509,41 @@ async function assertPmsFilterLinksBelongToCompany(input: {
 
     if (!lease) {
       throw new AppError(400, "PMS lease filter must belong to this PMS company.");
+    }
+  }
+
+  if (input.rentDueItemId) {
+    const rentDueItem = await prisma.pmsRentDueItem.findFirst({
+      where: {
+        id: input.rentDueItemId,
+        companyId: input.companyId,
+        ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+        ...(input.unitId ? { unitId: input.unitId } : {}),
+        ...(input.tenantId ? { tenantId: input.tenantId } : {}),
+        ...(input.leaseId ? { leaseId: input.leaseId } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (!rentDueItem) {
+      throw new AppError(400, "PMS rent due item filter must belong to this PMS company.");
+    }
+  }
+
+  if (input.workOrderId) {
+    const workOrder = await prisma.pmsWorkOrder.findFirst({
+      where: {
+        id: input.workOrderId,
+        companyId: input.companyId,
+        ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+        ...(input.unitId ? { unitId: input.unitId } : {}),
+        ...(input.tenantId ? { tenantId: input.tenantId } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (!workOrder) {
+      throw new AppError(400, "PMS maintenance work order filter must belong to this PMS company.");
     }
   }
 }
@@ -1841,6 +2008,78 @@ function pmsRentReceiptResponse(payment: PmsRentPaymentWithRelations) {
     lease: payment.lease,
     rentDueItem: pmsRentDueItemResponse(payment.rentDueItem),
     recordedBy: payment.recordedBy,
+  };
+}
+
+const pmsAccountingLedgerEntryInclude = {
+  property: {
+    select: { id: true, name: true, code: true },
+  },
+  unit: {
+    select: { id: true, unitNumber: true, unitName: true },
+  },
+  tenant: {
+    select: { id: true, fullName: true, phone: true, email: true },
+  },
+  lease: {
+    select: { id: true, title: true, status: true, startDate: true, endDate: true },
+  },
+  rentDueItem: {
+    include: pmsRentDueItemInclude,
+  },
+  rentPayment: {
+    select: { id: true, receiptNumber: true, method: true, status: true, referenceNumber: true },
+  },
+  workOrder: {
+    select: { id: true, title: true, status: true, cost: true, currency: true },
+  },
+  createdBy: {
+    select: { id: true, name: true, email: true },
+  },
+  updatedBy: {
+    select: { id: true, name: true, email: true },
+  },
+} satisfies Prisma.PmsAccountingLedgerEntryInclude;
+
+type PmsAccountingLedgerEntryWithRelations = Prisma.PmsAccountingLedgerEntryGetPayload<{
+  include: typeof pmsAccountingLedgerEntryInclude;
+}>;
+
+function pmsAccountingLedgerEntryResponse(entry: PmsAccountingLedgerEntryWithRelations) {
+  return {
+    id: entry.id,
+    companyId: entry.companyId,
+    propertyId: entry.propertyId,
+    property: entry.property,
+    unitId: entry.unitId,
+    unit: entry.unit,
+    tenantId: entry.tenantId,
+    tenant: entry.tenant,
+    leaseId: entry.leaseId,
+    lease: entry.lease,
+    rentDueItemId: entry.rentDueItemId,
+    rentDueItem: entry.rentDueItem ? pmsRentDueItemResponse(entry.rentDueItem) : null,
+    rentPaymentId: entry.rentPaymentId,
+    rentPayment: entry.rentPayment,
+    workOrderId: entry.workOrderId,
+    workOrder: entry.workOrder
+      ? {
+          ...entry.workOrder,
+          cost: decimalToString(entry.workOrder.cost),
+        }
+      : null,
+    type: entry.type,
+    source: entry.source,
+    category: entry.category,
+    amount: decimalToString(entry.amount),
+    currency: entry.currency,
+    transactionDate: entry.transactionDate,
+    referenceNumber: entry.referenceNumber,
+    notes: entry.notes,
+    createdBy: entry.createdBy,
+    updatedBy: entry.updatedBy,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
   };
 }
 
@@ -3339,6 +3578,27 @@ pmsRouter.post("/rent-due/:rentDueItemId/payments", requireAuth(), async (req, r
         },
         include: pmsRentPaymentInclude,
       });
+      await tx.pmsAccountingLedgerEntry.create({
+        data: {
+          companyId: access.company.id,
+          rentDueItemId: rentDueItem.id,
+          rentPaymentId: createdPayment.id,
+          leaseId: rentDueItem.leaseId,
+          tenantId: rentDueItem.tenantId,
+          propertyId: rentDueItem.propertyId,
+          unitId: rentDueItem.unitId,
+          type: PmsAccountingEntryType.INCOME,
+          source: PmsAccountingSource.RENT_PAYMENT,
+          category: "Rent payment",
+          amount: data.amount,
+          currency: rentDueItem.currency,
+          transactionDate: createdPayment.paidAt ?? createdPayment.confirmedAt ?? new Date(),
+          referenceNumber: createdPayment.receiptNumber ?? createdPayment.referenceNumber,
+          notes: normalizeNullableText(data.notes),
+          createdById: req.user!.id,
+          updatedById: req.user!.id,
+        },
+      });
       const refreshedRentDueItem = await syncPmsRentDueItemFromConfirmedPayments(tx, {
         rentDueItemId,
         updatedById: req.user!.id,
@@ -3502,6 +3762,8 @@ async function buildPmsReportsSummary(companyId: string) {
     outstandingRent,
     overdueRent,
     maintenanceCosts,
+    manualIncomeEntries,
+    manualExpenseEntries,
     openMaintenance,
     inProgressMaintenance,
     resolvedMaintenance,
@@ -3557,6 +3819,22 @@ async function buildPmsReportsSummary(companyId: string) {
       },
       _sum: { cost: true },
     }),
+    prisma.pmsAccountingLedgerEntry.aggregate({
+      where: {
+        companyId,
+        source: PmsAccountingSource.MANUAL,
+        type: { in: [PmsAccountingEntryType.INCOME, PmsAccountingEntryType.LATE_FEE, PmsAccountingEntryType.DEPOSIT, PmsAccountingEntryType.ADJUSTMENT] },
+      },
+      _sum: { amount: true },
+    }),
+    prisma.pmsAccountingLedgerEntry.aggregate({
+      where: {
+        companyId,
+        source: PmsAccountingSource.MANUAL,
+        type: { in: [PmsAccountingEntryType.EXPENSE, PmsAccountingEntryType.REFUND] },
+      },
+      _sum: { amount: true },
+    }),
     prisma.pmsWorkOrder.count({ where: { companyId, status: PmsMaintenanceStatus.OPEN } }),
     prisma.pmsWorkOrder.count({ where: { companyId, status: PmsMaintenanceStatus.IN_PROGRESS } }),
     prisma.pmsWorkOrder.count({ where: { companyId, status: PmsMaintenanceStatus.RESOLVED } }),
@@ -3600,13 +3878,15 @@ async function buildPmsReportsSummary(companyId: string) {
   ]);
 
   const maintenanceCost = maintenanceCosts._sum.cost;
+  const incomeCollectedAmount = Number(rentCollected._sum.amount ?? 0) + Number(manualIncomeEntries._sum.amount ?? 0);
+  const expenseAmount = Number(maintenanceCost ?? 0) + Number(manualExpenseEntries._sum.amount ?? 0);
 
   return {
     accounting: {
-      incomeCollected: decimalToString(rentCollected._sum.amount),
+      incomeCollected: moneyString(incomeCollectedAmount),
       outstandingRent: decimalToString(outstandingRent._sum.amount),
       overdueRent: decimalToString(overdueRent._sum.amount),
-      expenses: decimalToString(maintenanceCost),
+      expenses: moneyString(expenseAmount),
       maintenanceCosts: decimalToString(maintenanceCost),
       lateFeeFoundationEnabled: false,
       lateFeeNote:
@@ -3621,7 +3901,7 @@ async function buildPmsReportsSummary(companyId: string) {
           totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 1000) / 10 : 0,
       },
       revenue: {
-        collected: decimalToString(rentCollected._sum.amount),
+        collected: moneyString(incomeCollectedAmount),
         outstanding: decimalToString(outstandingRent._sum.amount),
         overdue: decimalToString(overdueRent._sum.amount),
       },
@@ -3881,6 +4161,464 @@ pmsRouter.patch("/maintenance/:workOrderId", requireAuth(), async (req, res, nex
   }
 });
 
+function buildPmsAccountingWhere(
+  companyId: string,
+  query: z.infer<typeof pmsAccountingQuerySchema>,
+): Prisma.PmsAccountingLedgerEntryWhereInput {
+  const transactionDate = buildPmsAccountingDateFilter({
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+  });
+
+  return {
+    companyId,
+    ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+    ...(query.unitId ? { unitId: query.unitId } : {}),
+    ...(query.tenantId ? { tenantId: query.tenantId } : {}),
+    ...(query.leaseId ? { leaseId: query.leaseId } : {}),
+    ...(query.rentDueItemId ? { rentDueItemId: query.rentDueItemId } : {}),
+    ...(query.workOrderId ? { workOrderId: query.workOrderId } : {}),
+    ...(query.type !== "ALL" ? { type: query.type } : {}),
+    ...(query.category ? { category: { contains: query.category, mode: "insensitive" } } : {}),
+    ...(transactionDate ? { transactionDate } : {}),
+  };
+}
+
+function buildPmsAccountingLedgerData(
+  input: z.infer<typeof pmsAccountingLedgerEntrySchema>,
+  userId: string,
+): Prisma.PmsAccountingLedgerEntryUncheckedCreateInput {
+  return {
+    companyId: input.companyId,
+    propertyId: input.propertyId ?? null,
+    unitId: input.unitId ?? null,
+    tenantId: input.tenantId ?? null,
+    leaseId: input.leaseId ?? null,
+    rentDueItemId: input.rentDueItemId ?? null,
+    workOrderId: input.workOrderId ?? null,
+    type: input.type,
+    source: PmsAccountingSource.MANUAL,
+    category: input.category,
+    amount: input.amount,
+    currency: input.currency,
+    transactionDate: input.transactionDate,
+    referenceNumber: normalizeNullableText(input.referenceNumber),
+    notes: normalizeNullableText(input.notes),
+    createdById: userId,
+    updatedById: userId,
+  };
+}
+
+function buildPmsAccountingLedgerUpdateData(
+  input: z.infer<typeof pmsAccountingLedgerEntryUpdateSchema>,
+  userId: string,
+): Prisma.PmsAccountingLedgerEntryUncheckedUpdateInput {
+  return {
+    ...(input.propertyId !== undefined ? { propertyId: input.propertyId ?? null } : {}),
+    ...(input.unitId !== undefined ? { unitId: input.unitId ?? null } : {}),
+    ...(input.tenantId !== undefined ? { tenantId: input.tenantId ?? null } : {}),
+    ...(input.leaseId !== undefined ? { leaseId: input.leaseId ?? null } : {}),
+    ...(input.rentDueItemId !== undefined ? { rentDueItemId: input.rentDueItemId ?? null } : {}),
+    ...(input.workOrderId !== undefined ? { workOrderId: input.workOrderId ?? null } : {}),
+    ...(input.type !== undefined ? { type: input.type } : {}),
+    ...(input.category !== undefined ? { category: input.category } : {}),
+    ...(input.amount !== undefined ? { amount: input.amount } : {}),
+    ...(input.currency !== undefined ? { currency: input.currency } : {}),
+    ...(input.transactionDate !== undefined ? { transactionDate: input.transactionDate } : {}),
+    ...(input.referenceNumber !== undefined ? { referenceNumber: normalizeNullableText(input.referenceNumber) } : {}),
+    ...(input.notes !== undefined ? { notes: normalizeNullableText(input.notes) } : {}),
+    updatedById: userId,
+  };
+}
+
+async function buildPmsOwnerStatement(input: {
+  companyId: string;
+  propertyId?: string;
+  unitId?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+  month?: string;
+}) {
+  const range = getPmsStatementRange(input);
+  const closedDateFilter = buildPmsAccountingDateFilter({ dateFrom: range.start, dateTo: range.end });
+  const paymentWhere: Prisma.PmsRentPaymentWhereInput = {
+    companyId: input.companyId,
+    status: PmsRentPaymentStatus.CONFIRMED,
+    ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+    ...(input.unitId ? { unitId: input.unitId } : {}),
+    ...(closedDateFilter ? { paidAt: closedDateFilter } : {}),
+  };
+  const ledgerWhere: Prisma.PmsAccountingLedgerEntryWhereInput = {
+    companyId: input.companyId,
+    source: PmsAccountingSource.MANUAL,
+    ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+    ...(input.unitId ? { unitId: input.unitId } : {}),
+    ...(closedDateFilter ? { transactionDate: closedDateFilter } : {}),
+  };
+  const workOrderWhere: Prisma.PmsWorkOrderWhereInput = {
+    companyId: input.companyId,
+    status: { not: PmsMaintenanceStatus.CANCELLED },
+    cost: { not: null },
+    ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+    ...(input.unitId ? { unitId: input.unitId } : {}),
+    ...(closedDateFilter
+      ? {
+          OR: [
+            { resolvedAt: closedDateFilter },
+            { resolvedAt: null, updatedAt: closedDateFilter },
+          ],
+        }
+      : {}),
+  };
+  const rentDueWhere: Prisma.PmsRentDueItemWhereInput = {
+    companyId: input.companyId,
+    status: { notIn: [PmsRentDueStatus.PAID, PmsRentDueStatus.CANCELLED] },
+    ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+    ...(input.unitId ? { unitId: input.unitId } : {}),
+    ...(closedDateFilter ? { dueDate: closedDateFilter } : {}),
+  };
+  const activeLeaseWhere: Prisma.PmsLeaseWhereInput = {
+    companyId: input.companyId,
+    status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] },
+    securityDeposit: { not: null },
+    ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+    ...(input.unitId ? { unitId: input.unitId } : {}),
+  };
+
+  const [
+    rentPayments,
+    manualEntries,
+    maintenanceCosts,
+    outstandingItems,
+    securityDeposits,
+    property,
+    unit,
+  ] = await prisma.$transaction([
+    prisma.pmsRentPayment.findMany({
+      where: paymentWhere,
+      include: pmsRentPaymentInclude,
+      orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.pmsAccountingLedgerEntry.findMany({
+      where: ledgerWhere,
+      include: pmsAccountingLedgerEntryInclude,
+      orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.pmsWorkOrder.findMany({
+      where: workOrderWhere,
+      include: pmsWorkOrderInclude,
+      orderBy: [{ resolvedAt: "asc" }, { updatedAt: "asc" }],
+    }),
+    prisma.pmsRentDueItem.findMany({
+      where: rentDueWhere,
+      include: pmsRentDueItemInclude,
+      orderBy: [{ dueDate: "asc" }],
+    }),
+    prisma.pmsLease.findMany({
+      where: activeLeaseWhere,
+      select: { id: true, title: true, securityDeposit: true, currency: true, tenant: { select: { id: true, fullName: true } }, unit: { select: { id: true, unitNumber: true } } },
+    }),
+    input.propertyId
+      ? prisma.pmsProperty.findUnique({ where: { id: input.propertyId }, select: { id: true, name: true, code: true } })
+      : prisma.pmsProperty.findFirst({ where: { companyId: input.companyId }, select: { id: true, name: true, code: true } }),
+    input.unitId
+      ? prisma.pmsUnit.findUnique({ where: { id: input.unitId }, select: { id: true, unitNumber: true, unitName: true } })
+      : prisma.pmsUnit.findFirst({ where: { companyId: input.companyId }, select: { id: true, unitNumber: true, unitName: true } }),
+  ]);
+
+  const rentCollected = sumDecimal(rentPayments.map((payment) => payment.amount));
+  const manualIncome = sumDecimal(manualEntries.filter((entry) => entry.type === PmsAccountingEntryType.INCOME || entry.type === PmsAccountingEntryType.LATE_FEE).map((entry) => entry.amount));
+  const manualExpenses = sumDecimal(manualEntries.filter((entry) => isPmsAccountingExpenseType(entry.type)).map((entry) => entry.amount));
+  const manualAdjustments = sumDecimal(manualEntries.filter((entry) => entry.type === PmsAccountingEntryType.ADJUSTMENT).map((entry) => entry.amount));
+  const depositCollected = sumDecimal(manualEntries.filter((entry) => entry.type === PmsAccountingEntryType.DEPOSIT && !entry.category.toLowerCase().includes("refund")).map((entry) => entry.amount));
+  const depositRefunded = sumDecimal(manualEntries.filter((entry) => entry.type === PmsAccountingEntryType.REFUND || (entry.type === PmsAccountingEntryType.DEPOSIT && entry.category.toLowerCase().includes("refund"))).map((entry) => entry.amount));
+  const maintenanceTotal = sumDecimal(maintenanceCosts.map((workOrder) => workOrder.cost));
+  const outstandingRent = outstandingItems.reduce((total, item) => {
+    return total + Math.max(Number(item.amount) - Number(item.paidAmount), 0);
+  }, 0);
+  const depositHeldFoundation = sumDecimal(securityDeposits.map((lease) => lease.securityDeposit)) + depositCollected - depositRefunded;
+  const income = rentCollected + manualIncome + manualAdjustments;
+  const expenses = manualExpenses + maintenanceTotal;
+  const netAmount = income - expenses;
+
+  return {
+    period: {
+      month: input.month ?? null,
+      from: range.start ?? null,
+      to: range.end ?? null,
+    },
+    scope: {
+      companyId: input.companyId,
+      propertyId: input.propertyId ?? null,
+      unitId: input.unitId ?? null,
+      property,
+      unit,
+    },
+    totals: {
+      rentCollected: moneyString(rentCollected),
+      manualIncome: moneyString(manualIncome),
+      income: moneyString(income),
+      outstandingRent: moneyString(outstandingRent),
+      expenses: moneyString(expenses),
+      maintenanceCosts: moneyString(maintenanceTotal),
+      netAmount: moneyString(netAmount),
+      depositCollected: moneyString(depositCollected),
+      depositHeld: moneyString(Math.max(depositHeldFoundation, 0)),
+      depositRefunded: moneyString(depositRefunded),
+      depositDeductions: moneyString(0),
+    },
+    income: [
+      ...rentPayments.map((payment) => ({
+        source: PmsAccountingSource.RENT_PAYMENT,
+        id: payment.id,
+        date: payment.paidAt ?? payment.confirmedAt ?? payment.createdAt,
+        category: "Rent payment",
+        description: payment.receiptNumber ?? payment.referenceNumber ?? payment.id,
+        amount: decimalToString(payment.amount),
+        currency: payment.currency,
+        tenant: payment.tenant,
+        property: payment.property,
+        unit: payment.unit,
+      })),
+      ...manualEntries
+        .filter((entry) => isPmsAccountingIncomeType(entry.type))
+        .map(pmsAccountingLedgerEntryResponse),
+    ],
+    expenses: [
+      ...maintenanceCosts.map((workOrder) => ({
+        source: PmsAccountingSource.MAINTENANCE_COST,
+        id: workOrder.id,
+        date: workOrder.resolvedAt ?? workOrder.updatedAt,
+        category: "Maintenance cost",
+        description: workOrder.title,
+        amount: decimalToString(workOrder.cost),
+        currency: workOrder.currency,
+        property: workOrder.property,
+        unit: workOrder.unit,
+        tenant: workOrder.tenant,
+      })),
+      ...manualEntries
+        .filter((entry) => isPmsAccountingExpenseType(entry.type))
+        .map(pmsAccountingLedgerEntryResponse),
+    ],
+    outstanding: outstandingItems.map(pmsRentDueItemResponse),
+    deposits: securityDeposits.map((lease) => ({
+      leaseId: lease.id,
+      title: lease.title,
+      tenant: lease.tenant,
+      unit: lease.unit,
+      securityDeposit: decimalToString(lease.securityDeposit),
+      currency: lease.currency,
+    })),
+  };
+}
+
+pmsRouter.get("/accounting/ledger", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const query = pmsAccountingQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    assertCanViewPmsAccounting(access.member.role);
+    await assertPmsFilterLinksBelongToCompany({
+      companyId: access.company.id,
+      propertyId: query.propertyId,
+      unitId: query.unitId,
+      tenantId: query.tenantId,
+      leaseId: query.leaseId,
+      rentDueItemId: query.rentDueItemId,
+      workOrderId: query.workOrderId,
+    });
+
+    const where = buildPmsAccountingWhere(access.company.id, query);
+    const [ledgerEntries, total] = await prisma.$transaction([
+      prisma.pmsAccountingLedgerEntry.findMany({
+        where,
+        include: pmsAccountingLedgerEntryInclude,
+        orderBy: buildPmsAccountingOrderBy(query),
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsAccountingLedgerEntry.count({ where }),
+    ]);
+
+    res.json({
+      workspace: { company: access.company, member: access.member, entitlement: access.entitlement },
+      ledgerEntries: ledgerEntries.map(pmsAccountingLedgerEntryResponse),
+      categories: {
+        income: ["Rent payment", "Manual income", "Late fee", "Deposit collected", "Adjustment"],
+        expense: ["Maintenance cost", "Repairs", "Utilities", "Management fee", "Deposit refund", "Adjustment"],
+      },
+      pagination: { take: query.take, skip: query.skip, count: ledgerEntries.length, total },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/accounting/ledger.csv", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const query = pmsAccountingQuerySchema.parse({ ...req.query, take: 200, skip: 0 });
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    assertCanViewPmsAccounting(access.member.role);
+    await assertPmsFilterLinksBelongToCompany({
+      companyId: access.company.id,
+      propertyId: query.propertyId,
+      unitId: query.unitId,
+      tenantId: query.tenantId,
+      leaseId: query.leaseId,
+      rentDueItemId: query.rentDueItemId,
+      workOrderId: query.workOrderId,
+    });
+
+    const entries = await prisma.pmsAccountingLedgerEntry.findMany({
+      where: buildPmsAccountingWhere(access.company.id, query),
+      include: pmsAccountingLedgerEntryInclude,
+      orderBy: buildPmsAccountingOrderBy(query),
+      take: 1000,
+    });
+    const rows = [
+      ["date", "type", "source", "category", "amount", "currency", "property", "unit", "tenant", "reference", "notes"],
+      ...entries.map((entry) => [
+        entry.transactionDate.toISOString(),
+        entry.type,
+        entry.source,
+        entry.category,
+        decimalToString(entry.amount) ?? "0",
+        entry.currency,
+        entry.property?.name ?? "",
+        entry.unit?.unitNumber ?? "",
+        entry.tenant?.fullName ?? "",
+        entry.referenceNumber ?? "",
+        entry.notes ?? "",
+      ]),
+    ];
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="pms-accounting-ledger.csv"');
+    res.send(csv);
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/accounting/ledger", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const data = pmsAccountingLedgerEntrySchema.parse(req.body);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
+    assertCanManagePmsAccounting(access.member.role);
+    await assertPmsFilterLinksBelongToCompany({
+      companyId: access.company.id,
+      propertyId: data.propertyId,
+      unitId: data.unitId,
+      tenantId: data.tenantId,
+      leaseId: data.leaseId,
+      rentDueItemId: data.rentDueItemId,
+      workOrderId: data.workOrderId,
+    });
+
+    const ledgerEntry = await prisma.pmsAccountingLedgerEntry.create({
+      data: buildPmsAccountingLedgerData({ ...data, companyId: access.company.id }, req.user.id),
+      include: pmsAccountingLedgerEntryInclude,
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS accounting ledger entry created",
+      message: `${req.user.email} created PMS accounting ledger entry ${ledgerEntry.category}.`,
+      metadata: { action: "create", resourceType: "pmsAccountingLedgerEntry", ledgerEntryId: ledgerEntry.id, type: ledgerEntry.type, amount: ledgerEntry.amount.toString() },
+    });
+
+    res.status(201).json({ ledgerEntry: pmsAccountingLedgerEntryResponse(ledgerEntry) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.patch("/accounting/ledger/:ledgerEntryId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const { ledgerEntryId } = pmsAccountingLedgerParamsSchema.parse(req.params);
+    const data = pmsAccountingLedgerEntryUpdateSchema.parse(req.body);
+    const existing = await prisma.pmsAccountingLedgerEntry.findUnique({ where: { id: ledgerEntryId }, select: { id: true, companyId: true, source: true } });
+    if (!existing) throw new AppError(404, "PMS accounting ledger entry not found");
+    if (existing.source !== PmsAccountingSource.MANUAL) {
+      throw new AppError(400, "Only manual PMS accounting ledger entries can be edited.");
+    }
+
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
+    assertCanManagePmsAccounting(access.member.role);
+    await assertPmsFilterLinksBelongToCompany({
+      companyId: access.company.id,
+      propertyId: data.propertyId,
+      unitId: data.unitId,
+      tenantId: data.tenantId,
+      leaseId: data.leaseId,
+      rentDueItemId: data.rentDueItemId,
+      workOrderId: data.workOrderId,
+    });
+
+    const ledgerEntry = await prisma.pmsAccountingLedgerEntry.update({
+      where: { id: ledgerEntryId },
+      data: buildPmsAccountingLedgerUpdateData(data, req.user.id),
+      include: pmsAccountingLedgerEntryInclude,
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS accounting ledger entry updated",
+      message: `${req.user.email} updated PMS accounting ledger entry ${ledgerEntry.category}.`,
+      metadata: { action: "update", resourceType: "pmsAccountingLedgerEntry", ledgerEntryId: ledgerEntry.id, type: ledgerEntry.type, amount: ledgerEntry.amount.toString(), changedFields: Object.keys(data) },
+    });
+
+    res.json({ ledgerEntry: pmsAccountingLedgerEntryResponse(ledgerEntry) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/accounting/property-summary", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const query = pmsAccountingStatementQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    assertCanViewPmsAccounting(access.member.role);
+    await assertPmsFilterLinksBelongToCompany({ companyId: access.company.id, propertyId: query.propertyId, unitId: query.unitId });
+    const statement = await buildPmsOwnerStatement({ companyId: access.company.id, propertyId: query.propertyId, unitId: query.unitId, dateFrom: query.dateFrom, dateTo: query.dateTo, month: query.month });
+
+    res.json({ workspace: { company: access.company, member: access.member, entitlement: access.entitlement }, summary: statement.totals, statement });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/accounting/owner-statement", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const query = pmsAccountingStatementQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    assertCanViewPmsAccounting(access.member.role);
+    await assertPmsFilterLinksBelongToCompany({ companyId: access.company.id, propertyId: query.propertyId, unitId: query.unitId });
+    const statement = await buildPmsOwnerStatement({ companyId: access.company.id, propertyId: query.propertyId, unitId: query.unitId, dateFrom: query.dateFrom, dateTo: query.dateTo, month: query.month });
+
+    res.json({ workspace: { company: access.company, member: access.member, entitlement: access.entitlement }, statement });
+  } catch (error) {
+    next(error);
+  }
+});
+
 pmsRouter.get("/reports/summary", requireAuth(), async (req, res, next) => {
   try {
     if (!req.user) {
@@ -3892,6 +4630,7 @@ pmsRouter.get("/reports/summary", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: query.companyId,
     });
+    assertCanViewPmsAccounting(access.member.role);
     const summary = await buildPmsReportsSummary(access.company.id);
 
     res.json({

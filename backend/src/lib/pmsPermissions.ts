@@ -45,6 +45,41 @@ export function assertCanCollectPmsRent(role: PmsMemberRole) {
   }
 }
 
+export function canViewPmsAccounting(role: PmsMemberRole) {
+  return (
+    role === "PMS_OWNER" ||
+    role === "PMS_MANAGER" ||
+    role === "PMS_ACCOUNTANT" ||
+    role === "PMS_VIEWER"
+  );
+}
+
+export function assertCanViewPmsAccounting(role: PmsMemberRole) {
+  if (!canViewPmsAccounting(role)) {
+    throw new AppError(
+      403,
+      "Your PMS role cannot view accounting records."
+    );
+  }
+}
+
+export function canManagePmsAccounting(role: PmsMemberRole) {
+  return (
+    role === "PMS_OWNER" ||
+    role === "PMS_MANAGER" ||
+    role === "PMS_ACCOUNTANT"
+  );
+}
+
+export function assertCanManagePmsAccounting(role: PmsMemberRole) {
+  if (!canManagePmsAccounting(role)) {
+    throw new AppError(
+      403,
+      "Your PMS role can view accounting records but cannot change them."
+    );
+  }
+}
+
 export function canManagePmsMaintenance(role: PmsMemberRole) {
   return (
     role === "PMS_OWNER" ||

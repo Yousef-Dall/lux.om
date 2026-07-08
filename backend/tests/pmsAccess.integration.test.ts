@@ -34,10 +34,12 @@ async function clearPmsTestDatabase() {
   await prisma.listingImage.deleteMany();
   await prisma.amenity.deleteMany();
   await prisma.pmsInspection.deleteMany();
+  await prisma.pmsAccountingLedgerEntry.deleteMany();
   await prisma.pmsWorkOrder.deleteMany();
   await prisma.pmsTenantPortalAccess.deleteMany();
   await prisma.pmsCommunicationTemplate.deleteMany();
   await prisma.pmsPolicy.deleteMany();
+  await prisma.pmsAccountingLedgerEntry.deleteMany();
   await prisma.pmsRentPayment.deleteMany();
   await prisma.pmsRentDueItem.deleteMany();
   await prisma.pmsLease.deleteMany();
@@ -1512,6 +1514,217 @@ describe("PMS company entitlement access architecture", () => {
       "PMS maintenance work order created",
       "PMS rent payment recorded",
     ]);
+  });
+
+  it("supports Stage 14 PMS accounting ledger and owner statements with strict permissions", async () => {
+    const admin = await prisma.user.create({
+      data: {
+        name: "Stage 14 Admin",
+        email: "stage14-admin@lux.test",
+        password: "test-password",
+        role: "ADMIN",
+        emailVerified: true,
+      },
+    });
+
+    const accountant = await prisma.user.create({
+      data: {
+        name: "Stage 14 Accountant",
+        email: "stage14-accountant@lux.test",
+        password: "test-password",
+        role: "OWNER",
+        emailVerified: true,
+      },
+    });
+
+    const viewer = await prisma.user.create({
+      data: {
+        name: "Stage 14 Viewer",
+        email: "stage14-viewer@lux.test",
+        password: "test-password",
+        role: "OWNER",
+        emailVerified: true,
+      },
+    });
+
+    const maintenance = await prisma.user.create({
+      data: {
+        name: "Stage 14 Maintenance",
+        email: "stage14-maintenance@lux.test",
+        password: "test-password",
+        role: "OWNER",
+        emailVerified: true,
+      },
+    });
+
+    const company = await prisma.developerCompany.create({
+      data: { slug: "stage14-ledger-company", nameEn: "Stage 14 Ledger Company", verified: true },
+    });
+    const otherCompany = await prisma.developerCompany.create({
+      data: { slug: "stage14-other-company", nameEn: "Stage 14 Other Company", verified: true },
+    });
+
+    await prisma.pmsCompanyEntitlement.create({
+      data: { companyId: company.id, status: "ACTIVE", enabledAt: new Date(), createdById: admin.id, updatedById: admin.id },
+    });
+    await prisma.pmsCompanyEntitlement.create({
+      data: { companyId: otherCompany.id, status: "ACTIVE", enabledAt: new Date(), createdById: admin.id, updatedById: admin.id },
+    });
+
+    await prisma.pmsCompanyMember.createMany({
+      data: [
+        { companyId: company.id, userId: accountant.id, role: "PMS_ACCOUNTANT", active: true, createdById: admin.id },
+        { companyId: company.id, userId: viewer.id, role: "PMS_VIEWER", active: true, createdById: admin.id },
+        { companyId: company.id, userId: maintenance.id, role: "PMS_MAINTENANCE", active: true, createdById: admin.id },
+      ],
+    });
+
+    const property = await prisma.pmsProperty.create({
+      data: { companyId: company.id, name: "Statement Property", createdById: admin.id, updatedById: admin.id },
+    });
+    const otherProperty = await prisma.pmsProperty.create({
+      data: { companyId: otherCompany.id, name: "Other Statement Property", createdById: admin.id, updatedById: admin.id },
+    });
+    const unit = await prisma.pmsUnit.create({
+      data: { companyId: company.id, propertyId: property.id, unitNumber: "S-1", createdById: admin.id, updatedById: admin.id },
+    });
+    const tenant = await prisma.pmsTenant.create({
+      data: { companyId: company.id, fullName: "Statement Tenant", active: true, createdById: admin.id, updatedById: admin.id },
+    });
+    const lease = await prisma.pmsLease.create({
+      data: {
+        companyId: company.id,
+        tenantId: tenant.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        title: "Statement Lease",
+        status: "ACTIVE",
+        startDate: new Date("2026-01-01T00:00:00.000Z"),
+        rentAmount: 1000,
+        securityDeposit: 500,
+        currency: "OMR",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+    const rentDueItem = await prisma.pmsRentDueItem.create({
+      data: {
+        companyId: company.id,
+        leaseId: lease.id,
+        tenantId: tenant.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        dueDate: new Date("2026-07-01T00:00:00.000Z"),
+        amount: 1000,
+        paidAmount: 0,
+        currency: "OMR",
+        status: "UNPAID",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+    const workOrder = await prisma.pmsWorkOrder.create({
+      data: {
+        companyId: company.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        tenantId: tenant.id,
+        title: "Statement repair",
+        status: "RESOLVED",
+        cost: 150,
+        currency: "OMR",
+        resolvedAt: new Date("2026-07-05T00:00:00.000Z"),
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const accountantToken = signToken(accountant);
+    const viewerToken = signToken(viewer);
+    const maintenanceToken = signToken(maintenance);
+
+    await request(app)
+      .post(`/api/pms/rent-due/${rentDueItem.id}/payments`)
+      .set("Authorization", `Bearer ${accountantToken}`)
+      .send({ amount: 700, method: "BANK_TRANSFER", paidAt: "2026-07-03T00:00:00.000Z" })
+      .expect(201);
+
+    const ledgerResponse = await request(app)
+      .post("/api/pms/accounting/ledger")
+      .set("Authorization", `Bearer ${accountantToken}`)
+      .send({
+        companyId: company.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        tenantId: tenant.id,
+        leaseId: lease.id,
+        workOrderId: workOrder.id,
+        type: "EXPENSE",
+        category: "Utilities",
+        amount: 25,
+        currency: "OMR",
+        transactionDate: "2026-07-06T00:00:00.000Z",
+        referenceNumber: "UTIL-1",
+      })
+      .expect(201);
+
+    expect(ledgerResponse.body.ledgerEntry.category).toBe("Utilities");
+
+    await request(app)
+      .post("/api/pms/accounting/ledger")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .send({
+        companyId: company.id,
+        type: "INCOME",
+        category: "Other income",
+        amount: 10,
+        currency: "OMR",
+        transactionDate: "2026-07-06T00:00:00.000Z",
+      })
+      .expect(403);
+
+    await request(app)
+      .get(`/api/pms/accounting/ledger?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .expect(200);
+
+    await request(app)
+      .get(`/api/pms/accounting/ledger?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${maintenanceToken}`)
+      .expect(403);
+
+    await request(app)
+      .post("/api/pms/accounting/ledger")
+      .set("Authorization", `Bearer ${accountantToken}`)
+      .send({
+        companyId: company.id,
+        propertyId: otherProperty.id,
+        type: "EXPENSE",
+        category: "Cross scope",
+        amount: 10,
+        currency: "OMR",
+        transactionDate: "2026-07-07T00:00:00.000Z",
+      })
+      .expect(400);
+
+    const statementResponse = await request(app)
+      .get(`/api/pms/accounting/owner-statement?companyId=${company.id}&propertyId=${property.id}&month=2026-07`)
+      .set("Authorization", `Bearer ${accountantToken}`)
+      .expect(200);
+
+    expect(statementResponse.body.statement.totals.rentCollected).toBe("700");
+    expect(statementResponse.body.statement.totals.maintenanceCosts).toBe("150");
+    expect(statementResponse.body.statement.totals.expenses).toBe("175");
+    expect(statementResponse.body.statement.totals.outstandingRent).toBe("300");
+    expect(statementResponse.body.statement.totals.netAmount).toBe("525");
+
+    const reportsResponse = await request(app)
+      .get(`/api/pms/reports/summary?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${accountantToken}`)
+      .expect(200);
+
+    expect(reportsResponse.body.accounting.incomeCollected).toBe("700");
+    expect(reportsResponse.body.accounting.expenses).toBe("175");
   });
 
   it("supports Stage 11 PMS list pagination, search, filters, and sorting", async () => {

@@ -37,6 +37,19 @@ export type PmsRentPaymentStatus =
   | "FAILED"
   | "CANCELLED"
   | "REFUNDED";
+export type PmsAccountingEntryType =
+  | "INCOME"
+  | "EXPENSE"
+  | "DEPOSIT"
+  | "ADJUSTMENT"
+  | "REFUND"
+  | "LATE_FEE"
+  | "TRANSFER";
+export type PmsAccountingSource =
+  | "MANUAL"
+  | "RENT_PAYMENT"
+  | "MAINTENANCE_COST"
+  | "SECURITY_DEPOSIT";
 export type PmsRentFrequency = "ONE_TIME" | "MONTHLY" | "QUARTERLY" | "YEARLY";
 export type PmsMaintenancePriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type PmsMaintenanceStatus =
@@ -69,6 +82,7 @@ export type PmsWorkOrderSortBy = "updatedAt" | "createdAt" | "scheduledFor" | "r
 export type PmsCommunicationTemplateSortBy = "updatedAt" | "createdAt" | "name" | "channel" | "active";
 export type PmsPolicySortBy = "updatedAt" | "createdAt" | "title" | "category" | "active";
 export type PmsInspectionSortBy = "scheduledFor" | "updatedAt" | "createdAt" | "title" | "status" | "rating";
+export type PmsAccountingLedgerSortBy = "transactionDate" | "createdAt" | "updatedAt" | "amount" | "type" | "category";
 
 export type PmsCompanySummary = {
   id: string;
@@ -295,6 +309,82 @@ export type PmsRentReceipt = {
   lease: Pick<PmsLease, "id" | "title" | "status" | "startDate" | "endDate" | "rentFrequency">;
   rentDueItem: PmsRentDueItem;
   recordedBy?: { id: string; name: string; email: string } | null;
+};
+
+export type PmsAccountingLedgerEntry = {
+  id: string;
+  companyId: string;
+  propertyId?: string | null;
+  property?: Pick<PmsProperty, "id" | "name" | "code"> | null;
+  unitId?: string | null;
+  unit?: Pick<PmsUnit, "id" | "unitNumber" | "unitName"> | null;
+  tenantId?: string | null;
+  tenant?: Pick<PmsTenant, "id" | "fullName" | "phone" | "email"> | null;
+  leaseId?: string | null;
+  lease?: Pick<PmsLease, "id" | "title" | "status" | "startDate" | "endDate"> | null;
+  rentDueItemId?: string | null;
+  rentDueItem?: PmsRentDueItem | null;
+  rentPaymentId?: string | null;
+  rentPayment?: Pick<PmsRentPayment, "id" | "receiptNumber" | "method" | "status" | "referenceNumber"> | null;
+  workOrderId?: string | null;
+  workOrder?: Pick<PmsWorkOrder, "id" | "title" | "status" | "cost" | "currency"> | null;
+  type: PmsAccountingEntryType;
+  source: PmsAccountingSource;
+  category: string;
+  amount: string;
+  currency: string;
+  transactionDate: string;
+  referenceNumber?: string | null;
+  notes?: string | null;
+  createdBy?: { id: string; name: string; email: string } | null;
+  updatedBy?: { id: string; name: string; email: string } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsAccountingLedgerPayload = {
+  companyId?: string;
+  propertyId?: string | null;
+  unitId?: string | null;
+  tenantId?: string | null;
+  leaseId?: string | null;
+  rentDueItemId?: string | null;
+  workOrderId?: string | null;
+  type: PmsAccountingEntryType;
+  category: string;
+  amount: number;
+  currency?: string;
+  transactionDate: string;
+  referenceNumber?: string | null;
+  notes?: string | null;
+};
+
+export type PmsOwnerStatement = {
+  period: { month?: string | null; from?: string | null; to?: string | null };
+  scope: {
+    companyId: string;
+    propertyId?: string | null;
+    unitId?: string | null;
+    property?: Pick<PmsProperty, "id" | "name" | "code"> | null;
+    unit?: Pick<PmsUnit, "id" | "unitNumber" | "unitName"> | null;
+  };
+  totals: {
+    rentCollected: string;
+    manualIncome: string;
+    income: string;
+    outstandingRent: string;
+    expenses: string;
+    maintenanceCosts: string;
+    netAmount: string;
+    depositCollected: string;
+    depositHeld: string;
+    depositRefunded: string;
+    depositDeductions: string;
+  };
+  income: Array<Record<string, unknown>>;
+  expenses: Array<Record<string, unknown>>;
+  outstanding: PmsRentDueItem[];
+  deposits: Array<Record<string, unknown>>;
 };
 
 export type PmsWorkOrder = {
@@ -1097,6 +1187,67 @@ export async function getPmsReportsSummary(token: string, companyId?: string) {
     token,
     params: { companyId },
   });
+}
+
+export async function listPmsAccountingLedger(
+  token: string,
+  params: {
+    companyId?: string;
+    propertyId?: string;
+    unitId?: string;
+    tenantId?: string;
+    leaseId?: string;
+    rentDueItemId?: string;
+    workOrderId?: string;
+    type?: "ALL" | PmsAccountingEntryType;
+    category?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    sortBy?: PmsAccountingLedgerSortBy;
+    direction?: PmsSortDirection;
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    ledgerEntries: PmsAccountingLedgerEntry[];
+    categories: { income: string[]; expense: string[] };
+    pagination: { take: number; skip: number; count: number; total: number };
+  }>("/api/pms/accounting/ledger", { token, params });
+}
+
+export async function createPmsAccountingLedgerEntry(
+  token: string,
+  payload: PmsAccountingLedgerPayload & { companyId: string },
+) {
+  return apiClient.post<{ ledgerEntry: PmsAccountingLedgerEntry }>(
+    "/api/pms/accounting/ledger",
+    payload,
+    { token },
+  );
+}
+
+export async function updatePmsAccountingLedgerEntry(
+  token: string,
+  ledgerEntryId: string,
+  payload: Partial<PmsAccountingLedgerPayload>,
+) {
+  return apiClient.patch<{ ledgerEntry: PmsAccountingLedgerEntry }>(
+    `/api/pms/accounting/ledger/${ledgerEntryId}`,
+    payload,
+    { token },
+  );
+}
+
+export async function getPmsOwnerStatement(
+  token: string,
+  params: { companyId?: string; propertyId?: string; unitId?: string; month?: string; dateFrom?: string; dateTo?: string } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    statement: PmsOwnerStatement;
+  }>("/api/pms/accounting/owner-statement", { token, params });
 }
 
 export async function listPmsCommunicationTemplates(

@@ -186,6 +186,23 @@ enum PmsRentPaymentStatus {
   REFUNDED
 }
 
+enum PmsAccountingEntryType {
+  INCOME
+  EXPENSE
+  DEPOSIT
+  ADJUSTMENT
+  REFUND
+  LATE_FEE
+  TRANSFER
+}
+
+enum PmsAccountingSource {
+  MANUAL
+  RENT_PAYMENT
+  MAINTENANCE_COST
+  SECURITY_DEPOSIT
+}
+
 enum PmsMaintenancePriority {
   LOW
   MEDIUM
@@ -527,6 +544,8 @@ model User {
   pmsRentDueItemsCreated PmsRentDueItem[] @relation("PmsRentDueItemCreatedBy")
   pmsRentDueItemsUpdated PmsRentDueItem[] @relation("PmsRentDueItemUpdatedBy")
   pmsRentPaymentsRecorded PmsRentPayment[] @relation("PmsRentPaymentRecordedBy")
+  pmsAccountingLedgerEntriesCreated PmsAccountingLedgerEntry[] @relation("PmsAccountingLedgerEntryCreatedBy")
+  pmsAccountingLedgerEntriesUpdated PmsAccountingLedgerEntry[] @relation("PmsAccountingLedgerEntryUpdatedBy")
   pmsWorkOrdersCreated   PmsWorkOrder[] @relation("PmsWorkOrderCreatedBy")
   pmsWorkOrdersUpdated   PmsWorkOrder[] @relation("PmsWorkOrderUpdatedBy")
   pmsCommunicationTemplatesCreated PmsCommunicationTemplate[] @relation("PmsCommunicationTemplateCreatedBy")
@@ -653,6 +672,7 @@ model DeveloperCompany {
   pmsLeases      PmsLease[]
   pmsRentDueItems PmsRentDueItem[]
   pmsRentPayments PmsRentPayment[]
+  pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
   pmsWorkOrders PmsWorkOrder[]
   pmsCommunicationTemplates PmsCommunicationTemplate[]
   pmsPolicies PmsPolicy[]
@@ -1820,6 +1840,7 @@ model PmsProperty {
   pmsLeases PmsLease[]
   pmsRentDueItems PmsRentDueItem[]
   pmsRentPayments PmsRentPayment[]
+  pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
   pmsWorkOrders PmsWorkOrder[]
   pmsInspections PmsInspection[]
 
@@ -1871,6 +1892,7 @@ model PmsUnit {
   pmsLeases PmsLease[]
   pmsRentDueItems PmsRentDueItem[]
   pmsRentPayments PmsRentPayment[]
+  pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
   pmsWorkOrders PmsWorkOrder[]
   pmsInspections PmsInspection[]
 
@@ -1916,6 +1938,7 @@ model PmsTenant {
   leases       PmsLease[]
   rentDueItems PmsRentDueItem[]
   rentPayments PmsRentPayment[]
+  pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
   pmsWorkOrders PmsWorkOrder[]
   pmsInspections PmsInspection[]
   pmsTenantPortalAccesses PmsTenantPortalAccess[]
@@ -1970,6 +1993,7 @@ model PmsLease {
 
   rentDueItems PmsRentDueItem[]
   rentPayments PmsRentPayment[]
+  pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
   pmsInspections PmsInspection[]
 
   createdAt DateTime @default(now())
@@ -2021,6 +2045,7 @@ model PmsRentDueItem {
   updatedBy   User? @relation("PmsRentDueItemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   rentPayments PmsRentPayment[]
+  pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2075,6 +2100,8 @@ model PmsRentPayment {
   recordedById String?
   recordedBy   User? @relation("PmsRentPaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
 
+  pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2086,6 +2113,64 @@ model PmsRentPayment {
   @@index([unitId])
   @@index([recordedById])
   @@index([paidAt])
+}
+
+model PmsAccountingLedgerEntry {
+  id              String                 @id @default(cuid())
+  type            PmsAccountingEntryType
+  source          PmsAccountingSource    @default(MANUAL)
+  category        String
+  amount          Decimal                @db.Decimal(12, 3)
+  currency        String                 @default("OMR") @db.VarChar(3)
+  transactionDate DateTime
+  referenceNumber String?
+  notes           String?
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  propertyId String?
+  property   PmsProperty? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  unitId String?
+  unit   PmsUnit? @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  tenantId String?
+  tenant   PmsTenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  leaseId String?
+  lease   PmsLease? @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+
+  rentDueItemId String?
+  rentDueItem   PmsRentDueItem? @relation(fields: [rentDueItemId], references: [id], onDelete: SetNull)
+
+  rentPaymentId String?
+  rentPayment   PmsRentPayment? @relation(fields: [rentPaymentId], references: [id], onDelete: SetNull)
+
+  workOrderId String?
+  workOrder   PmsWorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User? @relation("PmsAccountingLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  updatedById String?
+  updatedBy   User? @relation("PmsAccountingLedgerEntryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, transactionDate])
+  @@index([companyId, type])
+  @@index([companyId, category])
+  @@index([propertyId])
+  @@index([unitId])
+  @@index([tenantId])
+  @@index([leaseId])
+  @@index([rentDueItemId])
+  @@index([rentPaymentId])
+  @@index([workOrderId])
+  @@index([createdById])
+  @@index([updatedById])
 }
 
 model PmsWorkOrder {
@@ -2122,6 +2207,8 @@ model PmsWorkOrder {
 
   updatedById String?
   updatedBy   User? @relation("PmsWorkOrderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
