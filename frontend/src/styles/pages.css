@@ -18650,6 +18650,49 @@ transition: none;
   color: rgba(255, 247, 223, 0.78);
 }
 
+
+.pms-status-badge--paid,
+.pms-status-badge--resolved,
+.pms-status-badge--completed {
+  background: rgba(65, 206, 142, 0.17);
+  color: #9cf0c6;
+}
+
+.pms-status-badge--unpaid,
+.pms-status-badge--open,
+.pms-status-badge--scheduled,
+.pms-status-badge--draft,
+.pms-status-badge--low {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 247, 223, 0.8);
+}
+
+.pms-status-badge--due_soon,
+.pms-status-badge--partially_paid,
+.pms-status-badge--active,
+.pms-status-badge--in_progress,
+.pms-status-badge--waiting_vendor,
+.pms-status-badge--medium,
+.pms-status-badge--needs_action {
+  background: rgba(226, 193, 122, 0.18);
+  color: #f7d88d;
+}
+
+.pms-status-badge--overdue,
+.pms-status-badge--urgent,
+.pms-status-badge--high,
+.pms-status-badge--expiring {
+  background: rgba(255, 149, 0, 0.16);
+  color: #ffd18a;
+}
+
+.pms-status-badge--cancelled,
+.pms-status-badge--ended,
+.pms-status-badge--terminated {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 247, 223, 0.58);
+}
+
 .pms-next-actions .map-location-panel {
   margin-top: 18px;
   border-color: rgba(255, 255, 255, 0.12);

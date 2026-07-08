@@ -1219,4 +1219,473 @@ describe("PMS company entitlement access architecture", () => {
       .expect(200);
   });
 
+
+  it("enforces Stage 11 PMS role boundaries and audits sensitive changes", async () => {
+    const admin = await prisma.user.create({
+      data: {
+        name: "Stage 11 Admin",
+        email: "stage11-admin@lux.test",
+        password: "test-password",
+        role: "ADMIN",
+        emailVerified: true,
+      },
+    });
+
+    const accountant = await prisma.user.create({
+      data: {
+        name: "Stage 11 Accountant",
+        email: "stage11-accountant@lux.test",
+        password: "test-password",
+        role: "OWNER",
+        emailVerified: true,
+      },
+    });
+
+    const maintenance = await prisma.user.create({
+      data: {
+        name: "Stage 11 Maintenance",
+        email: "stage11-maintenance@lux.test",
+        password: "test-password",
+        role: "OWNER",
+        emailVerified: true,
+      },
+    });
+
+    const viewer = await prisma.user.create({
+      data: {
+        name: "Stage 11 Viewer",
+        email: "stage11-viewer@lux.test",
+        password: "test-password",
+        role: "OWNER",
+        emailVerified: true,
+      },
+    });
+
+    const company = await prisma.developerCompany.create({
+      data: {
+        slug: "stage11-role-company",
+        nameEn: "Stage 11 Role Company",
+        verified: true,
+      },
+    });
+
+    await prisma.pmsCompanyEntitlement.create({
+      data: {
+        companyId: company.id,
+        status: "ACTIVE",
+        enabledAt: new Date(),
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    await prisma.pmsCompanyMember.createMany({
+      data: [
+        {
+          companyId: company.id,
+          userId: accountant.id,
+          role: "PMS_ACCOUNTANT",
+          active: true,
+          createdById: admin.id,
+        },
+        {
+          companyId: company.id,
+          userId: maintenance.id,
+          role: "PMS_MAINTENANCE",
+          active: true,
+          createdById: admin.id,
+        },
+        {
+          companyId: company.id,
+          userId: viewer.id,
+          role: "PMS_VIEWER",
+          active: true,
+          createdById: admin.id,
+        },
+      ],
+    });
+
+    const property = await prisma.pmsProperty.create({
+      data: {
+        companyId: company.id,
+        name: "Stage 11 Role Property",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const unit = await prisma.pmsUnit.create({
+      data: {
+        companyId: company.id,
+        propertyId: property.id,
+        unitNumber: "A-101",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const tenant = await prisma.pmsTenant.create({
+      data: {
+        companyId: company.id,
+        fullName: "Stage 11 Tenant",
+        active: true,
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const lease = await prisma.pmsLease.create({
+      data: {
+        companyId: company.id,
+        tenantId: tenant.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        title: "Stage 11 Lease",
+        status: "ACTIVE",
+        startDate: new Date("2026-01-01T00:00:00.000Z"),
+        rentAmount: 600,
+        currency: "OMR",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const rentDueItem = await prisma.pmsRentDueItem.create({
+      data: {
+        companyId: company.id,
+        leaseId: lease.id,
+        tenantId: tenant.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        dueDate: new Date("2026-02-01T00:00:00.000Z"),
+        amount: 600,
+        currency: "OMR",
+        status: "UNPAID",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const accountantToken = signToken(accountant);
+    const maintenanceToken = signToken(maintenance);
+    const viewerToken = signToken(viewer);
+
+    await request(app)
+      .patch(`/api/pms/rent-due/${rentDueItem.id}`)
+      .set("Authorization", `Bearer ${accountantToken}`)
+      .send({ paidAmount: 600 })
+      .expect(200);
+
+    await request(app)
+      .post("/api/pms/leases")
+      .set("Authorization", `Bearer ${accountantToken}`)
+      .send({
+        companyId: company.id,
+        tenantId: tenant.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        title: "Accountant blocked lease",
+        startDate: "2026-03-01T00:00:00.000Z",
+        rentAmount: 700,
+        currency: "OMR",
+      })
+      .expect(403);
+
+    await request(app)
+      .post("/api/pms/maintenance")
+      .set("Authorization", `Bearer ${accountantToken}`)
+      .send({
+        companyId: company.id,
+        propertyId: property.id,
+        title: "Accountant blocked maintenance",
+      })
+      .expect(403);
+
+    await request(app)
+      .post("/api/pms/maintenance")
+      .set("Authorization", `Bearer ${maintenanceToken}`)
+      .send({
+        companyId: company.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        tenantId: tenant.id,
+        title: "Maintenance allowed work order",
+        priority: "HIGH",
+      })
+      .expect(201);
+
+    await request(app)
+      .patch(`/api/pms/rent-due/${rentDueItem.id}`)
+      .set("Authorization", `Bearer ${maintenanceToken}`)
+      .send({ paidAmount: 600 })
+      .expect(403);
+
+    await request(app)
+      .get(`/api/pms/maintenance?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .expect(200);
+
+    await request(app)
+      .post("/api/pms/maintenance")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .send({
+        companyId: company.id,
+        propertyId: property.id,
+        title: "Viewer blocked work order",
+      })
+      .expect(403);
+
+    const auditEvents = await prisma.accountSecurityEvent.findMany({
+      where: {
+        type: "ADMIN_PMS_ACCESS_UPDATED",
+        title: {
+          in: [
+            "PMS rent due item updated",
+            "PMS maintenance work order created",
+          ],
+        },
+      },
+      select: { title: true },
+    });
+
+    expect(auditEvents.map((event) => event.title).sort()).toEqual([
+      "PMS maintenance work order created",
+      "PMS rent due item updated",
+    ]);
+  });
+
+  it("supports Stage 11 PMS list pagination, search, filters, and sorting", async () => {
+    const admin = await prisma.user.create({
+      data: {
+        name: "Stage 11 List Admin",
+        email: "stage11-list-admin@lux.test",
+        password: "test-password",
+        role: "ADMIN",
+        emailVerified: true,
+      },
+    });
+
+    const manager = await prisma.user.create({
+      data: {
+        name: "Stage 11 List Manager",
+        email: "stage11-list-manager@lux.test",
+        password: "test-password",
+        role: "OWNER",
+        emailVerified: true,
+      },
+    });
+
+    const company = await prisma.developerCompany.create({
+      data: {
+        slug: "stage11-list-company",
+        nameEn: "Stage 11 List Company",
+        verified: true,
+      },
+    });
+
+    await prisma.pmsCompanyEntitlement.create({
+      data: {
+        companyId: company.id,
+        status: "ACTIVE",
+        enabledAt: new Date(),
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    await prisma.pmsCompanyMember.create({
+      data: {
+        companyId: company.id,
+        userId: manager.id,
+        role: "PMS_MANAGER",
+        active: true,
+        createdById: admin.id,
+      },
+    });
+
+    const property = await prisma.pmsProperty.create({
+      data: {
+        companyId: company.id,
+        name: "Stage 11 List Property",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const unit = await prisma.pmsUnit.create({
+      data: {
+        companyId: company.id,
+        propertyId: property.id,
+        unitNumber: "B-201",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const tenant = await prisma.pmsTenant.create({
+      data: {
+        companyId: company.id,
+        fullName: "Stage 11 List Tenant",
+        active: true,
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    const lease = await prisma.pmsLease.create({
+      data: {
+        companyId: company.id,
+        tenantId: tenant.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        title: "Move lease",
+        status: "ACTIVE",
+        startDate: new Date("2026-01-01T00:00:00.000Z"),
+        rentAmount: 700,
+        currency: "OMR",
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+
+    await prisma.pmsWorkOrder.createMany({
+      data: [
+        {
+          companyId: company.id,
+          propertyId: property.id,
+          title: "Pump A repair",
+          priority: "HIGH",
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+        {
+          companyId: company.id,
+          propertyId: property.id,
+          title: "Pump B repair",
+          priority: "MEDIUM",
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+        {
+          companyId: company.id,
+          propertyId: property.id,
+          title: "Door handle",
+          priority: "LOW",
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+      ],
+    });
+
+    await prisma.pmsCommunicationTemplate.createMany({
+      data: [
+        {
+          companyId: company.id,
+          name: "Rent email reminder",
+          channel: "EMAIL",
+          body: "Please pay rent.",
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+        {
+          companyId: company.id,
+          name: "Move SMS",
+          channel: "SMS",
+          body: "Move-in update.",
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+      ],
+    });
+
+    await prisma.pmsPolicy.createMany({
+      data: [
+        {
+          companyId: company.id,
+          title: "Payment rules",
+          category: "PAYMENT",
+          body: "Payment rules for tenants.",
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+        {
+          companyId: company.id,
+          title: "General conduct",
+          category: "GENERAL",
+          body: "Community notes.",
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+      ],
+    });
+
+    await prisma.pmsInspection.createMany({
+      data: [
+        {
+          companyId: company.id,
+          propertyId: property.id,
+          unitId: unit.id,
+          tenantId: tenant.id,
+          leaseId: lease.id,
+          title: "Move in inspection",
+          status: "SCHEDULED",
+          notes: "Move readiness check",
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+        {
+          companyId: company.id,
+          propertyId: property.id,
+          title: "Safety inspection",
+          status: "COMPLETED",
+          feedback: "Completed",
+          createdById: admin.id,
+          updatedById: admin.id,
+        },
+      ],
+    });
+
+    const managerToken = signToken(manager);
+
+    const firstMaintenancePage = await request(app)
+      .get(`/api/pms/maintenance?companyId=${company.id}&search=Pump&sortBy=title&direction=asc&take=1&skip=0`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .expect(200);
+
+    expect(firstMaintenancePage.body.pagination.total).toBe(2);
+    expect(firstMaintenancePage.body.pagination.count).toBe(1);
+    expect(firstMaintenancePage.body.workOrders[0].title).toBe("Pump A repair");
+
+    const secondMaintenancePage = await request(app)
+      .get(`/api/pms/maintenance?companyId=${company.id}&search=Pump&sortBy=title&direction=asc&take=1&skip=1`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .expect(200);
+
+    expect(secondMaintenancePage.body.workOrders[0].title).toBe("Pump B repair");
+
+    const templatesResponse = await request(app)
+      .get(`/api/pms/communication-templates?companyId=${company.id}&search=rent&channel=EMAIL&sortBy=name&direction=asc`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .expect(200);
+
+    expect(templatesResponse.body.pagination.total).toBe(1);
+    expect(templatesResponse.body.templates[0].name).toBe("Rent email reminder");
+
+    const policiesResponse = await request(app)
+      .get(`/api/pms/policies?companyId=${company.id}&search=rules&category=PAYMENT&sortBy=title&direction=asc`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .expect(200);
+
+    expect(policiesResponse.body.pagination.total).toBe(1);
+    expect(policiesResponse.body.policies[0].title).toBe("Payment rules");
+
+    const inspectionsResponse = await request(app)
+      .get(`/api/pms/inspections?companyId=${company.id}&search=move&status=SCHEDULED&sortBy=title&direction=asc`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .expect(200);
+
+    expect(inspectionsResponse.body.pagination.total).toBe(1);
+    expect(inspectionsResponse.body.inspections[0].title).toBe("Move in inspection");
+  });
+
 });

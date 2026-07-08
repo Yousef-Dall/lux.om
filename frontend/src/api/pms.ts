@@ -45,6 +45,17 @@ export type PmsInspectionStatus =
   | "NEEDS_ACTION"
   | "CANCELLED";
 
+export type PmsSortDirection = "asc" | "desc";
+export type PmsPropertySortBy = "updatedAt" | "createdAt" | "name" | "city" | "active";
+export type PmsUnitSortBy = "updatedAt" | "createdAt" | "unitNumber" | "status" | "rentAmount" | "areaSqm";
+export type PmsTenantSortBy = "updatedAt" | "createdAt" | "fullName" | "active";
+export type PmsLeaseSortBy = "updatedAt" | "createdAt" | "startDate" | "endDate" | "rentAmount" | "status";
+export type PmsRentDueSortBy = "dueDate" | "updatedAt" | "createdAt" | "amount" | "paidAmount" | "status";
+export type PmsWorkOrderSortBy = "updatedAt" | "createdAt" | "scheduledFor" | "resolvedAt" | "priority" | "status" | "title" | "cost";
+export type PmsCommunicationTemplateSortBy = "updatedAt" | "createdAt" | "name" | "channel" | "active";
+export type PmsPolicySortBy = "updatedAt" | "createdAt" | "title" | "category" | "active";
+export type PmsInspectionSortBy = "scheduledFor" | "updatedAt" | "createdAt" | "title" | "status" | "rating";
+
 export type PmsCompanySummary = {
   id: string;
   slug: string;
@@ -618,6 +629,8 @@ export async function listPmsProperties(
     companyId?: string;
     search?: string;
     active?: "ALL" | "ACTIVE" | "INACTIVE";
+    sortBy?: PmsPropertySortBy;
+    direction?: PmsSortDirection;
     take?: number;
     skip?: number;
   } = {},
@@ -676,6 +689,8 @@ export async function listPmsUnits(
     propertyId?: string;
     search?: string;
     status?: "ALL" | PmsUnitStatus;
+    sortBy?: PmsUnitSortBy;
+    direction?: PmsSortDirection;
     take?: number;
     skip?: number;
   } = {},
@@ -701,6 +716,8 @@ export async function listPmsPropertyUnits(
   params: {
     search?: string;
     status?: "ALL" | PmsUnitStatus;
+    sortBy?: PmsUnitSortBy;
+    direction?: PmsSortDirection;
     take?: number;
     skip?: number;
   } = {},
@@ -760,6 +777,8 @@ export async function listPmsTenants(
     companyId?: string;
     search?: string;
     active?: "ALL" | "ACTIVE" | "INACTIVE";
+    sortBy?: PmsTenantSortBy;
+    direction?: PmsSortDirection;
     take?: number;
     skip?: number;
   } = {},
@@ -811,7 +830,10 @@ export async function listPmsLeases(
     tenantId?: string;
     propertyId?: string;
     unitId?: string;
+    search?: string;
     status?: "ALL" | PmsLeaseStatus;
+    sortBy?: PmsLeaseSortBy;
+    direction?: PmsSortDirection;
     take?: number;
     skip?: number;
   } = {},
@@ -864,7 +886,11 @@ export async function listPmsRentDueItems(
     tenantId?: string;
     propertyId?: string;
     unitId?: string;
+    dueFrom?: string;
+    dueTo?: string;
     status?: "ALL" | PmsRentDueStatus;
+    sortBy?: PmsRentDueSortBy;
+    direction?: PmsSortDirection;
     take?: number;
     skip?: number;
   } = {},
@@ -885,7 +911,11 @@ export async function listPmsLeaseRentDueItems(
   token: string,
   leaseId: string,
   params: {
+    dueFrom?: string;
+    dueTo?: string;
     status?: "ALL" | PmsRentDueStatus;
+    sortBy?: PmsRentDueSortBy;
+    direction?: PmsSortDirection;
     take?: number;
     skip?: number;
   } = {},
@@ -924,6 +954,8 @@ export async function listPmsWorkOrders(
     search?: string;
     status?: "ALL" | PmsMaintenanceStatus;
     priority?: "ALL" | PmsMaintenancePriority;
+    sortBy?: PmsWorkOrderSortBy;
+    direction?: PmsSortDirection;
     take?: number;
     skip?: number;
   } = {},
@@ -967,8 +999,11 @@ export async function listPmsCommunicationTemplates(
   token: string,
   params: {
     companyId?: string;
+    search?: string;
     active?: "ALL" | "ACTIVE" | "INACTIVE";
     channel?: "ALL" | PmsCommunicationChannel;
+    sortBy?: PmsCommunicationTemplateSortBy;
+    direction?: PmsSortDirection;
     take?: number;
     skip?: number;
   } = {},
@@ -995,8 +1030,11 @@ export async function listPmsPolicies(
   token: string,
   params: {
     companyId?: string;
+    search?: string;
     active?: "ALL" | "ACTIVE" | "INACTIVE";
     category?: "ALL" | PmsPolicyCategory;
+    sortBy?: PmsPolicySortBy;
+    direction?: PmsSortDirection;
     take?: number;
     skip?: number;
   } = {},
@@ -1025,7 +1063,10 @@ export async function listPmsInspections(
     unitId?: string;
     tenantId?: string;
     leaseId?: string;
+    search?: string;
     status?: "ALL" | PmsInspectionStatus;
+    sortBy?: PmsInspectionSortBy;
+    direction?: PmsSortDirection;
     take?: number;
     skip?: number;
   } = {},

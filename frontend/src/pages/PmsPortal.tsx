@@ -298,12 +298,7 @@ function canEditInventory(role?: string) {
 }
 
 function canEditTenancies(role?: string) {
-  return (
-    role === "PMS_OWNER" ||
-    role === "PMS_MANAGER" ||
-    role === "PMS_ACCOUNTANT" ||
-    role === "PMS_AGENT"
-  );
+  return role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_AGENT";
 }
 
 function canCollectRent(role?: string) {
@@ -564,12 +559,20 @@ function propertyToForm(property: PmsProperty): PmsPropertyPayload {
   };
 }
 
-function StatusBadge({ status }: { status: PmsUnitStatus }) {
+function formatStatusText(status: string) {
+  return status
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function StatusBadge({ status, label }: { status: string; label?: string }) {
   return (
     <span
       className={`pms-status-badge pms-status-badge--${status.toLowerCase()}`}
     >
-      {status}
+      {label ?? formatStatusText(status)}
     </span>
   );
 }
@@ -727,6 +730,7 @@ export default function PmsPortal() {
           paidRent: "دفعات مدفوعة",
           rentCollection: "تحصيل الإيجار",
           markPaid: "تسجيل مدفوع",
+          confirmMarkPaid: "هل تريد تسجيل هذه الدفعة كمدفوعة؟",
           paidAmount: "المبلغ المدفوع",
           dueDate: "تاريخ الاستحقاق",
           amount: "المبلغ",
@@ -744,6 +748,7 @@ export default function PmsPortal() {
           maintenanceRequests: "طلبات الصيانة",
           emptyMaintenance: "لا توجد طلبات صيانة بعد.",
           resolve: "إنهاء",
+          confirmResolve: "هل تريد إنهاء طلب الصيانة هذا؟",
           createTemplate: "إضافة قالب تواصل",
           templateName: "اسم القالب",
           channel: "القناة",
@@ -875,6 +880,7 @@ export default function PmsPortal() {
           paidRent: "Paid rent",
           rentCollection: "Rent collection",
           markPaid: "Mark paid",
+          confirmMarkPaid: "Mark this rent due item as fully paid?",
           paidAmount: "Paid amount",
           dueDate: "Due date",
           amount: "Amount",
@@ -892,6 +898,7 @@ export default function PmsPortal() {
           maintenanceRequests: "Maintenance requests",
           emptyMaintenance: "No maintenance requests yet.",
           resolve: "Resolve",
+          confirmResolve: "Resolve this maintenance work order?",
           createTemplate: "Create communication template",
           templateName: "Template name",
           channel: "Channel",
@@ -1376,6 +1383,7 @@ export default function PmsPortal() {
 
   async function handleMarkRentPaid(item: PmsRentDueItem) {
     if (!token) return;
+    if (!window.confirm(copy.confirmMarkPaid)) return;
 
     try {
       setSaving(true);
@@ -1424,6 +1432,7 @@ export default function PmsPortal() {
 
   async function handleResolveWorkOrder(workOrder: PmsWorkOrder) {
     if (!token) return;
+    if (!window.confirm(copy.confirmResolve)) return;
 
     try {
       setSaving(true);
@@ -2527,7 +2536,10 @@ function UnitTable({
                           ))}
                         </select>
                       ) : (
-                        <StatusBadge status={unit.status} />
+                        <StatusBadge
+                          status={unit.status}
+                          label={getUnitStatusLabel(unit.status, language)}
+                        />
                       )}
                     </td>
                     <td>{unit.bedrooms ?? "—"}</td>
@@ -2961,8 +2973,8 @@ function MaintenanceTable({
                   <td>{workOrder.title}</td>
                   <td>{workOrder.property.name}</td>
                   <td>{workOrder.unit?.unitNumber ?? "—"}</td>
-                  <td>{workOrder.priority}</td>
-                  <td>{workOrder.status}</td>
+                  <td><StatusBadge status={workOrder.priority} /></td>
+                  <td><StatusBadge status={workOrder.status} /></td>
                   <td>{workOrder.cost ? `${workOrder.cost} ${workOrder.currency}` : "—"}</td>
                   <td>
                     <button
@@ -3430,7 +3442,7 @@ function RentDueTable({
                   <td>{item.unit.unitNumber}</td>
                   <td>{item.amount} {item.currency}</td>
                   <td>{item.paidAmount} {item.currency}</td>
-                  <td>{item.status}</td>
+                  <td><StatusBadge status={item.status} /></td>
                   <td>
                     <button
                       className="button-link button-link--secondary"

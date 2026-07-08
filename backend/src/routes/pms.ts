@@ -23,6 +23,13 @@ import {
   ACTIVE_PMS_ENTITLEMENT_STATUSES,
   resolvePmsWorkspaceAccess,
 } from "../lib/pmsAccess";
+import {
+  assertCanCollectPmsRent,
+  assertCanManagePmsInventory,
+  assertCanManagePmsMaintenance,
+  assertCanManagePmsOperations,
+  assertCanManagePmsTenancies,
+} from "../lib/pmsPermissions";
 import { requireAdmin, requireAuth } from "../middleware/auth";
 import { AppError } from "../utils/http";
 
@@ -44,6 +51,8 @@ const pmsPropertyListQuerySchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   search: z.string().trim().max(120).optional(),
   active: z.enum(["ALL", "ACTIVE", "INACTIVE"]).default("ALL"),
+  sortBy: z.enum(["updatedAt", "createdAt", "name", "city", "active"]).optional(),
+  direction: z.enum(["asc", "desc"]).default("desc"),
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0),
 });
@@ -58,6 +67,8 @@ const pmsUnitListQuerySchema = z.object({
       ...PmsUnitStatus[],
     ])
     .default("ALL"),
+  sortBy: z.enum(["updatedAt", "createdAt", "unitNumber", "status", "rentAmount", "areaSqm"]).optional(),
+  direction: z.enum(["asc", "desc"]).default("desc"),
   take: z.coerce.number().int().min(1).max(200).default(100),
   skip: z.coerce.number().int().min(0).default(0),
 });
@@ -143,6 +154,8 @@ const pmsTenantListQuerySchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   search: z.string().trim().max(120).optional(),
   active: z.enum(["ALL", "ACTIVE", "INACTIVE"]).default("ALL"),
+  sortBy: z.enum(["updatedAt", "createdAt", "fullName", "active"]).optional(),
+  direction: z.enum(["asc", "desc"]).default("desc"),
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0),
 });
@@ -152,12 +165,15 @@ const pmsLeaseListQuerySchema = z.object({
   tenantId: z.string().trim().min(1).optional(),
   propertyId: z.string().trim().min(1).optional(),
   unitId: z.string().trim().min(1).optional(),
+  search: z.string().trim().max(120).optional(),
   status: z
     .enum(["ALL", ...Object.values(PmsLeaseStatus)] as [
       "ALL",
       ...PmsLeaseStatus[],
     ])
     .default("ALL"),
+  sortBy: z.enum(["updatedAt", "createdAt", "startDate", "endDate", "rentAmount", "status"]).optional(),
+  direction: z.enum(["asc", "desc"]).default("desc"),
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0),
 });
@@ -168,12 +184,16 @@ const pmsRentDueListQuerySchema = z.object({
   tenantId: z.string().trim().min(1).optional(),
   propertyId: z.string().trim().min(1).optional(),
   unitId: z.string().trim().min(1).optional(),
+  dueFrom: z.coerce.date().optional(),
+  dueTo: z.coerce.date().optional(),
   status: z
     .enum(["ALL", ...Object.values(PmsRentDueStatus)] as [
       "ALL",
       ...PmsRentDueStatus[],
     ])
     .default("ALL"),
+  sortBy: z.enum(["dueDate", "updatedAt", "createdAt", "amount", "paidAmount", "status"]).optional(),
+  direction: z.enum(["asc", "desc"]).default("asc"),
   take: z.coerce.number().int().min(1).max(200).default(100),
   skip: z.coerce.number().int().min(0).default(0),
 });
@@ -208,6 +228,8 @@ const pmsWorkOrderListQuerySchema = z.object({
       ...PmsMaintenancePriority[],
     ])
     .default("ALL"),
+  sortBy: z.enum(["updatedAt", "createdAt", "scheduledFor", "resolvedAt", "priority", "status", "title", "cost"]).optional(),
+  direction: z.enum(["asc", "desc"]).default("desc"),
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0),
 });
@@ -218,6 +240,7 @@ const pmsWorkOrderParamsSchema = z.object({
 
 const pmsCommunicationTemplateListQuerySchema = z.object({
   companyId: z.string().trim().min(1).optional(),
+  search: z.string().trim().max(120).optional(),
   active: z.enum(["ALL", "ACTIVE", "INACTIVE"]).default("ALL"),
   channel: z
     .enum(["ALL", ...Object.values(PmsCommunicationChannel)] as [
@@ -225,6 +248,8 @@ const pmsCommunicationTemplateListQuerySchema = z.object({
       ...PmsCommunicationChannel[],
     ])
     .default("ALL"),
+  sortBy: z.enum(["updatedAt", "createdAt", "name", "channel", "active"]).optional(),
+  direction: z.enum(["asc", "desc"]).default("desc"),
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0),
 });
@@ -235,6 +260,7 @@ const pmsCommunicationTemplateParamsSchema = z.object({
 
 const pmsPolicyListQuerySchema = z.object({
   companyId: z.string().trim().min(1).optional(),
+  search: z.string().trim().max(120).optional(),
   active: z.enum(["ALL", "ACTIVE", "INACTIVE"]).default("ALL"),
   category: z
     .enum(["ALL", ...Object.values(PmsPolicyCategory)] as [
@@ -242,6 +268,8 @@ const pmsPolicyListQuerySchema = z.object({
       ...PmsPolicyCategory[],
     ])
     .default("ALL"),
+  sortBy: z.enum(["updatedAt", "createdAt", "title", "category", "active"]).optional(),
+  direction: z.enum(["asc", "desc"]).default("desc"),
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0),
 });
@@ -256,12 +284,15 @@ const pmsInspectionListQuerySchema = z.object({
   unitId: z.string().trim().min(1).optional(),
   tenantId: z.string().trim().min(1).optional(),
   leaseId: z.string().trim().min(1).optional(),
+  search: z.string().trim().max(120).optional(),
   status: z
     .enum(["ALL", ...Object.values(PmsInspectionStatus)] as [
       "ALL",
       ...PmsInspectionStatus[],
     ])
     .default("ALL"),
+  sortBy: z.enum(["scheduledFor", "updatedAt", "createdAt", "title", "status", "rating"]).optional(),
+  direction: z.enum(["asc", "desc"]).default("desc"),
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0),
 });
@@ -1030,83 +1061,304 @@ function normalizeNullableText(value: string | null | undefined) {
   return trimmed ? trimmed : null;
 }
 
-function canManagePmsInventory(role: PmsMemberRole) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_AGENT";
-}
+type PmsSortDirection = "asc" | "desc";
 
-function assertCanManagePmsInventory(role: PmsMemberRole) {
-  if (!canManagePmsInventory(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role can view inventory but cannot change it.",
-    );
+type PmsAuditTarget = {
+  actorId: string;
+  actorEmail: string;
+  companyId: string;
+};
+
+function buildPmsPropertyOrderBy(
+  query: z.infer<typeof pmsPropertyListQuerySchema>,
+): Prisma.PmsPropertyOrderByWithRelationInput[] {
+  const direction = query.direction as PmsSortDirection;
+
+  switch (query.sortBy) {
+    case "name":
+      return [{ name: direction }, { updatedAt: "desc" }];
+    case "city":
+      return [{ city: direction }, { updatedAt: "desc" }];
+    case "active":
+      return [{ active: direction }, { updatedAt: "desc" }];
+    case "createdAt":
+      return [{ createdAt: direction }, { name: "asc" }];
+    case "updatedAt":
+    default:
+      return [{ updatedAt: direction }, { name: "asc" }];
   }
 }
 
-function canManagePmsTenancies(role: PmsMemberRole) {
-  return (
-    role === "PMS_OWNER" ||
-    role === "PMS_MANAGER" ||
-    role === "PMS_ACCOUNTANT" ||
-    role === "PMS_AGENT"
-  );
-}
+function buildPmsUnitOrderBy(
+  query: z.infer<typeof pmsUnitListQuerySchema>,
+  defaultScope: "portfolio" | "property",
+): Prisma.PmsUnitOrderByWithRelationInput[] {
+  const direction = query.direction as PmsSortDirection;
 
-function assertCanManagePmsTenancies(role: PmsMemberRole) {
-  if (!canManagePmsTenancies(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role can view tenancy records but cannot change them.",
-    );
+  switch (query.sortBy) {
+    case "unitNumber":
+      return [{ unitNumber: direction }, { updatedAt: "desc" }];
+    case "status":
+      return [{ status: direction }, { updatedAt: "desc" }];
+    case "rentAmount":
+      return [{ rentAmount: direction }, { updatedAt: "desc" }];
+    case "areaSqm":
+      return [{ areaSqm: direction }, { updatedAt: "desc" }];
+    case "createdAt":
+      return [{ createdAt: direction }, { unitNumber: "asc" }];
+    case "updatedAt":
+      return [{ updatedAt: direction }, { unitNumber: "asc" }];
+    default:
+      return defaultScope === "property"
+        ? [{ unitNumber: "asc" }, { createdAt: "desc" }]
+        : [{ updatedAt: direction }, { unitNumber: "asc" }];
   }
 }
 
-function canCollectPmsRent(role: PmsMemberRole) {
-  return (
-    role === "PMS_OWNER" ||
-    role === "PMS_MANAGER" ||
-    role === "PMS_ACCOUNTANT"
-  );
-}
+function buildPmsTenantOrderBy(
+  query: z.infer<typeof pmsTenantListQuerySchema>,
+): Prisma.PmsTenantOrderByWithRelationInput[] {
+  const direction = query.direction as PmsSortDirection;
 
-function assertCanCollectPmsRent(role: PmsMemberRole) {
-  if (!canCollectPmsRent(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role cannot update rent collection records.",
-    );
+  switch (query.sortBy) {
+    case "fullName":
+      return [{ fullName: direction }, { updatedAt: "desc" }];
+    case "active":
+      return [{ active: direction }, { updatedAt: "desc" }];
+    case "createdAt":
+      return [{ createdAt: direction }, { fullName: "asc" }];
+    case "updatedAt":
+    default:
+      return [{ updatedAt: direction }, { fullName: "asc" }];
   }
 }
 
-function canManagePmsMaintenance(role: PmsMemberRole) {
-  return (
-    role === "PMS_OWNER" ||
-    role === "PMS_MANAGER" ||
-    role === "PMS_MAINTENANCE" ||
-    role === "PMS_AGENT"
-  );
-}
+function buildPmsLeaseOrderBy(
+  query: z.infer<typeof pmsLeaseListQuerySchema>,
+): Prisma.PmsLeaseOrderByWithRelationInput[] {
+  const direction = query.direction as PmsSortDirection;
 
-function assertCanManagePmsMaintenance(role: PmsMemberRole) {
-  if (!canManagePmsMaintenance(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role can view maintenance records but cannot change them.",
-    );
+  switch (query.sortBy) {
+    case "startDate":
+      return [{ startDate: direction }, { updatedAt: "desc" }];
+    case "endDate":
+      return [{ endDate: direction }, { updatedAt: "desc" }];
+    case "rentAmount":
+      return [{ rentAmount: direction }, { updatedAt: "desc" }];
+    case "status":
+      return [{ status: direction }, { updatedAt: "desc" }];
+    case "createdAt":
+      return [{ createdAt: direction }, { startDate: "desc" }];
+    case "updatedAt":
+    default:
+      return [{ updatedAt: direction }, { startDate: "desc" }];
   }
 }
 
-function canManagePmsOperations(role: PmsMemberRole) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER";
+function buildPmsRentDueOrderBy(
+  query: z.infer<typeof pmsRentDueListQuerySchema>,
+): Prisma.PmsRentDueItemOrderByWithRelationInput[] {
+  const direction = query.direction as PmsSortDirection;
+
+  switch (query.sortBy) {
+    case "amount":
+      return [{ amount: direction }, { dueDate: "asc" }];
+    case "paidAmount":
+      return [{ paidAmount: direction }, { dueDate: "asc" }];
+    case "status":
+      return [{ status: direction }, { dueDate: "asc" }];
+    case "createdAt":
+      return [{ createdAt: direction }, { dueDate: "asc" }];
+    case "updatedAt":
+      return [{ updatedAt: direction }, { dueDate: "asc" }];
+    case "dueDate":
+    default:
+      return [{ dueDate: direction }, { createdAt: "asc" }];
+  }
 }
 
-function assertCanManagePmsOperations(role: PmsMemberRole) {
-  if (!canManagePmsOperations(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role can view operational settings but cannot change them.",
-    );
+function buildPmsWorkOrderOrderBy(
+  query: z.infer<typeof pmsWorkOrderListQuerySchema>,
+): Prisma.PmsWorkOrderOrderByWithRelationInput[] {
+  const direction = query.direction as PmsSortDirection;
+
+  switch (query.sortBy) {
+    case "title":
+      return [{ title: direction }, { updatedAt: "desc" }];
+    case "priority":
+      return [{ priority: direction }, { updatedAt: "desc" }];
+    case "status":
+      return [{ status: direction }, { updatedAt: "desc" }];
+    case "cost":
+      return [{ cost: direction }, { updatedAt: "desc" }];
+    case "scheduledFor":
+      return [{ scheduledFor: direction }, { updatedAt: "desc" }];
+    case "resolvedAt":
+      return [{ resolvedAt: direction }, { updatedAt: "desc" }];
+    case "createdAt":
+      return [{ createdAt: direction }, { title: "asc" }];
+    case "updatedAt":
+    default:
+      return [{ updatedAt: direction }, { createdAt: "desc" }];
   }
+}
+
+function buildPmsCommunicationTemplateOrderBy(
+  query: z.infer<typeof pmsCommunicationTemplateListQuerySchema>,
+): Prisma.PmsCommunicationTemplateOrderByWithRelationInput[] {
+  const direction = query.direction as PmsSortDirection;
+
+  switch (query.sortBy) {
+    case "name":
+      return [{ name: direction }, { updatedAt: "desc" }];
+    case "channel":
+      return [{ channel: direction }, { updatedAt: "desc" }];
+    case "active":
+      return [{ active: direction }, { updatedAt: "desc" }];
+    case "createdAt":
+      return [{ createdAt: direction }, { name: "asc" }];
+    case "updatedAt":
+    default:
+      return [{ updatedAt: direction }, { name: "asc" }];
+  }
+}
+
+function buildPmsPolicyOrderBy(
+  query: z.infer<typeof pmsPolicyListQuerySchema>,
+): Prisma.PmsPolicyOrderByWithRelationInput[] {
+  const direction = query.direction as PmsSortDirection;
+
+  switch (query.sortBy) {
+    case "title":
+      return [{ title: direction }, { updatedAt: "desc" }];
+    case "category":
+      return [{ category: direction }, { updatedAt: "desc" }];
+    case "active":
+      return [{ active: direction }, { updatedAt: "desc" }];
+    case "createdAt":
+      return [{ createdAt: direction }, { title: "asc" }];
+    case "updatedAt":
+    default:
+      return [{ updatedAt: direction }, { title: "asc" }];
+  }
+}
+
+function buildPmsInspectionOrderBy(
+  query: z.infer<typeof pmsInspectionListQuerySchema>,
+): Prisma.PmsInspectionOrderByWithRelationInput[] {
+  const direction = query.direction as PmsSortDirection;
+
+  switch (query.sortBy) {
+    case "title":
+      return [{ title: direction }, { scheduledFor: "asc" }];
+    case "status":
+      return [{ status: direction }, { scheduledFor: "asc" }];
+    case "rating":
+      return [{ rating: direction }, { updatedAt: "desc" }];
+    case "createdAt":
+      return [{ createdAt: direction }, { scheduledFor: "asc" }];
+    case "updatedAt":
+      return [{ updatedAt: direction }, { scheduledFor: "asc" }];
+    case "scheduledFor":
+    default:
+      return [{ scheduledFor: direction }, { updatedAt: "desc" }];
+  }
+}
+
+function buildPmsRentDueDateFilter(
+  query: z.infer<typeof pmsRentDueListQuerySchema>,
+): Prisma.DateTimeFilter | undefined {
+  if (!query.dueFrom && !query.dueTo) return undefined;
+
+  return {
+    ...(query.dueFrom ? { gte: query.dueFrom } : {}),
+    ...(query.dueTo ? { lte: query.dueTo } : {}),
+  };
+}
+
+async function assertPmsFilterLinksBelongToCompany(input: {
+  companyId: string;
+  propertyId?: string;
+  unitId?: string;
+  tenantId?: string;
+  leaseId?: string;
+}) {
+  if (input.propertyId) {
+    const property = await prisma.pmsProperty.findFirst({
+      where: { id: input.propertyId, companyId: input.companyId },
+      select: { id: true },
+    });
+
+    if (!property) {
+      throw new AppError(400, "PMS property filter must belong to this PMS company.");
+    }
+  }
+
+  if (input.unitId) {
+    const unit = await prisma.pmsUnit.findFirst({
+      where: {
+        id: input.unitId,
+        companyId: input.companyId,
+        ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (!unit) {
+      throw new AppError(400, "PMS unit filter must belong to this PMS company.");
+    }
+  }
+
+  if (input.tenantId) {
+    const tenant = await prisma.pmsTenant.findFirst({
+      where: { id: input.tenantId, companyId: input.companyId },
+      select: { id: true },
+    });
+
+    if (!tenant) {
+      throw new AppError(400, "PMS tenant filter must belong to this PMS company.");
+    }
+  }
+
+  if (input.leaseId) {
+    const lease = await prisma.pmsLease.findFirst({
+      where: {
+        id: input.leaseId,
+        companyId: input.companyId,
+        ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+        ...(input.unitId ? { unitId: input.unitId } : {}),
+        ...(input.tenantId ? { tenantId: input.tenantId } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (!lease) {
+      throw new AppError(400, "PMS lease filter must belong to this PMS company.");
+    }
+  }
+}
+
+async function recordPmsWorkspaceAudit(
+  input: PmsAuditTarget & {
+    title: string;
+    message: string;
+    metadata: Prisma.InputJsonObject;
+    targetUserId?: string;
+  },
+) {
+  await recordAccountSecurityEvent(prisma, {
+    userId: input.targetUserId ?? input.actorId,
+    actorId: input.actorId,
+    type: AccountSecurityEventType.ADMIN_PMS_ACCESS_UPDATED,
+    title: input.title,
+    message: input.message,
+    metadata: {
+      actorId: input.actorId,
+      actorEmail: input.actorEmail,
+      companyId: input.companyId,
+      ...input.metadata,
+    },
+  });
 }
 
 function defaultOccupancyForUnitStatus(status: PmsUnitStatus) {
@@ -1940,7 +2192,7 @@ pmsRouter.get("/tenants", requireAuth(), async (req, res, next) => {
       prisma.pmsTenant.findMany({
         where,
         include: pmsTenantInclude,
-        orderBy: [{ updatedAt: "desc" }, { fullName: "asc" }],
+        orderBy: buildPmsTenantOrderBy(query),
         take: query.take,
         skip: query.skip,
       }),
@@ -1997,6 +2249,15 @@ pmsRouter.post("/tenants", requireAuth(), async (req, res, next) => {
         updatedById: req.user.id,
       },
       include: pmsTenantInclude,
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS tenant created",
+      message: `${req.user.email} created PMS tenant ${tenant.fullName}.`,
+      metadata: { action: "create", resourceType: "pmsTenant", tenantId: tenant.id },
     });
 
     res.status(201).json({ tenant: pmsTenantResponse(tenant) });
@@ -2068,6 +2329,20 @@ pmsRouter.patch("/tenants/:tenantId", requireAuth(), async (req, res, next) => {
       include: pmsTenantInclude,
     });
 
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS tenant updated",
+      message: `${req.user.email} updated PMS tenant ${tenant.fullName}.`,
+      metadata: {
+        action: "update",
+        resourceType: "pmsTenant",
+        tenantId: tenant.id,
+        changedFields: Object.keys(data),
+      },
+    });
+
     res.json({ tenant: pmsTenantResponse(tenant) });
   } catch (error) {
     next(error);
@@ -2085,19 +2360,36 @@ pmsRouter.get("/leases", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: query.companyId,
     });
+    await assertPmsFilterLinksBelongToCompany({
+      companyId: access.company.id,
+      tenantId: query.tenantId,
+      propertyId: query.propertyId,
+      unitId: query.unitId,
+    });
+    const search = query.search?.trim();
     const where: Prisma.PmsLeaseWhereInput = {
       companyId: access.company.id,
       ...(query.status !== "ALL" ? { status: query.status } : {}),
       ...(query.tenantId ? { tenantId: query.tenantId } : {}),
       ...(query.propertyId ? { propertyId: query.propertyId } : {}),
       ...(query.unitId ? { unitId: query.unitId } : {}),
+      ...(search
+        ? {
+            OR: [
+              { title: { contains: search, mode: "insensitive" } },
+              { tenant: { fullName: { contains: search, mode: "insensitive" } } },
+              { property: { name: { contains: search, mode: "insensitive" } } },
+              { unit: { unitNumber: { contains: search, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
     };
 
     const [leases, total] = await prisma.$transaction([
       prisma.pmsLease.findMany({
         where,
         include: pmsLeaseInclude,
-        orderBy: [{ updatedAt: "desc" }, { startDate: "desc" }],
+        orderBy: buildPmsLeaseOrderBy(query),
         take: query.take,
         skip: query.skip,
       }),
@@ -2250,6 +2542,23 @@ pmsRouter.post("/leases", requireAuth(), async (req, res, next) => {
       });
     });
 
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS lease created",
+      message: `${req.user.email} created PMS lease ${lease.id}.`,
+      metadata: {
+        action: "create",
+        resourceType: "pmsLease",
+        leaseId: lease.id,
+        tenantId: lease.tenantId,
+        propertyId: lease.propertyId,
+        unitId: lease.unitId,
+        status: lease.status,
+      },
+    });
+
     res.status(201).json({ lease: pmsLeaseResponse(lease) });
   } catch (error) {
     next(error);
@@ -2370,6 +2679,21 @@ pmsRouter.patch("/leases/:leaseId", requireAuth(), async (req, res, next) => {
       return updated;
     });
 
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS lease updated",
+      message: `${req.user.email} updated PMS lease ${lease.id}.`,
+      metadata: {
+        action: "update",
+        resourceType: "pmsLease",
+        leaseId: lease.id,
+        status: lease.status,
+        changedFields: Object.keys(data),
+      },
+    });
+
     res.json({ lease: pmsLeaseResponse(lease) });
   } catch (error) {
     next(error);
@@ -2397,17 +2721,19 @@ pmsRouter.get("/leases/:leaseId/rent-due", requireAuth(), async (req, res, next)
       userId: req.user.id,
       companyId: lease.companyId,
     });
+    const dueDate = buildPmsRentDueDateFilter(query);
     const where: Prisma.PmsRentDueItemWhereInput = {
       companyId: access.company.id,
       leaseId,
       ...(query.status !== "ALL" ? { status: query.status } : {}),
+      ...(dueDate ? { dueDate } : {}),
     };
 
     const [rentDueItems, total] = await prisma.$transaction([
       prisma.pmsRentDueItem.findMany({
         where,
         include: pmsRentDueItemInclude,
-        orderBy: [{ dueDate: "asc" }],
+        orderBy: buildPmsRentDueOrderBy(query),
         take: query.take,
         skip: query.skip,
       }),
@@ -2444,6 +2770,14 @@ pmsRouter.get("/rent-due", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: query.companyId,
     });
+    await assertPmsFilterLinksBelongToCompany({
+      companyId: access.company.id,
+      leaseId: query.leaseId,
+      tenantId: query.tenantId,
+      propertyId: query.propertyId,
+      unitId: query.unitId,
+    });
+    const dueDate = buildPmsRentDueDateFilter(query);
     const where: Prisma.PmsRentDueItemWhereInput = {
       companyId: access.company.id,
       ...(query.leaseId ? { leaseId: query.leaseId } : {}),
@@ -2451,13 +2785,14 @@ pmsRouter.get("/rent-due", requireAuth(), async (req, res, next) => {
       ...(query.propertyId ? { propertyId: query.propertyId } : {}),
       ...(query.unitId ? { unitId: query.unitId } : {}),
       ...(query.status !== "ALL" ? { status: query.status } : {}),
+      ...(dueDate ? { dueDate } : {}),
     };
 
     const [rentDueItems, total] = await prisma.$transaction([
       prisma.pmsRentDueItem.findMany({
         where,
         include: pmsRentDueItemInclude,
-        orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+        orderBy: buildPmsRentDueOrderBy(query),
         take: query.take,
         skip: query.skip,
       }),
@@ -2534,6 +2869,22 @@ pmsRouter.patch("/rent-due/:rentDueItemId", requireAuth(), async (req, res, next
         updatedById: req.user.id,
       },
       include: pmsRentDueItemInclude,
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS rent due item updated",
+      message: `${req.user.email} updated PMS rent due item ${rentDueItem.id}.`,
+      metadata: {
+        action: "update",
+        resourceType: "pmsRentDueItem",
+        rentDueItemId: rentDueItem.id,
+        leaseId: rentDueItem.leaseId,
+        status: rentDueItem.status,
+        changedFields: Object.keys(data),
+      },
     });
 
     res.json({ rentDueItem: pmsRentDueItemResponse(rentDueItem) });
@@ -2797,6 +3148,12 @@ pmsRouter.get("/maintenance", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: query.companyId,
     });
+    await assertPmsFilterLinksBelongToCompany({
+      companyId: access.company.id,
+      tenantId: query.tenantId,
+      propertyId: query.propertyId,
+      unitId: query.unitId,
+    });
     const search = query.search?.trim();
     const where: Prisma.PmsWorkOrderWhereInput = {
       companyId: access.company.id,
@@ -2821,7 +3178,7 @@ pmsRouter.get("/maintenance", requireAuth(), async (req, res, next) => {
       prisma.pmsWorkOrder.findMany({
         where,
         include: pmsWorkOrderInclude,
-        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+        orderBy: buildPmsWorkOrderOrderBy(query),
         take: query.take,
         skip: query.skip,
       }),
@@ -2892,6 +3249,21 @@ pmsRouter.post("/maintenance", requireAuth(), async (req, res, next) => {
         updatedById: userId,
       },
       include: pmsWorkOrderInclude,
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS maintenance work order created",
+      message: `${req.user.email} created PMS work order ${workOrder.title}.`,
+      metadata: {
+        action: "create",
+        resourceType: "pmsWorkOrder",
+        workOrderId: workOrder.id,
+        status: workOrder.status,
+        priority: workOrder.priority,
+      },
     });
 
     res.status(201).json({ workOrder: pmsWorkOrderResponse(workOrder) });
@@ -2975,6 +3347,22 @@ pmsRouter.patch("/maintenance/:workOrderId", requireAuth(), async (req, res, nex
       include: pmsWorkOrderInclude,
     });
 
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS maintenance work order updated",
+      message: `${req.user.email} updated PMS work order ${workOrder.title}.`,
+      metadata: {
+        action: "update",
+        resourceType: "pmsWorkOrder",
+        workOrderId: workOrder.id,
+        status: workOrder.status,
+        priority: workOrder.priority,
+        changedFields: Object.keys(data),
+      },
+    });
+
     res.json({ workOrder: pmsWorkOrderResponse(workOrder) });
   } catch (error) {
     next(error);
@@ -3018,17 +3406,28 @@ pmsRouter.get("/communication-templates", requireAuth(), async (req, res, next) 
       userId: req.user.id,
       companyId: query.companyId,
     });
+    const search = query.search?.trim();
     const where: Prisma.PmsCommunicationTemplateWhereInput = {
       companyId: access.company.id,
       ...(query.active === "ACTIVE" ? { active: true } : {}),
       ...(query.active === "INACTIVE" ? { active: false } : {}),
       ...(query.channel !== "ALL" ? { channel: query.channel } : {}),
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search, mode: "insensitive" } },
+              { type: { contains: search, mode: "insensitive" } },
+              { subject: { contains: search, mode: "insensitive" } },
+              { body: { contains: search, mode: "insensitive" } },
+            ],
+          }
+        : {}),
     };
 
     const [templates, total] = await prisma.$transaction([
       prisma.pmsCommunicationTemplate.findMany({
         where,
-        orderBy: [{ updatedAt: "desc" }, { name: "asc" }],
+        orderBy: buildPmsCommunicationTemplateOrderBy(query),
         take: query.take,
         skip: query.skip,
       }),
@@ -3075,6 +3474,20 @@ pmsRouter.post("/communication-templates", requireAuth(), async (req, res, next)
       },
     });
 
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS communication template created",
+      message: `${req.user.email} created PMS communication template ${template.name}.`,
+      metadata: {
+        action: "create",
+        resourceType: "pmsCommunicationTemplate",
+        templateId: template.id,
+        channel: template.channel,
+      },
+    });
+
     res.status(201).json({ template: pmsCommunicationTemplateResponse(template) });
   } catch (error) {
     next(error);
@@ -3107,6 +3520,21 @@ pmsRouter.patch("/communication-templates/:templateId", requireAuth(), async (re
       data: buildPmsCommunicationTemplateUpdateData(data, userId),
     });
 
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS communication template updated",
+      message: `${req.user.email} updated PMS communication template ${template.name}.`,
+      metadata: {
+        action: "update",
+        resourceType: "pmsCommunicationTemplate",
+        templateId: template.id,
+        channel: template.channel,
+        changedFields: Object.keys(data),
+      },
+    });
+
     res.json({ template: pmsCommunicationTemplateResponse(template) });
   } catch (error) {
     next(error);
@@ -3121,17 +3549,27 @@ pmsRouter.get("/policies", requireAuth(), async (req, res, next) => {
 
     const query = pmsPolicyListQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    const search = query.search?.trim();
     const where: Prisma.PmsPolicyWhereInput = {
       companyId: access.company.id,
       ...(query.active === "ACTIVE" ? { active: true } : {}),
       ...(query.active === "INACTIVE" ? { active: false } : {}),
       ...(query.category !== "ALL" ? { category: query.category } : {}),
+      ...(search
+        ? {
+            OR: [
+              { title: { contains: search, mode: "insensitive" } },
+              { body: { contains: search, mode: "insensitive" } },
+              { notes: { contains: search, mode: "insensitive" } },
+            ],
+          }
+        : {}),
     };
 
     const [policies, total] = await prisma.$transaction([
       prisma.pmsPolicy.findMany({
         where,
-        orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
+        orderBy: buildPmsPolicyOrderBy(query),
         take: query.take,
         skip: query.skip,
       }),
@@ -3172,6 +3610,20 @@ pmsRouter.post("/policies", requireAuth(), async (req, res, next) => {
       },
     });
 
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS policy created",
+      message: `${req.user.email} created PMS policy ${policy.title}.`,
+      metadata: {
+        action: "create",
+        resourceType: "pmsPolicy",
+        policyId: policy.id,
+        category: policy.category,
+      },
+    });
+
     res.status(201).json({ policy: pmsPolicyResponse(policy) });
   } catch (error) {
     next(error);
@@ -3204,6 +3656,21 @@ pmsRouter.patch("/policies/:policyId", requireAuth(), async (req, res, next) => 
       data: buildPmsPolicyUpdateData(data, userId),
     });
 
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS policy updated",
+      message: `${req.user.email} updated PMS policy ${policy.title}.`,
+      metadata: {
+        action: "update",
+        resourceType: "pmsPolicy",
+        policyId: policy.id,
+        category: policy.category,
+        changedFields: Object.keys(data),
+      },
+    });
+
     res.json({ policy: pmsPolicyResponse(policy) });
   } catch (error) {
     next(error);
@@ -3218,6 +3685,14 @@ pmsRouter.get("/inspections", requireAuth(), async (req, res, next) => {
 
     const query = pmsInspectionListQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    await assertPmsFilterLinksBelongToCompany({
+      companyId: access.company.id,
+      leaseId: query.leaseId,
+      tenantId: query.tenantId,
+      propertyId: query.propertyId,
+      unitId: query.unitId,
+    });
+    const search = query.search?.trim();
     const where: Prisma.PmsInspectionWhereInput = {
       companyId: access.company.id,
       ...(query.propertyId ? { propertyId: query.propertyId } : {}),
@@ -3225,13 +3700,25 @@ pmsRouter.get("/inspections", requireAuth(), async (req, res, next) => {
       ...(query.tenantId ? { tenantId: query.tenantId } : {}),
       ...(query.leaseId ? { leaseId: query.leaseId } : {}),
       ...(query.status !== "ALL" ? { status: query.status } : {}),
+      ...(search
+        ? {
+            OR: [
+              { title: { contains: search, mode: "insensitive" } },
+              { notes: { contains: search, mode: "insensitive" } },
+              { feedback: { contains: search, mode: "insensitive" } },
+              { property: { name: { contains: search, mode: "insensitive" } } },
+              { unit: { unitNumber: { contains: search, mode: "insensitive" } } },
+              { tenant: { fullName: { contains: search, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
     };
 
     const [inspections, total] = await prisma.$transaction([
       prisma.pmsInspection.findMany({
         where,
         include: pmsInspectionInclude,
-        orderBy: [{ scheduledFor: "asc" }, { updatedAt: "desc" }],
+        orderBy: buildPmsInspectionOrderBy(query),
         take: query.take,
         skip: query.skip,
       }),
@@ -3288,6 +3775,21 @@ pmsRouter.post("/inspections", requireAuth(), async (req, res, next) => {
       include: pmsInspectionInclude,
     });
 
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS inspection created",
+      message: `${req.user.email} created PMS inspection ${inspection.title}.`,
+      metadata: {
+        action: "create",
+        resourceType: "pmsInspection",
+        inspectionId: inspection.id,
+        status: inspection.status,
+        propertyId: inspection.propertyId,
+      },
+    });
+
     res.status(201).json({ inspection: pmsInspectionResponse(inspection) });
   } catch (error) {
     next(error);
@@ -3333,6 +3835,21 @@ pmsRouter.patch("/inspections/:inspectionId", requireAuth(), async (req, res, ne
       include: pmsInspectionInclude,
     });
 
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS inspection updated",
+      message: `${req.user.email} updated PMS inspection ${inspection.title}.`,
+      metadata: {
+        action: "update",
+        resourceType: "pmsInspection",
+        inspectionId: inspection.id,
+        status: inspection.status,
+        changedFields: Object.keys(data),
+      },
+    });
+
     res.json({ inspection: pmsInspectionResponse(inspection) });
   } catch (error) {
     next(error);
@@ -3373,7 +3890,7 @@ pmsRouter.get("/properties", requireAuth(), async (req, res, next) => {
       prisma.pmsProperty.findMany({
         where,
         include: pmsPropertyInclude,
-        orderBy: [{ updatedAt: "desc" }, { name: "asc" }],
+        orderBy: buildPmsPropertyOrderBy(query),
         take: query.take,
         skip: query.skip,
       }),
@@ -3580,7 +4097,7 @@ pmsRouter.get(
         prisma.pmsUnit.findMany({
           where,
           include: pmsUnitInclude,
-          orderBy: [{ unitNumber: "asc" }, { createdAt: "desc" }],
+          orderBy: buildPmsUnitOrderBy(query, "property"),
           take: query.take,
           skip: query.skip,
         }),
@@ -3728,7 +4245,7 @@ pmsRouter.get("/units", requireAuth(), async (req, res, next) => {
       prisma.pmsUnit.findMany({
         where,
         include: pmsUnitInclude,
-        orderBy: [{ updatedAt: "desc" }, { unitNumber: "asc" }],
+        orderBy: buildPmsUnitOrderBy(query, "portfolio"),
         take: query.take,
         skip: query.skip,
       }),
