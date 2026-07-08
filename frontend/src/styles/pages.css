@@ -19126,3 +19126,368 @@ transition: none;
 .pms-checkbox-grid small {
   color: #64748b;
 }
+
+/* =========================================================
+   PMS launch polish: staff and import/export operations
+   ========================================================= */
+
+.pms-main--compact .pms-header {
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.pms-main--compact .pms-header h1 {
+  font-size: clamp(2rem, 3vw, 3.1rem);
+  max-width: 680px;
+}
+
+.pms-main--compact .pms-header p:not(.eyebrow) {
+  max-width: 760px;
+}
+
+.pms-panel-grid--operations {
+  grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.55fr);
+  gap: 22px;
+}
+
+.pms-card-heading {
+  display: grid;
+  gap: 8px;
+}
+
+.pms-card-heading p:not(.eyebrow),
+.pms-next-actions__header p:not(.eyebrow) {
+  margin: 0;
+  color: rgba(255, 247, 223, 0.7);
+}
+
+.pms-form-grid--compact {
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
+}
+
+.pms-form-card > label,
+.pms-csv-editor,
+.pms-scope-card,
+.pms-permission-groups {
+  display: grid;
+  gap: 8px;
+  color: rgba(255, 247, 223, 0.76);
+  font-weight: 760;
+}
+
+.pms-form-card > label input,
+.pms-form-card > label select,
+.pms-form-card > label textarea,
+.pms-csv-editor textarea,
+.pms-upload-control input::file-selector-button {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(3, 29, 33, 0.82);
+  color: #fff7df;
+}
+
+.pms-form-card > label input,
+.pms-form-card > label select,
+.pms-csv-editor textarea {
+  width: 100%;
+}
+
+.pms-upload-control {
+  min-height: 96px;
+  padding: 16px;
+  border: 1px dashed rgba(226, 193, 122, 0.36);
+  border-radius: 18px;
+  background: rgba(3, 29, 33, 0.32);
+}
+
+.pms-upload-control span,
+.pms-csv-editor span {
+  color: rgba(255, 247, 223, 0.68);
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pms-upload-control strong {
+  color: #fff7df;
+  font-size: 0.96rem;
+}
+
+.pms-upload-control input {
+  color: rgba(255, 247, 223, 0.72);
+}
+
+.pms-upload-control input::file-selector-button {
+  margin-inline-end: 10px;
+  padding: 9px 12px;
+  color: #fff7df;
+  cursor: pointer;
+}
+
+.pms-csv-editor textarea {
+  min-height: 240px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.pms-card-actions--prominent {
+  align-items: center;
+  padding-top: 4px;
+}
+
+.pms-import-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(226, 193, 122, 0.22);
+  border-radius: 18px;
+  background: rgba(226, 193, 122, 0.08);
+}
+
+.pms-import-preview div {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.pms-import-preview span,
+.pms-import-preview li {
+  color: rgba(255, 247, 223, 0.68);
+}
+
+.pms-import-preview strong {
+  display: block;
+  margin-top: 4px;
+  color: #fff7df;
+  font-size: 1.45rem;
+}
+
+.pms-import-preview ul {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-inline-start: 18px;
+}
+
+.pms-export-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.pms-export-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 247, 223, 0.74);
+  text-decoration: none;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.pms-export-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(226, 193, 122, 0.42);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.pms-export-button strong {
+  color: #fff7df;
+}
+
+.pms-import-batches {
+  margin-top: 22px;
+}
+
+.pms-empty-card {
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(3, 29, 33, 0.28);
+  color: rgba(255, 247, 223, 0.68);
+}
+
+.pms-scope-card,
+.pms-permission-groups {
+  margin: 0;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 20px;
+  background: rgba(3, 29, 33, 0.28);
+}
+
+.pms-scope-card legend,
+.pms-permission-groups legend {
+  padding: 0 7px;
+  color: #f7d88d;
+  font-weight: 900;
+}
+
+.pms-scope-card p {
+  margin: 0;
+  color: rgba(255, 247, 223, 0.66);
+  font-weight: 600;
+}
+
+.pms-scope-summary {
+  display: inline-flex;
+  width: fit-content;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: rgba(226, 193, 122, 0.16);
+  color: #f7d88d;
+  font-weight: 900;
+}
+
+.pms-pill-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.pms-pill-check {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 247, 223, 0.76);
+  cursor: pointer;
+}
+
+.pms-pill-check input {
+  width: 14px;
+  height: 14px;
+  accent-color: #d5ad5f;
+}
+
+.pms-pill-check:has(input:checked) {
+  border-color: rgba(226, 193, 122, 0.46);
+  background: rgba(226, 193, 122, 0.16);
+  color: #fff7df;
+}
+
+.pms-permission-groups {
+  gap: 14px;
+}
+
+.pms-permission-group {
+  display: grid;
+  gap: 9px;
+}
+
+.pms-permission-group h3 {
+  margin: 0;
+  color: #fff7df;
+  font-size: 0.95rem;
+}
+
+.pms-full-width-action {
+  justify-content: center;
+  width: 100%;
+}
+
+.pms-staff-list {
+  display: grid;
+  gap: 12px;
+}
+
+.pms-staff-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.pms-staff-card__identity,
+.pms-staff-card__danger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pms-staff-card__identity strong {
+  display: block;
+  color: #fff7df;
+}
+
+.pms-staff-card__identity span,
+.pms-staff-card__meta,
+.pms-staff-card__danger span {
+  color: rgba(255, 247, 223, 0.66);
+}
+
+.pms-staff-card__meta {
+  display: grid;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.pms-staff-card__danger {
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pms-portfolio-list-card,
+.pms-staff-list-card,
+.pms-export-card {
+  align-self: start;
+}
+
+/* Override older light checkbox styles for dark PMS cards. */
+.pms-checkbox-grid {
+  border-color: rgba(255, 255, 255, 0.13);
+  background: rgba(3, 29, 33, 0.28);
+  color: rgba(255, 247, 223, 0.78);
+}
+
+.pms-checkbox-grid legend {
+  color: #f7d88d;
+}
+
+.pms-checkbox-grid small {
+  color: rgba(255, 247, 223, 0.62);
+}
+
+@media (max-width: 1100px) {
+  .pms-panel-grid--operations,
+  .pms-form-grid--compact {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .pms-main--compact .pms-header {
+    align-items: stretch;
+  }
+
+  .pms-staff-card__identity,
+  .pms-staff-card__danger,
+  .pms-export-button {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pms-pill-grid {
+    display: grid;
+  }
+
+  .pms-pill-check {
+    border-radius: 14px;
+  }
+
+  .pms-import-preview {
+    grid-template-columns: 1fr;
+  }
+}

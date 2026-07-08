@@ -181,25 +181,57 @@ const pmsRoles: PmsMemberRole[] = [
   "PMS_VIEWER",
 ];
 
-const pmsPermissionKeys: PmsPermissionKey[] = [
-  "INVENTORY_VIEW",
-  "INVENTORY_MANAGE",
-  "TENANCY_VIEW",
-  "TENANCY_MANAGE",
-  "RENT_VIEW",
-  "RENT_MANAGE",
-  "ACCOUNTING_VIEW",
-  "ACCOUNTING_MANAGE",
-  "MAINTENANCE_VIEW",
-  "MAINTENANCE_MANAGE",
-  "REPORTS_VIEW",
-  "SETTINGS_MANAGE",
-  "COMMUNICATIONS_SEND",
-  "DOCUMENTS_VIEW",
-  "DOCUMENTS_MANAGE",
-  "STAFF_MANAGE",
-  "IMPORT_EXPORT",
+const pmsPermissionGroups: Array<{
+  key: string;
+  label: { en: string; ar: string };
+  permissions: PmsPermissionKey[];
+}> = [
+  {
+    key: "inventory",
+    label: { en: "Inventory", ar: "المخزون" },
+    permissions: ["INVENTORY_VIEW", "INVENTORY_MANAGE", "IMPORT_EXPORT"],
+  },
+  {
+    key: "tenancy",
+    label: { en: "Tenancy", ar: "الإيجارات" },
+    permissions: ["TENANCY_VIEW", "TENANCY_MANAGE", "RENT_VIEW", "RENT_MANAGE"],
+  },
+  {
+    key: "finance",
+    label: { en: "Finance", ar: "المالية" },
+    permissions: ["ACCOUNTING_VIEW", "ACCOUNTING_MANAGE", "REPORTS_VIEW"],
+  },
+  {
+    key: "operations",
+    label: { en: "Operations", ar: "التشغيل" },
+    permissions: ["MAINTENANCE_VIEW", "MAINTENANCE_MANAGE", "DOCUMENTS_VIEW", "DOCUMENTS_MANAGE", "COMMUNICATIONS_SEND"],
+  },
+  {
+    key: "admin",
+    label: { en: "Administration", ar: "الإدارة" },
+    permissions: ["SETTINGS_MANAGE", "STAFF_MANAGE"],
+  },
 ];
+
+const pmsPermissionLabels: Record<PmsPermissionKey, { en: string; ar: string }> = {
+  INVENTORY_VIEW: { en: "View inventory", ar: "عرض المخزون" },
+  INVENTORY_MANAGE: { en: "Manage inventory", ar: "إدارة المخزون" },
+  TENANCY_VIEW: { en: "View tenancy", ar: "عرض الإيجارات" },
+  TENANCY_MANAGE: { en: "Manage tenancy", ar: "إدارة الإيجارات" },
+  RENT_VIEW: { en: "View rent", ar: "عرض الإيجار" },
+  RENT_MANAGE: { en: "Manage rent", ar: "إدارة الإيجار" },
+  ACCOUNTING_VIEW: { en: "View accounting", ar: "عرض المحاسبة" },
+  ACCOUNTING_MANAGE: { en: "Manage accounting", ar: "إدارة المحاسبة" },
+  MAINTENANCE_VIEW: { en: "View maintenance", ar: "عرض الصيانة" },
+  MAINTENANCE_MANAGE: { en: "Manage maintenance", ar: "إدارة الصيانة" },
+  REPORTS_VIEW: { en: "View reports", ar: "عرض التقارير" },
+  SETTINGS_MANAGE: { en: "Manage settings", ar: "إدارة الإعدادات" },
+  COMMUNICATIONS_SEND: { en: "Send communications", ar: "إرسال التواصل" },
+  DOCUMENTS_VIEW: { en: "View documents", ar: "عرض المستندات" },
+  DOCUMENTS_MANAGE: { en: "Manage documents", ar: "إدارة المستندات" },
+  STAFF_MANAGE: { en: "Manage staff", ar: "إدارة الفريق" },
+  IMPORT_EXPORT: { en: "Import / export", ar: "استيراد وتصدير" },
+};
 
 const unitStatuses: PmsUnitStatus[] = [
   "VACANT",
@@ -440,6 +472,14 @@ function getRoleLabel(role: string, language: "en" | "ar") {
   };
 
   return labels[role]?.[language] ?? role;
+}
+
+function getPermissionLabel(permission: PmsPermissionKey, language: "en" | "ar") {
+  return pmsPermissionLabels[permission]?.[language] ?? formatStatusText(permission);
+}
+
+function getPermissionGroupLabel(group: (typeof pmsPermissionGroups)[number], language: "en" | "ar") {
+  return group.label[language];
 }
 
 function getCompanyName(
@@ -1095,6 +1135,8 @@ export default function PmsPortal() {
           communications: "التواصل",
           policies: "السياسات",
           importExport: "الاستيراد والتصدير",
+          importExportTitle: "الاستيراد والتصدير",
+          importExportDescription: "استورد بيانات PMS بشكل آمن مع معاينة أخطاء قبل الاعتماد، أو صدّر بيانات التشغيل كملفات CSV.",
           bulkImport: "استيراد CSV",
           bulkExport: "تصدير CSV",
           importType: "نوع الاستيراد",
@@ -1107,13 +1149,27 @@ export default function PmsPortal() {
           downloadTemplate: "تحميل نموذج CSV",
           exportData: "تصدير البيانات",
           previewDoesNotWrite: "المعاينة لا تنشئ أي سجلات. الاعتماد فقط يستورد الصفوف الصحيحة.",
+          pasteCsvOrUpload: "الصق CSV هنا أو اختر ملفاً للمعاينة.",
+          csvEditorPlaceholder: "name,code,city\nExample Tower,EX-001,Muscat",
+          noImportBatches: "لا توجد دفعات استيراد بعد. ستظهر عمليات الاستيراد المعتمدة هنا.",
+          exportHelp: "حمّل ملفات CSV لاستخدامها في التدقيق أو الانتقال أو التحليل.",
           staff: "فريق PMS",
+          staffTitle: "الفريق والصلاحيات",
+          staffDescription: "ادعُ الموظفين، عيّن أدوار PMS، وحدد نطاق العقارات والصلاحيات بدون منح صلاحيات منصة عامة.",
           inviteStaff: "إضافة موظف",
           staffEmail: "بريد المستخدم",
           propertyScope: "نطاق العقارات",
           allProperties: "كل العقارات",
           selectedProperties: "عقارات محددة",
           customPermissions: "صلاحيات إضافية",
+          permissionGroups: "مجموعات الصلاحيات",
+          noExtraPermissions: "لا توجد صلاحيات إضافية محددة.",
+          activeStaff: "أعضاء نشطون",
+          staffDangerZone: "إجراء حساس",
+          staffScopeHelp: "اتركه فارغاً للوصول لكل العقارات، أو حدد عقارات معينة لهذا الموظف.",
+          portfolioHelp: "اجمع العقارات داخل محافظ لتسهيل إدارة الفِرق والتقارير.",
+          emptyPortfolios: "لا توجد محافظ بعد. أنشئ محفظة لتجميع العقارات أو الفروع.",
+          noPropertiesForScope: "أضف عقارات أولاً لتفعيل تحديد النطاق.",
           suspendAccess: "تعليق الوصول",
           restoreAccess: "إعادة التفعيل",
           portfolios: "المحافظ",
@@ -1342,6 +1398,8 @@ export default function PmsPortal() {
           communications: "Communications",
           policies: "Policies",
           importExport: "Import / Export",
+          importExportTitle: "Import / Export",
+          importExportDescription: "Safely onboard PMS records with CSV validation before commit, or export operational datasets for audit and migration.",
           bulkImport: "CSV import",
           bulkExport: "CSV export",
           importType: "Import type",
@@ -1354,13 +1412,27 @@ export default function PmsPortal() {
           downloadTemplate: "Download CSV template",
           exportData: "Export data",
           previewDoesNotWrite: "Preview does not create records. Commit imports valid rows only.",
+          pasteCsvOrUpload: "Paste CSV here or choose a file to preview.",
+          csvEditorPlaceholder: "name,code,city\nExample Tower,EX-001,Muscat",
+          noImportBatches: "No import batches yet. Committed imports will appear here.",
+          exportHelp: "Download CSV files for audits, migration checks, or offline review.",
           staff: "PMS staff",
+          staffTitle: "Staff and permissions",
+          staffDescription: "Invite staff, assign PMS roles, limit property scopes, and add focused permissions without granting global platform power.",
           inviteStaff: "Invite staff",
           staffEmail: "User email",
           propertyScope: "Property scope",
           allProperties: "All properties",
           selectedProperties: "Selected properties",
           customPermissions: "Extra permissions",
+          permissionGroups: "Permission groups",
+          noExtraPermissions: "No extra permissions selected.",
+          activeStaff: "Active staff",
+          staffDangerZone: "Sensitive action",
+          staffScopeHelp: "Leave empty for all company properties, or select specific properties for this staff member.",
+          portfolioHelp: "Group properties into portfolios for branch, team, or reporting workflows.",
+          emptyPortfolios: "No portfolios yet. Create one to group properties or branches.",
+          noPropertiesForScope: "Add properties before assigning a property scope.",
           suspendAccess: "Suspend access",
           restoreAccess: "Restore access",
           portfolios: "Portfolios",
@@ -1408,6 +1480,14 @@ export default function PmsPortal() {
   const canManageStaffRecords = canEditOperations(overview?.workspace.member.role);
   const canSeeDocuments = canViewDocuments(overview?.workspace.member.role);
   const canManageDocumentRecords = canManageDocuments(overview?.workspace.member.role);
+
+  const sectionMeta = section === "importExport"
+    ? { eyebrow: copy.importExport, title: copy.importExportTitle, description: copy.importExportDescription }
+    : section === "staff"
+      ? { eyebrow: copy.accessControls, title: copy.staffTitle, description: copy.staffDescription }
+      : { eyebrow: copy.eyebrow, title: copy.portal, description: copy.portalText };
+
+  const isOperationalSubpage = section === "importExport" || section === "staff";
 
   async function loadPortal() {
     if (!token) return;
@@ -2655,12 +2735,12 @@ export default function PmsPortal() {
         </nav>
       </aside>
 
-      <div className="pms-main">
+      <div className={cn("pms-main", isOperationalSubpage && "pms-main--compact")}>
         <header className="pms-header">
           <div>
-            <p className="eyebrow">{copy.eyebrow}</p>
-            <h1 id="pms-title">{copy.portal}</h1>
-            <p>{copy.portalText}</p>
+            <p className="eyebrow">{sectionMeta.eyebrow}</p>
+            <h1 id="pms-title">{sectionMeta.title}</h1>
+            <p>{sectionMeta.description}</p>
           </div>
 
           {overview ? (
@@ -3442,34 +3522,44 @@ export default function PmsPortal() {
             ) : null}
 
             {section === "importExport" ? (
-              <section className="pms-panel-grid pms-panel-grid--inventory">
-                <form className="pms-form-card" onSubmit={handlePreviewImport}>
-                  <div>
+              <section className="pms-panel-grid pms-panel-grid--operations">
+                <form className="pms-form-card pms-import-card" onSubmit={handlePreviewImport}>
+                  <div className="pms-card-heading">
                     <p className="eyebrow">{copy.privateInventory}</p>
                     <h2>{copy.bulkImport}</h2>
                     <p>{copy.previewDoesNotWrite}</p>
                   </div>
                   {!canManageImportRecords ? <p className="form-error">{copy.cannotEdit}</p> : null}
-                  <label>
-                    {copy.importType}
-                    <select value={importType} onChange={(event) => { setImportType(event.target.value as PmsImportType); setImportPreview(null); }}>
-                      <option value="PROPERTIES">{copy.properties}</option>
-                      <option value="UNITS">{copy.units}</option>
-                      <option value="TENANTS">{copy.tenants}</option>
-                      <option value="LEASES">{copy.rentals}</option>
-                    </select>
+
+                  <div className="pms-form-grid pms-form-grid--compact">
+                    <label>
+                      {copy.importType}
+                      <select value={importType} onChange={(event) => { setImportType(event.target.value as PmsImportType); setImportPreview(null); }}>
+                        <option value="PROPERTIES">{copy.properties}</option>
+                        <option value="UNITS">{copy.units}</option>
+                        <option value="TENANTS">{copy.tenants}</option>
+                        <option value="LEASES">{copy.rentals}</option>
+                      </select>
+                    </label>
+
+                    <label className="pms-upload-control">
+                      <span>{copy.csvFile}</span>
+                      <input type="file" accept=".csv,text/csv" onChange={(event) => void handleImportFileChange(event.target.files?.[0])} />
+                      <strong>{copy.pasteCsvOrUpload}</strong>
+                    </label>
+                  </div>
+
+                  <label className="pms-csv-editor">
+                    <span>CSV</span>
+                    <textarea
+                      rows={10}
+                      value={importCsvText}
+                      onChange={(event) => { setImportCsvText(event.target.value); setImportPreview(null); }}
+                      placeholder={copy.csvEditorPlaceholder}
+                    />
                   </label>
-                  <label>
-                    {copy.csvFile}
-                    <input type="file" accept=".csv,text/csv" onChange={(event) => void handleImportFileChange(event.target.files?.[0])} />
-                  </label>
-                  <textarea
-                    rows={8}
-                    value={importCsvText}
-                    onChange={(event) => { setImportCsvText(event.target.value); setImportPreview(null); }}
-                    placeholder="name,code,city"
-                  />
-                  <div className="pms-card-actions">
+
+                  <div className="pms-card-actions pms-card-actions--wrap pms-card-actions--prominent">
                     <a className="button-link" href={overview ? getPmsImportTemplateUrl(importType, overview.workspace.company.id) : getPmsImportTemplateUrl(importType)}>
                       {copy.downloadTemplate}
                     </a>
@@ -3480,14 +3570,35 @@ export default function PmsPortal() {
                       {copy.commitImport}
                     </button>
                   </div>
+
+                  {importPreview ? (
+                    <article className="pms-import-preview pms-import-preview--inline">
+                      <div>
+                        <span>{copy.validRows}</span>
+                        <strong>{formatNumber(importPreview.validRows.length, language)}</strong>
+                      </div>
+                      <div>
+                        <span>{copy.invalidRows}</span>
+                        <strong>{formatNumber(importPreview.invalidRows.length, language)}</strong>
+                      </div>
+                      {importPreview.invalidRows.length > 0 ? (
+                        <ul>
+                          {importPreview.invalidRows.slice(0, 5).map((row) => (
+                            <li key={row.rowNumber}>Row {row.rowNumber}: {row.errors.join("; ")}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </article>
+                  ) : null}
                 </form>
 
-                <div className="pms-next-actions">
+                <div className="pms-next-actions pms-export-card">
                   <div className="pms-next-actions__header">
                     <p className="eyebrow">{copy.importExport}</p>
                     <h2>{copy.bulkExport}</h2>
+                    <p>{copy.exportHelp}</p>
                   </div>
-                  <div className="pms-card-actions pms-card-actions--wrap">
+                  <div className="pms-export-grid">
                     {([
                       ["properties", copy.properties],
                       ["units", copy.units],
@@ -3497,28 +3608,22 @@ export default function PmsPortal() {
                       ["maintenance", copy.maintenance],
                       ["accounting-summary", copy.accountingSummary],
                     ] as const).map(([type, label]) => (
-                      <a key={type} className="button-link" href={overview ? getPmsExportUrl(type, overview.workspace.company.id) : getPmsExportUrl(type)}>
-                        {copy.exportData} · {label}
+                      <a key={type} className="pms-export-button" href={overview ? getPmsExportUrl(type, overview.workspace.company.id) : getPmsExportUrl(type)}>
+                        <span>{copy.exportData}</span>
+                        <strong>{label}</strong>
                       </a>
                     ))}
                   </div>
 
-                  {importPreview ? (
-                    <article className="pms-inventory-card pms-inventory-card--highlight">
-                      <div>
-                        <strong>{copy.previewImport}</strong>
-                        <span>{copy.validRows}: {formatNumber(importPreview.validRows.length, language)} · {copy.invalidRows}: {formatNumber(importPreview.invalidRows.length, language)}</span>
-                        {importPreview.invalidRows.slice(0, 5).map((row) => (
-                          <small key={row.rowNumber}>Row {row.rowNumber}: {row.errors.join("; ")}</small>
-                        ))}
-                      </div>
-                    </article>
-                  ) : null}
-
-                  <div className="pms-inventory-list">
-                    <p className="eyebrow">{copy.importBatches}</p>
+                  <div className="pms-inventory-list pms-import-batches">
+                    <div className="pms-next-actions__header">
+                      <p className="eyebrow">{copy.importBatches}</p>
+                    </div>
+                    {importBatches.length === 0 ? (
+                      <div className="pms-empty-card">{copy.noImportBatches}</div>
+                    ) : null}
                     {importBatches.map((batch) => (
-                      <article key={batch.id} className="pms-inventory-card">
+                      <article key={batch.id} className="pms-inventory-card pms-import-batch-card">
                         <div>
                           <strong>{batch.type} · {batch.status}</strong>
                           <span>{copy.validRows}: {batch.successfulRows} · {copy.invalidRows}: {batch.failedRows}</span>
@@ -3532,135 +3637,167 @@ export default function PmsPortal() {
             ) : null}
 
             {section === "staff" ? (
-              <section className="pms-panel-grid pms-panel-grid--inventory">
-                <form className="pms-form-card" onSubmit={handleInviteStaff}>
-                  <div>
+              <section className="pms-panel-grid pms-panel-grid--operations">
+                <form className="pms-form-card pms-staff-form" onSubmit={handleInviteStaff}>
+                  <div className="pms-card-heading">
                     <p className="eyebrow">{copy.accessControls}</p>
                     <h2>{copy.inviteStaff}</h2>
                     <p>{copy.accessScoped}</p>
                   </div>
 
-                  <label>
-                    {copy.staffEmail}
-                    <input
-                      type="email"
-                      value={staffEmail}
-                      onChange={(event) => setStaffEmail(event.target.value)}
-                      placeholder="user@example.com"
-                      required
-                    />
-                  </label>
+                  <div className="pms-form-grid pms-form-grid--compact">
+                    <label>
+                      {copy.staffEmail}
+                      <input
+                        type="email"
+                        value={staffEmail}
+                        onChange={(event) => setStaffEmail(event.target.value)}
+                        placeholder="user@example.com"
+                        required
+                      />
+                    </label>
 
-                  <label>
-                    {copy.role}
-                    <select
-                      value={staffRole}
-                      onChange={(event) => setStaffRole(event.target.value as PmsMemberRole)}
-                    >
-                      {pmsRoles.map((role) => (
-                        <option key={role} value={role}>
-                          {getRoleLabel(role, language)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                    <label>
+                      {copy.role}
+                      <select
+                        value={staffRole}
+                        onChange={(event) => setStaffRole(event.target.value as PmsMemberRole)}
+                      >
+                        {pmsRoles.map((role) => (
+                          <option key={role} value={role}>
+                            {getRoleLabel(role, language)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
 
-                  <fieldset className="pms-checkbox-grid">
+                  <fieldset className="pms-scope-card">
                     <legend>{copy.propertyScope}</legend>
-                    <small>{copy.allProperties}: {staffPropertyIds.length === 0 ? copy.active : copy.selectedProperties}</small>
-                    {staffProperties.map((property) => (
-                      <label key={property.id}>
-                        <input
-                          type="checkbox"
-                          checked={staffPropertyIds.includes(property.id)}
-                          onChange={() => toggleStaffProperty(property.id)}
-                        />
-                        {property.name}{property.code ? ` · ${property.code}` : ""}
-                      </label>
+                    <p>{copy.staffScopeHelp}</p>
+                    <div className="pms-scope-summary">
+                      {staffPropertyIds.length === 0 ? copy.allProperties : `${copy.selectedProperties}: ${staffPropertyIds.length}`}
+                    </div>
+                    {staffProperties.length === 0 ? <div className="pms-empty-card">{copy.noPropertiesForScope}</div> : null}
+                    <div className="pms-pill-grid">
+                      {staffProperties.map((property) => (
+                        <label key={property.id} className="pms-pill-check">
+                          <input
+                            type="checkbox"
+                            checked={staffPropertyIds.includes(property.id)}
+                            onChange={() => toggleStaffProperty(property.id)}
+                          />
+                          <span>{property.name}{property.code ? ` · ${property.code}` : ""}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+
+                  <fieldset className="pms-permission-groups">
+                    <legend>{copy.permissionGroups}</legend>
+                    {pmsPermissionGroups.map((group) => (
+                      <div key={group.key} className="pms-permission-group">
+                        <h3>{getPermissionGroupLabel(group, language)}</h3>
+                        <div className="pms-pill-grid">
+                          {group.permissions.map((permissionKey) => (
+                            <label key={permissionKey} className="pms-pill-check">
+                              <input
+                                type="checkbox"
+                                checked={staffPermissionKeys.includes(permissionKey)}
+                                onChange={() => toggleStaffPermission(permissionKey)}
+                              />
+                              <span>{getPermissionLabel(permissionKey, language)}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </fieldset>
 
-                  <fieldset className="pms-checkbox-grid">
-                    <legend>{copy.customPermissions}</legend>
-                    {pmsPermissionKeys.map((permissionKey) => (
-                      <label key={permissionKey}>
-                        <input
-                          type="checkbox"
-                          checked={staffPermissionKeys.includes(permissionKey)}
-                          onChange={() => toggleStaffPermission(permissionKey)}
-                        />
-                        {permissionKey.replaceAll("_", " ").toLowerCase()}
-                      </label>
-                    ))}
-                  </fieldset>
-
-                  <button className="button-link button-link--primary" type="submit" disabled={!canManageStaffRecords || saving}>
+                  <button className="button-link button-link--primary pms-full-width-action" type="submit" disabled={!canManageStaffRecords || saving}>
                     {copy.inviteStaff}
                   </button>
                 </form>
 
-                <div className="pms-next-actions">
+                <div className="pms-next-actions pms-staff-list-card">
                   <div className="pms-next-actions__header">
                     <p className="eyebrow">{copy.accessControls}</p>
                     <h2>{copy.staff}</h2>
                   </div>
 
-                  <div className="pms-inventory-list">
+                  <div className="pms-staff-list">
                     {staffMembers.map((member) => (
-                      <article key={member.id} className="pms-inventory-card">
-                        <div>
-                          <strong>{member.user.name}</strong>
-                          <span>{member.user.email} · {getRoleLabel(member.role, language)}</span>
-                          <small>
+                      <article key={member.id} className="pms-staff-card">
+                        <div className="pms-staff-card__identity">
+                          <div>
+                            <strong>{member.user.name}</strong>
+                            <span>{member.user.email}</span>
+                          </div>
+                          <em className="pms-status-badge pms-status-badge--active">{getRoleLabel(member.role, language)}</em>
+                        </div>
+                        <div className="pms-staff-card__meta">
+                          <span>
                             {member.propertyScope.allProperties
                               ? copy.allProperties
                               : `${copy.selectedProperties}: ${member.propertyScope.properties.map((property) => property.name).join(", ")}`}
-                          </small>
-                          <small>{member.permissionKeys.slice(0, 6).join(", ")}</small>
+                          </span>
+                          <span>
+                            {member.permissionKeys.length > 0
+                              ? member.permissionKeys.slice(0, 6).map((permission) => getPermissionLabel(permission, language)).join(", ")
+                              : copy.noExtraPermissions}
+                          </span>
                         </div>
-                        <button className="button-link" type="button" disabled={!canManageStaffRecords || saving} onClick={() => void handleToggleStaffAccess(member)}>
-                          {member.active ? copy.suspendAccess : copy.restoreAccess}
-                        </button>
+                        <div className="pms-staff-card__danger">
+                          <span>{copy.staffDangerZone}</span>
+                          <button className={cn("button-link", member.active && "button-link--danger")} type="button" disabled={!canManageStaffRecords || saving} onClick={() => void handleToggleStaffAccess(member)}>
+                            {member.active ? copy.suspendAccess : copy.restoreAccess}
+                          </button>
+                        </div>
                       </article>
                     ))}
                   </div>
                 </div>
 
-                <form className="pms-form-card" onSubmit={handleCreatePortfolio}>
-                  <div>
+                <form className="pms-form-card pms-portfolio-form" onSubmit={handleCreatePortfolio}>
+                  <div className="pms-card-heading">
                     <p className="eyebrow">{copy.propertyScope}</p>
                     <h2>{copy.createPortfolio}</h2>
+                    <p>{copy.portfolioHelp}</p>
                   </div>
                   <label>
                     {copy.portfolioName}
                     <input value={portfolioName} onChange={(event) => setPortfolioName(event.target.value)} required />
                   </label>
-                  <fieldset className="pms-checkbox-grid">
+                  <fieldset className="pms-scope-card pms-scope-card--nested">
                     <legend>{copy.properties}</legend>
-                    {staffProperties.map((property) => (
-                      <label key={property.id}>
-                        <input
-                          type="checkbox"
-                          checked={portfolioPropertyIds.includes(property.id)}
-                          onChange={() => togglePortfolioProperty(property.id)}
-                        />
-                        {property.name}{property.code ? ` · ${property.code}` : ""}
-                      </label>
-                    ))}
+                    {staffProperties.length === 0 ? <div className="pms-empty-card">{copy.noPropertiesForScope}</div> : null}
+                    <div className="pms-pill-grid">
+                      {staffProperties.map((property) => (
+                        <label key={property.id} className="pms-pill-check">
+                          <input
+                            type="checkbox"
+                            checked={portfolioPropertyIds.includes(property.id)}
+                            onChange={() => togglePortfolioProperty(property.id)}
+                          />
+                          <span>{property.name}{property.code ? ` · ${property.code}` : ""}</span>
+                        </label>
+                      ))}
+                    </div>
                   </fieldset>
-                  <button className="button-link button-link--primary" type="submit" disabled={!canManageStaffRecords || saving}>
+                  <button className="button-link button-link--primary pms-full-width-action" type="submit" disabled={!canManageStaffRecords || saving}>
                     {copy.createPortfolio}
                   </button>
                 </form>
 
-                <div className="pms-next-actions">
+                <div className="pms-next-actions pms-portfolio-list-card">
                   <div className="pms-next-actions__header">
                     <p className="eyebrow">{copy.accessControls}</p>
                     <h2>{copy.portfolios}</h2>
                   </div>
                   <div className="pms-inventory-list">
+                    {staffPortfolios.length === 0 ? <div className="pms-empty-card">{copy.emptyPortfolios}</div> : null}
                     {staffPortfolios.map((portfolio) => (
-                      <article key={portfolio.id} className="pms-inventory-card">
+                      <article key={portfolio.id} className="pms-inventory-card pms-portfolio-card">
                         <div>
                           <strong>{portfolio.name}</strong>
                           <span>{portfolio.properties.map((property) => property.name).join(", ") || copy.emptyProperties}</span>
