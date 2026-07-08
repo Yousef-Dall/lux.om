@@ -4,6 +4,7 @@ import { NavLink, Navigate, useLocation } from 'react-router-dom';
 
 import {
   createTenantDocument,
+  confirmTenantMaintenanceResolved,
   createTenantMaintenanceRequest,
   createTenantRentCheckoutSession,
   getTenantDocuments,
@@ -14,6 +15,7 @@ import {
   listTenantMaintenance,
   listTenantRent,
   listTenantRentPayments,
+  reopenTenantMaintenance,
   syncTenantRentPayment,
   updateTenantProfile,
   type TenantLeaseResponse,
@@ -167,6 +169,9 @@ export default function TenantPortal() {
             saving: 'جارٍ الحفظ...',
             saved: 'تم الحفظ بنجاح.',
             requestCreated: 'تم إنشاء طلب الصيانة.',
+            confirmResolved: 'تأكيد الحل',
+            reopenRequest: 'إعادة فتح الطلب',
+            tenantConfirmed: 'تم التأكيد من المستأجر',
             documentsText: 'مستنداتك الخاصة تظهر هنا فقط ولا تظهر لمستأجرين آخرين.',
             uploadDocument: 'إضافة مستند',
             documentTitle: 'عنوان المستند',
@@ -233,6 +238,9 @@ export default function TenantPortal() {
             saving: 'Saving...',
             saved: 'Saved successfully.',
             requestCreated: 'Maintenance request created.',
+            confirmResolved: 'Confirm resolved',
+            reopenRequest: 'Reopen request',
+            tenantConfirmed: 'Confirmed by tenant',
             documentsText: 'Your private tenant documents appear here and are not shared with other tenants.',
             uploadDocument: 'Add document',
             documentTitle: 'Document title',
@@ -340,6 +348,45 @@ export default function TenantPortal() {
       setSuccess(copy.requestCreated);
     } catch (createError) {
       setError(getErrorMessage(createError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleConfirmMaintenance(workOrderId: string) {
+    if (!token || !activeAccessId) return;
+
+    setSaving(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await confirmTenantMaintenanceResolved(token, workOrderId, {}, activeAccessId);
+      const maintenanceResponse = await listTenantMaintenance(token, { accessId: activeAccessId, take: 50 });
+      setMaintenanceData(maintenanceResponse);
+      setSuccess(copy.saved);
+    } catch (confirmError) {
+      setError(getErrorMessage(confirmError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleReopenMaintenance(workOrderId: string) {
+    if (!token || !activeAccessId) return;
+    const notes = window.prompt(copy.description, '') || null;
+
+    setSaving(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await reopenTenantMaintenance(token, workOrderId, { notes }, activeAccessId);
+      const maintenanceResponse = await listTenantMaintenance(token, { accessId: activeAccessId, take: 50 });
+      setMaintenanceData(maintenanceResponse);
+      setSuccess(copy.saved);
+    } catch (reopenError) {
+      setError(getErrorMessage(reopenError));
     } finally {
       setSaving(false);
     }
@@ -745,6 +792,17 @@ export default function TenantPortal() {
                     <div><dt>{copy.dates}</dt><dd>{formatDate(request.createdAt, language)}</dd></div>
                   </dl>
                   {request.description ? <p>{request.description}</p> : null}
+                  {request.tenantConfirmedAt ? <p className="tenant-portal__notice">{copy.tenantConfirmed}</p> : null}
+                  {request.status === 'RESOLVED' ? (
+                    <div className="tenant-portal__actions">
+                      <button className="button-link button-link--primary" type="button" disabled={saving || Boolean(request.tenantConfirmedAt)} onClick={() => void handleConfirmMaintenance(request.id)}>
+                        {copy.confirmResolved}
+                      </button>
+                      <button className="button-link button-link--secondary" type="button" disabled={saving} onClick={() => void handleReopenMaintenance(request.id)}>
+                        {copy.reopenRequest}
+                      </button>
+                    </div>
+                  ) : null}
                 </InfoCard>
               ))}
             </div>

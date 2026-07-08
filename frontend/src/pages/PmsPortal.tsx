@@ -34,7 +34,9 @@ import {
   createPmsLeaseChecklistItem,
   createPmsLeaseRenewalDraft,
   createPmsLease,
+  createPmsMaintenanceQuote,
   createPmsPolicy,
+  createPmsVendor,
   createPmsProperty,
   createPmsTenant,
   createPmsUnit,
@@ -57,12 +59,14 @@ import {
   listPmsPropertyUnits,
   listPmsRentDueItems,
   listPmsTenants,
+  listPmsVendors,
   recordPmsRentPayment,
   listPmsUnits,
   listPmsWorkOrders,
   updatePmsProperty,
   updatePmsUnit,
   updatePmsLeaseChecklistItem,
+  updatePmsMaintenanceQuote,
   updatePmsWorkOrder,
   upsertPmsTenantPortalAccess,
   type PmsAccountingLedgerEntry,
@@ -78,6 +82,8 @@ import {
   type PmsLease,
   type PmsLeasePayload,
   type PmsMaintenancePriority,
+  type PmsMaintenanceQuote,
+  type PmsMaintenanceRecurrenceType,
   type PmsMaintenanceStatus,
   type PmsMoveChecklistItem,
   type PmsMoveChecklistPayload,
@@ -95,6 +101,8 @@ import {
   type PmsUnit,
   type PmsUnitPayload,
   type PmsUnitStatus,
+  type PmsVendor,
+  type PmsVendorPayload,
   type PmsWorkspaceOverview,
   type PmsWorkOrder,
   type PmsWorkOrderPayload,
@@ -166,6 +174,14 @@ const maintenanceStatuses: PmsMaintenanceStatus[] = [
   "WAITING_VENDOR",
   "RESOLVED",
   "CANCELLED",
+];
+
+const maintenanceRecurrenceTypes: PmsMaintenanceRecurrenceType[] = [
+  "NONE",
+  "WEEKLY",
+  "MONTHLY",
+  "QUARTERLY",
+  "YEARLY",
 ];
 
 const pmsDocumentTypes: PmsDocumentType[] = [
@@ -260,6 +276,7 @@ const emptyWorkOrderForm: PmsWorkOrderPayload = {
   propertyId: "",
   unitId: "",
   tenantId: "",
+  vendorId: "",
   title: "",
   description: "",
   priority: "MEDIUM",
@@ -269,7 +286,19 @@ const emptyWorkOrderForm: PmsWorkOrderPayload = {
   cost: "",
   currency: "OMR",
   scheduledFor: "",
+  targetDate: "",
+  recurrenceType: "NONE",
+  nextScheduledDate: "",
   notes: "",
+};
+
+const emptyVendorForm: PmsVendorPayload = {
+  name: "",
+  phone: "",
+  email: "",
+  trade: "",
+  notes: "",
+  active: true,
 };
 
 const emptyLedgerForm: PmsAccountingLedgerPayload = {
@@ -566,6 +595,7 @@ function cleanWorkOrderPayload(
     companyId,
     unitId: form.unitId || null,
     tenantId: form.tenantId || null,
+    vendorId: form.vendorId || null,
     description: form.description || null,
     assignedToText: form.assignedToText || null,
     vendorText: form.vendorText || null,
@@ -573,7 +603,25 @@ function cleanWorkOrderPayload(
     currency: form.currency || "OMR",
     scheduledFor: form.scheduledFor || null,
     resolvedAt: form.resolvedAt || null,
+    targetDate: form.targetDate || null,
+    recurrenceType: form.recurrenceType || "NONE",
+    nextScheduledDate: form.nextScheduledDate || null,
     notes: form.notes || null,
+  };
+}
+
+function cleanVendorPayload(
+  form: PmsVendorPayload,
+  companyId: string,
+): PmsVendorPayload & { companyId: string } {
+  return {
+    ...form,
+    companyId,
+    phone: form.phone || null,
+    email: form.email || null,
+    trade: form.trade || null,
+    notes: form.notes || null,
+    active: form.active ?? true,
   };
 }
 
@@ -705,6 +753,7 @@ export default function PmsPortal() {
   const [leases, setLeases] = useState<PmsLease[]>([]);
   const [rentDueItems, setRentDueItems] = useState<PmsRentDueItem[]>([]);
   const [workOrders, setWorkOrders] = useState<PmsWorkOrder[]>([]);
+  const [vendors, setVendors] = useState<PmsVendor[]>([]);
   const [reportsSummary, setReportsSummary] = useState<PmsReportsSummary | null>(null);
   const [ledgerEntries, setLedgerEntries] = useState<PmsAccountingLedgerEntry[]>([]);
   const [ownerStatement, setOwnerStatement] = useState<PmsOwnerStatement | null>(null);
@@ -730,6 +779,7 @@ export default function PmsPortal() {
   const [leaseForm, setLeaseForm] = useState<PmsLeasePayload>(emptyLeaseForm);
   const [workOrderForm, setWorkOrderForm] =
     useState<PmsWorkOrderPayload>(emptyWorkOrderForm);
+  const [vendorForm, setVendorForm] = useState<PmsVendorPayload>(emptyVendorForm);
   const [ledgerForm, setLedgerForm] =
     useState<PmsAccountingLedgerPayload>(emptyLedgerForm);
   const [templateForm, setTemplateForm] =
@@ -898,6 +948,16 @@ export default function PmsPortal() {
           priority: "الأولوية",
           assignedTo: "المسؤول",
           vendor: "المورّد",
+          vendors: "المورّدون",
+          createVendor: "إضافة مورّد",
+          trade: "التخصص",
+          quote: "عرض السعر",
+          addQuote: "إضافة عرض سعر",
+          approveQuote: "اعتماد العرض",
+          targetDate: "تاريخ الاستهداف",
+          recurrence: "التكرار",
+          overdue: "متأخر",
+          tenantConfirmed: "أكده المستأجر",
           cost: "التكلفة",
           scheduledFor: "موعد مجدول",
           maintenanceRequests: "طلبات الصيانة",
@@ -1089,6 +1149,16 @@ export default function PmsPortal() {
           priority: "Priority",
           assignedTo: "Assigned to",
           vendor: "Vendor",
+          vendors: "Vendors",
+          createVendor: "Create vendor",
+          trade: "Trade",
+          quote: "Quote",
+          addQuote: "Add quote",
+          approveQuote: "Approve quote",
+          targetDate: "Target date",
+          recurrence: "Recurrence",
+          overdue: "Overdue",
+          tenantConfirmed: "Tenant confirmed",
           cost: "Cost",
           scheduledFor: "Scheduled for",
           maintenanceRequests: "Maintenance requests",
@@ -1262,16 +1332,18 @@ export default function PmsPortal() {
         setActiveProperty(null);
         setActiveLease(null);
       } else if (section === "maintenance") {
-        const [propertiesResponse, unitsResponse, tenantsResponse, workOrdersResponse] =
+        const [propertiesResponse, unitsResponse, tenantsResponse, vendorsResponse, workOrdersResponse] =
           await Promise.all([
             listPmsProperties(token, { companyId, take: 100 }),
             listPmsUnits(token, { companyId, take: 200 }),
             listPmsTenants(token, { companyId, take: 100 }),
+            listPmsVendors(token, { companyId, take: 100 }),
             listPmsWorkOrders(token, { companyId, take: 100 }),
           ]);
         setProperties(propertiesResponse.properties);
         setUnits(unitsResponse.units);
         setTenants(tenantsResponse.tenants);
+        setVendors(vendorsResponse.vendors);
         setWorkOrders(workOrdersResponse.workOrders);
         setActiveProperty(null);
         setActiveLease(null);
@@ -1333,6 +1405,7 @@ export default function PmsPortal() {
         setLeases([]);
         setRentDueItems([]);
         setWorkOrders([]);
+        setVendors([]);
         setReportsSummary(null);
         setTemplates([]);
         setPolicies([]);
@@ -1842,6 +1915,78 @@ export default function PmsPortal() {
       setError(
         saveError instanceof ApiError ? saveError.message : copy.unavailable,
       );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCreateVendor(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !overview) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await createPmsVendor(token, cleanVendorPayload(vendorForm, overview.workspace.company.id));
+      setVendorForm(emptyVendorForm);
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(saveError instanceof ApiError ? saveError.message : copy.unavailable);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleAddMaintenanceQuote(workOrder: PmsWorkOrder) {
+    if (!token) return;
+    const amountInput = window.prompt(`${copy.quote} ${copy.amount}`, workOrder.cost ?? "");
+    if (!amountInput) return;
+    const amount = Number(amountInput);
+    if (!Number.isFinite(amount) || amount < 0) {
+      setError(copy.unavailable);
+      return;
+    }
+    const vendorId = workOrder.vendorId || window.prompt(copy.vendor, "") || undefined;
+    const description = window.prompt(copy.quote, "") || undefined;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await createPmsMaintenanceQuote(token, workOrder.id, {
+        amount,
+        vendorId: vendorId || null,
+        currency: workOrder.currency,
+        description,
+        status: "SUBMITTED",
+      });
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(saveError instanceof ApiError ? saveError.message : copy.unavailable);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleApproveMaintenanceQuote(quote: PmsMaintenanceQuote) {
+    if (!token) return;
+    if (!window.confirm(copy.approveQuote)) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await updatePmsMaintenanceQuote(token, quote.id, { status: "APPROVED" });
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(saveError instanceof ApiError ? saveError.message : copy.unavailable);
     } finally {
       setSaving(false);
     }
@@ -2704,9 +2849,47 @@ export default function PmsPortal() {
                   workOrders={workOrders}
                   language={language}
                   canManage={canManageMaintenance}
+                  canApprove={canEditOperations(overview?.workspace.member.role)}
                   saving={saving}
                   onResolve={handleResolveWorkOrder}
+                  onAddQuote={handleAddMaintenanceQuote}
+                  onApproveQuote={handleApproveMaintenanceQuote}
                 />
+
+                <form className="pms-form-card" onSubmit={handleCreateVendor}>
+                  <div>
+                    <p className="eyebrow">{copy.vendors}</p>
+                    <h2>{copy.createVendor}</h2>
+                  </div>
+                  {!canManageMaintenance ? <p className="form-error">{copy.cannotEdit}</p> : null}
+                  <label>
+                    {copy.vendor}
+                    <input required value={vendorForm.name} onChange={(event) => setVendorForm((current) => ({ ...current, name: event.target.value }))} />
+                  </label>
+                  <label>
+                    {copy.trade}
+                    <input value={vendorForm.trade ?? ""} onChange={(event) => setVendorForm((current) => ({ ...current, trade: event.target.value }))} />
+                  </label>
+                  <label>
+                    {copy.phone}
+                    <input value={vendorForm.phone ?? ""} onChange={(event) => setVendorForm((current) => ({ ...current, phone: event.target.value }))} />
+                  </label>
+                  <label>
+                    {copy.email}
+                    <input type="email" value={vendorForm.email ?? ""} onChange={(event) => setVendorForm((current) => ({ ...current, email: event.target.value }))} />
+                  </label>
+                  <button className="button-link button-link--primary" type="submit" disabled={!canManageMaintenance || saving}>
+                    <Plus size={16} aria-hidden="true" />
+                    {copy.createVendor}
+                  </button>
+                  {vendors.length > 0 ? (
+                    <div className="pms-mini-list">
+                      {vendors.slice(0, 6).map((vendor) => (
+                        <span key={vendor.id}>{vendor.name}{vendor.trade ? ` · ${vendor.trade}` : ""}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                </form>
 
                 <form className="pms-form-card" onSubmit={handleCreateWorkOrder}>
                   <div>
@@ -2723,6 +2906,7 @@ export default function PmsPortal() {
                     properties={properties}
                     units={units}
                     tenants={tenants}
+                    vendors={vendors}
                   />
                   <button
                     className="button-link button-link--primary"
@@ -3676,15 +3860,21 @@ function MaintenanceTable({
   workOrders,
   language,
   canManage,
+  canApprove,
   saving,
   onResolve,
+  onAddQuote,
+  onApproveQuote,
 }: {
   copy: PmsCopy;
   workOrders: PmsWorkOrder[];
   language: "en" | "ar";
   canManage: boolean;
+  canApprove: boolean;
   saving: boolean;
   onResolve: (workOrder: PmsWorkOrder) => Promise<void>;
+  onAddQuote: (workOrder: PmsWorkOrder) => Promise<void>;
+  onApproveQuote: (quote: PmsMaintenanceQuote) => Promise<void>;
 }) {
   return (
     <section className="pms-next-actions pms-unit-table-card">
@@ -3703,7 +3893,10 @@ function MaintenanceTable({
                 <th>{copy.unitNumber}</th>
                 <th>{copy.priority}</th>
                 <th>{copy.status}</th>
+                <th>{copy.vendor}</th>
+                <th>{copy.targetDate}</th>
                 <th>{copy.cost}</th>
+                <th>{copy.quote}</th>
                 <th>{copy.update}</th>
               </tr>
             </thead>
@@ -3715,7 +3908,32 @@ function MaintenanceTable({
                   <td>{workOrder.unit?.unitNumber ?? "—"}</td>
                   <td><StatusBadge status={workOrder.priority} /></td>
                   <td><StatusBadge status={workOrder.status} /></td>
+                  <td>{workOrder.vendor?.name ?? workOrder.vendorText ?? "—"}</td>
+                  <td>{workOrder.targetDate ? formatDate(workOrder.targetDate, language) : "—"}{workOrder.overdue ? ` · ${copy.overdue}` : ""}</td>
                   <td>{workOrder.cost ? `${workOrder.cost} ${workOrder.currency}` : "—"}</td>
+                  <td>
+                    {(workOrder.quotes ?? []).slice(0, 2).map((quote) => (
+                      <div className="pms-inline-actions" key={quote.id}>
+                        <span>{quote.amount} {quote.currency} · {quote.status}</span>
+                        <button
+                          className="button-link button-link--secondary"
+                          type="button"
+                          disabled={!canApprove || saving || quote.status === "APPROVED"}
+                          onClick={() => void onApproveQuote(quote)}
+                        >
+                          {copy.approveQuote}
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      className="button-link button-link--secondary"
+                      type="button"
+                      disabled={!canManage || saving}
+                      onClick={() => void onAddQuote(workOrder)}
+                    >
+                      {copy.addQuote}
+                    </button>
+                  </td>
                   <td>
                     <button
                       className="button-link button-link--secondary"
@@ -3744,6 +3962,7 @@ function WorkOrderFields({
   properties,
   units,
   tenants,
+  vendors,
 }: {
   copy: PmsCopy;
   form: PmsWorkOrderPayload;
@@ -3751,6 +3970,7 @@ function WorkOrderFields({
   properties: PmsProperty[];
   units: PmsUnit[];
   tenants: PmsTenant[];
+  vendors: PmsVendor[];
 }) {
   const propertyUnits = form.propertyId
     ? units.filter((unit) => unit.propertyId === form.propertyId)
@@ -3807,6 +4027,22 @@ function WorkOrderFields({
           {tenants.map((tenant) => (
             <option key={tenant.id} value={tenant.id}>
               {tenant.fullName}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {copy.vendor}
+        <select
+          value={form.vendorId ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, vendorId: event.target.value }))
+          }
+        >
+          <option value="">—</option>
+          {vendors.map((vendor) => (
+            <option key={vendor.id} value={vendor.id}>
+              {vendor.name}{vendor.trade ? ` · ${vendor.trade}` : ""}
             </option>
           ))}
         </select>
@@ -3893,6 +4129,37 @@ function WorkOrderFields({
           value={form.scheduledFor ?? ""}
           onChange={(event) =>
             setForm((current) => ({ ...current, scheduledFor: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.targetDate}
+        <input
+          type="date"
+          value={form.targetDate ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, targetDate: event.target.value }))
+          }
+        />
+      </label>
+      <label>
+        {copy.recurrence}
+        <select
+          value={form.recurrenceType ?? "NONE"}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, recurrenceType: event.target.value as PmsMaintenanceRecurrenceType }))
+          }
+        >
+          {maintenanceRecurrenceTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.targetDate} / {copy.recurrence}
+        <input
+          type="date"
+          value={form.nextScheduledDate ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, nextScheduledDate: event.target.value }))
           }
         />
       </label>

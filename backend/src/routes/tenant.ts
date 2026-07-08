@@ -112,6 +112,16 @@ const tenantMaintenanceCreateSchema = z
   })
   .strict();
 
+const tenantMaintenanceActionParamsSchema = z.object({
+  workOrderId: z.string().trim().min(1)
+});
+
+const tenantMaintenanceConfirmationSchema = z
+  .object({
+    notes: z.string().trim().max(1000).optional().nullable()
+  })
+  .strict();
+
 const tenantProfileUpdateSchema = z
   .object({
     phone: z.string().trim().max(80).optional().nullable(),
@@ -358,8 +368,16 @@ function tenantWorkOrderResponse(workOrder: TenantWorkOrderWithRelations) {
     currency: workOrder.currency,
     scheduledFor: workOrder.scheduledFor,
     resolvedAt: workOrder.resolvedAt,
+    targetDate: workOrder.targetDate,
     imageUrls: workOrder.imageUrls,
     documentUrls: workOrder.documentUrls,
+    beforeImageUrls: workOrder.beforeImageUrls,
+    afterImageUrls: workOrder.afterImageUrls,
+    beforeDocumentUrls: workOrder.beforeDocumentUrls,
+    afterDocumentUrls: workOrder.afterDocumentUrls,
+    tenantConfirmedAt: workOrder.tenantConfirmedAt,
+    tenantReopenedAt: workOrder.tenantReopenedAt,
+    tenantConfirmationNotes: workOrder.tenantConfirmationNotes,
     createdAt: workOrder.createdAt,
     updatedAt: workOrder.updatedAt
   };
@@ -611,6 +629,13 @@ async function getTenantLeaseForMaintenance(input: {
   }
 
   return lease;
+}
+
+function getTenantMaintenanceTargetDate(priority: PmsMaintenancePriority) {
+  const target = new Date();
+  const days = priority === PmsMaintenancePriority.URGENT ? 1 : priority === PmsMaintenancePriority.HIGH ? 2 : priority === PmsMaintenancePriority.MEDIUM ? 5 : 10;
+  target.setUTCDate(target.getUTCDate() + days);
+  return target;
 }
 
 async function notifyPmsStaffOfTenantMaintenance(input: {
@@ -1265,6 +1290,7 @@ tenantRouter.post('/maintenance', requireAuth(), async (req, res, next) => {
         description: normalizeNullableText(data.description),
         priority: data.priority,
         status: PmsMaintenanceStatus.OPEN,
+        targetDate: getTenantMaintenanceTargetDate(data.priority),
         currency: lease.currency,
         imageUrls: data.imageUrls ?? [],
         documentUrls: data.documentUrls ?? [],
@@ -1287,6 +1313,86 @@ tenantRouter.post('/maintenance', requireAuth(), async (req, res, next) => {
       workspace: tenantWorkspaceResponse(access),
       workOrder: tenantWorkOrderResponse(workOrder)
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+tenantRouter.post('/maintenance/:workOrderId/confirm-resolved', requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, 'Unauthorized');
+
+    const query = tenantAccessQuerySchema.parse(req.query);
+    const { workOrderId } = tenantMaintenanceActionParamsSchema.parse(req.params);
+    const data = tenantMaintenanceConfirmationSchema.parse(req.body);
+    const access = await resolveTenantAccessOrThrow({ userId: req.user.id, accessId: query.accessId });
+
+    const existing = await prisma.pmsWorkOrder.findFirst({
+      where: { id: workOrderId, companyId: access.company.id, tenantId: access.tenant.id },
+      select: { id: true, status: true }
+    });
+    if (!existing) throw new AppError(404, 'Tenant maintenance request not found.');
+    if (existing.status !== PmsMaintenanceStatus.RESOLVED) {
+      throw new AppError(400, 'Only resolved maintenance requests can be confirmed.');
+    }
+
+    const workOrder = await prisma.pmsWorkOrder.update({
+      where: { id: workOrderId },
+      data: {
+        tenantConfirmedAt: new Date(),
+        tenantConfirmationNotes: normalizeNullableText(data.notes),
+        tenantReopenedAt: null,
+        updatedById: req.user.id
+      },
+      include: tenantWorkOrderInclude
+    });
+
+    res.json({ workspace: tenantWorkspaceResponse(access), workOrder: tenantWorkOrderResponse(workOrder) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+tenantRouter.post('/maintenance/:workOrderId/reopen', requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, 'Unauthorized');
+
+    const query = tenantAccessQuerySchema.parse(req.query);
+    const { workOrderId } = tenantMaintenanceActionParamsSchema.parse(req.params);
+    const data = tenantMaintenanceConfirmationSchema.parse(req.body);
+    const access = await resolveTenantAccessOrThrow({ userId: req.user.id, accessId: query.accessId });
+
+    const existing = await prisma.pmsWorkOrder.findFirst({
+      where: { id: workOrderId, companyId: access.company.id, tenantId: access.tenant.id },
+      select: { id: true, status: true }
+    });
+    if (!existing) throw new AppError(404, 'Tenant maintenance request not found.');
+    if (existing.status !== PmsMaintenanceStatus.RESOLVED) {
+      throw new AppError(400, 'Only resolved maintenance requests can be reopened by tenants.');
+    }
+
+    const workOrder = await prisma.pmsWorkOrder.update({
+      where: { id: workOrderId },
+      data: {
+        status: PmsMaintenanceStatus.IN_PROGRESS,
+        tenantReopenedAt: new Date(),
+        tenantConfirmedAt: null,
+        tenantConfirmationNotes: normalizeNullableText(data.notes),
+        updatedById: req.user.id
+      },
+      include: tenantWorkOrderInclude
+    });
+
+    await notifyPmsStaffOfTenantMaintenance({
+      companyId: access.company.id,
+      workOrderId: workOrder.id,
+      title: workOrder.title,
+      tenantName: access.tenant.fullName,
+      propertyName: workOrder.property.name,
+      unitNumber: workOrder.unit?.unitNumber
+    });
+
+    res.json({ workspace: tenantWorkspaceResponse(access), workOrder: tenantWorkOrderResponse(workOrder) });
   } catch (error) {
     next(error);
   }

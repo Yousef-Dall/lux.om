@@ -37,11 +37,14 @@ async function clearPmsTestDatabase() {
   await prisma.pmsDocument.deleteMany();
   await prisma.pmsInspection.deleteMany();
   await prisma.pmsAccountingLedgerEntry.deleteMany();
+  await prisma.pmsMaintenanceQuote.deleteMany();
   await prisma.pmsWorkOrder.deleteMany();
+  await prisma.pmsVendor.deleteMany();
   await prisma.pmsTenantPortalAccess.deleteMany();
   await prisma.pmsCommunicationTemplate.deleteMany();
   await prisma.pmsPolicy.deleteMany();
   await prisma.pmsAccountingLedgerEntry.deleteMany();
+  await prisma.pmsMaintenanceQuote.deleteMany();
   await prisma.pmsRentPayment.deleteMany();
   await prisma.pmsMoveChecklistItem.deleteMany();
   await prisma.pmsDocument.deleteMany();
@@ -60,6 +63,7 @@ async function clearPmsTestDatabase() {
   await prisma.pmsTenant.deleteMany();
   await prisma.pmsUnit.deleteMany();
   await prisma.pmsProperty.deleteMany();
+  await prisma.pmsVendor.deleteMany();
   await prisma.pmsCompanyMember.deleteMany();
   await prisma.pmsCompanyEntitlement.deleteMany();
   await prisma.travelAgency.deleteMany();
@@ -2564,6 +2568,80 @@ describe("PMS company entitlement access architecture", () => {
       .expect(200);
 
     expect(expiryResponse.body.documents.some((document: { id: string }) => document.id === createdDocument.body.document.id)).toBe(true);
+  });
+
+
+  it("supports maintenance vendors, quote approval, and tenant confirmation scoping", async () => {
+    const admin = await prisma.user.create({ data: { name: "Stage 16 Admin", email: "stage16-admin@lux.test", password: "test-password", role: "ADMIN", emailVerified: true } });
+    const manager = await prisma.user.create({ data: { name: "Stage 16 Manager", email: "stage16-manager@lux.test", password: "test-password", role: "DEVELOPER", emailVerified: true } });
+    const maintenance = await prisma.user.create({ data: { name: "Stage 16 Maintenance", email: "stage16-maintenance@lux.test", password: "test-password", role: "USER", emailVerified: true } });
+    const tenantUser = await prisma.user.create({ data: { name: "Stage 16 Tenant", email: "stage16-tenant@lux.test", password: "test-password", role: "USER", emailVerified: true } });
+    const company = await prisma.developerCompany.create({ data: { slug: "stage16-company", nameEn: "Stage 16 Company", verified: true } });
+    await prisma.pmsCompanyEntitlement.create({ data: { companyId: company.id, status: "ACTIVE", createdById: admin.id, updatedById: admin.id } });
+    await prisma.pmsCompanyMember.createMany({ data: [
+      { companyId: company.id, userId: manager.id, role: "PMS_MANAGER", active: true, createdById: admin.id },
+      { companyId: company.id, userId: maintenance.id, role: "PMS_MAINTENANCE", active: true, createdById: admin.id },
+    ] });
+    const property = await prisma.pmsProperty.create({ data: { companyId: company.id, name: "Stage 16 Property", createdById: manager.id, updatedById: manager.id } });
+    const unit = await prisma.pmsUnit.create({ data: { companyId: company.id, propertyId: property.id, unitNumber: "1601", createdById: manager.id, updatedById: manager.id } });
+    const tenant = await prisma.pmsTenant.create({ data: { companyId: company.id, fullName: "Stage 16 Tenant", email: tenantUser.email, createdById: manager.id, updatedById: manager.id } });
+    await prisma.pmsTenantPortalAccess.create({ data: { companyId: company.id, tenantId: tenant.id, userId: tenantUser.id, createdById: manager.id, active: true } });
+    const managerToken = signToken(manager);
+    const maintenanceToken = signToken(maintenance);
+    const tenantToken = signToken(tenantUser);
+
+    const vendorResponse = await request(app)
+      .post("/api/pms/vendors")
+      .set("Authorization", `Bearer ${maintenanceToken}`)
+      .send({ companyId: company.id, name: "AC Vendor", trade: "HVAC", active: true })
+      .expect(201);
+
+    const workOrderResponse = await request(app)
+      .post("/api/pms/maintenance")
+      .set("Authorization", `Bearer ${maintenanceToken}`)
+      .send({ companyId: company.id, propertyId: property.id, unitId: unit.id, tenantId: tenant.id, vendorId: vendorResponse.body.vendor.id, title: "AC repair", priority: "HIGH", targetDate: new Date(Date.now() - 86400000).toISOString() })
+      .expect(201);
+
+    expect(workOrderResponse.body.workOrder.vendor.id).toBe(vendorResponse.body.vendor.id);
+    expect(workOrderResponse.body.workOrder.overdue).toBe(true);
+
+    const quoteResponse = await request(app)
+      .post(`/api/pms/maintenance/${workOrderResponse.body.workOrder.id}/quotes`)
+      .set("Authorization", `Bearer ${maintenanceToken}`)
+      .send({ vendorId: vendorResponse.body.vendor.id, amount: 125, currency: "OMR", status: "SUBMITTED", description: "Replace part" })
+      .expect(201);
+
+    await request(app)
+      .patch(`/api/pms/maintenance/quotes/${quoteResponse.body.quote.id}`)
+      .set("Authorization", `Bearer ${maintenanceToken}`)
+      .send({ status: "APPROVED" })
+      .expect(403);
+
+    const approvedQuoteResponse = await request(app)
+      .patch(`/api/pms/maintenance/quotes/${quoteResponse.body.quote.id}`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .send({ status: "APPROVED" })
+      .expect(200);
+
+    expect(approvedQuoteResponse.body.quote.status).toBe("APPROVED");
+
+    const updatedWorkOrder = await prisma.pmsWorkOrder.findUniqueOrThrow({ where: { id: workOrderResponse.body.workOrder.id } });
+    expect(Number(updatedWorkOrder.cost)).toBe(125);
+    expect(updatedWorkOrder.approvedQuoteId).toBe(quoteResponse.body.quote.id);
+
+    await request(app)
+      .patch(`/api/pms/maintenance/${workOrderResponse.body.workOrder.id}`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .send({ status: "RESOLVED" })
+      .expect(200);
+
+    const tenantConfirmResponse = await request(app)
+      .post(`/api/tenant/maintenance/${workOrderResponse.body.workOrder.id}/confirm-resolved`)
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({ notes: "Done" })
+      .expect(200);
+
+    expect(tenantConfirmResponse.body.workOrder.tenantConfirmedAt).toBeTruthy();
   });
 
 });

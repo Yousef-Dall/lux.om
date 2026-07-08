@@ -261,6 +261,32 @@ export async function createTenantMaintenanceRequest(
   });
 }
 
+export async function confirmTenantMaintenanceResolved(
+  token: string,
+  workOrderId: string,
+  payload: { notes?: string | null } = {},
+  accessId?: string
+) {
+  return apiClient.post<{ workspace: TenantPortalWorkspace; workOrder: PmsWorkOrder }>(
+    `/api/tenant/maintenance/${workOrderId}/confirm-resolved`,
+    payload,
+    { token, params: tenantParams(accessId) }
+  );
+}
+
+export async function reopenTenantMaintenance(
+  token: string,
+  workOrderId: string,
+  payload: { notes?: string | null } = {},
+  accessId?: string
+) {
+  return apiClient.post<{ workspace: TenantPortalWorkspace; workOrder: PmsWorkOrder }>(
+    `/api/tenant/maintenance/${workOrderId}/reopen`,
+    payload,
+    { token, params: tenantParams(accessId) }
+  );
+}
+
 export async function getTenantProfile(token: string, accessId?: string) {
   return apiClient.get<{
     workspace: TenantPortalWorkspace;

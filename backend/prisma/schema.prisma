@@ -219,6 +219,21 @@ enum PmsMaintenanceStatus {
   CANCELLED
 }
 
+enum PmsMaintenanceQuoteStatus {
+  REQUESTED
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum PmsMaintenanceRecurrenceType {
+  NONE
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
 enum PmsCommunicationChannel {
   EMAIL
   WHATSAPP
@@ -581,6 +596,11 @@ model User {
   pmsAccountingLedgerEntriesUpdated PmsAccountingLedgerEntry[] @relation("PmsAccountingLedgerEntryUpdatedBy")
   pmsWorkOrdersCreated   PmsWorkOrder[] @relation("PmsWorkOrderCreatedBy")
   pmsWorkOrdersUpdated   PmsWorkOrder[] @relation("PmsWorkOrderUpdatedBy")
+  pmsVendorsCreated      PmsVendor[] @relation("PmsVendorCreatedBy")
+  pmsVendorsUpdated      PmsVendor[] @relation("PmsVendorUpdatedBy")
+  pmsMaintenanceQuotesCreated PmsMaintenanceQuote[] @relation("PmsMaintenanceQuoteCreatedBy")
+  pmsMaintenanceQuotesUpdated PmsMaintenanceQuote[] @relation("PmsMaintenanceQuoteUpdatedBy")
+  pmsMaintenanceQuotesApproved PmsMaintenanceQuote[] @relation("PmsMaintenanceQuoteApprovedBy")
   pmsCommunicationTemplatesCreated PmsCommunicationTemplate[] @relation("PmsCommunicationTemplateCreatedBy")
   pmsCommunicationTemplatesUpdated PmsCommunicationTemplate[] @relation("PmsCommunicationTemplateUpdatedBy")
   pmsPoliciesCreated     PmsPolicy[] @relation("PmsPolicyCreatedBy")
@@ -711,6 +731,8 @@ model DeveloperCompany {
   pmsRentPayments PmsRentPayment[]
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
   pmsWorkOrders PmsWorkOrder[]
+  pmsVendors PmsVendor[]
+  pmsMaintenanceQuotes PmsMaintenanceQuote[]
   pmsCommunicationTemplates PmsCommunicationTemplate[]
   pmsPolicies PmsPolicy[]
   pmsInspections PmsInspection[]
@@ -2239,8 +2261,20 @@ model PmsWorkOrder {
   currency       String   @default("OMR") @db.VarChar(3)
   scheduledFor   DateTime?
   resolvedAt     DateTime?
+  targetDate     DateTime?
   imageUrls      String[] @default([])
   documentUrls   String[] @default([])
+  beforeImageUrls    String[] @default([])
+  afterImageUrls     String[] @default([])
+  beforeDocumentUrls String[] @default([])
+  afterDocumentUrls  String[] @default([])
+  recurrenceType     PmsMaintenanceRecurrenceType @default(NONE)
+  nextScheduledDate  DateTime?
+  generatedFromWorkOrderId String?
+  approvedQuoteId    String?
+  tenantConfirmedAt  DateTime?
+  tenantReopenedAt   DateTime?
+  tenantConfirmationNotes String?
   notes          String?
 
   companyId String
@@ -2255,6 +2289,12 @@ model PmsWorkOrder {
   tenantId String?
   tenant   PmsTenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
+  vendorId String?
+  vendor   PmsVendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  generatedFromWorkOrder PmsWorkOrder? @relation("PmsRecurringGeneratedWorkOrders", fields: [generatedFromWorkOrderId], references: [id], onDelete: SetNull)
+  generatedWorkOrders    PmsWorkOrder[] @relation("PmsRecurringGeneratedWorkOrders")
+
   createdById String?
   createdBy   User? @relation("PmsWorkOrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -2263,17 +2303,94 @@ model PmsWorkOrder {
 
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
   pmsDocuments PmsDocument[]
+  quotes PmsMaintenanceQuote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([companyId, status])
   @@index([companyId, priority])
+  @@index([companyId, vendorId])
+  @@index([companyId, targetDate])
+  @@index([companyId, nextScheduledDate])
   @@index([propertyId])
   @@index([unitId])
   @@index([tenantId])
+  @@index([vendorId])
+  @@index([generatedFromWorkOrderId])
   @@index([createdById])
   @@index([updatedById])
+}
+
+model PmsVendor {
+  id       String  @id @default(cuid())
+  name     String
+  phone    String?
+  email    String?
+  trade    String?
+  notes    String?
+  active   Boolean @default(true)
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User? @relation("PmsVendorCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  updatedById String?
+  updatedBy   User? @relation("PmsVendorUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  workOrders PmsWorkOrder[]
+  quotes     PmsMaintenanceQuote[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, active])
+  @@index([companyId, trade])
+  @@index([companyId, name])
+  @@index([createdById])
+  @@index([updatedById])
+}
+
+model PmsMaintenanceQuote {
+  id          String                    @id @default(cuid())
+  amount      Decimal                   @db.Decimal(12, 3)
+  currency    String                    @default("OMR") @db.VarChar(3)
+  description String?
+  status      PmsMaintenanceQuoteStatus @default(REQUESTED)
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  rejectedAt  DateTime?
+  notes       String?
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  workOrderId String
+  workOrder   PmsWorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  vendorId String?
+  vendor   PmsVendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User? @relation("PmsMaintenanceQuoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  updatedById String?
+  updatedBy   User? @relation("PmsMaintenanceQuoteUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  approvedById String?
+  approvedBy   User? @relation("PmsMaintenanceQuoteApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, status])
+  @@index([workOrderId, status])
+  @@index([vendorId])
+  @@index([createdById])
+  @@index([updatedById])
+  @@index([approvedById])
 }
 
 model PmsCommunicationTemplate {

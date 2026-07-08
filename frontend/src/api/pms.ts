@@ -74,6 +74,8 @@ export type PmsMaintenanceStatus =
   | "WAITING_VENDOR"
   | "RESOLVED"
   | "CANCELLED";
+export type PmsMaintenanceQuoteStatus = "REQUESTED" | "SUBMITTED" | "APPROVED" | "REJECTED";
+export type PmsMaintenanceRecurrenceType = "NONE" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
 export type PmsCommunicationChannel = "EMAIL" | "WHATSAPP" | "SMS" | "INTERNAL";
 export type PmsPolicyCategory =
   | "GENERAL"
@@ -94,7 +96,7 @@ export type PmsUnitSortBy = "updatedAt" | "createdAt" | "unitNumber" | "status" 
 export type PmsTenantSortBy = "updatedAt" | "createdAt" | "fullName" | "active";
 export type PmsLeaseSortBy = "updatedAt" | "createdAt" | "startDate" | "endDate" | "rentAmount" | "status";
 export type PmsRentDueSortBy = "dueDate" | "updatedAt" | "createdAt" | "amount" | "paidAmount" | "status";
-export type PmsWorkOrderSortBy = "updatedAt" | "createdAt" | "scheduledFor" | "resolvedAt" | "priority" | "status" | "title" | "cost";
+export type PmsWorkOrderSortBy = "updatedAt" | "createdAt" | "scheduledFor" | "resolvedAt" | "targetDate" | "priority" | "status" | "title" | "cost";
 export type PmsCommunicationTemplateSortBy = "updatedAt" | "createdAt" | "name" | "channel" | "active";
 export type PmsPolicySortBy = "updatedAt" | "createdAt" | "title" | "category" | "active";
 export type PmsInspectionSortBy = "scheduledFor" | "updatedAt" | "createdAt" | "title" | "status" | "rating";
@@ -407,6 +409,38 @@ export type PmsOwnerStatement = {
   deposits: Array<Record<string, unknown>>;
 };
 
+export type PmsVendor = {
+  id: string;
+  companyId: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  trade?: string | null;
+  notes?: string | null;
+  active: boolean;
+  counts?: { workOrders: number; quotes: number };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsMaintenanceQuote = {
+  id: string;
+  companyId: string;
+  workOrderId: string;
+  vendorId?: string | null;
+  vendor?: Pick<PmsVendor, "id" | "name" | "trade" | "phone" | "email" | "active"> | null;
+  amount: string;
+  currency: string;
+  description?: string | null;
+  status: PmsMaintenanceQuoteStatus;
+  submittedAt?: string | null;
+  approvedAt?: string | null;
+  rejectedAt?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PmsWorkOrder = {
   id: string;
   companyId: string;
@@ -416,6 +450,8 @@ export type PmsWorkOrder = {
   unit?: Pick<PmsUnit, "id" | "unitNumber" | "unitName"> | null;
   tenantId?: string | null;
   tenant?: Pick<PmsTenant, "id" | "fullName" | "phone" | "email"> | null;
+  vendorId?: string | null;
+  vendor?: Pick<PmsVendor, "id" | "name" | "trade" | "phone" | "email" | "active"> | null;
   title: string;
   description?: string | null;
   priority: PmsMaintenancePriority;
@@ -426,8 +462,22 @@ export type PmsWorkOrder = {
   currency: string;
   scheduledFor?: string | null;
   resolvedAt?: string | null;
+  targetDate?: string | null;
   imageUrls: string[];
   documentUrls: string[];
+  beforeImageUrls?: string[];
+  afterImageUrls?: string[];
+  beforeDocumentUrls?: string[];
+  afterDocumentUrls?: string[];
+  recurrenceType?: PmsMaintenanceRecurrenceType;
+  nextScheduledDate?: string | null;
+  generatedFromWorkOrderId?: string | null;
+  approvedQuoteId?: string | null;
+  tenantConfirmedAt?: string | null;
+  tenantReopenedAt?: string | null;
+  tenantConfirmationNotes?: string | null;
+  overdue?: boolean;
+  quotes?: PmsMaintenanceQuote[];
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -755,6 +805,7 @@ export type PmsWorkOrderPayload = {
   propertyId: string;
   unitId?: string | null;
   tenantId?: string | null;
+  vendorId?: string | null;
   title: string;
   description?: string | null;
   priority?: PmsMaintenancePriority;
@@ -765,8 +816,36 @@ export type PmsWorkOrderPayload = {
   currency?: string;
   scheduledFor?: string | null;
   resolvedAt?: string | null;
+  targetDate?: string | null;
   imageUrls?: string[];
   documentUrls?: string[];
+  beforeImageUrls?: string[];
+  afterImageUrls?: string[];
+  beforeDocumentUrls?: string[];
+  afterDocumentUrls?: string[];
+  recurrenceType?: PmsMaintenanceRecurrenceType;
+  nextScheduledDate?: string | null;
+  generatedFromWorkOrderId?: string | null;
+  tenantConfirmationNotes?: string | null;
+  notes?: string | null;
+};
+
+export type PmsVendorPayload = {
+  companyId?: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  trade?: string | null;
+  notes?: string | null;
+  active?: boolean;
+};
+
+export type PmsMaintenanceQuotePayload = {
+  vendorId?: string | null;
+  amount?: number | string;
+  currency?: string;
+  description?: string | null;
+  status?: PmsMaintenanceQuoteStatus;
   notes?: string | null;
 };
 
@@ -1244,6 +1323,72 @@ export async function getPmsRentPaymentReceipt(token: string, rentPaymentId: str
   );
 }
 
+export async function listPmsVendors(
+  token: string,
+  params: {
+    companyId?: string;
+    search?: string;
+    active?: "ALL" | "ACTIVE" | "INACTIVE";
+    trade?: string;
+    sortBy?: "updatedAt" | "createdAt" | "name" | "trade" | "active";
+    direction?: PmsSortDirection;
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    vendors: PmsVendor[];
+    pagination: { take: number; skip: number; count: number; total: number };
+  }>("/api/pms/vendors", { token, params });
+}
+
+export async function createPmsVendor(
+  token: string,
+  payload: PmsVendorPayload & { companyId: string },
+) {
+  return apiClient.post<{ vendor: PmsVendor }>("/api/pms/vendors", payload, { token });
+}
+
+export async function updatePmsVendor(
+  token: string,
+  vendorId: string,
+  payload: Partial<PmsVendorPayload>,
+) {
+  return apiClient.patch<{ vendor: PmsVendor }>(`/api/pms/vendors/${vendorId}`, payload, { token });
+}
+
+export async function listPmsMaintenanceQuotes(token: string, workOrderId: string) {
+  return apiClient.get<{ workspace: PmsWorkspaceOverview["workspace"]; quotes: PmsMaintenanceQuote[] }>(
+    `/api/pms/maintenance/${workOrderId}/quotes`,
+    { token },
+  );
+}
+
+export async function createPmsMaintenanceQuote(
+  token: string,
+  workOrderId: string,
+  payload: PmsMaintenanceQuotePayload,
+) {
+  return apiClient.post<{ quote: PmsMaintenanceQuote }>(
+    `/api/pms/maintenance/${workOrderId}/quotes`,
+    payload,
+    { token },
+  );
+}
+
+export async function updatePmsMaintenanceQuote(
+  token: string,
+  quoteId: string,
+  payload: Partial<PmsMaintenanceQuotePayload>,
+) {
+  return apiClient.patch<{ quote: PmsMaintenanceQuote }>(
+    `/api/pms/maintenance/quotes/${quoteId}`,
+    payload,
+    { token },
+  );
+}
+
 export async function listPmsWorkOrders(
   token: string,
   params: {
@@ -1251,6 +1396,8 @@ export async function listPmsWorkOrders(
     propertyId?: string;
     unitId?: string;
     tenantId?: string;
+    vendorId?: string;
+    overdue?: "ALL" | "OVERDUE" | "NOT_OVERDUE";
     search?: string;
     status?: "ALL" | PmsMaintenanceStatus;
     priority?: "ALL" | PmsMaintenancePriority;
