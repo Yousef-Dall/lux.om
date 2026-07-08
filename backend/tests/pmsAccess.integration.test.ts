@@ -67,6 +67,10 @@ async function clearPmsTestDatabase() {
   await prisma.pmsUnit.deleteMany();
   await prisma.pmsProperty.deleteMany();
   await prisma.pmsVendor.deleteMany();
+  await prisma.pmsMemberPermission.deleteMany();
+  await prisma.pmsMemberPropertyAccess.deleteMany();
+  await prisma.pmsPortfolioProperty.deleteMany();
+  await prisma.pmsPortfolio.deleteMany();
   await prisma.pmsCompanyMember.deleteMany();
   await prisma.pmsCompanyEntitlement.deleteMany();
   await prisma.travelAgency.deleteMany();
@@ -2774,4 +2778,188 @@ describe("PMS company entitlement access architecture", () => {
     expect(exportResponse.text).not.toContain("Stage 18 Other Company");
   });
 
+});
+
+describe("PMS advanced permissions and property scopes", () => {
+  beforeEach(async () => {
+    await clearPmsTestDatabase();
+  });
+
+  async function setupScopedCompany() {
+    const owner = await prisma.user.create({
+      data: {
+        name: "Scope Owner",
+        email: `scope-owner-${Date.now()}@lux.test`,
+        password: "test-password",
+        role: "DEVELOPER",
+        emailVerified: true,
+      },
+    });
+    const staff = await prisma.user.create({
+      data: {
+        name: "Scoped Staff",
+        email: `scoped-staff-${Date.now()}@lux.test`,
+        password: "test-password",
+        role: "USER",
+        emailVerified: true,
+      },
+    });
+    const company = await prisma.developerCompany.create({
+      data: {
+        slug: `scope-company-${Date.now()}`,
+        nameEn: "Scoped PMS Company",
+        verified: true,
+        featured: false,
+        pmsEntitlement: { create: { status: "ACTIVE", enabledAt: new Date(), createdById: owner.id, updatedById: owner.id } },
+      },
+    });
+    const propertyA = await prisma.pmsProperty.create({
+      data: { companyId: company.id, name: "Allowed Tower", code: "A", city: "Muscat", active: true, createdById: owner.id, updatedById: owner.id },
+    });
+    const propertyB = await prisma.pmsProperty.create({
+      data: { companyId: company.id, name: "Blocked Tower", code: "B", city: "Muscat", active: true, createdById: owner.id, updatedById: owner.id },
+    });
+    const ownerMember = await prisma.pmsCompanyMember.create({
+      data: { companyId: company.id, userId: owner.id, role: "PMS_OWNER", active: true, createdById: owner.id },
+    });
+    const staffMember = await prisma.pmsCompanyMember.create({
+      data: { companyId: company.id, userId: staff.id, role: "PMS_MANAGER", active: true, createdById: owner.id },
+    });
+    await prisma.pmsMemberPropertyAccess.create({
+      data: { companyId: company.id, memberId: staffMember.id, propertyId: propertyA.id },
+    });
+
+    return { owner, staff, company, propertyA, propertyB, ownerMember, staffMember };
+  }
+
+  it("enforces property-scoped PMS access on property and unit routes", async () => {
+    const { staff, company, propertyA, propertyB } = await setupScopedCompany();
+    const token = signToken(staff);
+
+    const listResponse = await request(app)
+      .get(`/api/pms/properties?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(listResponse.body.properties).toHaveLength(1);
+    expect(listResponse.body.properties[0].id).toBe(propertyA.id);
+
+    await request(app)
+      .get(`/api/pms/properties/${propertyA.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    await request(app)
+      .get(`/api/pms/properties/${propertyB.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(403);
+
+    await request(app)
+      .post("/api/pms/properties")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, name: "Unauthorized New Property" })
+      .expect(403);
+  });
+
+  it("lets PMS owners manage staff property scopes and audits the change", async () => {
+    const { owner, staff, company, propertyA } = await setupScopedCompany();
+    const ownerToken = signToken(owner);
+
+    const target = await prisma.user.create({
+      data: {
+        name: "New Scoped Accountant",
+        email: `new-accountant-${Date.now()}@lux.test`,
+        password: "test-password",
+        role: "USER",
+        emailVerified: true,
+      },
+    });
+
+    const response = await request(app)
+      .post("/api/pms/staff")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        companyId: company.id,
+        email: target.email,
+        role: "PMS_ACCOUNTANT",
+        propertyIds: [propertyA.id],
+        permissionKeys: ["ACCOUNTING_VIEW", "RENT_VIEW"],
+      })
+      .expect(201);
+
+    expect(response.body.member.user.email).toBe(target.email);
+    expect(response.body.member.propertyScope.allProperties).toBe(false);
+    expect(response.body.member.propertyScope.propertyIds).toContain(propertyA.id);
+    expect(response.body.member.customPermissionKeys).toContain("ACCOUNTING_VIEW");
+
+    const staffList = await request(app)
+      .get(`/api/pms/staff?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .expect(200);
+
+    expect(staffList.body.members.some((member: { user: { email: string } }) => member.user.email === target.email)).toBe(true);
+
+    const audit = await prisma.accountSecurityEvent.findFirst({
+      where: {
+        type: "ADMIN_PMS_ACCESS_UPDATED",
+        actorId: owner.id,
+        userId: target.id,
+      },
+    });
+
+    expect(audit).toBeTruthy();
+
+    const scopedStaffToken = signToken(staff);
+    await request(app)
+      .post("/api/pms/staff")
+      .set("Authorization", `Bearer ${scopedStaffToken}`)
+      .send({ companyId: company.id, email: target.email, role: "PMS_VIEWER" })
+      .expect(201);
+  });
+
+  it("keeps role boundaries compatible while exposing the permission matrix", async () => {
+    const { owner, company } = await setupScopedCompany();
+    const accountant = await prisma.user.create({
+      data: {
+        name: "No Maintenance Accountant",
+        email: `no-maintenance-accountant-${Date.now()}@lux.test`,
+        password: "test-password",
+        role: "USER",
+        emailVerified: true,
+      },
+    });
+    const maintenance = await prisma.user.create({
+      data: {
+        name: "No Accounting Maintenance",
+        email: `no-accounting-maintenance-${Date.now()}@lux.test`,
+        password: "test-password",
+        role: "USER",
+        emailVerified: true,
+      },
+    });
+    await prisma.pmsCompanyMember.createMany({
+      data: [
+        { companyId: company.id, userId: accountant.id, role: "PMS_ACCOUNTANT", active: true, createdById: owner.id },
+        { companyId: company.id, userId: maintenance.id, role: "PMS_MAINTENANCE", active: true, createdById: owner.id },
+      ],
+    });
+
+    const ownerResponse = await request(app)
+      .get(`/api/pms/staff?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${signToken(owner)}`)
+      .expect(200);
+
+    expect(ownerResponse.body.permissionMatrix.some((row: { role: string; permissionKeys: string[] }) => row.role === "PMS_OWNER" && row.permissionKeys.includes("STAFF_MANAGE"))).toBe(true);
+
+    await request(app)
+      .post("/api/pms/vendors")
+      .set("Authorization", `Bearer ${signToken(accountant)}`)
+      .send({ companyId: company.id, name: "Blocked Vendor" })
+      .expect(403);
+
+    await request(app)
+      .get(`/api/pms/accounting/ledger?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${signToken(maintenance)}`)
+      .expect(403);
+  });
 });

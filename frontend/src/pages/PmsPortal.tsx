@@ -12,6 +12,7 @@ import {
   Save,
   Settings,
   ShieldCheck,
+  UserCog,
   UserRoundCheck,
   Wrench,
 } from "lucide-react";
@@ -38,6 +39,7 @@ import {
   createPmsLease,
   createPmsMaintenanceQuote,
   createPmsPolicy,
+  createPmsPortfolio,
   createPmsVendor,
   createPmsProperty,
   createPmsTenant,
@@ -65,6 +67,7 @@ import {
   listPmsPolicies,
   listPmsProperties,
   listPmsPropertyUnits,
+  listPmsStaff,
   listPmsRentDueItems,
   listPmsTenants,
   listPmsVendors,
@@ -73,6 +76,8 @@ import {
   listPmsWorkOrders,
   previewPmsImport,
   updatePmsProperty,
+  updatePmsStaffMember,
+  upsertPmsStaffMember,
   updatePmsUnit,
   updatePmsLeaseChecklistItem,
   updatePmsMaintenanceQuote,
@@ -99,16 +104,20 @@ import {
   type PmsMaintenanceQuote,
   type PmsMaintenanceRecurrenceType,
   type PmsMaintenanceStatus,
+  type PmsMemberRole,
   type PmsMoveChecklistItem,
   type PmsMoveChecklistPayload,
   type PmsPolicy,
+  type PmsPermissionKey,
   type PmsPolicyPayload,
+  type PmsPortfolio,
   type PmsProperty,
   type PmsPropertyPayload,
   type PmsRentDueItem,
   type PmsOwnerStatement,
   type PmsRentReceipt,
   type PmsReportsSummary,
+  type PmsStaffMember,
   type PmsTenant,
   type PmsTenantPayload,
   type PmsTenantPortalAccess,
@@ -158,9 +167,39 @@ const pmsNavigation = [
     available: true,
   },
   { to: "/pms/import-export", key: "importExport", icon: FileText, available: true },
+  { to: "/pms/staff", key: "staff", icon: UserCog, available: true },
   { to: "/pms/reports", key: "reports", icon: BarChart3, available: true },
   { to: "/pms/settings", key: "settings", icon: Settings, available: true },
 ] as const;
+
+const pmsRoles: PmsMemberRole[] = [
+  "PMS_OWNER",
+  "PMS_MANAGER",
+  "PMS_ACCOUNTANT",
+  "PMS_MAINTENANCE",
+  "PMS_AGENT",
+  "PMS_VIEWER",
+];
+
+const pmsPermissionKeys: PmsPermissionKey[] = [
+  "INVENTORY_VIEW",
+  "INVENTORY_MANAGE",
+  "TENANCY_VIEW",
+  "TENANCY_MANAGE",
+  "RENT_VIEW",
+  "RENT_MANAGE",
+  "ACCOUNTING_VIEW",
+  "ACCOUNTING_MANAGE",
+  "MAINTENANCE_VIEW",
+  "MAINTENANCE_MANAGE",
+  "REPORTS_VIEW",
+  "SETTINGS_MANAGE",
+  "COMMUNICATIONS_SEND",
+  "DOCUMENTS_VIEW",
+  "DOCUMENTS_MANAGE",
+  "STAFF_MANAGE",
+  "IMPORT_EXPORT",
+];
 
 const unitStatuses: PmsUnitStatus[] = [
   "VACANT",
@@ -785,6 +824,15 @@ export default function PmsPortal() {
   const [importType, setImportType] = useState<PmsImportType>("PROPERTIES");
   const [importFilename, setImportFilename] = useState("");
   const [importCsvText, setImportCsvText] = useState("");
+  const [staffMembers, setStaffMembers] = useState<PmsStaffMember[]>([]);
+  const [staffProperties, setStaffProperties] = useState<Array<Pick<PmsProperty, "id" | "name" | "code" | "active">>>([]);
+  const [staffPortfolios, setStaffPortfolios] = useState<PmsPortfolio[]>([]);
+  const [staffEmail, setStaffEmail] = useState("");
+  const [staffRole, setStaffRole] = useState<PmsMemberRole>("PMS_VIEWER");
+  const [staffPropertyIds, setStaffPropertyIds] = useState<string[]>([]);
+  const [staffPermissionKeys, setStaffPermissionKeys] = useState<PmsPermissionKey[]>([]);
+  const [portfolioName, setPortfolioName] = useState("");
+  const [portfolioPropertyIds, setPortfolioPropertyIds] = useState<string[]>([]);
   const [communicationPreview, setCommunicationPreview] = useState<{ subject?: string | null; body: string } | null>(null);
   const [policies, setPolicies] = useState<PmsPolicy[]>([]);
   const [inspections, setInspections] = useState<PmsInspection[]>([]);
@@ -1047,6 +1095,19 @@ export default function PmsPortal() {
           downloadTemplate: "تحميل نموذج CSV",
           exportData: "تصدير البيانات",
           previewDoesNotWrite: "المعاينة لا تنشئ أي سجلات. الاعتماد فقط يستورد الصفوف الصحيحة.",
+          staff: "فريق PMS",
+          inviteStaff: "إضافة موظف",
+          staffEmail: "بريد المستخدم",
+          propertyScope: "نطاق العقارات",
+          allProperties: "كل العقارات",
+          selectedProperties: "عقارات محددة",
+          customPermissions: "صلاحيات إضافية",
+          suspendAccess: "تعليق الوصول",
+          restoreAccess: "إعادة التفعيل",
+          portfolios: "المحافظ",
+          portfolioName: "اسم المحفظة",
+          createPortfolio: "إنشاء محفظة",
+          accessControls: "صلاحيات ومساحات العمل",
           emptyReports: "لا توجد بيانات تقارير كافية بعد.",
         }
       : {
@@ -1269,6 +1330,19 @@ export default function PmsPortal() {
           downloadTemplate: "Download CSV template",
           exportData: "Export data",
           previewDoesNotWrite: "Preview does not create records. Commit imports valid rows only.",
+          staff: "PMS staff",
+          inviteStaff: "Invite staff",
+          staffEmail: "User email",
+          propertyScope: "Property scope",
+          allProperties: "All properties",
+          selectedProperties: "Selected properties",
+          customPermissions: "Extra permissions",
+          suspendAccess: "Suspend access",
+          restoreAccess: "Restore access",
+          portfolios: "Portfolios",
+          portfolioName: "Portfolio name",
+          createPortfolio: "Create portfolio",
+          accessControls: "Access controls",
           emptyReports: "Not enough PMS report data yet.",
         };
 
@@ -1292,6 +1366,8 @@ export default function PmsPortal() {
                   ? "accounting"
                   : location.pathname.startsWith("/pms/import-export")
                     ? "importExport"
+                  : location.pathname.startsWith("/pms/staff")
+                    ? "staff"
                   : location.pathname.startsWith("/pms/reports")
                     ? "reports"
                     : location.pathname.startsWith("/pms/settings")
@@ -1305,6 +1381,7 @@ export default function PmsPortal() {
   const canManageMaintenance = canEditMaintenance(overview?.workspace.member.role);
   const canManageOperations = canEditOperations(overview?.workspace.member.role);
   const canManageImportRecords = canManageImports(overview?.workspace.member.role);
+  const canManageStaffRecords = canEditOperations(overview?.workspace.member.role);
   const canSeeDocuments = canViewDocuments(overview?.workspace.member.role);
   const canManageDocumentRecords = canManageDocuments(overview?.workspace.member.role);
 
@@ -1448,6 +1525,14 @@ export default function PmsPortal() {
       } else if (section === "importExport") {
         const batchesResponse = await listPmsImportBatches(token, { companyId, take: 25 });
         setImportBatches(batchesResponse.batches);
+        setActiveProperty(null);
+        setActiveLease(null);
+      } else if (section === "staff") {
+        const staffResponse = await listPmsStaff(token, companyId);
+        setStaffMembers(staffResponse.members);
+        setStaffProperties(staffResponse.properties);
+        setStaffPortfolios(staffResponse.portfolios);
+        setProperties(staffResponse.properties as PmsProperty[]);
         setActiveProperty(null);
         setActiveLease(null);
       } else if (section === "reports") {
@@ -1688,6 +1773,111 @@ export default function PmsPortal() {
         take: 25,
       });
       setImportBatches(batchesResponse.batches);
+    } catch (saveError) {
+      console.error(saveError);
+      setError(saveError instanceof ApiError ? saveError.message : copy.unavailable);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleStaffProperty(propertyId: string) {
+    setStaffPropertyIds((current) =>
+      current.includes(propertyId)
+        ? current.filter((id) => id !== propertyId)
+        : [...current, propertyId],
+    );
+  }
+
+  function toggleStaffPermission(permissionKey: PmsPermissionKey) {
+    setStaffPermissionKeys((current) =>
+      current.includes(permissionKey)
+        ? current.filter((key) => key !== permissionKey)
+        : [...current, permissionKey],
+    );
+  }
+
+  function togglePortfolioProperty(propertyId: string) {
+    setPortfolioPropertyIds((current) =>
+      current.includes(propertyId)
+        ? current.filter((id) => id !== propertyId)
+        : [...current, propertyId],
+    );
+  }
+
+  async function refreshStaff(companyId: string) {
+    if (!token) return;
+    const response = await listPmsStaff(token, companyId);
+    setStaffMembers(response.members);
+    setStaffProperties(response.properties);
+    setStaffPortfolios(response.portfolios);
+  }
+
+  async function handleInviteStaff(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !overview || !canManageStaffRecords) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await upsertPmsStaffMember(token, {
+        companyId: overview.workspace.company.id,
+        email: staffEmail,
+        role: staffRole,
+        active: true,
+        propertyIds: staffPropertyIds,
+        permissionKeys: staffPermissionKeys,
+      });
+      setStaffEmail("");
+      setStaffRole("PMS_VIEWER");
+      setStaffPropertyIds([]);
+      setStaffPermissionKeys([]);
+      await refreshStaff(overview.workspace.company.id);
+      setSuccess(copy.saved);
+    } catch (saveError) {
+      console.error(saveError);
+      setError(saveError instanceof ApiError ? saveError.message : copy.unavailable);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleToggleStaffAccess(member: PmsStaffMember) {
+    if (!token || !overview || !canManageStaffRecords) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await updatePmsStaffMember(token, member.id, { active: !member.active });
+      await refreshStaff(overview.workspace.company.id);
+      setSuccess(copy.saved);
+    } catch (saveError) {
+      console.error(saveError);
+      setError(saveError instanceof ApiError ? saveError.message : copy.unavailable);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCreatePortfolio(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !overview || !canManageStaffRecords) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await createPmsPortfolio(token, {
+        companyId: overview.workspace.company.id,
+        name: portfolioName,
+        propertyIds: portfolioPropertyIds,
+      });
+      setPortfolioName("");
+      setPortfolioPropertyIds([]);
+      await refreshStaff(overview.workspace.company.id);
+      setSuccess(copy.saved);
     } catch (saveError) {
       console.error(saveError);
       setError(saveError instanceof ApiError ? saveError.message : copy.unavailable);
@@ -3233,6 +3423,148 @@ export default function PmsPortal() {
                           <strong>{batch.type} · {batch.status}</strong>
                           <span>{copy.validRows}: {batch.successfulRows} · {copy.invalidRows}: {batch.failedRows}</span>
                           <small>{batch.filename || formatDate(batch.createdAt, language)}</small>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
+            {section === "staff" ? (
+              <section className="pms-panel-grid pms-panel-grid--inventory">
+                <form className="pms-form-card" onSubmit={handleInviteStaff}>
+                  <div>
+                    <p className="eyebrow">{copy.accessControls}</p>
+                    <h2>{copy.inviteStaff}</h2>
+                    <p>{copy.accessScoped}</p>
+                  </div>
+
+                  <label>
+                    {copy.staffEmail}
+                    <input
+                      type="email"
+                      value={staffEmail}
+                      onChange={(event) => setStaffEmail(event.target.value)}
+                      placeholder="user@example.com"
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    {copy.role}
+                    <select
+                      value={staffRole}
+                      onChange={(event) => setStaffRole(event.target.value as PmsMemberRole)}
+                    >
+                      {pmsRoles.map((role) => (
+                        <option key={role} value={role}>
+                          {getRoleLabel(role, language)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <fieldset className="pms-checkbox-grid">
+                    <legend>{copy.propertyScope}</legend>
+                    <small>{copy.allProperties}: {staffPropertyIds.length === 0 ? copy.active : copy.selectedProperties}</small>
+                    {staffProperties.map((property) => (
+                      <label key={property.id}>
+                        <input
+                          type="checkbox"
+                          checked={staffPropertyIds.includes(property.id)}
+                          onChange={() => toggleStaffProperty(property.id)}
+                        />
+                        {property.name}{property.code ? ` · ${property.code}` : ""}
+                      </label>
+                    ))}
+                  </fieldset>
+
+                  <fieldset className="pms-checkbox-grid">
+                    <legend>{copy.customPermissions}</legend>
+                    {pmsPermissionKeys.map((permissionKey) => (
+                      <label key={permissionKey}>
+                        <input
+                          type="checkbox"
+                          checked={staffPermissionKeys.includes(permissionKey)}
+                          onChange={() => toggleStaffPermission(permissionKey)}
+                        />
+                        {permissionKey.replaceAll("_", " ").toLowerCase()}
+                      </label>
+                    ))}
+                  </fieldset>
+
+                  <button className="button-link button-link--primary" type="submit" disabled={!canManageStaffRecords || saving}>
+                    {copy.inviteStaff}
+                  </button>
+                </form>
+
+                <div className="pms-next-actions">
+                  <div className="pms-next-actions__header">
+                    <p className="eyebrow">{copy.accessControls}</p>
+                    <h2>{copy.staff}</h2>
+                  </div>
+
+                  <div className="pms-inventory-list">
+                    {staffMembers.map((member) => (
+                      <article key={member.id} className="pms-inventory-card">
+                        <div>
+                          <strong>{member.user.name}</strong>
+                          <span>{member.user.email} · {getRoleLabel(member.role, language)}</span>
+                          <small>
+                            {member.propertyScope.allProperties
+                              ? copy.allProperties
+                              : `${copy.selectedProperties}: ${member.propertyScope.properties.map((property) => property.name).join(", ")}`}
+                          </small>
+                          <small>{member.permissionKeys.slice(0, 6).join(", ")}</small>
+                        </div>
+                        <button className="button-link" type="button" disabled={!canManageStaffRecords || saving} onClick={() => void handleToggleStaffAccess(member)}>
+                          {member.active ? copy.suspendAccess : copy.restoreAccess}
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+
+                <form className="pms-form-card" onSubmit={handleCreatePortfolio}>
+                  <div>
+                    <p className="eyebrow">{copy.propertyScope}</p>
+                    <h2>{copy.createPortfolio}</h2>
+                  </div>
+                  <label>
+                    {copy.portfolioName}
+                    <input value={portfolioName} onChange={(event) => setPortfolioName(event.target.value)} required />
+                  </label>
+                  <fieldset className="pms-checkbox-grid">
+                    <legend>{copy.properties}</legend>
+                    {staffProperties.map((property) => (
+                      <label key={property.id}>
+                        <input
+                          type="checkbox"
+                          checked={portfolioPropertyIds.includes(property.id)}
+                          onChange={() => togglePortfolioProperty(property.id)}
+                        />
+                        {property.name}{property.code ? ` · ${property.code}` : ""}
+                      </label>
+                    ))}
+                  </fieldset>
+                  <button className="button-link button-link--primary" type="submit" disabled={!canManageStaffRecords || saving}>
+                    {copy.createPortfolio}
+                  </button>
+                </form>
+
+                <div className="pms-next-actions">
+                  <div className="pms-next-actions__header">
+                    <p className="eyebrow">{copy.accessControls}</p>
+                    <h2>{copy.portfolios}</h2>
+                  </div>
+                  <div className="pms-inventory-list">
+                    {staffPortfolios.map((portfolio) => (
+                      <article key={portfolio.id} className="pms-inventory-card">
+                        <div>
+                          <strong>{portfolio.name}</strong>
+                          <span>{portfolio.properties.map((property) => property.name).join(", ") || copy.emptyProperties}</span>
+                          <small>{portfolio.active ? copy.active : copy.suspended}</small>
                         </div>
                       </article>
                     ))}

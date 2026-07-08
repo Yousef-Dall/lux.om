@@ -137,6 +137,26 @@ enum PmsMemberRole {
   PMS_VIEWER
 }
 
+enum PmsPermissionKey {
+  INVENTORY_VIEW
+  INVENTORY_MANAGE
+  TENANCY_VIEW
+  TENANCY_MANAGE
+  RENT_VIEW
+  RENT_MANAGE
+  ACCOUNTING_VIEW
+  ACCOUNTING_MANAGE
+  MAINTENANCE_VIEW
+  MAINTENANCE_MANAGE
+  REPORTS_VIEW
+  SETTINGS_MANAGE
+  COMMUNICATIONS_SEND
+  DOCUMENTS_VIEW
+  DOCUMENTS_MANAGE
+  STAFF_MANAGE
+  IMPORT_EXPORT
+}
+
 enum PmsUnitStatus {
   VACANT
   OCCUPIED
@@ -606,6 +626,8 @@ model User {
 
   pmsMembershipsCreated PmsCompanyMember[] @relation("PmsMemberCreatedBy")
   pmsMemberships        PmsCompanyMember[] @relation("PmsMemberUser")
+  pmsPortfoliosCreated  PmsPortfolio[] @relation("PmsPortfolioCreatedBy")
+  pmsPortfoliosUpdated  PmsPortfolio[] @relation("PmsPortfolioUpdatedBy")
   pmsTenantPortalAccesses PmsTenantPortalAccess[] @relation("PmsTenantPortalAccessUser")
   pmsTenantPortalAccessesCreated PmsTenantPortalAccess[] @relation("PmsTenantPortalAccessCreatedBy")
   pmsEntitlementsCreated PmsCompanyEntitlement[] @relation("PmsEntitlementCreatedBy")
@@ -754,6 +776,10 @@ model DeveloperCompany {
   reviews  Review[]
   pmsEntitlement PmsCompanyEntitlement?
   pmsMembers     PmsCompanyMember[]
+  pmsPortfolios  PmsPortfolio[]
+  pmsPortfolioProperties PmsPortfolioProperty[]
+  pmsMemberPropertyAccesses PmsMemberPropertyAccess[]
+  pmsMemberPermissions PmsMemberPermission[]
   pmsTenantPortalAccesses PmsTenantPortalAccess[]
   pmsProperties  PmsProperty[]
   pmsUnits       PmsUnit[]
@@ -1860,6 +1886,9 @@ model PmsCompanyMember {
 
   invitedEmail String?
 
+  propertyAccesses PmsMemberPropertyAccess[]
+  permissions      PmsMemberPermission[]
+
   createdById String?
   createdBy   User?   @relation("PmsMemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -1871,6 +1900,91 @@ model PmsCompanyMember {
   @@index([userId, active])
   @@index([role])
   @@index([createdById])
+}
+
+model PmsPortfolio {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean @default(true)
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User? @relation("PmsPortfolioCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  updatedById String?
+  updatedBy   User? @relation("PmsPortfolioUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  properties PmsPortfolioProperty[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, name])
+  @@index([companyId, active])
+  @@index([createdById])
+  @@index([updatedById])
+}
+
+model PmsPortfolioProperty {
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  portfolioId String
+  portfolio   PmsPortfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  propertyId String
+  property   PmsProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([portfolioId, propertyId])
+  @@index([companyId])
+  @@index([propertyId])
+}
+
+model PmsMemberPropertyAccess {
+  id     String  @id @default(cuid())
+  active Boolean @default(true)
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  memberId String
+  member   PmsCompanyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  propertyId String
+  property   PmsProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([memberId, propertyId])
+  @@index([companyId, active])
+  @@index([memberId, active])
+  @@index([propertyId, active])
+}
+
+model PmsMemberPermission {
+  id     String           @id @default(cuid())
+  key    PmsPermissionKey
+  active Boolean          @default(true)
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  memberId String
+  member   PmsCompanyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([memberId, key])
+  @@index([companyId, active])
+  @@index([memberId, active])
+  @@index([key])
 }
 
 model PmsTenantPortalAccess {
@@ -1941,6 +2055,8 @@ model PmsProperty {
   pmsInspections PmsInspection[]
   pmsDocuments PmsDocument[]
   pmsMoveChecklistItems PmsMoveChecklistItem[]
+  pmsPortfolioProperties PmsPortfolioProperty[]
+  pmsMemberPropertyAccesses PmsMemberPropertyAccess[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

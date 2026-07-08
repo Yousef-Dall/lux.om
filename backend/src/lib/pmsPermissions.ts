@@ -236,3 +236,111 @@ export function assertCanExportPmsData(
     );
   }
 }
+
+export type PmsPermissionKeyLike =
+  | "INVENTORY_VIEW"
+  | "INVENTORY_MANAGE"
+  | "TENANCY_VIEW"
+  | "TENANCY_MANAGE"
+  | "RENT_VIEW"
+  | "RENT_MANAGE"
+  | "ACCOUNTING_VIEW"
+  | "ACCOUNTING_MANAGE"
+  | "MAINTENANCE_VIEW"
+  | "MAINTENANCE_MANAGE"
+  | "REPORTS_VIEW"
+  | "SETTINGS_MANAGE"
+  | "COMMUNICATIONS_SEND"
+  | "DOCUMENTS_VIEW"
+  | "DOCUMENTS_MANAGE"
+  | "STAFF_MANAGE"
+  | "IMPORT_EXPORT";
+
+export const DEFAULT_PMS_ROLE_PERMISSIONS: Record<PmsMemberRole, PmsPermissionKeyLike[]> = {
+  PMS_OWNER: [
+    "INVENTORY_VIEW",
+    "INVENTORY_MANAGE",
+    "TENANCY_VIEW",
+    "TENANCY_MANAGE",
+    "RENT_VIEW",
+    "RENT_MANAGE",
+    "ACCOUNTING_VIEW",
+    "ACCOUNTING_MANAGE",
+    "MAINTENANCE_VIEW",
+    "MAINTENANCE_MANAGE",
+    "REPORTS_VIEW",
+    "SETTINGS_MANAGE",
+    "COMMUNICATIONS_SEND",
+    "DOCUMENTS_VIEW",
+    "DOCUMENTS_MANAGE",
+    "STAFF_MANAGE",
+    "IMPORT_EXPORT",
+  ],
+  PMS_MANAGER: [
+    "INVENTORY_VIEW",
+    "INVENTORY_MANAGE",
+    "TENANCY_VIEW",
+    "TENANCY_MANAGE",
+    "RENT_VIEW",
+    "RENT_MANAGE",
+    "ACCOUNTING_VIEW",
+    "ACCOUNTING_MANAGE",
+    "MAINTENANCE_VIEW",
+    "MAINTENANCE_MANAGE",
+    "REPORTS_VIEW",
+    "SETTINGS_MANAGE",
+    "COMMUNICATIONS_SEND",
+    "DOCUMENTS_VIEW",
+    "DOCUMENTS_MANAGE",
+    "IMPORT_EXPORT",
+  ],
+  PMS_ACCOUNTANT: [
+    "TENANCY_VIEW",
+    "RENT_VIEW",
+    "RENT_MANAGE",
+    "ACCOUNTING_VIEW",
+    "ACCOUNTING_MANAGE",
+    "REPORTS_VIEW",
+    "COMMUNICATIONS_SEND",
+    "DOCUMENTS_VIEW",
+  ],
+  PMS_MAINTENANCE: [
+    "MAINTENANCE_VIEW",
+    "MAINTENANCE_MANAGE",
+    "COMMUNICATIONS_SEND",
+    "DOCUMENTS_VIEW",
+  ],
+  PMS_AGENT: [
+    "INVENTORY_VIEW",
+    "INVENTORY_MANAGE",
+    "TENANCY_VIEW",
+    "TENANCY_MANAGE",
+    "MAINTENANCE_VIEW",
+    "MAINTENANCE_MANAGE",
+    "REPORTS_VIEW",
+    "DOCUMENTS_VIEW",
+  ],
+  PMS_VIEWER: [
+    "INVENTORY_VIEW",
+    "TENANCY_VIEW",
+    "RENT_VIEW",
+    "ACCOUNTING_VIEW",
+    "MAINTENANCE_VIEW",
+    "REPORTS_VIEW",
+    "DOCUMENTS_VIEW",
+  ],
+};
+
+export function getDefaultPmsPermissionKeys(role: PmsMemberRole) {
+  return DEFAULT_PMS_ROLE_PERMISSIONS[role];
+}
+
+export function canManagePmsStaff(role: PmsMemberRole) {
+  return role === "PMS_OWNER" || role === "PMS_MANAGER";
+}
+
+export function assertCanManagePmsStaff(role: PmsMemberRole) {
+  if (!canManagePmsStaff(role)) {
+    throw new AppError(403, "Your PMS role cannot manage staff access.");
+  }
+}

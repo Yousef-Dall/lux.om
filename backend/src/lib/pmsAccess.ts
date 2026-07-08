@@ -1,4 +1,9 @@
-import { PmsEntitlementStatus, type PmsCompanyMember, type PmsMemberRole } from '@prisma/client';
+import {
+  PmsEntitlementStatus,
+  type PmsCompanyMember,
+  type PmsMemberRole,
+  type PmsPermissionKey,
+} from '@prisma/client';
 
 import { prisma } from './prisma';
 
@@ -8,7 +13,13 @@ export const ACTIVE_PMS_ENTITLEMENT_STATUSES: PmsEntitlementStatus[] = [
 ];
 
 export type PmsWorkspaceAccess = {
-  member: Pick<PmsCompanyMember, 'id' | 'companyId' | 'userId' | 'role' | 'active'>;
+  member: Pick<PmsCompanyMember, 'id' | 'companyId' | 'userId' | 'role' | 'active'> & {
+    permissionKeys: PmsPermissionKey[];
+    propertyScope: {
+      allProperties: boolean;
+      propertyIds: string[];
+    };
+  };
   company: {
     id: string;
     slug: string;
@@ -54,6 +65,16 @@ export async function resolvePmsWorkspaceAccess(input: {
       }
     },
     include: {
+      permissions: {
+        where: { active: true },
+        select: { key: true },
+        orderBy: { key: 'asc' },
+      },
+      propertyAccesses: {
+        where: { active: true },
+        select: { propertyId: true },
+        orderBy: { propertyId: 'asc' },
+      },
       company: {
         select: {
           id: true,
@@ -82,13 +103,20 @@ export async function resolvePmsWorkspaceAccess(input: {
     return null;
   }
 
+  const propertyIds = member.propertyAccesses.map((scope) => scope.propertyId);
+
   return {
     member: {
       id: member.id,
       companyId: member.companyId,
       userId: member.userId,
       role: member.role,
-      active: member.active
+      active: member.active,
+      permissionKeys: member.permissions.map((permission) => permission.key),
+      propertyScope: {
+        allProperties: propertyIds.length === 0,
+        propertyIds,
+      },
     },
     company: {
       id: member.company.id,
@@ -120,6 +148,16 @@ export async function getUserPmsAccessSummary(userId: string) {
     select: {
       id: true,
       role: true,
+      permissions: {
+        where: { active: true },
+        select: { key: true },
+        orderBy: { key: 'asc' },
+      },
+      propertyAccesses: {
+        where: { active: true },
+        select: { propertyId: true },
+        orderBy: { propertyId: 'asc' },
+      },
       company: {
         select: {
           id: true,
@@ -143,21 +181,29 @@ export async function getUserPmsAccessSummary(userId: string) {
 
   return {
     hasAccess: workspaces.length > 0,
-    workspaces: workspaces.map((workspace) => ({
-      memberId: workspace.id,
-      role: workspace.role,
-      company: {
-        id: workspace.company.id,
-        slug: workspace.company.slug,
-        nameEn: workspace.company.nameEn,
-        nameAr: workspace.company.nameAr
-      },
-      entitlement: workspace.company.pmsEntitlement
-        ? {
-            status: workspace.company.pmsEntitlement.status,
-            trialEndsAt: workspace.company.pmsEntitlement.trialEndsAt
-          }
-        : null
-    }))
+    workspaces: workspaces.map((workspace) => {
+      const propertyIds = workspace.propertyAccesses.map((scope) => scope.propertyId);
+      return {
+        memberId: workspace.id,
+        role: workspace.role,
+        permissionKeys: workspace.permissions.map((permission) => permission.key),
+        propertyScope: {
+          allProperties: propertyIds.length === 0,
+          propertyIds,
+        },
+        company: {
+          id: workspace.company.id,
+          slug: workspace.company.slug,
+          nameEn: workspace.company.nameEn,
+          nameAr: workspace.company.nameAr
+        },
+        entitlement: workspace.company.pmsEntitlement
+          ? {
+              status: workspace.company.pmsEntitlement.status,
+              trialEndsAt: workspace.company.pmsEntitlement.trialEndsAt
+            }
+          : null
+      };
+    })
   };
 }

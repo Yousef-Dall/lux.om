@@ -21,6 +21,7 @@ import {
   PmsMaintenanceRecurrenceType,
   PmsMaintenanceStatus,
   PmsMemberRole,
+  PmsPermissionKey,
   PmsOccupancyStatus,
   PmsPolicyCategory,
   PmsRentDueStatus,
@@ -38,6 +39,7 @@ import { prisma } from "../lib/prisma";
 import {
   ACTIVE_PMS_ENTITLEMENT_STATUSES,
   resolvePmsWorkspaceAccess,
+  type PmsWorkspaceAccess,
 } from "../lib/pmsAccess";
 import {
   assertCanCollectPmsRent,
@@ -45,6 +47,8 @@ import {
   assertCanExportPmsData,
   assertCanManagePmsDocuments,
   assertCanManagePmsImports,
+  assertCanManagePmsStaff,
+  getDefaultPmsPermissionKeys,
   assertCanManagePmsMaintenanceDocuments,
   assertCanManagePmsInventory,
   assertCanViewPmsAccounting,
@@ -905,6 +909,61 @@ const memberUpdateSchema = z
     message: "At least one member field is required.",
   });
 
+
+const pmsStaffListQuerySchema = z.object({
+  companyId: z.string().trim().min(1),
+});
+
+const pmsStaffInviteSchema = z
+  .object({
+    companyId: z.string().trim().min(1),
+    userId: z.string().trim().min(1).optional(),
+    email: z.string().trim().email().toLowerCase().optional(),
+    role: z.nativeEnum(PmsMemberRole),
+    active: z.boolean().default(true),
+    propertyIds: z.array(z.string().trim().min(1)).max(250).optional(),
+    permissionKeys: z.array(z.nativeEnum(PmsPermissionKey)).max(40).optional(),
+  })
+  .strict()
+  .refine((data) => Boolean(data.userId || data.email), {
+    path: ["userId"],
+    message: "Provide a user id or email for the PMS member.",
+  });
+
+const pmsStaffUpdateSchema = z
+  .object({
+    role: z.nativeEnum(PmsMemberRole).optional(),
+    active: z.boolean().optional(),
+    propertyIds: z.array(z.string().trim().min(1)).max(250).optional(),
+    permissionKeys: z.array(z.nativeEnum(PmsPermissionKey)).max(40).optional(),
+  })
+  .strict()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one staff access field is required.",
+  });
+
+const pmsPortfolioListQuerySchema = z.object({
+  companyId: z.string().trim().min(1),
+  active: z.enum(["ALL", "ACTIVE", "INACTIVE"]).default("ALL"),
+});
+
+const pmsPortfolioCreateSchema = z.object({
+  companyId: z.string().trim().min(1),
+  name: z.string().trim().min(2).max(160),
+  description: nullableTrimmedString(1000),
+  active: z.boolean().default(true),
+  propertyIds: z.array(z.string().trim().min(1)).max(250).optional(),
+}).strict();
+
+const pmsPortfolioUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(160).optional(),
+  description: nullableTrimmedString(1000),
+  active: z.boolean().optional(),
+  propertyIds: z.array(z.string().trim().min(1)).max(250).optional(),
+}).strict().refine((data) => Object.keys(data).length > 0, {
+  message: "At least one portfolio field is required.",
+});
+
 const pmsCompanyInclude = {
   pmsEntitlement: true,
   pmsMembers: {
@@ -918,6 +977,15 @@ const pmsCompanyInclude = {
           suspendedAt: true,
           deactivatedAt: true,
         },
+      },
+      propertyAccesses: {
+        where: { active: true },
+        include: { property: { select: { id: true, name: true, code: true } } },
+        orderBy: { createdAt: "asc" as const },
+      },
+      permissions: {
+        where: { active: true },
+        orderBy: { key: "asc" as const },
       },
     },
     orderBy: {
@@ -988,6 +1056,16 @@ function pmsCompanyResponse(company: PmsCompanyWithAccess) {
       createdAt: member.createdAt,
       updatedAt: member.updatedAt,
       user: member.user,
+      propertyScope: {
+        allProperties: member.propertyAccesses.length === 0,
+        propertyIds: member.propertyAccesses.map((scope) => scope.propertyId),
+        properties: member.propertyAccesses.map((scope) => scope.property),
+      },
+      permissionKeys: Array.from(new Set([
+        ...getDefaultPmsPermissionKeys(member.role),
+        ...member.permissions.map((permission) => permission.key),
+      ])),
+      customPermissionKeys: member.permissions.map((permission) => permission.key),
     })),
     counts: {
       listings: company._count.listings,
@@ -1974,6 +2052,191 @@ async function recordPmsWorkspaceAudit(
       ...input.metadata,
     },
   });
+}
+
+function pmsWorkspacePayload(access: PmsWorkspaceAccess) {
+  return {
+    company: access.company,
+    member: access.member,
+    entitlement: access.entitlement,
+  };
+}
+
+function isPmsPropertyScopeRestricted(access: PmsWorkspaceAccess) {
+  return !access.member.propertyScope.allProperties;
+}
+
+function pmsScopedPropertyWhere(access: PmsWorkspaceAccess): Prisma.PmsPropertyWhereInput {
+  if (!isPmsPropertyScopeRestricted(access)) return {};
+  return { id: { in: access.member.propertyScope.propertyIds } };
+}
+
+function pmsScopedPropertyIdWhere(access: PmsWorkspaceAccess): Prisma.StringFilter | undefined {
+  if (!isPmsPropertyScopeRestricted(access)) return undefined;
+  return { in: access.member.propertyScope.propertyIds };
+}
+
+function assertCanAccessPmsPropertyScope(access: PmsWorkspaceAccess, propertyId: string) {
+  if (!isPmsPropertyScopeRestricted(access)) return;
+  if (!access.member.propertyScope.propertyIds.includes(propertyId)) {
+    throw new AppError(403, "Your PMS access is restricted to selected properties.");
+  }
+}
+
+async function assertPmsPropertyIdsBelongToCompany(companyId: string, propertyIds: string[]) {
+  const uniqueIds = Array.from(new Set(propertyIds));
+  if (uniqueIds.length === 0) return;
+
+  const count = await prisma.pmsProperty.count({
+    where: {
+      id: { in: uniqueIds },
+      companyId,
+    },
+  });
+
+  if (count !== uniqueIds.length) {
+    throw new AppError(400, "All scoped PMS properties must belong to this PMS company.");
+  }
+}
+
+function effectivePmsPermissionKeys(role: PmsMemberRole, customKeys: PmsPermissionKey[]) {
+  return Array.from(new Set([...getDefaultPmsPermissionKeys(role), ...customKeys]));
+}
+
+const staffMemberInclude = {
+  user: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      suspendedAt: true,
+      deactivatedAt: true,
+    },
+  },
+  propertyAccesses: {
+    where: { active: true },
+    include: { property: { select: { id: true, name: true, code: true } } },
+    orderBy: { createdAt: "asc" as const },
+  },
+  permissions: {
+    where: { active: true },
+    orderBy: { key: "asc" as const },
+  },
+} satisfies Prisma.PmsCompanyMemberInclude;
+
+type PmsStaffMemberWithRelations = Prisma.PmsCompanyMemberGetPayload<{ include: typeof staffMemberInclude }>;
+
+function pmsStaffMemberResponse(member: PmsStaffMemberWithRelations) {
+  const customPermissionKeys = member.permissions.map((permission) => permission.key);
+  return {
+    id: member.id,
+    companyId: member.companyId,
+    userId: member.userId,
+    role: member.role,
+    active: member.active,
+    invitedEmail: member.invitedEmail,
+    user: member.user,
+    permissionKeys: effectivePmsPermissionKeys(member.role, customPermissionKeys),
+    customPermissionKeys,
+    propertyScope: {
+      allProperties: member.propertyAccesses.length === 0,
+      propertyIds: member.propertyAccesses.map((scope) => scope.propertyId),
+      properties: member.propertyAccesses.map((scope) => scope.property),
+    },
+    createdAt: member.createdAt,
+    updatedAt: member.updatedAt,
+  };
+}
+
+const pmsPortfolioInclude = {
+  properties: {
+    include: { property: { select: { id: true, name: true, code: true, active: true } } },
+    orderBy: { createdAt: "asc" as const },
+  },
+} satisfies Prisma.PmsPortfolioInclude;
+
+type PmsPortfolioWithRelations = Prisma.PmsPortfolioGetPayload<{ include: typeof pmsPortfolioInclude }>;
+
+function pmsPortfolioResponse(portfolio: PmsPortfolioWithRelations) {
+  return {
+    id: portfolio.id,
+    companyId: portfolio.companyId,
+    name: portfolio.name,
+    description: portfolio.description,
+    active: portfolio.active,
+    propertyIds: portfolio.properties.map((item) => item.propertyId),
+    properties: portfolio.properties.map((item) => item.property),
+    createdAt: portfolio.createdAt,
+    updatedAt: portfolio.updatedAt,
+  };
+}
+
+async function replacePmsMemberPropertyScope(input: {
+  companyId: string;
+  memberId: string;
+  propertyIds?: string[];
+}) {
+  if (input.propertyIds === undefined) return;
+  const propertyIds = Array.from(new Set(input.propertyIds));
+  await assertPmsPropertyIdsBelongToCompany(input.companyId, propertyIds);
+
+  await prisma.pmsMemberPropertyAccess.deleteMany({ where: { memberId: input.memberId } });
+
+  if (propertyIds.length > 0) {
+    await prisma.pmsMemberPropertyAccess.createMany({
+      data: propertyIds.map((propertyId) => ({
+        companyId: input.companyId,
+        memberId: input.memberId,
+        propertyId,
+      })),
+      skipDuplicates: true,
+    });
+  }
+}
+
+async function replacePmsMemberPermissions(input: {
+  companyId: string;
+  memberId: string;
+  permissionKeys?: PmsPermissionKey[];
+}) {
+  if (input.permissionKeys === undefined) return;
+  const permissionKeys = Array.from(new Set(input.permissionKeys));
+  await prisma.pmsMemberPermission.deleteMany({ where: { memberId: input.memberId } });
+
+  if (permissionKeys.length > 0) {
+    await prisma.pmsMemberPermission.createMany({
+      data: permissionKeys.map((key) => ({
+        companyId: input.companyId,
+        memberId: input.memberId,
+        key,
+      })),
+      skipDuplicates: true,
+    });
+  }
+}
+
+async function replacePmsPortfolioProperties(input: {
+  companyId: string;
+  portfolioId: string;
+  propertyIds?: string[];
+}) {
+  if (input.propertyIds === undefined) return;
+  const propertyIds = Array.from(new Set(input.propertyIds));
+  await assertPmsPropertyIdsBelongToCompany(input.companyId, propertyIds);
+
+  await prisma.pmsPortfolioProperty.deleteMany({ where: { portfolioId: input.portfolioId } });
+
+  if (propertyIds.length > 0) {
+    await prisma.pmsPortfolioProperty.createMany({
+      data: propertyIds.map((propertyId) => ({
+        companyId: input.companyId,
+        portfolioId: input.portfolioId,
+        propertyId,
+      })),
+      skipDuplicates: true,
+    });
+  }
 }
 
 async function notifyPmsMaintenanceRecipients(input: {
@@ -7549,6 +7812,301 @@ pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) 
   }
 });
 
+pmsRouter.get("/staff", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const query = pmsStaffListQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: query.companyId,
+    });
+    assertCanManagePmsStaff(access.member.role);
+
+    const [members, properties, portfolios] = await prisma.$transaction([
+      prisma.pmsCompanyMember.findMany({
+        where: { companyId: access.company.id },
+        include: staffMemberInclude,
+        orderBy: [{ active: "desc" }, { role: "asc" }, { createdAt: "desc" }],
+      }),
+      prisma.pmsProperty.findMany({
+        where: { companyId: access.company.id, active: true },
+        select: { id: true, name: true, code: true, active: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.pmsPortfolio.findMany({
+        where: { companyId: access.company.id },
+        include: pmsPortfolioInclude,
+        orderBy: [{ active: "desc" }, { name: "asc" }],
+      }),
+    ]);
+
+    res.json({
+      workspace: pmsWorkspacePayload(access),
+      members: members.map(pmsStaffMemberResponse),
+      properties,
+      portfolios: portfolios.map(pmsPortfolioResponse),
+      permissionMatrix: Object.values(PmsMemberRole).map((role) => ({
+        role,
+        permissionKeys: getDefaultPmsPermissionKeys(role),
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/staff", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const data = pmsStaffInviteSchema.parse(req.body);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
+    assertCanManagePmsStaff(access.member.role);
+
+    const targetUser = await prisma.user.findFirst({
+      where: data.userId ? { id: data.userId } : { email: data.email },
+    });
+
+    if (!targetUser) {
+      throw new AppError(404, "User not found");
+    }
+
+    if (targetUser.suspendedAt || targetUser.deactivatedAt) {
+      throw new AppError(400, "Suspended or deleted users cannot be added to PMS access.");
+    }
+
+    await assertPmsPropertyIdsBelongToCompany(access.company.id, data.propertyIds ?? []);
+
+    const member = await prisma.pmsCompanyMember.upsert({
+      where: { companyId_userId: { companyId: access.company.id, userId: targetUser.id } },
+      create: {
+        companyId: access.company.id,
+        userId: targetUser.id,
+        invitedEmail: targetUser.email,
+        role: data.role,
+        active: data.active,
+        createdById: req.user.id,
+      },
+      update: {
+        invitedEmail: targetUser.email,
+        role: data.role,
+        active: data.active,
+      },
+      include: staffMemberInclude,
+    });
+
+    await replacePmsMemberPropertyScope({ companyId: access.company.id, memberId: member.id, propertyIds: data.propertyIds ?? [] });
+    await replacePmsMemberPermissions({ companyId: access.company.id, memberId: member.id, permissionKeys: data.permissionKeys ?? [] });
+
+    const refreshed = await prisma.pmsCompanyMember.findUniqueOrThrow({
+      where: { id: member.id },
+      include: staffMemberInclude,
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      targetUserId: targetUser.id,
+      title: "PMS staff access updated",
+      message: `${req.user.email} granted PMS ${data.role} access to ${targetUser.email}.`,
+      metadata: {
+        action: "staff_upsert",
+        memberId: member.id,
+        targetUserId: targetUser.id,
+        targetEmail: targetUser.email,
+        role: data.role,
+        active: data.active,
+        propertyIds: data.propertyIds ?? [],
+        permissionKeys: data.permissionKeys ?? [],
+      } as Prisma.InputJsonObject,
+    });
+
+    res.status(201).json({ member: pmsStaffMemberResponse(refreshed) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.patch("/staff/:id", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { id } = idParamsSchema.parse(req.params);
+    const data = pmsStaffUpdateSchema.parse(req.body);
+    const existing = await prisma.pmsCompanyMember.findUnique({
+      where: { id },
+      include: { user: true },
+    });
+
+    if (!existing) {
+      throw new AppError(404, "PMS staff member not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
+    assertCanManagePmsStaff(access.member.role);
+    await assertPmsPropertyIdsBelongToCompany(existing.companyId, data.propertyIds ?? []);
+
+    const member = await prisma.pmsCompanyMember.update({
+      where: { id },
+      data: {
+        ...(data.role !== undefined ? { role: data.role } : {}),
+        ...(data.active !== undefined ? { active: data.active } : {}),
+      },
+      include: staffMemberInclude,
+    });
+
+    await replacePmsMemberPropertyScope({ companyId: existing.companyId, memberId: id, propertyIds: data.propertyIds });
+    await replacePmsMemberPermissions({ companyId: existing.companyId, memberId: id, permissionKeys: data.permissionKeys });
+
+    const refreshed = await prisma.pmsCompanyMember.findUniqueOrThrow({ where: { id }, include: staffMemberInclude });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      targetUserId: existing.userId,
+      title: "PMS staff access changed",
+      message: `${req.user.email} changed PMS access for ${existing.user.email}.`,
+      metadata: {
+        action: data.active === false ? "staff_suspended" : "staff_updated",
+        memberId: id,
+        targetUserId: existing.userId,
+        targetEmail: existing.user.email,
+        role: data.role ?? existing.role,
+        active: data.active ?? existing.active,
+        propertyIds: data.propertyIds ?? null,
+        permissionKeys: data.permissionKeys ?? null,
+      } as Prisma.InputJsonObject,
+    });
+
+    res.json({ member: pmsStaffMemberResponse(refreshed) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/portfolios", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const query = pmsPortfolioListQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    assertCanManagePmsStaff(access.member.role);
+
+    const portfolios = await prisma.pmsPortfolio.findMany({
+      where: {
+        companyId: access.company.id,
+        ...(query.active === "ACTIVE" ? { active: true } : {}),
+        ...(query.active === "INACTIVE" ? { active: false } : {}),
+      },
+      include: pmsPortfolioInclude,
+      orderBy: [{ active: "desc" }, { name: "asc" }],
+    });
+
+    res.json({ workspace: pmsWorkspacePayload(access), portfolios: portfolios.map(pmsPortfolioResponse) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/portfolios", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const data = pmsPortfolioCreateSchema.parse(req.body);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
+    assertCanManagePmsStaff(access.member.role);
+    await assertPmsPropertyIdsBelongToCompany(access.company.id, data.propertyIds ?? []);
+
+    const portfolio = await prisma.pmsPortfolio.create({
+      data: {
+        companyId: access.company.id,
+        name: data.name,
+        description: normalizeNullableText(data.description),
+        active: data.active,
+        createdById: req.user.id,
+        updatedById: req.user.id,
+      },
+      include: pmsPortfolioInclude,
+    });
+
+    await replacePmsPortfolioProperties({ companyId: access.company.id, portfolioId: portfolio.id, propertyIds: data.propertyIds ?? [] });
+    const refreshed = await prisma.pmsPortfolio.findUniqueOrThrow({ where: { id: portfolio.id }, include: pmsPortfolioInclude });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS portfolio created",
+      message: `${req.user.email} created PMS portfolio ${portfolio.name}.`,
+      metadata: { action: "portfolio_created", portfolioId: portfolio.id, propertyIds: data.propertyIds ?? [] } as Prisma.InputJsonObject,
+    });
+
+    res.status(201).json({ portfolio: pmsPortfolioResponse(refreshed) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.patch("/portfolios/:id", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { id } = idParamsSchema.parse(req.params);
+    const data = pmsPortfolioUpdateSchema.parse(req.body);
+    const existing = await prisma.pmsPortfolio.findUnique({ where: { id } });
+
+    if (!existing) {
+      throw new AppError(404, "PMS portfolio not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
+    assertCanManagePmsStaff(access.member.role);
+    await assertPmsPropertyIdsBelongToCompany(existing.companyId, data.propertyIds ?? []);
+
+    const portfolio = await prisma.pmsPortfolio.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.description !== undefined ? { description: normalizeNullableText(data.description) } : {}),
+        ...(data.active !== undefined ? { active: data.active } : {}),
+        updatedById: req.user.id,
+      },
+      include: pmsPortfolioInclude,
+    });
+
+    await replacePmsPortfolioProperties({ companyId: existing.companyId, portfolioId: id, propertyIds: data.propertyIds });
+    const refreshed = await prisma.pmsPortfolio.findUniqueOrThrow({ where: { id }, include: pmsPortfolioInclude });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS portfolio updated",
+      message: `${req.user.email} updated PMS portfolio ${portfolio.name}.`,
+      metadata: { action: "portfolio_updated", portfolioId: id, changedFields: Object.keys(data), propertyIds: data.propertyIds ?? null } as Prisma.InputJsonObject,
+    });
+
+    res.json({ portfolio: pmsPortfolioResponse(refreshed) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 pmsRouter.get("/properties", requireAuth(), async (req, res, next) => {
   try {
     if (!req.user) {
@@ -7564,6 +8122,7 @@ pmsRouter.get("/properties", requireAuth(), async (req, res, next) => {
     const search = query.search?.trim();
     const where: Prisma.PmsPropertyWhereInput = {
       companyId,
+      ...pmsScopedPropertyWhere(access),
       ...(query.active === "ACTIVE" ? { active: true } : {}),
       ...(query.active === "INACTIVE" ? { active: false } : {}),
       ...(search
@@ -7621,6 +8180,9 @@ pmsRouter.post("/properties", requireAuth(), async (req, res, next) => {
       companyId: data.companyId,
     });
     assertCanManagePmsInventory(access.member.role);
+    if (isPmsPropertyScopeRestricted(access)) {
+      throw new AppError(403, "Property-scoped PMS users cannot create new properties.");
+    }
     await assertOptionalLinksBelongToCompany({
       companyId: access.company.id,
       developerProjectId: data.developerProjectId,
@@ -7683,6 +8245,7 @@ pmsRouter.get(
         userId: req.user.id,
         companyId: property.companyId,
       });
+      assertCanAccessPmsPropertyScope(access, property.id);
 
       res.json({
         workspace: {
@@ -7722,6 +8285,7 @@ pmsRouter.patch(
         userId: req.user.id,
         companyId: existing.companyId,
       });
+      assertCanAccessPmsPropertyScope(access, existing.id);
       assertCanManagePmsInventory(access.member.role);
       await assertOptionalLinksBelongToCompany({
         companyId: existing.companyId,
@@ -7770,6 +8334,7 @@ pmsRouter.get(
         userId: req.user.id,
         companyId: property.companyId,
       });
+      assertCanAccessPmsPropertyScope(access, property.id);
       const search = query.search?.trim();
       const where: Prisma.PmsUnitWhereInput = {
         propertyId,
@@ -7846,6 +8411,7 @@ pmsRouter.post(
         userId: req.user.id,
         companyId: property.companyId,
       });
+      assertCanAccessPmsPropertyScope(access, property.id);
       assertCanManagePmsInventory(access.member.role);
 
       const developerProjectId =
@@ -7918,9 +8484,14 @@ pmsRouter.get("/units", requireAuth(), async (req, res, next) => {
       companyId,
     });
     const search = query.search?.trim();
+    const scopedPropertyId = pmsScopedPropertyIdWhere(access);
+    if (query.propertyId) {
+      assertCanAccessPmsPropertyScope(access, query.propertyId);
+    }
+
     const where: Prisma.PmsUnitWhereInput = {
       companyId: access.company.id,
-      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.propertyId ? { propertyId: query.propertyId } : scopedPropertyId ? { propertyId: scopedPropertyId } : {}),
       ...(query.status !== "ALL" ? { status: query.status } : {}),
       ...(search
         ? {
@@ -7984,6 +8555,7 @@ pmsRouter.get("/units/:unitId", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: unit.companyId,
     });
+    assertCanAccessPmsPropertyScope(access, unit.propertyId);
 
     res.json({
       workspace: {
@@ -8008,7 +8580,7 @@ pmsRouter.patch("/units/:unitId", requireAuth(), async (req, res, next) => {
     const data = pmsUnitUpdateSchema.parse(req.body);
     const existing = await prisma.pmsUnit.findUnique({
       where: { id: unitId },
-      select: { id: true, companyId: true },
+      select: { id: true, companyId: true, propertyId: true },
     });
 
     if (!existing) {
@@ -8019,6 +8591,7 @@ pmsRouter.patch("/units/:unitId", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: existing.companyId,
     });
+    assertCanAccessPmsPropertyScope(access, existing.propertyId);
     assertCanManagePmsInventory(access.member.role);
     await assertOptionalLinksBelongToCompany({
       companyId: existing.companyId,

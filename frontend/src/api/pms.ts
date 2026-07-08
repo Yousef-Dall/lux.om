@@ -11,6 +11,25 @@ export type PmsMemberRole =
   | "PMS_AGENT"
   | "PMS_VIEWER";
 
+export type PmsPermissionKey =
+  | "INVENTORY_VIEW"
+  | "INVENTORY_MANAGE"
+  | "TENANCY_VIEW"
+  | "TENANCY_MANAGE"
+  | "RENT_VIEW"
+  | "RENT_MANAGE"
+  | "ACCOUNTING_VIEW"
+  | "ACCOUNTING_MANAGE"
+  | "MAINTENANCE_VIEW"
+  | "MAINTENANCE_MANAGE"
+  | "REPORTS_VIEW"
+  | "SETTINGS_MANAGE"
+  | "COMMUNICATIONS_SEND"
+  | "DOCUMENTS_VIEW"
+  | "DOCUMENTS_MANAGE"
+  | "STAFF_MANAGE"
+  | "IMPORT_EXPORT";
+
 export type PmsUnitStatus =
   "VACANT" | "OCCUPIED" | "RESERVED" | "MAINTENANCE" | "UNAVAILABLE";
 export type PmsOccupancyStatus = "VACANT" | "OCCUPIED" | "RESERVED" | "UNKNOWN";
@@ -117,6 +136,8 @@ export type PmsAccessSummary = {
   workspaces: Array<{
     memberId: string;
     role: PmsMemberRole;
+    permissionKeys?: PmsPermissionKey[];
+    propertyScope?: { allProperties: boolean; propertyIds: string[] };
     company: PmsCompanySummary;
     entitlement: {
       status: PmsEntitlementStatus;
@@ -165,6 +186,37 @@ export type PmsProperty = {
   counts: {
     units: number;
   };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsStaffMember = {
+  id: string;
+  companyId: string;
+  userId: string;
+  role: PmsMemberRole;
+  active: boolean;
+  invitedEmail?: string | null;
+  user: { id: string; name: string; email: string; role: UserRole; suspendedAt?: string | null; deactivatedAt?: string | null };
+  permissionKeys: PmsPermissionKey[];
+  customPermissionKeys: PmsPermissionKey[];
+  propertyScope: {
+    allProperties: boolean;
+    propertyIds: string[];
+    properties: Array<Pick<PmsProperty, "id" | "name" | "code">>;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsPortfolio = {
+  id: string;
+  companyId: string;
+  name: string;
+  description?: string | null;
+  active: boolean;
+  propertyIds: string[];
+  properties: Array<Pick<PmsProperty, "id" | "name" | "code" | "active">>;
   createdAt: string;
   updatedAt: string;
 };
@@ -640,6 +692,8 @@ export type PmsWorkspaceOverview = {
       userId: string;
       role: PmsMemberRole;
       active: boolean;
+      permissionKeys: PmsPermissionKey[];
+      propertyScope: { allProperties: boolean; propertyIds: string[] };
     };
     entitlement: {
       id: string;
@@ -1035,6 +1089,51 @@ export type PmsReportsSummary = {
     };
   };
 };
+
+export async function listPmsStaff(token: string, companyId: string) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    members: PmsStaffMember[];
+    properties: Array<Pick<PmsProperty, "id" | "name" | "code" | "active">>;
+    portfolios: PmsPortfolio[];
+    permissionMatrix: Array<{ role: PmsMemberRole; permissionKeys: PmsPermissionKey[] }>;
+  }>("/api/pms/staff", { token, params: { companyId } });
+}
+
+export async function upsertPmsStaffMember(
+  token: string,
+  payload: {
+    companyId: string;
+    email?: string;
+    userId?: string;
+    role: PmsMemberRole;
+    active?: boolean;
+    propertyIds?: string[];
+    permissionKeys?: PmsPermissionKey[];
+  },
+) {
+  return apiClient.post<{ member: PmsStaffMember }>("/api/pms/staff", payload, { token });
+}
+
+export async function updatePmsStaffMember(
+  token: string,
+  memberId: string,
+  payload: {
+    role?: PmsMemberRole;
+    active?: boolean;
+    propertyIds?: string[];
+    permissionKeys?: PmsPermissionKey[];
+  },
+) {
+  return apiClient.patch<{ member: PmsStaffMember }>(`/api/pms/staff/${memberId}`, payload, { token });
+}
+
+export async function createPmsPortfolio(
+  token: string,
+  payload: { companyId: string; name: string; description?: string; active?: boolean; propertyIds?: string[] },
+) {
+  return apiClient.post<{ portfolio: PmsPortfolio }>("/api/pms/portfolios", payload, { token });
+}
 
 export async function getPmsOverview(token: string, companyId?: string) {
   return apiClient.get<PmsWorkspaceOverview>("/api/pms/overview", {
