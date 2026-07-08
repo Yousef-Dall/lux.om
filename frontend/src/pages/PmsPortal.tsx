@@ -46,8 +46,8 @@ import {
   createPmsUnit,
   createPmsWorkOrder,
   commitPmsImport,
-  getPmsExportUrl,
-  getPmsImportTemplateUrl,
+  getPmsExportCsv,
+  getPmsImportTemplateCsv,
   getPmsLease,
   getPmsOverview,
   getPmsProperty,
@@ -97,6 +97,7 @@ import {
   type PmsImportBatch,
   type PmsImportPreview,
   type PmsImportType,
+  type PmsExportType,
   type PmsInspectionPayload,
   type PmsLease,
   type PmsLeasePayload,
@@ -831,6 +832,27 @@ function StatusBadge({ status, label }: { status: string; label?: string }) {
       {label ?? formatStatusText(status)}
     </span>
   );
+}
+
+function downloadCsvFile(filename: string, csvText: string) {
+  const blob = new Blob([csvText], { type: "text/csv;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function pmsExportFilename(type: PmsExportType) {
+  return `pms-${type}.csv`;
+}
+
+function pmsTemplateFilename(type: PmsImportType) {
+  return `pms-${type.toLowerCase()}-template.csv`;
 }
 
 export default function PmsPortal() {
@@ -1922,6 +1944,38 @@ export default function PmsPortal() {
     } catch (saveError) {
       console.error(saveError);
       setError(saveError instanceof ApiError ? saveError.message : copy.unavailable);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDownloadImportTemplate() {
+    if (!token || !overview) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      const csvText = await getPmsImportTemplateCsv(token, importType, overview.workspace.company.id);
+      downloadCsvFile(pmsTemplateFilename(importType), csvText);
+    } catch (downloadError) {
+      console.error(downloadError);
+      setError(downloadError instanceof ApiError ? downloadError.message : copy.unavailable);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleExportCsv(type: PmsExportType) {
+    if (!token || !overview) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      const csvText = await getPmsExportCsv(token, type, overview.workspace.company.id);
+      downloadCsvFile(pmsExportFilename(type), csvText);
+    } catch (downloadError) {
+      console.error(downloadError);
+      setError(downloadError instanceof ApiError ? downloadError.message : copy.unavailable);
     } finally {
       setSaving(false);
     }
@@ -3560,9 +3614,9 @@ export default function PmsPortal() {
                   </label>
 
                   <div className="pms-card-actions pms-card-actions--wrap pms-card-actions--prominent">
-                    <a className="button-link" href={overview ? getPmsImportTemplateUrl(importType, overview.workspace.company.id) : getPmsImportTemplateUrl(importType)}>
+                    <button className="button-link" type="button" onClick={handleDownloadImportTemplate} disabled={!overview || !token || saving}>
                       {copy.downloadTemplate}
-                    </a>
+                    </button>
                     <button className="button-link button-link--primary" type="submit" disabled={!canManageImportRecords || saving || !importCsvText.trim()}>
                       {copy.previewImport}
                     </button>
@@ -3608,10 +3662,16 @@ export default function PmsPortal() {
                       ["maintenance", copy.maintenance],
                       ["accounting-summary", copy.accountingSummary],
                     ] as const).map(([type, label]) => (
-                      <a key={type} className="pms-export-button" href={overview ? getPmsExportUrl(type, overview.workspace.company.id) : getPmsExportUrl(type)}>
+                      <button
+                        key={type}
+                        type="button"
+                        className="pms-export-button"
+                        onClick={() => handleExportCsv(type)}
+                        disabled={!overview || !token || saving}
+                      >
                         <span>{copy.exportData}</span>
                         <strong>{label}</strong>
-                      </a>
+                      </button>
                     ))}
                   </div>
 
@@ -3742,9 +3802,13 @@ export default function PmsPortal() {
                               : `${copy.selectedProperties}: ${member.propertyScope.properties.map((property) => property.name).join(", ")}`}
                           </span>
                           <span>
-                            {member.permissionKeys.length > 0
-                              ? member.permissionKeys.slice(0, 6).map((permission) => getPermissionLabel(permission, language)).join(", ")
-                              : copy.noExtraPermissions}
+                            {member.role === "PMS_OWNER" || member.role === "PMS_MANAGER"
+                              ? language === "ar"
+                                ? "صلاحيات كاملة حسب الدور"
+                                : "Full PMS access through role"
+                              : member.permissionKeys.length > 0
+                                ? member.permissionKeys.slice(0, 6).map((permission) => getPermissionLabel(permission, language)).join(", ")
+                                : copy.noExtraPermissions}
                           </span>
                         </div>
                         <div className="pms-staff-card__danger">

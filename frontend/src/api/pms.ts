@@ -1982,20 +1982,20 @@ export async function listPmsImportBatches(
   );
 }
 
-export function getPmsImportTemplateUrl(type: PmsImportType, companyId?: string) {
-  const params = new URLSearchParams();
-  if (companyId) params.set("companyId", companyId);
-  const query = params.toString();
-  return `/api/pms/imports/templates/${type}.csv${query ? `?${query}` : ""}`;
+export async function getPmsImportTemplateCsv(token: string, type: PmsImportType, companyId?: string) {
+  return apiClient.get<string>(`/api/pms/imports/templates/${type}.csv`, {
+    token,
+    params: { companyId },
+  });
 }
 
 export type PmsExportType = "properties" | "units" | "tenants" | "leases" | "rent-roll" | "maintenance" | "accounting-summary";
 
-export function getPmsExportUrl(type: PmsExportType, companyId?: string) {
-  const params = new URLSearchParams();
-  if (companyId) params.set("companyId", companyId);
-  const query = params.toString();
-  return `/api/pms/exports/${type}.csv${query ? `?${query}` : ""}`;
+export async function getPmsExportCsv(token: string, type: PmsExportType, companyId?: string) {
+  return apiClient.get<string>(`/api/pms/exports/${type}.csv`, {
+    token,
+    params: { companyId },
+  });
 }
 
 export async function listAdminPmsCompanies(
