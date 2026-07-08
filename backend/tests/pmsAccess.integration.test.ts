@@ -1978,6 +1978,36 @@ describe("PMS company entitlement access architecture", () => {
     });
 
     expect(notificationCount).toBe(1);
+
+    const tenantListResponse = await request(app)
+      .get(`/api/pms/tenants?companyId=${company.id}&search=Portal%20Linked`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .expect(200);
+
+    expect(tenantListResponse.body.tenants).toHaveLength(1);
+    expect(tenantListResponse.body.tenants[0].portalAccesses).toHaveLength(1);
+    expect(tenantListResponse.body.tenants[0].portalAccesses[0].active).toBe(true);
+    expect(tenantListResponse.body.tenants[0].portalAccesses[0].user.email).toBe(tenantUser.email);
+
+    const disabledAccessResponse = await request(app)
+      .post(`/api/pms/tenants/${tenant.id}/portal-access`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .send({ userId: tenantUser.id, active: false })
+      .expect(201);
+
+    expect(disabledAccessResponse.body.tenantAccess.active).toBe(false);
+
+    const disabledTenantListResponse = await request(app)
+      .get(`/api/pms/tenants?companyId=${company.id}&search=Portal%20Linked`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .expect(200);
+
+    expect(disabledTenantListResponse.body.tenants[0].portalAccesses[0].active).toBe(false);
+
+    await request(app)
+      .get("/api/tenant/overview")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .expect(403);
   });
 
 });

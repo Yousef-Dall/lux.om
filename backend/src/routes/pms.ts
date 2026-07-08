@@ -1493,7 +1493,29 @@ function pmsUnitResponse(unit: PmsUnitWithRelations) {
   };
 }
 
+const pmsTenantPortalAccessSelect = {
+  id: true,
+  companyId: true,
+  tenantId: true,
+  userId: true,
+  active: true,
+  createdAt: true,
+  updatedAt: true,
+  user: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+    },
+  },
+} satisfies Prisma.PmsTenantPortalAccessSelect;
+
 const pmsTenantInclude = {
+  pmsTenantPortalAccesses: {
+    select: pmsTenantPortalAccessSelect,
+    orderBy: { updatedAt: "desc" as const },
+  },
   _count: {
     select: {
       leases: true,
@@ -1608,6 +1630,16 @@ function pmsTenantResponse(tenant: PmsTenantWithRelations) {
     counts: {
       leases: tenant._count.leases,
     },
+    portalAccesses: tenant.pmsTenantPortalAccesses.map((access) => ({
+      id: access.id,
+      companyId: access.companyId,
+      tenantId: access.tenantId,
+      userId: access.userId,
+      active: access.active,
+      user: access.user,
+      createdAt: access.createdAt,
+      updatedAt: access.updatedAt,
+    })),
     createdAt: tenant.createdAt,
     updatedAt: tenant.updatedAt,
   };

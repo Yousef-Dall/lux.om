@@ -54,6 +54,7 @@ import {
   updatePmsProperty,
   updatePmsUnit,
   updatePmsWorkOrder,
+  upsertPmsTenantPortalAccess,
   type PmsCommunicationTemplate,
   type PmsCommunicationTemplatePayload,
   type PmsInspection,
@@ -70,6 +71,7 @@ import {
   type PmsReportsSummary,
   type PmsTenant,
   type PmsTenantPayload,
+  type PmsTenantPortalAccess,
   type PmsUnit,
   type PmsUnitPayload,
   type PmsUnitStatus,
@@ -608,6 +610,8 @@ export default function PmsPortal() {
   const [unitForm, setUnitForm] = useState<PmsUnitPayload>(emptyUnitForm);
   const [tenantForm, setTenantForm] =
     useState<PmsTenantPayload>(emptyTenantForm);
+  const [portalAccessEmails, setPortalAccessEmails] = useState<Record<string, string>>({});
+  const [portalAccessBusy, setPortalAccessBusy] = useState<Record<string, boolean>>({});
   const [leaseForm, setLeaseForm] = useState<PmsLeasePayload>(emptyLeaseForm);
   const [workOrderForm, setWorkOrderForm] =
     useState<PmsWorkOrderPayload>(emptyWorkOrderForm);
@@ -736,6 +740,19 @@ export default function PmsPortal() {
           amount: "المبلغ",
           partiallyPaid: "مدفوع جزئياً",
           emptyTenants: "لا يوجد مستأجرون بعد.",
+          tenantPortalAccess: "صلاحية بوابة المستأجر",
+          tenantPortalAccessText:
+            "اربط حساب lux.om الخاص بالمستأجر بهذا السجل حتى يتمكن من رؤية عقده ودفعاته وطلبات الصيانة فقط.",
+          portalEmail: "بريد حساب المستأجر",
+          grantPortalAccess: "تفعيل الوصول",
+          disablePortalAccess: "تعطيل",
+          noPortalAccess: "لا يوجد حساب مرتبط ببوابة المستأجر بعد.",
+          portalAccessActive: "مفعل",
+          portalAccessDisabled: "معطل",
+          confirmDisablePortalAccess: "هل تريد تعطيل وصول هذا المستخدم إلى بوابة المستأجر؟",
+          portalAccessSaved: "تم تحديث صلاحية بوابة المستأجر.",
+          tenantUserRequired:
+            "يجب أن يكون لدى المستأجر حساب lux.om بنفس البريد قبل تفعيل الوصول.",
           emptyLeases: "لا توجد عقود PMS بعد.",
           emptyRentDue: "لا توجد دفعات إيجار PMS بعد.",
           createWorkOrder: "إضافة طلب صيانة",
@@ -886,6 +903,19 @@ export default function PmsPortal() {
           amount: "Amount",
           partiallyPaid: "Partially paid",
           emptyTenants: "No PMS tenants yet.",
+          tenantPortalAccess: "Tenant portal access",
+          tenantPortalAccessText:
+            "Link the tenant's lux.om user account to this PMS tenant record so they can see only their own lease, rent, and maintenance information.",
+          portalEmail: "Tenant account email",
+          grantPortalAccess: "Grant access",
+          disablePortalAccess: "Disable",
+          noPortalAccess: "No tenant portal user is linked yet.",
+          portalAccessActive: "Active",
+          portalAccessDisabled: "Disabled",
+          confirmDisablePortalAccess: "Disable this user's tenant portal access?",
+          portalAccessSaved: "Tenant portal access updated.",
+          tenantUserRequired:
+            "The tenant needs a lux.om user account with this email before access can be granted.",
           emptyLeases: "No PMS leases yet.",
           emptyRentDue: "No PMS rent due items yet.",
           createWorkOrder: "Create work order",
@@ -1328,6 +1358,82 @@ export default function PmsPortal() {
     }
   }
 
+
+  function setPortalAccessEmail(tenantId: string, value: string) {
+    setPortalAccessEmails((current) => ({ ...current, [tenantId]: value }));
+  }
+
+  function setPortalAccessLoading(key: string, value: boolean) {
+    setPortalAccessBusy((current) => ({ ...current, [key]: value }));
+  }
+
+  async function handleGrantTenantPortalAccess(
+    event: FormEvent<HTMLFormElement>,
+    tenant: PmsTenant,
+  ) {
+    event.preventDefault();
+    if (!token || !canEditTenantRecords) return;
+
+    const email = (portalAccessEmails[tenant.id] ?? tenant.email ?? "").trim();
+    if (!email) {
+      setError(copy.tenantUserRequired);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setPortalAccessLoading(tenant.id, true);
+      setError("");
+      setSuccess("");
+      await upsertPmsTenantPortalAccess(
+        tenant.id,
+        { email, active: true },
+        token,
+      );
+      setPortalAccessEmails((current) => ({ ...current, [tenant.id]: "" }));
+      setSuccess(copy.portalAccessSaved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setPortalAccessLoading(tenant.id, false);
+      setSaving(false);
+    }
+  }
+
+  async function handleDisableTenantPortalAccess(
+    tenant: PmsTenant,
+    access: PmsTenantPortalAccess,
+  ) {
+    if (!token || !canEditTenantRecords) return;
+    if (!window.confirm(copy.confirmDisablePortalAccess)) return;
+
+    const busyKey = `${tenant.id}:${access.userId}`;
+    try {
+      setSaving(true);
+      setPortalAccessLoading(busyKey, true);
+      setError("");
+      setSuccess("");
+      await upsertPmsTenantPortalAccess(
+        tenant.id,
+        { userId: access.userId, active: false },
+        token,
+      );
+      setSuccess(copy.portalAccessSaved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setPortalAccessLoading(busyKey, false);
+      setSaving(false);
+    }
+  }
 
   async function handleCreateTenant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1873,21 +1979,104 @@ export default function PmsPortal() {
                   </div>
                   {tenants.length === 0 ? <p>{copy.emptyTenants}</p> : null}
                   <div className="pms-inventory-list">
-                    {tenants.map((tenant) => (
-                      <article key={tenant.id} className="pms-inventory-card">
-                        <div>
-                          <strong>{tenant.fullName}</strong>
-                          <span>
-                            {[tenant.phone, tenant.email, tenant.nationality]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </span>
-                        </div>
-                        <small>
-                          {formatNumber(tenant.counts.leases, language)} {copy.rentals}
-                        </small>
-                      </article>
-                    ))}
+                    {tenants.map((tenant) => {
+                      const portalEmail = portalAccessEmails[tenant.id] ?? tenant.email ?? "";
+
+                      return (
+                        <article key={tenant.id} className="pms-inventory-card pms-tenant-card">
+                          <div className="pms-tenant-card__summary">
+                            <strong>{tenant.fullName}</strong>
+                            <span>
+                              {[tenant.phone, tenant.email, tenant.nationality]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                            <small>
+                              {formatNumber(tenant.counts.leases, language)} {copy.rentals}
+                            </small>
+                          </div>
+
+                          <div className="pms-tenant-card__portal">
+                            <div>
+                              <strong>{copy.tenantPortalAccess}</strong>
+                              <span>{copy.tenantPortalAccessText}</span>
+                            </div>
+                            {tenant.portalAccesses.length > 0 ? (
+                              <div className="pms-tenant-card__access-list">
+                                {tenant.portalAccesses.map((access) => {
+                                  const busyKey = `${tenant.id}:${access.userId}`;
+
+                                  return (
+                                    <div key={access.id} className="pms-tenant-card__access-row">
+                                      <span>
+                                        <strong>{access.user.name || access.user.email}</strong>
+                                        <small>{access.user.email}</small>
+                                      </span>
+                                      <StatusBadge
+                                        status={access.active ? "ACTIVE" : "CANCELLED"}
+                                        label={
+                                          access.active
+                                            ? copy.portalAccessActive
+                                            : copy.portalAccessDisabled
+                                        }
+                                      />
+                                      {access.active ? (
+                                        <button
+                                          className="button-link"
+                                          type="button"
+                                          disabled={
+                                            !canEditTenantRecords ||
+                                            saving ||
+                                            Boolean(portalAccessBusy[busyKey])
+                                          }
+                                          onClick={() => handleDisableTenantPortalAccess(tenant, access)}
+                                        >
+                                          {copy.disablePortalAccess}
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <p className="pms-tenant-card__empty">{copy.noPortalAccess}</p>
+                            )}
+
+                            <form
+                              className="pms-tenant-card__access-form"
+                              onSubmit={(event) => handleGrantTenantPortalAccess(event, tenant)}
+                            >
+                              <label>
+                                {copy.portalEmail}
+                                <input
+                                  type="email"
+                                  value={portalEmail}
+                                  placeholder={tenant.email ?? "tenant@example.com"}
+                                  onChange={(event) =>
+                                    setPortalAccessEmail(tenant.id, event.target.value)
+                                  }
+                                  disabled={!canEditTenantRecords || saving}
+                                />
+                              </label>
+                              <button
+                                className="button-link button-link--primary"
+                                type="submit"
+                                disabled={
+                                  !canEditTenantRecords ||
+                                  saving ||
+                                  Boolean(portalAccessBusy[tenant.id])
+                                }
+                              >
+                                {portalAccessBusy[tenant.id] ? (
+                                  <Loader2 size={16} aria-hidden="true" />
+                                ) : null}
+                                {copy.grantPortalAccess}
+                              </button>
+                            </form>
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
                 </div>
 

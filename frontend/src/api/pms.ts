@@ -167,6 +167,7 @@ export type PmsTenant = {
   counts: {
     leases: number;
   };
+  portalAccesses: PmsTenantPortalAccess[];
   createdAt: string;
   updatedAt: string;
 };

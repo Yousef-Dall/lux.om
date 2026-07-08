@@ -18580,6 +18580,70 @@ transition: none;
   color: rgba(255, 247, 223, 0.66);
 }
 
+.pms-tenant-card {
+  grid-template-columns: minmax(0, 0.85fr) minmax(320px, 1.35fr);
+  align-items: start;
+}
+
+.pms-tenant-card__summary,
+.pms-tenant-card__portal {
+  display: grid;
+  gap: 8px;
+}
+
+.pms-tenant-card__portal {
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background: rgba(3, 29, 33, 0.32);
+}
+
+.pms-tenant-card__access-list {
+  display: grid;
+  gap: 10px;
+}
+
+.pms-tenant-card__access-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.pms-tenant-card__access-row strong {
+  overflow-wrap: anywhere;
+}
+
+.pms-tenant-card__empty {
+  margin: 0;
+  color: rgba(255, 247, 223, 0.58);
+}
+
+.pms-tenant-card__access-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.pms-tenant-card__access-form label {
+  display: grid;
+  gap: 6px;
+  color: rgba(255, 247, 223, 0.72);
+  font-weight: 760;
+}
+
+.pms-tenant-card__access-form input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(3, 29, 33, 0.78);
+  color: #fff7df;
+}
+
 .pms-empty-state-list a {
   display: flex;
   align-items: center;
@@ -18719,7 +18783,10 @@ transition: none;
 
 @media (max-width: 700px) {
   .pms-form-grid,
-  .pms-inventory-card {
+  .pms-inventory-card,
+  .pms-tenant-card,
+  .pms-tenant-card__access-row,
+  .pms-tenant-card__access-form {
     grid-template-columns: 1fr;
   }
 
