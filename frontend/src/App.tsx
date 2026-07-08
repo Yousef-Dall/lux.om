@@ -950,6 +950,15 @@ export default function App() {
           />
 
           <Route
+            path="/pms/documents"
+            element={
+              <RequirePms>
+                <PmsPortal />
+              </RequirePms>
+            }
+          />
+
+          <Route
             path="/pms/accounting"
             element={
               <RequirePms>

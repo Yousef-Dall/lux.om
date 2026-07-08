@@ -33,6 +33,8 @@ async function clearPmsTestDatabase() {
   await prisma.activity.deleteMany();
   await prisma.listingImage.deleteMany();
   await prisma.amenity.deleteMany();
+  await prisma.pmsMoveChecklistItem.deleteMany();
+  await prisma.pmsDocument.deleteMany();
   await prisma.pmsInspection.deleteMany();
   await prisma.pmsAccountingLedgerEntry.deleteMany();
   await prisma.pmsWorkOrder.deleteMany();
@@ -41,6 +43,8 @@ async function clearPmsTestDatabase() {
   await prisma.pmsPolicy.deleteMany();
   await prisma.pmsAccountingLedgerEntry.deleteMany();
   await prisma.pmsRentPayment.deleteMany();
+  await prisma.pmsMoveChecklistItem.deleteMany();
+  await prisma.pmsDocument.deleteMany();
   await prisma.pmsRentDueItem.deleteMany();
   await prisma.pmsLease.deleteMany();
   await prisma.pmsTenant.deleteMany();
@@ -404,7 +408,7 @@ describe("PMS company entitlement access architecture", () => {
 
     const publicListings = await request(app).get("/api/listings").expect(200);
     expect(
-      publicListings.body.items ?? publicListings.body.listings ?? [],
+      publicListings.body.checklistItems ?? publicListings.body.listings ?? [],
     ).toHaveLength(0);
   });
 
@@ -2324,6 +2328,242 @@ describe("PMS company entitlement access architecture", () => {
       .get("/api/tenant/overview")
       .set("Authorization", `Bearer ${tenantToken}`)
       .expect(403);
+  });
+
+
+  it("keeps PMS documents private, tenant-scoped, and supports lease renewal lifecycle", async () => {
+    const manager = await prisma.user.create({
+      data: {
+        name: "Document Manager",
+        email: "pms-doc-manager@lux.test",
+        password: "test-password",
+        role: "DEVELOPER",
+        emailVerified: true,
+      },
+    });
+    const viewer = await prisma.user.create({
+      data: {
+        name: "Document Viewer",
+        email: "pms-doc-viewer@lux.test",
+        password: "test-password",
+        role: "DEVELOPER",
+        emailVerified: true,
+      },
+    });
+    const tenantUser = await prisma.user.create({
+      data: {
+        name: "Document Tenant",
+        email: "pms-doc-tenant@lux.test",
+        password: "test-password",
+        role: "USER",
+        emailVerified: true,
+      },
+    });
+    const otherTenantUser = await prisma.user.create({
+      data: {
+        name: "Other Document Tenant",
+        email: "pms-doc-other-tenant@lux.test",
+        password: "test-password",
+        role: "USER",
+        emailVerified: true,
+      },
+    });
+
+    const company = await prisma.developerCompany.create({
+      data: {
+        slug: "pms-doc-company",
+        nameEn: "PMS Documents Company",
+        verified: true,
+        featured: false,
+      },
+    });
+
+    await prisma.pmsCompanyEntitlement.create({
+      data: {
+        companyId: company.id,
+        status: "ACTIVE",
+        enabledAt: new Date(),
+        createdById: manager.id,
+      },
+    });
+    await prisma.pmsCompanyMember.createMany({
+      data: [
+        { companyId: company.id, userId: manager.id, role: "PMS_MANAGER", active: true },
+        { companyId: company.id, userId: viewer.id, role: "PMS_VIEWER", active: true },
+      ],
+    });
+
+    const property = await prisma.pmsProperty.create({
+      data: {
+        companyId: company.id,
+        name: "Document Tower",
+        city: "Muscat",
+        createdById: manager.id,
+      },
+    });
+    const unit = await prisma.pmsUnit.create({
+      data: {
+        companyId: company.id,
+        propertyId: property.id,
+        unitNumber: "D-101",
+        rentAmount: "900",
+        currency: "OMR",
+        createdById: manager.id,
+      },
+    });
+    const tenant = await prisma.pmsTenant.create({
+      data: {
+        companyId: company.id,
+        fullName: "Document Tenant",
+        email: tenantUser.email,
+        createdById: manager.id,
+      },
+    });
+    const otherTenant = await prisma.pmsTenant.create({
+      data: {
+        companyId: company.id,
+        fullName: "Other Tenant",
+        email: otherTenantUser.email,
+        createdById: manager.id,
+      },
+    });
+    const lease = await prisma.pmsLease.create({
+      data: {
+        companyId: company.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        tenantId: tenant.id,
+        title: "Document Lease",
+        status: "ACTIVE",
+        startDate: new Date("2026-01-01T00:00:00.000Z"),
+        endDate: new Date("2026-12-31T00:00:00.000Z"),
+        rentAmount: "900",
+        currency: "OMR",
+        securityDeposit: "900",
+        createdById: manager.id,
+      },
+    });
+
+    await prisma.pmsTenantPortalAccess.createMany({
+      data: [
+        { companyId: company.id, tenantId: tenant.id, userId: tenantUser.id, active: true, createdById: manager.id },
+        { companyId: company.id, tenantId: otherTenant.id, userId: otherTenantUser.id, active: true, createdById: manager.id },
+      ],
+    });
+
+    const managerToken = signToken(manager);
+    const viewerToken = signToken(viewer);
+    const tenantToken = signToken(tenantUser);
+    const otherTenantToken = signToken(otherTenantUser);
+
+    const createdDocument = await request(app)
+      .post("/api/pms/documents")
+      .set("Authorization", `Bearer ${managerToken}`)
+      .send({
+        companyId: company.id,
+        tenantId: tenant.id,
+        leaseId: lease.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        type: "LEASE_AGREEMENT",
+        title: "Signed lease agreement",
+        fileUrl: "/uploads/pms/signed-lease.pdf",
+        expiryDate: "2026-12-20",
+        notes: "Private lease document",
+      })
+      .expect(201);
+
+    expect(createdDocument.body.document.tenant.id).toBe(tenant.id);
+    expect(createdDocument.body.document.lease.id).toBe(lease.id);
+
+    const listResponse = await request(app)
+      .get(`/api/pms/documents?companyId=${company.id}&tenantId=${tenant.id}`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .expect(200);
+
+    expect(listResponse.body.documents).toHaveLength(1);
+    expect(listResponse.body.documents[0].title).toBe("Signed lease agreement");
+
+    await request(app)
+      .post("/api/pms/documents")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .send({
+        companyId: company.id,
+        tenantId: tenant.id,
+        type: "OTHER",
+        title: "Viewer upload attempt",
+        fileUrl: "/uploads/pms/viewer.pdf",
+      })
+      .expect(403);
+
+    const renewalResponse = await request(app)
+      .post(`/api/pms/leases/${lease.id}/renewal-draft`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .send({
+        startDate: "2027-01-01",
+        endDate: "2027-12-31",
+        rentAmount: 950,
+        securityDeposit: 950,
+        title: "Document Lease Renewal",
+      })
+      .expect(201);
+
+    expect(renewalResponse.body.lease.status).toBe("DRAFT");
+    expect(renewalResponse.body.lease.previousLeaseId).toBe(lease.id);
+
+    const checklistResponse = await request(app)
+      .post(`/api/pms/leases/${lease.id}/checklists`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .send({
+        type: "MOVE_IN",
+        title: "Keys handed over",
+      })
+      .expect(201);
+
+    expect(checklistResponse.body.checklistItem.status).toBe("PENDING");
+
+    const completedChecklistResponse = await request(app)
+      .patch(`/api/pms/lease-checklists/${checklistResponse.body.checklistItem.id}`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .send({ status: "COMPLETED" })
+      .expect(200);
+
+    expect(completedChecklistResponse.body.checklistItem.status).toBe("COMPLETED");
+    expect(completedChecklistResponse.body.checklistItem.completedAt).toBeTruthy();
+
+    const tenantDocumentsResponse = await request(app)
+      .get("/api/tenant/documents")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .expect(200);
+
+    expect(tenantDocumentsResponse.body.documents).toHaveLength(1);
+    expect(tenantDocumentsResponse.body.documents[0].tenant.id).toBe(tenant.id);
+
+    const otherTenantDocumentsResponse = await request(app)
+      .get("/api/tenant/documents")
+      .set("Authorization", `Bearer ${otherTenantToken}`)
+      .expect(200);
+
+    expect(otherTenantDocumentsResponse.body.documents).toHaveLength(0);
+
+    const tenantUploadResponse = await request(app)
+      .post("/api/tenant/documents")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({
+        type: "PASSPORT_RESIDENCY",
+        title: "Updated residency card",
+        fileUrl: "/uploads/pms/residency.pdf",
+      })
+      .expect(201);
+
+    expect(tenantUploadResponse.body.document.tenant.id).toBe(tenant.id);
+
+    const expiryResponse = await request(app)
+      .get(`/api/pms/documents/expiry-alerts?companyId=${company.id}&withinDays=365`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .expect(200);
+
+    expect(expiryResponse.body.documents.some((document: { id: string }) => document.id === createdDocument.body.document.id)).toBe(true);
   });
 
 });

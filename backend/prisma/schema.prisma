@@ -156,6 +156,7 @@ enum PmsLeaseStatus {
   DRAFT
   ACTIVE
   EXPIRING
+  RENEWED
   ENDED
   TERMINATED
 }
@@ -239,6 +240,38 @@ enum PmsInspectionStatus {
   COMPLETED
   NEEDS_ACTION
   CANCELLED
+}
+
+enum PmsDocumentType {
+  TENANT_ID
+  PASSPORT_RESIDENCY
+  LEASE_AGREEMENT
+  RENEWAL
+  MOVE_IN_REPORT
+  MOVE_OUT_REPORT
+  DEPOSIT_RECEIPT
+  INSPECTION_REPORT
+  MAINTENANCE_INVOICE
+  POLICY_NOTICE
+  OTHER
+}
+
+enum PmsDocumentStatus {
+  ACTIVE
+  EXPIRING
+  EXPIRED
+  ARCHIVED
+}
+
+enum PmsMoveChecklistType {
+  MOVE_IN
+  MOVE_OUT
+}
+
+enum PmsMoveChecklistStatus {
+  PENDING
+  COMPLETED
+  WAIVED
 }
 
 enum BookingEventType {
@@ -554,6 +587,10 @@ model User {
   pmsPoliciesUpdated     PmsPolicy[] @relation("PmsPolicyUpdatedBy")
   pmsInspectionsCreated  PmsInspection[] @relation("PmsInspectionCreatedBy")
   pmsInspectionsUpdated  PmsInspection[] @relation("PmsInspectionUpdatedBy")
+  pmsDocumentsUploaded   PmsDocument[] @relation("PmsDocumentUploadedBy")
+  pmsDocumentsUpdated    PmsDocument[] @relation("PmsDocumentUpdatedBy")
+  pmsMoveChecklistItemsCreated PmsMoveChecklistItem[] @relation("PmsMoveChecklistItemCreatedBy")
+  pmsMoveChecklistItemsUpdated PmsMoveChecklistItem[] @relation("PmsMoveChecklistItemUpdatedBy")
 
   eligibilityMarkedListings       Listing[]          @relation("ListingEligibilityMarkedBy")
   listingVerificationReviews      Listing[]          @relation("ListingVerificationReviewedBy")
@@ -677,6 +714,8 @@ model DeveloperCompany {
   pmsCommunicationTemplates PmsCommunicationTemplate[]
   pmsPolicies PmsPolicy[]
   pmsInspections PmsInspection[]
+  pmsDocuments PmsDocument[]
+  pmsMoveChecklistItems PmsMoveChecklistItem[]
 
   @@index([verified])
   @@index([featured])
@@ -1397,6 +1436,7 @@ model RentPaymentSchedule {
   contractDraftId String?
   contractDraft   RentalContractDraft? @relation(fields: [contractDraftId], references: [id], onDelete: SetNull)
 
+
   listingId String?
   listing   Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
 
@@ -1843,6 +1883,8 @@ model PmsProperty {
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
   pmsWorkOrders PmsWorkOrder[]
   pmsInspections PmsInspection[]
+  pmsDocuments PmsDocument[]
+  pmsMoveChecklistItems PmsMoveChecklistItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1895,6 +1937,8 @@ model PmsUnit {
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
   pmsWorkOrders PmsWorkOrder[]
   pmsInspections PmsInspection[]
+  pmsDocuments PmsDocument[]
+  pmsMoveChecklistItems PmsMoveChecklistItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1942,6 +1986,8 @@ model PmsTenant {
   pmsWorkOrders PmsWorkOrder[]
   pmsInspections PmsInspection[]
   pmsTenantPortalAccesses PmsTenantPortalAccess[]
+  pmsDocuments PmsDocument[]
+  pmsMoveChecklistItems PmsMoveChecklistItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1985,6 +2031,10 @@ model PmsLease {
   contractDraftId String?
   contractDraft   RentalContractDraft? @relation(fields: [contractDraftId], references: [id], onDelete: SetNull)
 
+  previousLeaseId String?
+  previousLease   PmsLease? @relation("PmsLeaseRenewalChain", fields: [previousLeaseId], references: [id], onDelete: SetNull)
+  renewalLeases   PmsLease[] @relation("PmsLeaseRenewalChain")
+
   createdById String?
   createdBy   User? @relation("PmsLeaseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -1995,6 +2045,8 @@ model PmsLease {
   rentPayments PmsRentPayment[]
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
   pmsInspections PmsInspection[]
+  pmsDocuments PmsDocument[]
+  pmsMoveChecklistItems PmsMoveChecklistItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2004,6 +2056,7 @@ model PmsLease {
   @@index([propertyId])
   @@index([unitId])
   @@index([contractDraftId])
+  @@index([previousLeaseId])
   @@index([startDate])
   @@index([endDate])
   @@index([createdById])
@@ -2209,6 +2262,7 @@ model PmsWorkOrder {
   updatedBy   User? @relation("PmsWorkOrderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
+  pmsDocuments PmsDocument[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2307,6 +2361,8 @@ model PmsInspection {
   updatedById String?
   updatedBy   User? @relation("PmsInspectionUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
+  pmsDocuments PmsDocument[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2315,6 +2371,101 @@ model PmsInspection {
   @@index([unitId])
   @@index([tenantId])
   @@index([leaseId])
+  @@index([createdById])
+  @@index([updatedById])
+}
+
+model PmsDocument {
+  id       String            @id @default(cuid())
+  type     PmsDocumentType
+  title    String
+  fileUrl  String
+  status   PmsDocumentStatus @default(ACTIVE)
+  expiryDate DateTime?
+  notes    String?
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  propertyId String?
+  property   PmsProperty? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  unitId String?
+  unit   PmsUnit? @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  tenantId String?
+  tenant   PmsTenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  leaseId String?
+  lease   PmsLease? @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+
+  workOrderId String?
+  workOrder   PmsWorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+
+  inspectionId String?
+  inspection   PmsInspection? @relation(fields: [inspectionId], references: [id], onDelete: SetNull)
+
+  uploadedById String?
+  uploadedBy   User? @relation("PmsDocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  updatedById String?
+  updatedBy   User? @relation("PmsDocumentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, type])
+  @@index([companyId, status])
+  @@index([companyId, expiryDate])
+  @@index([propertyId])
+  @@index([unitId])
+  @@index([tenantId])
+  @@index([leaseId])
+  @@index([workOrderId])
+  @@index([inspectionId])
+  @@index([uploadedById])
+  @@index([updatedById])
+}
+
+model PmsMoveChecklistItem {
+  id          String                 @id @default(cuid())
+  type        PmsMoveChecklistType
+  title       String
+  description String?
+  status      PmsMoveChecklistStatus @default(PENDING)
+  completedAt DateTime?
+  notes       String?
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  leaseId String
+  lease   PmsLease @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
+  propertyId String
+  property   PmsProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  unitId String
+  unit   PmsUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  tenantId String
+  tenant   PmsTenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User? @relation("PmsMoveChecklistItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  updatedById String?
+  updatedBy   User? @relation("PmsMoveChecklistItemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, type])
+  @@index([companyId, status])
+  @@index([leaseId])
+  @@index([propertyId])
+  @@index([unitId])
+  @@index([tenantId])
   @@index([createdById])
   @@index([updatedById])
 }

@@ -2,6 +2,8 @@ import { apiClient } from './client';
 import type {
   PmsCompanySummary,
   PmsLease,
+  PmsDocument,
+  PmsDocumentType,
   PmsMaintenancePriority,
   PmsMaintenanceStatus,
   PmsRentDueItem,
@@ -111,6 +113,24 @@ export type TenantMaintenancePayload = {
   priority?: PmsMaintenancePriority;
   imageUrls?: string[];
   documentUrls?: string[];
+};
+
+export type TenantDocumentsResponse = {
+  workspace: TenantPortalWorkspace;
+  documents: PmsDocument[];
+  foundation: {
+    enabled: boolean;
+    note: string;
+  };
+};
+
+export type TenantDocumentPayload = {
+  leaseId?: string;
+  type?: Extract<PmsDocumentType, 'TENANT_ID' | 'PASSPORT_RESIDENCY' | 'OTHER'>;
+  title: string;
+  fileUrl: string;
+  expiryDate?: string | null;
+  notes?: string | null;
 };
 
 export type TenantProfilePayload = {
@@ -266,14 +286,21 @@ export async function updateTenantProfile(
 }
 
 export async function getTenantDocuments(token: string, accessId?: string) {
-  return apiClient.get<{
+  return apiClient.get<TenantDocumentsResponse>('/api/tenant/documents', {
+    token,
+    params: tenantParams(accessId)
+  });
+}
+
+export async function createTenantDocument(
+  token: string,
+  payload: TenantDocumentPayload,
+  accessId?: string
+) {
+  return apiClient.post<{
     workspace: TenantPortalWorkspace;
-    documents: unknown[];
-    foundation: {
-      enabled: boolean;
-      note: string;
-    };
-  }>('/api/tenant/documents', {
+    document: PmsDocument;
+  }>('/api/tenant/documents', payload, {
     token,
     params: tenantParams(accessId)
   });

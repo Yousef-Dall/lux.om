@@ -30,6 +30,9 @@ import {
   createPmsAccountingLedgerEntry,
   createPmsCommunicationTemplate,
   createPmsInspection,
+  createPmsDocument,
+  createPmsLeaseChecklistItem,
+  createPmsLeaseRenewalDraft,
   createPmsLease,
   createPmsPolicy,
   createPmsProperty,
@@ -42,6 +45,9 @@ import {
   getPmsOwnerStatement,
   getPmsReportsSummary,
   listPmsAccountingLedger,
+  listPmsDocuments,
+  listPmsDocumentExpiryAlerts,
+  listPmsLeaseChecklists,
   listPmsCommunicationTemplates,
   listPmsInspections,
   listPmsLeaseRentDueItems,
@@ -56,18 +62,25 @@ import {
   listPmsWorkOrders,
   updatePmsProperty,
   updatePmsUnit,
+  updatePmsLeaseChecklistItem,
   updatePmsWorkOrder,
   upsertPmsTenantPortalAccess,
   type PmsAccountingLedgerEntry,
   type PmsAccountingLedgerPayload,
   type PmsCommunicationTemplate,
   type PmsCommunicationTemplatePayload,
+  type PmsDocument,
+  type PmsDocumentPayload,
+  type PmsDocumentStatus,
+  type PmsDocumentType,
   type PmsInspection,
   type PmsInspectionPayload,
   type PmsLease,
   type PmsLeasePayload,
   type PmsMaintenancePriority,
   type PmsMaintenanceStatus,
+  type PmsMoveChecklistItem,
+  type PmsMoveChecklistPayload,
   type PmsPolicy,
   type PmsPolicyPayload,
   type PmsProperty,
@@ -109,6 +122,7 @@ const pmsNavigation = [
     available: true,
   },
   { to: "/pms/rentals", key: "rentals", icon: ClipboardList, available: true },
+  { to: "/pms/documents", key: "documents", icon: FileText, available: true },
   {
     to: "/pms/maintenance",
     key: "maintenance",
@@ -152,6 +166,27 @@ const maintenanceStatuses: PmsMaintenanceStatus[] = [
   "WAITING_VENDOR",
   "RESOLVED",
   "CANCELLED",
+];
+
+const pmsDocumentTypes: PmsDocumentType[] = [
+  "TENANT_ID",
+  "PASSPORT_RESIDENCY",
+  "LEASE_AGREEMENT",
+  "RENEWAL",
+  "MOVE_IN_REPORT",
+  "MOVE_OUT_REPORT",
+  "DEPOSIT_RECEIPT",
+  "INSPECTION_REPORT",
+  "MAINTENANCE_INVOICE",
+  "POLICY_NOTICE",
+  "OTHER",
+];
+
+const pmsDocumentStatuses: PmsDocumentStatus[] = [
+  "ACTIVE",
+  "EXPIRING",
+  "EXPIRED",
+  "ARCHIVED",
 ];
 
 const emptyPropertyForm: PmsPropertyPayload = {
@@ -284,6 +319,21 @@ const emptyInspectionForm: PmsInspectionPayload = {
   rating: null,
 };
 
+const emptyDocumentForm: PmsDocumentPayload = {
+  propertyId: "",
+  unitId: "",
+  tenantId: "",
+  leaseId: "",
+  workOrderId: "",
+  inspectionId: "",
+  type: "LEASE_AGREEMENT",
+  title: "",
+  fileUrl: "",
+  status: "ACTIVE",
+  expiryDate: "",
+  notes: "",
+};
+
 function formatNumber(value: number, language: "en" | "ar") {
   return new Intl.NumberFormat(language === "ar" ? "ar-OM" : "en-GB").format(
     value,
@@ -350,6 +400,14 @@ function canEditMaintenance(role?: string) {
 
 function canEditOperations(role?: string) {
   return role === "PMS_OWNER" || role === "PMS_MANAGER";
+}
+
+function canViewDocuments(role?: string) {
+  return Boolean(role);
+}
+
+function canManageDocuments(role?: string) {
+  return role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_MAINTENANCE";
 }
 
 function getUnitStatusLabel(status: PmsUnitStatus, language: "en" | "ar") {
@@ -601,6 +659,24 @@ function formatStatusText(status: string) {
     .join(" ");
 }
 
+function cleanDocumentPayload(form: PmsDocumentPayload, companyId: string): PmsDocumentPayload & { companyId: string } {
+  return {
+    companyId,
+    propertyId: form.propertyId || null,
+    unitId: form.unitId || null,
+    tenantId: form.tenantId || null,
+    leaseId: form.leaseId || null,
+    workOrderId: form.workOrderId || null,
+    inspectionId: form.inspectionId || null,
+    type: form.type || "OTHER",
+    title: form.title.trim(),
+    fileUrl: form.fileUrl.trim(),
+    status: form.status || "ACTIVE",
+    expiryDate: form.expiryDate || null,
+    notes: form.notes?.trim() || null,
+  };
+}
+
 function StatusBadge({ status, label }: { status: string; label?: string }) {
   return (
     <span
@@ -636,6 +712,10 @@ export default function PmsPortal() {
   const [templates, setTemplates] = useState<PmsCommunicationTemplate[]>([]);
   const [policies, setPolicies] = useState<PmsPolicy[]>([]);
   const [inspections, setInspections] = useState<PmsInspection[]>([]);
+  const [documents, setDocuments] = useState<PmsDocument[]>([]);
+  const [documentAlerts, setDocumentAlerts] = useState<PmsDocument[]>([]);
+  const [activeLeaseDocuments, setActiveLeaseDocuments] = useState<PmsDocument[]>([]);
+  const [activeLeaseChecklists, setActiveLeaseChecklists] = useState<PmsMoveChecklistItem[]>([]);
   const [activeProperty, setActiveProperty] = useState<PmsProperty | null>(
     null,
   );
@@ -658,6 +738,8 @@ export default function PmsPortal() {
     useState<PmsPolicyPayload>(emptyPolicyForm);
   const [inspectionForm, setInspectionForm] =
     useState<PmsInspectionPayload>(emptyInspectionForm);
+  const [documentForm, setDocumentForm] =
+    useState<PmsDocumentPayload>(emptyDocumentForm);
   const [unitDrafts, setUnitDrafts] = useState<
     Record<string, Partial<PmsUnitPayload>>
   >({});
@@ -693,6 +775,7 @@ export default function PmsPortal() {
           accounting: "المحاسبة",
           reports: "التقارير",
           settings: "الإعدادات",
+          documents: "المستندات",
           soon: "قريباً",
           headline: "مركز إدارة محفظة العقارات",
           headlineText:
@@ -796,6 +879,20 @@ export default function PmsPortal() {
             "يجب أن يكون لدى المستأجر حساب lux.om بنفس البريد قبل تفعيل الوصول.",
           emptyLeases: "لا توجد عقود PMS بعد.",
           emptyRentDue: "لا توجد دفعات إيجار PMS بعد.",
+          documentsCenter: "مركز مستندات PMS",
+          documentAlerts: "تنبيهات انتهاء المستندات",
+          createDocument: "إضافة مستند",
+          documentTitle: "عنوان المستند",
+          documentUrl: "رابط أو مسار الملف",
+          documentType: "نوع المستند",
+          expiryDate: "تاريخ الانتهاء",
+          openDocument: "فتح المستند",
+          emptyDocuments: "لا توجد مستندات PMS بعد.",
+          renewalDraft: "مسودة تجديد",
+          createRenewalDraft: "إنشاء مسودة تجديد",
+          moveChecklist: "قائمة انتقال المستأجر",
+          addChecklistItem: "إضافة بند",
+          completeChecklistItem: "إكمال",
           createWorkOrder: "إضافة طلب صيانة",
           workOrderTitle: "عنوان طلب الصيانة",
           priority: "الأولوية",
@@ -867,6 +964,7 @@ export default function PmsPortal() {
           accounting: "Accounting",
           reports: "Reports",
           settings: "Settings",
+          documents: "Documents",
           soon: "Soon",
           headline: "Private property inventory command center",
           headlineText:
@@ -972,6 +1070,20 @@ export default function PmsPortal() {
             "The tenant needs a lux.om user account with this email before access can be granted.",
           emptyLeases: "No PMS leases yet.",
           emptyRentDue: "No PMS rent due items yet.",
+          documentsCenter: "PMS document center",
+          documentAlerts: "Document expiry alerts",
+          createDocument: "Add document",
+          documentTitle: "Document title",
+          documentUrl: "File URL or path",
+          documentType: "Document type",
+          expiryDate: "Expiry date",
+          openDocument: "Open document",
+          emptyDocuments: "No PMS documents yet.",
+          renewalDraft: "Renewal draft",
+          createRenewalDraft: "Create renewal draft",
+          moveChecklist: "Move-in / move-out checklist",
+          addChecklistItem: "Add checklist item",
+          completeChecklistItem: "Complete",
           createWorkOrder: "Create work order",
           workOrderTitle: "Work order title",
           priority: "Priority",
@@ -1033,7 +1145,9 @@ export default function PmsPortal() {
             ? "tenants"
             : location.pathname.startsWith("/pms/rentals")
               ? "rentals"
-              : location.pathname.startsWith("/pms/maintenance")
+              : location.pathname.startsWith("/pms/documents")
+                ? "documents"
+                : location.pathname.startsWith("/pms/maintenance")
                 ? "maintenance"
                 : location.pathname.startsWith("/pms/accounting")
                   ? "accounting"
@@ -1049,6 +1163,8 @@ export default function PmsPortal() {
   const canSeeAccounting = canViewAccounting(overview?.workspace.member.role);
   const canManageMaintenance = canEditMaintenance(overview?.workspace.member.role);
   const canManageOperations = canEditOperations(overview?.workspace.member.role);
+  const canSeeDocuments = canViewDocuments(overview?.workspace.member.role);
+  const canManageDocumentRecords = canManageDocuments(overview?.workspace.member.role);
 
   async function loadPortal() {
     if (!token) return;
@@ -1112,13 +1228,39 @@ export default function PmsPortal() {
         setActiveProperty(null);
         setActiveLease(null);
       } else if (section === "leaseDetail" && selectedLeaseId) {
-        const [leaseResponse, rentDueResponse] = await Promise.all([
+        const [leaseResponse, rentDueResponse, documentResponse, checklistResponse] = await Promise.all([
           getPmsLease(token, selectedLeaseId),
           listPmsLeaseRentDueItems(token, selectedLeaseId, { take: 200 }),
+          listPmsDocuments(token, { companyId, leaseId: selectedLeaseId, take: 50 }),
+          listPmsLeaseChecklists(token, selectedLeaseId),
         ]);
         setActiveLease(leaseResponse.lease);
         setRentDueItems(rentDueResponse.rentDueItems);
+        setActiveLeaseDocuments(documentResponse.documents);
+        setActiveLeaseChecklists(checklistResponse.checklistItems);
         setActiveProperty(null);
+      } else if (section === "documents") {
+        const [propertiesResponse, unitsResponse, tenantsResponse, leasesResponse, workOrdersResponse, inspectionsResponse, documentsResponse, alertsResponse] =
+          await Promise.all([
+            listPmsProperties(token, { companyId, take: 100 }),
+            listPmsUnits(token, { companyId, take: 200 }),
+            listPmsTenants(token, { companyId, take: 100 }),
+            listPmsLeases(token, { companyId, take: 100 }),
+            listPmsWorkOrders(token, { companyId, take: 100 }),
+            listPmsInspections(token, { companyId, take: 100 }),
+            listPmsDocuments(token, { companyId, take: 100 }),
+            listPmsDocumentExpiryAlerts(token, { companyId, withinDays: 30 }),
+          ]);
+        setProperties(propertiesResponse.properties);
+        setUnits(unitsResponse.units);
+        setTenants(tenantsResponse.tenants);
+        setLeases(leasesResponse.leases);
+        setWorkOrders(workOrdersResponse.workOrders);
+        setInspections(inspectionsResponse.inspections);
+        setDocuments(documentsResponse.documents);
+        setDocumentAlerts(alertsResponse.documents);
+        setActiveProperty(null);
+        setActiveLease(null);
       } else if (section === "maintenance") {
         const [propertiesResponse, unitsResponse, tenantsResponse, workOrdersResponse] =
           await Promise.all([
@@ -1195,6 +1337,10 @@ export default function PmsPortal() {
         setTemplates([]);
         setPolicies([]);
         setInspections([]);
+        setDocuments([]);
+        setDocumentAlerts([]);
+        setActiveLeaseDocuments([]);
+        setActiveLeaseChecklists([]);
         setActiveProperty(null);
         setActiveLease(null);
       }
@@ -1776,6 +1922,111 @@ export default function PmsPortal() {
     }
   }
 
+  async function handleCreateDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !overview || !canManageDocumentRecords) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await createPmsDocument(
+        token,
+        cleanDocumentPayload(documentForm, overview.workspace.company.id),
+      );
+      setDocumentForm(emptyDocumentForm);
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCreateLeaseRenewalDraft() {
+    if (!token || !activeLease || !overview || !canEditTenantRecords) return;
+
+    const renewalDefaultDate = (
+      activeLease.endDate ??
+      activeLease.startDate ??
+      new Date().toISOString()
+    ).slice(0, 10);
+    const nextStartDate = window.prompt(copy.startDate, renewalDefaultDate);
+    if (!nextStartDate) return;
+    const nextEndDate = window.prompt(copy.endDate, renewalDefaultDate);
+    if (!nextEndDate) return;
+    const rentAmount = window.prompt(copy.rent, String(activeLease.rentAmount));
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      const response = await createPmsLeaseRenewalDraft(token, activeLease.id, {
+        startDate: nextStartDate,
+        endDate: nextEndDate,
+        rentAmount: rentAmount ? Number(rentAmount) : activeLease.rentAmount,
+        securityDeposit: activeLease.securityDeposit,
+        title: `${activeLease.title} renewal`,
+      });
+      setSuccess(copy.saved);
+      navigate(`/pms/rentals/${response.lease.id}?companyId=${overview.workspace.company.id}`);
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCreateChecklistItem(type: PmsMoveChecklistPayload["type"]) {
+    if (!token || !activeLease || !canEditTenantRecords) return;
+
+    const title = window.prompt(copy.addChecklistItem, type === "MOVE_IN" ? "Move-in check" : "Move-out check");
+    if (!title) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await createPmsLeaseChecklistItem(token, activeLease.id, { type, title });
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCompleteChecklistItem(item: PmsMoveChecklistItem) {
+    if (!token || !canEditTenantRecords) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await updatePmsLeaseChecklistItem(token, item.id, { status: "COMPLETED" });
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        saveError instanceof ApiError ? saveError.message : copy.unavailable,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <section className="pms-portal" aria-labelledby="pms-title">
       <aside className="pms-sidebar" aria-label={copy.portal}>
@@ -2305,6 +2556,70 @@ export default function PmsPortal() {
                 {rentReceipt ? (
                   <PmsRentReceiptPanel copy={copy} receipt={rentReceipt} language={language} />
                 ) : null}
+
+                <div className="pms-next-actions">
+                  <div className="pms-next-actions__header">
+                    <p className="eyebrow">{copy.renewalDraft}</p>
+                    <h2>{copy.documents}</h2>
+                  </div>
+                  {activeLease.previousLease ? (
+                    <p>{copy.renewalDraft}: {activeLease.previousLease.title}</p>
+                  ) : null}
+                  <button
+                    className="button-link button-link--primary"
+                    type="button"
+                    disabled={!canEditTenantRecords || saving}
+                    onClick={handleCreateLeaseRenewalDraft}
+                  >
+                    <Plus size={16} aria-hidden="true" />
+                    {copy.createRenewalDraft}
+                  </button>
+                  <div className="pms-inventory-list">
+                    {activeLeaseDocuments.length === 0 ? <p>{copy.emptyDocuments}</p> : null}
+                    {activeLeaseDocuments.map((document) => (
+                      <article key={document.id} className="pms-inventory-card">
+                        <div>
+                          <strong>{document.title}</strong>
+                          <span>{formatStatusText(document.type)} · {document.status}</span>
+                        </div>
+                        <a className="button-link" href={document.fileUrl} target="_blank" rel="noreferrer">
+                          {copy.openDocument}
+                        </a>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pms-next-actions">
+                  <div className="pms-next-actions__header">
+                    <p className="eyebrow">{copy.moveChecklist}</p>
+                    <h2>{copy.moveChecklist}</h2>
+                  </div>
+                  <div className="pms-action-row">
+                    <button className="button-link" type="button" disabled={!canEditTenantRecords || saving} onClick={() => handleCreateChecklistItem("MOVE_IN")}>
+                      {copy.addChecklistItem} · Move-in
+                    </button>
+                    <button className="button-link" type="button" disabled={!canEditTenantRecords || saving} onClick={() => handleCreateChecklistItem("MOVE_OUT")}>
+                      {copy.addChecklistItem} · Move-out
+                    </button>
+                  </div>
+                  <div className="pms-inventory-list">
+                    {activeLeaseChecklists.map((item) => (
+                      <article key={item.id} className="pms-inventory-card">
+                        <div>
+                          <strong>{item.title}</strong>
+                          <span>{formatStatusText(item.type)} · {formatStatusText(item.status)}</span>
+                        </div>
+                        {item.status !== "COMPLETED" ? (
+                          <button className="button-link" type="button" disabled={!canEditTenantRecords || saving} onClick={() => handleCompleteChecklistItem(item)}>
+                            {copy.completeChecklistItem}
+                          </button>
+                        ) : null}
+                      </article>
+                    ))}
+                  </div>
+                </div>
+
                 <RentDueTable
                   copy={copy}
                   items={rentDueItems}
@@ -2313,6 +2628,72 @@ export default function PmsPortal() {
                   saving={saving}
                   onMarkPaid={handleRecordRentPayment}
                 />
+              </section>
+            ) : null}
+
+            {section === "documents" ? (
+              <section className="pms-panel-grid pms-panel-grid--inventory">
+                <div className="pms-next-actions">
+                  <div className="pms-next-actions__header">
+                    <p className="eyebrow">{copy.privateNote}</p>
+                    <h2>{copy.documentsCenter}</h2>
+                  </div>
+                  {!canSeeDocuments ? <p className="form-error">{copy.cannotEdit}</p> : null}
+
+                  <div className="pms-inventory-list">
+                    {documentAlerts.length > 0 ? (
+                      <article className="pms-inventory-card">
+                        <div>
+                          <strong>{copy.documentAlerts}</strong>
+                          <span>{documentAlerts.map((document) => document.title).join(", ")}</span>
+                        </div>
+                      </article>
+                    ) : null}
+                    {documents.length === 0 ? <p>{copy.emptyDocuments}</p> : null}
+                    {documents.map((document) => (
+                      <article key={document.id} className="pms-inventory-card">
+                        <div>
+                          <strong>{document.title}</strong>
+                          <span>
+                            {formatStatusText(document.type)} · {document.status}
+                            {document.expiryDate ? ` · ${formatDate(document.expiryDate, language)}` : ""}
+                          </span>
+                          <small>
+                            {[document.tenant?.fullName, document.lease?.title, document.property?.name, document.unit?.unitNumber]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </small>
+                        </div>
+                        <a className="button-link" href={document.fileUrl} target="_blank" rel="noreferrer">
+                          {copy.openDocument}
+                        </a>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+
+                <form className="pms-form-card" onSubmit={handleCreateDocument}>
+                  <div>
+                    <p className="eyebrow">{copy.documents}</p>
+                    <h2>{copy.createDocument}</h2>
+                  </div>
+                  {!canManageDocumentRecords ? <p className="form-error">{copy.cannotEdit}</p> : null}
+                  <DocumentFields
+                    copy={copy}
+                    form={documentForm}
+                    setForm={setDocumentForm}
+                    properties={properties}
+                    units={units}
+                    tenants={tenants}
+                    leases={leases}
+                    workOrders={workOrders}
+                    inspections={inspections}
+                  />
+                  <button className="button-link button-link--primary" type="submit" disabled={!canManageDocumentRecords || saving}>
+                    <Plus size={16} aria-hidden="true" />
+                    {copy.createDocument}
+                  </button>
+                </form>
               </section>
             ) : null}
 
@@ -3865,6 +4246,105 @@ function PolicyFields({
       <label className="pms-form-grid__wide">
         {copy.body}
         <textarea required value={form.body} onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))} />
+      </label>
+    </div>
+  );
+}
+
+function DocumentFields({
+  copy,
+  form,
+  setForm,
+  properties,
+  units,
+  tenants,
+  leases,
+  workOrders,
+  inspections,
+}: {
+  copy: PmsCopy;
+  form: PmsDocumentPayload;
+  setForm: (updater: (current: PmsDocumentPayload) => PmsDocumentPayload) => void;
+  properties: PmsProperty[];
+  units: PmsUnit[];
+  tenants: PmsTenant[];
+  leases: PmsLease[];
+  workOrders: PmsWorkOrder[];
+  inspections: PmsInspection[];
+}) {
+  const propertyUnits = form.propertyId ? units.filter((unit) => unit.propertyId === form.propertyId) : units;
+
+  return (
+    <div className="pms-form-grid">
+      <label>
+        {copy.documentTitle}
+        <input required value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} />
+      </label>
+      <label>
+        {copy.documentType}
+        <select value={form.type ?? "OTHER"} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as PmsDocumentPayload["type"] }))}>
+          {pmsDocumentTypes.map((type) => <option key={type} value={type}>{formatStatusText(type)}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.status}
+        <select value={form.status ?? "ACTIVE"} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as PmsDocumentPayload["status"] }))}>
+          {pmsDocumentStatuses.map((status) => <option key={status} value={status}>{formatStatusText(status)}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.documentUrl}
+        <input required value={form.fileUrl} placeholder="/uploads/document.pdf" onChange={(event) => setForm((current) => ({ ...current, fileUrl: event.target.value }))} />
+      </label>
+      <label>
+        {copy.expiryDate}
+        <input type="date" value={form.expiryDate ?? ""} onChange={(event) => setForm((current) => ({ ...current, expiryDate: event.target.value }))} />
+      </label>
+      <label>
+        {copy.propertyName}
+        <select value={form.propertyId ?? ""} onChange={(event) => setForm((current) => ({ ...current, propertyId: event.target.value, unitId: "" }))}>
+          <option value="">—</option>
+          {properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.unitNumber}
+        <select value={form.unitId ?? ""} onChange={(event) => setForm((current) => ({ ...current, unitId: event.target.value }))}>
+          <option value="">—</option>
+          {propertyUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.unitNumber}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.tenantName}
+        <select value={form.tenantId ?? ""} onChange={(event) => setForm((current) => ({ ...current, tenantId: event.target.value }))}>
+          <option value="">—</option>
+          {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.fullName}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.lease}
+        <select value={form.leaseId ?? ""} onChange={(event) => setForm((current) => ({ ...current, leaseId: event.target.value }))}>
+          <option value="">—</option>
+          {leases.map((lease) => <option key={lease.id} value={lease.id}>{lease.title || lease.unit.unitNumber}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.maintenanceRequests}
+        <select value={form.workOrderId ?? ""} onChange={(event) => setForm((current) => ({ ...current, workOrderId: event.target.value }))}>
+          <option value="">—</option>
+          {workOrders.map((workOrder) => <option key={workOrder.id} value={workOrder.id}>{workOrder.title}</option>)}
+        </select>
+      </label>
+      <label>
+        {copy.inspections}
+        <select value={form.inspectionId ?? ""} onChange={(event) => setForm((current) => ({ ...current, inspectionId: event.target.value }))}>
+          <option value="">—</option>
+          {inspections.map((inspection) => <option key={inspection.id} value={inspection.id}>{inspection.title}</option>)}
+        </select>
+      </label>
+      <label className="pms-form-grid__wide">
+        {copy.notes}
+        <textarea value={form.notes ?? ""} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} />
       </label>
     </div>
   );

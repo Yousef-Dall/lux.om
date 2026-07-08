@@ -3,6 +3,7 @@ import { FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { NavLink, Navigate, useLocation } from 'react-router-dom';
 
 import {
+  createTenantDocument,
   createTenantMaintenanceRequest,
   createTenantRentCheckoutSession,
   getTenantDocuments,
@@ -18,10 +19,11 @@ import {
   type TenantLeaseResponse,
   type TenantMaintenanceResponse,
   type TenantOverview,
+  type TenantDocumentPayload,
   type TenantProfilePayload,
   type TenantRentResponse
 } from '../api/tenant';
-import type { PmsMaintenancePriority, PmsRentDueItem, PmsRentPayment, PmsRentReceipt } from '../api/pms';
+import type { PmsDocument, PmsMaintenancePriority, PmsRentDueItem, PmsRentPayment, PmsRentReceipt } from '../api/pms';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -40,6 +42,14 @@ type MaintenanceFormState = {
   title: string;
   description: string;
   priority: PmsMaintenancePriority;
+};
+
+const emptyTenantDocumentForm: TenantDocumentPayload = {
+  type: 'OTHER',
+  title: '',
+  fileUrl: '',
+  expiryDate: '',
+  notes: ''
 };
 
 function getTenantTab(pathname: string): TenantTabKey {
@@ -92,7 +102,9 @@ export default function TenantPortal() {
   const [rentReceipt, setRentReceipt] = useState<PmsRentReceipt | null>(null);
   const [maintenanceData, setMaintenanceData] = useState<TenantMaintenanceResponse | null>(null);
   const [profile, setProfile] = useState<TenantProfilePayload>({});
+  const [documents, setDocuments] = useState<PmsDocument[]>([]);
   const [documentsNote, setDocumentsNote] = useState('');
+  const [documentForm, setDocumentForm] = useState<TenantDocumentPayload>(emptyTenantDocumentForm);
   const [maintenanceForm, setMaintenanceForm] = useState<MaintenanceFormState>({
     title: '',
     description: '',
@@ -155,7 +167,15 @@ export default function TenantPortal() {
             saving: 'جارٍ الحفظ...',
             saved: 'تم الحفظ بنجاح.',
             requestCreated: 'تم إنشاء طلب الصيانة.',
-            documentsText: 'مشاركة المستندات مع المستأجرين محفوظة لمرحلة مستقبلية.',
+            documentsText: 'مستنداتك الخاصة تظهر هنا فقط ولا تظهر لمستأجرين آخرين.',
+            uploadDocument: 'إضافة مستند',
+            documentTitle: 'عنوان المستند',
+            documentType: 'نوع المستند',
+            documentUrl: 'رابط أو مسار الملف',
+            expiryDate: 'تاريخ الانتهاء',
+            notes: 'ملاحظات',
+            openDocument: 'فتح المستند',
+            noDocuments: 'لا توجد مستندات بعد.',
             phone: 'الهاتف',
             email: 'البريد الإلكتروني',
             emergencyName: 'اسم جهة الطوارئ',
@@ -213,7 +233,15 @@ export default function TenantPortal() {
             saving: 'Saving...',
             saved: 'Saved successfully.',
             requestCreated: 'Maintenance request created.',
-            documentsText: 'Tenant document sharing is reserved for a future document stage.',
+            documentsText: 'Your private tenant documents appear here and are not shared with other tenants.',
+            uploadDocument: 'Add document',
+            documentTitle: 'Document title',
+            documentType: 'Document type',
+            documentUrl: 'File URL or uploaded path',
+            expiryDate: 'Expiry date',
+            notes: 'Notes',
+            openDocument: 'Open document',
+            noDocuments: 'No documents yet.',
             phone: 'Phone',
             email: 'Email',
             emergencyName: 'Emergency contact name',
@@ -265,6 +293,7 @@ export default function TenantPortal() {
           emergencyContactPhone: profileResponse.profile.emergencyContactPhone ?? '',
           emergencyContactEmail: profileResponse.profile.emergencyContactEmail ?? ''
         });
+        setDocuments(documentsResponse.documents);
         setDocumentsNote(documentsResponse.foundation.note || copy.documentsText);
         setRentPaymentsByItemId({});
         setRentReceipt(null);
@@ -351,6 +380,36 @@ export default function TenantPortal() {
     }
   }
 
+
+  async function handleCreateDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !activeAccessId) return;
+
+    setSaving(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await createTenantDocument(
+        token,
+        {
+          ...documentForm,
+          title: documentForm.title.trim(),
+          fileUrl: documentForm.fileUrl.trim(),
+          expiryDate: documentForm.expiryDate || null,
+          notes: documentForm.notes || null
+        },
+        activeAccessId
+      );
+      setDocuments((current) => [response.document, ...current]);
+      setDocumentForm(emptyTenantDocumentForm);
+      setSuccess(copy.saved);
+    } catch (documentError) {
+      setError(getErrorMessage(documentError));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function reloadRentWorkspace() {
     if (!token || !activeAccessId) return;
@@ -692,7 +751,76 @@ export default function TenantPortal() {
           ) : null}
 
           {!loading && activeTab === 'documents' ? (
-            <InfoCard title={copy.documents} empty={documentsNote || copy.documentsText} />
+            <div className="tenant-portal__stack">
+              <div className="tenant-portal__notice">{documentsNote || copy.documentsText}</div>
+              <form className="tenant-portal__form" onSubmit={handleCreateDocument}>
+                <h2>{copy.uploadDocument}</h2>
+                <label>
+                  <span>{copy.documentTitle}</span>
+                  <input
+                    required
+                    minLength={2}
+                    value={documentForm.title}
+                    onChange={(event) => setDocumentForm((form) => ({ ...form, title: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>{copy.documentType}</span>
+                  <select
+                    value={documentForm.type}
+                    onChange={(event) => setDocumentForm((form) => ({ ...form, type: event.target.value as TenantDocumentPayload['type'] }))}
+                  >
+                    <option value="OTHER">OTHER</option>
+                    <option value="TENANT_ID">TENANT_ID</option>
+                    <option value="PASSPORT_RESIDENCY">PASSPORT_RESIDENCY</option>
+                  </select>
+                </label>
+                <label>
+                  <span>{copy.documentUrl}</span>
+                  <input
+                    required
+                    value={documentForm.fileUrl}
+                    placeholder="/uploads/file.pdf or https://..."
+                    onChange={(event) => setDocumentForm((form) => ({ ...form, fileUrl: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>{copy.expiryDate}</span>
+                  <input
+                    type="date"
+                    value={documentForm.expiryDate ?? ''}
+                    onChange={(event) => setDocumentForm((form) => ({ ...form, expiryDate: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>{copy.notes}</span>
+                  <textarea
+                    rows={3}
+                    value={documentForm.notes ?? ''}
+                    onChange={(event) => setDocumentForm((form) => ({ ...form, notes: event.target.value }))}
+                  />
+                </label>
+                <button className="button-link button-link--primary" type="submit" disabled={saving}>
+                  {saving ? copy.saving : copy.uploadDocument}
+                </button>
+              </form>
+
+              {documents.length === 0 ? <TenantEmptyState title={copy.noDocuments} /> : null}
+              {documents.map((document) => (
+                <InfoCard key={document.id} title={document.title}>
+                  <dl className="tenant-portal__details">
+                    <div><dt>{copy.documentType}</dt><dd>{document.type}</dd></div>
+                    <div><dt>{copy.status}</dt><dd><span className="tenant-portal__badge">{document.status}</span></dd></div>
+                    <div><dt>{copy.expiryDate}</dt><dd>{formatDate(document.expiryDate, language)}</dd></div>
+                  </dl>
+                  {document.notes ? <p>{document.notes}</p> : null}
+                  <a className="button-link" href={document.fileUrl} target="_blank" rel="noreferrer">
+                    <ExternalLink size={16} aria-hidden="true" />
+                    {copy.openDocument}
+                  </a>
+                </InfoCard>
+              ))}
+            </div>
           ) : null}
 
           {!loading && activeTab === 'profile' ? (

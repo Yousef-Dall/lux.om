@@ -1,6 +1,8 @@
 import {
   AccountSecurityEventType,
   NotificationType,
+  PmsDocumentStatus,
+  PmsDocumentType,
   PmsMaintenancePriority,
   PmsMaintenanceStatus,
   PmsRentDueStatus,
@@ -42,6 +44,26 @@ export const tenantRouter = Router();
 const tenantAccessQuerySchema = z.object({
   accessId: z.string().trim().min(1).optional()
 });
+
+const tenantDocumentFileSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(1000)
+  .refine((value) => value.startsWith('/uploads/') || /^https?:\/\//i.test(value), {
+    message: 'Document file must be an uploaded file path or a HTTPS URL.'
+  });
+
+const tenantDocumentCreateSchema = z
+  .object({
+    leaseId: z.string().trim().min(1).optional(),
+    type: z.enum([PmsDocumentType.TENANT_ID, PmsDocumentType.PASSPORT_RESIDENCY, PmsDocumentType.OTHER] as const).default(PmsDocumentType.OTHER),
+    title: z.string().trim().min(2).max(180),
+    fileUrl: tenantDocumentFileSchema,
+    expiryDate: z.coerce.date().optional().nullable(),
+    notes: z.string().trim().max(2000).optional().nullable()
+  })
+  .strict();
 
 const tenantRentQuerySchema = tenantAccessQuerySchema.extend({
   status: z
@@ -188,6 +210,19 @@ type TenantWorkOrderWithRelations = Prisma.PmsWorkOrderGetPayload<{
   include: typeof tenantWorkOrderInclude;
 }>;
 
+
+const tenantDocumentInclude = {
+  property: { select: { id: true, name: true, code: true } },
+  unit: { select: { id: true, unitNumber: true, unitName: true } },
+  lease: { select: { id: true, title: true, status: true, startDate: true, endDate: true } },
+  workOrder: { select: { id: true, title: true, status: true } },
+  inspection: { select: { id: true, title: true, status: true, scheduledFor: true } }
+} satisfies Prisma.PmsDocumentInclude;
+
+type TenantDocumentWithRelations = Prisma.PmsDocumentGetPayload<{
+  include: typeof tenantDocumentInclude;
+}>;
+
 const tenantRentPaymentInclude = {
   rentDueItem: {
     include: tenantRentDueInclude
@@ -327,6 +362,32 @@ function tenantWorkOrderResponse(workOrder: TenantWorkOrderWithRelations) {
     documentUrls: workOrder.documentUrls,
     createdAt: workOrder.createdAt,
     updatedAt: workOrder.updatedAt
+  };
+}
+
+function tenantDocumentResponse(document: TenantDocumentWithRelations) {
+  return {
+    id: document.id,
+    companyId: document.companyId,
+    propertyId: document.propertyId,
+    property: document.property,
+    unitId: document.unitId,
+    unit: document.unit,
+    tenantId: document.tenantId,
+    leaseId: document.leaseId,
+    lease: document.lease,
+    workOrderId: document.workOrderId,
+    workOrder: document.workOrder,
+    inspectionId: document.inspectionId,
+    inspection: document.inspection,
+    type: document.type,
+    title: document.title,
+    fileUrl: document.fileUrl,
+    status: document.status,
+    expiryDate: document.expiryDate,
+    notes: document.notes,
+    createdAt: document.createdAt,
+    updatedAt: document.updatedAt
   };
 }
 
@@ -1241,13 +1302,77 @@ tenantRouter.get('/documents', requireAuth(), async (req, res, next) => {
       accessId: query.accessId
     });
 
+    const documents = await prisma.pmsDocument.findMany({
+      where: {
+        companyId: access.company.id,
+        tenantId: access.tenant.id,
+        status: { not: PmsDocumentStatus.ARCHIVED }
+      },
+      include: tenantDocumentInclude,
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }]
+    });
+
     res.json({
       workspace: tenantWorkspaceResponse(access),
-      documents: [],
+      documents: documents.map(tenantDocumentResponse),
       foundation: {
-        enabled: false,
-        note: 'Tenant document publishing is reserved for a future document stage.'
+        enabled: true,
+        note: 'Tenant documents are private and scoped to this tenant record.'
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+tenantRouter.post('/documents', requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, 'Unauthorized');
+
+    const query = tenantAccessQuerySchema.parse(req.query);
+    const data = tenantDocumentCreateSchema.parse(req.body);
+    const access = await resolveTenantAccessOrThrow({
+      userId: req.user.id,
+      accessId: query.accessId
+    });
+
+    const activeLease = data.leaseId
+      ? await prisma.pmsLease.findFirst({
+          where: {
+            id: data.leaseId,
+            companyId: access.company.id,
+            tenantId: access.tenant.id
+          },
+          select: { id: true, propertyId: true, unitId: true }
+        })
+      : await prisma.pmsLease.findFirst({
+          where: activeTenantLeaseWhere({ companyId: access.company.id, tenantId: access.tenant.id }),
+          select: { id: true, propertyId: true, unitId: true },
+          orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }]
+        });
+
+    const document = await prisma.pmsDocument.create({
+      data: {
+        companyId: access.company.id,
+        tenantId: access.tenant.id,
+        leaseId: activeLease?.id ?? null,
+        propertyId: activeLease?.propertyId ?? null,
+        unitId: activeLease?.unitId ?? null,
+        type: data.type,
+        title: data.title,
+        fileUrl: data.fileUrl,
+        status: PmsDocumentStatus.ACTIVE,
+        expiryDate: data.expiryDate ?? null,
+        notes: normalizeNullableText(data.notes),
+        uploadedById: req.user.id,
+        updatedById: req.user.id
+      },
+      include: tenantDocumentInclude
+    });
+
+    res.status(201).json({
+      workspace: tenantWorkspaceResponse(access),
+      document: tenantDocumentResponse(document)
     });
   } catch (error) {
     next(error);

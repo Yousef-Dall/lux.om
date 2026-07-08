@@ -15,7 +15,23 @@ export type PmsUnitStatus =
   "VACANT" | "OCCUPIED" | "RESERVED" | "MAINTENANCE" | "UNAVAILABLE";
 export type PmsOccupancyStatus = "VACANT" | "OCCUPIED" | "RESERVED" | "UNKNOWN";
 
-export type PmsLeaseStatus = "DRAFT" | "ACTIVE" | "EXPIRING" | "ENDED" | "TERMINATED";
+export type PmsLeaseStatus = "DRAFT" | "ACTIVE" | "EXPIRING" | "RENEWED" | "ENDED" | "TERMINATED";
+
+export type PmsDocumentType =
+  | "TENANT_ID"
+  | "PASSPORT_RESIDENCY"
+  | "LEASE_AGREEMENT"
+  | "RENEWAL"
+  | "MOVE_IN_REPORT"
+  | "MOVE_OUT_REPORT"
+  | "DEPOSIT_RECEIPT"
+  | "INSPECTION_REPORT"
+  | "MAINTENANCE_INVOICE"
+  | "POLICY_NOTICE"
+  | "OTHER";
+export type PmsDocumentStatus = "ACTIVE" | "EXPIRING" | "EXPIRED" | "ARCHIVED";
+export type PmsMoveChecklistType = "MOVE_IN" | "MOVE_OUT";
+export type PmsMoveChecklistStatus = "PENDING" | "COMPLETED" | "WAIVED";
 export type PmsRentDueStatus =
   | "UNPAID"
   | "DUE_SOON"
@@ -226,8 +242,12 @@ export type PmsLease = {
   securityDeposit?: string | null;
   dueDayOfMonth?: number | null;
   notes?: string | null;
+  previousLeaseId?: string | null;
+  previousLease?: Pick<PmsLease, "id" | "title" | "status" | "startDate" | "endDate"> | null;
   counts: {
     rentDueItems: number;
+    renewalLeases?: number;
+    documents?: number;
   };
   createdAt: string;
   updatedAt: string;
@@ -457,6 +477,56 @@ export type PmsInspection = {
   notes?: string | null;
   feedback?: string | null;
   rating?: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsDocument = {
+  id: string;
+  companyId: string;
+  propertyId?: string | null;
+  property?: Pick<PmsProperty, "id" | "name" | "code" | "companyId"> | null;
+  unitId?: string | null;
+  unit?: Pick<PmsUnit, "id" | "unitNumber" | "unitName"> | null;
+  tenantId?: string | null;
+  tenant?: Pick<PmsTenant, "id" | "fullName" | "phone" | "email"> | null;
+  leaseId?: string | null;
+  lease?: Pick<PmsLease, "id" | "title" | "status" | "startDate" | "endDate"> | null;
+  workOrderId?: string | null;
+  workOrder?: Pick<PmsWorkOrder, "id" | "title" | "status"> | null;
+  inspectionId?: string | null;
+  inspection?: Pick<PmsInspection, "id" | "title" | "status" | "scheduledFor"> | null;
+  type: PmsDocumentType;
+  title: string;
+  fileUrl: string;
+  status: PmsDocumentStatus;
+  expiryDate?: string | null;
+  notes?: string | null;
+  uploadedBy?: { id: string; name: string; email: string } | null;
+  updatedBy?: { id: string; name: string; email: string } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsMoveChecklistItem = {
+  id: string;
+  companyId: string;
+  leaseId: string;
+  lease: Pick<PmsLease, "id" | "title" | "status" | "startDate" | "endDate">;
+  propertyId: string;
+  property: Pick<PmsProperty, "id" | "name" | "code" | "companyId">;
+  unitId: string;
+  unit: Pick<PmsUnit, "id" | "unitNumber" | "unitName">;
+  tenantId: string;
+  tenant: Pick<PmsTenant, "id" | "fullName" | "phone" | "email">;
+  type: PmsMoveChecklistType;
+  title: string;
+  description?: string | null;
+  status: PmsMoveChecklistStatus;
+  completedAt?: string | null;
+  notes?: string | null;
+  createdBy?: { id: string; name: string; email: string } | null;
+  updatedBy?: { id: string; name: string; email: string } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -733,6 +803,42 @@ export type PmsInspectionPayload = {
   notes?: string | null;
   feedback?: string | null;
   rating?: number | null;
+};
+
+export type PmsDocumentPayload = {
+  companyId?: string;
+  propertyId?: string | null;
+  unitId?: string | null;
+  tenantId?: string | null;
+  leaseId?: string | null;
+  workOrderId?: string | null;
+  inspectionId?: string | null;
+  type: PmsDocumentType;
+  title: string;
+  fileUrl: string;
+  status?: PmsDocumentStatus;
+  expiryDate?: string | null;
+  notes?: string | null;
+};
+
+export type PmsLeaseRenewalPayload = {
+  title?: string | null;
+  startDate: string;
+  endDate?: string | null;
+  rentAmount?: number | string;
+  currency?: string;
+  securityDeposit?: number | string | null;
+  dueDayOfMonth?: number | null;
+  notes?: string | null;
+};
+
+export type PmsMoveChecklistPayload = {
+  type: PmsMoveChecklistType;
+  title: string;
+  description?: string | null;
+  status?: PmsMoveChecklistStatus;
+  completedAt?: string | null;
+  notes?: string | null;
 };
 
 export type PmsReportsSummary = {
@@ -1340,6 +1446,98 @@ export async function createPmsInspection(
   return apiClient.post<{ inspection: PmsInspection }>("/api/pms/inspections", payload, {
     token,
   });
+}
+
+export async function listPmsDocuments(
+  token: string,
+  params: {
+    companyId?: string;
+    propertyId?: string;
+    unitId?: string;
+    tenantId?: string;
+    leaseId?: string;
+    workOrderId?: string;
+    inspectionId?: string;
+    search?: string;
+    type?: "ALL" | PmsDocumentType;
+    status?: "ALL" | PmsDocumentStatus;
+    expiringWithinDays?: number;
+    sortBy?: "updatedAt" | "createdAt" | "expiryDate" | "title" | "type" | "status";
+    direction?: PmsSortDirection;
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    documents: PmsDocument[];
+    pagination: { take: number; skip: number; count: number; total: number };
+  }>("/api/pms/documents", { token, params });
+}
+
+export async function listPmsDocumentExpiryAlerts(
+  token: string,
+  params: { companyId?: string; withinDays?: number } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    documents: PmsDocument[];
+    withinDays: number;
+  }>("/api/pms/documents/expiry-alerts", { token, params });
+}
+
+export async function createPmsDocument(
+  token: string,
+  payload: PmsDocumentPayload & { companyId: string },
+) {
+  return apiClient.post<{ document: PmsDocument }>("/api/pms/documents", payload, { token });
+}
+
+export async function updatePmsDocument(
+  token: string,
+  documentId: string,
+  payload: Partial<PmsDocumentPayload>,
+) {
+  return apiClient.patch<{ document: PmsDocument }>(`/api/pms/documents/${documentId}`, payload, { token });
+}
+
+export async function createPmsLeaseRenewalDraft(
+  token: string,
+  leaseId: string,
+  payload: PmsLeaseRenewalPayload,
+) {
+  return apiClient.post<{ lease: PmsLease }>(`/api/pms/leases/${leaseId}/renewal-draft`, payload, { token });
+}
+
+export async function listPmsLeaseChecklists(token: string, leaseId: string) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    checklistItems: PmsMoveChecklistItem[];
+  }>(`/api/pms/leases/${leaseId}/checklists`, { token });
+}
+
+export async function createPmsLeaseChecklistItem(
+  token: string,
+  leaseId: string,
+  payload: PmsMoveChecklistPayload,
+) {
+  return apiClient.post<{ checklistItem: PmsMoveChecklistItem }>(
+    `/api/pms/leases/${leaseId}/checklists`,
+    payload,
+    { token },
+  );
+}
+
+export async function updatePmsLeaseChecklistItem(
+  token: string,
+  checklistItemId: string,
+  payload: Partial<PmsMoveChecklistPayload>,
+) {
+  return apiClient.patch<{ checklistItem: PmsMoveChecklistItem }>(
+    `/api/pms/lease-checklists/${checklistItemId}`,
+    payload,
+    { token },
+  );
 }
 
 export async function listAdminPmsCompanies(

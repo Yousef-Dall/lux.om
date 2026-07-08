@@ -4,9 +4,13 @@ import {
   PmsAccountingEntryType,
   PmsAccountingSource,
   PmsCommunicationChannel,
+  PmsDocumentStatus,
+  PmsDocumentType,
   PmsEntitlementStatus,
   PmsInspectionStatus,
   PmsLeaseStatus,
+  PmsMoveChecklistStatus,
+  PmsMoveChecklistType,
   PmsMaintenancePriority,
   PmsMaintenanceStatus,
   PmsMemberRole,
@@ -30,11 +34,14 @@ import {
 import {
   assertCanCollectPmsRent,
   assertCanManagePmsAccounting,
+  assertCanManagePmsDocuments,
+  assertCanManagePmsMaintenanceDocuments,
   assertCanManagePmsInventory,
   assertCanViewPmsAccounting,
   assertCanManagePmsMaintenance,
   assertCanManagePmsOperations,
   assertCanManagePmsTenancies,
+  assertCanViewPmsDocuments,
 } from "../lib/pmsPermissions";
 import {
   assertCanApplyRentPayment,
@@ -374,6 +381,105 @@ const pmsInspectionListQuerySchema = z.object({
 const pmsInspectionParamsSchema = z.object({
   inspectionId: z.string().trim().min(1),
 });
+
+const pmsDocumentParamsSchema = z.object({
+  documentId: z.string().trim().min(1),
+});
+
+const pmsChecklistItemParamsSchema = z.object({
+  checklistItemId: z.string().trim().min(1),
+});
+
+const pmsDocumentFileSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(1000)
+  .refine((value) => value.startsWith('/uploads/') || /^https?:\/\//i.test(value), {
+    message: 'Document file must be an uploaded file path or a HTTPS URL.',
+  });
+
+const pmsDocumentListQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+  unitId: z.string().trim().min(1).optional(),
+  tenantId: z.string().trim().min(1).optional(),
+  leaseId: z.string().trim().min(1).optional(),
+  workOrderId: z.string().trim().min(1).optional(),
+  inspectionId: z.string().trim().min(1).optional(),
+  search: z.string().trim().max(120).optional(),
+  type: z.enum(['ALL', ...Object.values(PmsDocumentType)] as ['ALL', ...PmsDocumentType[]]).default('ALL'),
+  status: z.enum(['ALL', ...Object.values(PmsDocumentStatus)] as ['ALL', ...PmsDocumentStatus[]]).default('ALL'),
+  expiringWithinDays: z.coerce.number().int().min(0).max(365).optional(),
+  sortBy: z.enum(['updatedAt', 'createdAt', 'expiryDate', 'title', 'type', 'status']).optional(),
+  direction: z.enum(['asc', 'desc']).default('desc'),
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  skip: z.coerce.number().int().min(0).default(0),
+});
+
+const pmsDocumentCreateSchema = z
+  .object({
+    companyId: z.string().trim().min(1),
+    propertyId: nullableId,
+    unitId: nullableId,
+    tenantId: nullableId,
+    leaseId: nullableId,
+    workOrderId: nullableId,
+    inspectionId: nullableId,
+    type: z.nativeEnum(PmsDocumentType),
+    title: z.string().trim().min(2).max(180),
+    fileUrl: pmsDocumentFileSchema,
+    status: z.nativeEnum(PmsDocumentStatus).default(PmsDocumentStatus.ACTIVE),
+    expiryDate: z.coerce.date().optional().nullable(),
+    notes: nullableTrimmedString(2000),
+  })
+  .strict();
+
+const pmsDocumentUpdateSchema = pmsDocumentCreateSchema
+  .omit({ companyId: true })
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one PMS document field is required.',
+  });
+
+const pmsDocumentExpiryQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  withinDays: z.coerce.number().int().min(1).max(365).default(30),
+});
+
+const pmsLeaseRenewalDraftSchema = z
+  .object({
+    title: nullableTrimmedString(180),
+    startDate: z.coerce.date(),
+    endDate: z.coerce.date().optional().nullable(),
+    rentAmount: z.coerce.number().min(0).max(100000000).optional(),
+    currency: z.string().trim().length(3).toUpperCase().optional(),
+    securityDeposit: z.coerce.number().min(0).max(100000000).optional().nullable(),
+    dueDayOfMonth: z.coerce.number().int().min(1).max(31).optional().nullable(),
+    notes: nullableTrimmedString(2000),
+  })
+  .strict()
+  .refine((data) => !data.endDate || data.endDate >= data.startDate, {
+    path: ['endDate'],
+    message: 'Renewal end date must be after the start date.',
+  });
+
+const pmsChecklistCreateSchema = z
+  .object({
+    type: z.nativeEnum(PmsMoveChecklistType),
+    title: z.string().trim().min(2).max(180),
+    description: nullableTrimmedString(2000),
+    status: z.nativeEnum(PmsMoveChecklistStatus).default(PmsMoveChecklistStatus.PENDING),
+    completedAt: z.coerce.date().optional().nullable(),
+    notes: nullableTrimmedString(2000),
+  })
+  .strict();
+
+const pmsChecklistUpdateSchema = pmsChecklistCreateSchema
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one move checklist field is required.',
+  });
 
 const pmsTenantCreateSchema = z
   .object({
@@ -1165,6 +1271,23 @@ function normalizeNullableText(value: string | null | undefined) {
   return trimmed ? trimmed : null;
 }
 
+function getPmsDocumentLifecycleStatus(input: {
+  status?: PmsDocumentStatus;
+  expiryDate?: Date | null;
+}) {
+  if (input.status === PmsDocumentStatus.ARCHIVED) return PmsDocumentStatus.ARCHIVED;
+  if (!input.expiryDate) return input.status ?? PmsDocumentStatus.ACTIVE;
+
+  const now = new Date();
+  if (input.expiryDate < now) return PmsDocumentStatus.EXPIRED;
+
+  const soon = new Date(now);
+  soon.setUTCDate(soon.getUTCDate() + 30);
+  if (input.expiryDate <= soon) return PmsDocumentStatus.EXPIRING;
+
+  return input.status ?? PmsDocumentStatus.ACTIVE;
+}
+
 type PmsSortDirection = "asc" | "desc";
 
 type PmsAuditTarget = {
@@ -1369,6 +1492,36 @@ function buildPmsInspectionOrderBy(
   }
 }
 
+function buildPmsDocumentOrderBy(
+  query: z.infer<typeof pmsDocumentListQuerySchema>,
+): Prisma.PmsDocumentOrderByWithRelationInput[] {
+  const direction = query.direction as PmsSortDirection;
+
+  switch (query.sortBy) {
+    case 'title':
+      return [{ title: direction }, { updatedAt: 'desc' }];
+    case 'type':
+      return [{ type: direction }, { updatedAt: 'desc' }];
+    case 'status':
+      return [{ status: direction }, { updatedAt: 'desc' }];
+    case 'createdAt':
+      return [{ createdAt: direction }, { updatedAt: 'desc' }];
+    case 'expiryDate':
+      return [{ expiryDate: direction }, { updatedAt: 'desc' }];
+    case 'updatedAt':
+    default:
+      return [{ updatedAt: direction }, { createdAt: 'desc' }];
+  }
+}
+
+function getPmsDocumentExpiryFilter(input: { expiringWithinDays?: number }): Prisma.DateTimeFilter | undefined {
+  if (input.expiringWithinDays === undefined) return undefined;
+  const now = new Date();
+  const until = new Date(now);
+  until.setUTCDate(until.getUTCDate() + input.expiringWithinDays);
+  return { gte: now, lte: until };
+}
+
 function buildPmsRentDueDateFilter(
   query: z.infer<typeof pmsRentDueListQuerySchema>,
 ): Prisma.DateTimeFilter | undefined {
@@ -1545,6 +1698,62 @@ async function assertPmsFilterLinksBelongToCompany(input: {
     if (!workOrder) {
       throw new AppError(400, "PMS maintenance work order filter must belong to this PMS company.");
     }
+  }
+}
+
+async function assertPmsDocumentLinksBelongToCompany(input: {
+  companyId: string;
+  propertyId?: string | null;
+  unitId?: string | null;
+  tenantId?: string | null;
+  leaseId?: string | null;
+  workOrderId?: string | null;
+  inspectionId?: string | null;
+}) {
+  await assertPmsFilterLinksBelongToCompany({
+    companyId: input.companyId,
+    propertyId: input.propertyId,
+    unitId: input.unitId,
+    tenantId: input.tenantId,
+    leaseId: input.leaseId,
+    workOrderId: input.workOrderId,
+  });
+
+  if (input.inspectionId) {
+    const inspection = await prisma.pmsInspection.findFirst({
+      where: {
+        id: input.inspectionId,
+        companyId: input.companyId,
+        ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+        ...(input.unitId ? { unitId: input.unitId } : {}),
+        ...(input.tenantId ? { tenantId: input.tenantId } : {}),
+        ...(input.leaseId ? { leaseId: input.leaseId } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (!inspection) {
+      throw new AppError(400, 'PMS inspection link must belong to this PMS company.');
+    }
+  }
+}
+
+function assertMaintenanceDocumentScope(input: {
+  role: PmsMemberRole;
+  type?: PmsDocumentType;
+  workOrderId?: string | null;
+  inspectionId?: string | null;
+}) {
+  if (input.role !== PmsMemberRole.PMS_MAINTENANCE) return;
+
+  const maintenanceTypeAllowed =
+    input.type === undefined ||
+    input.type === PmsDocumentType.MAINTENANCE_INVOICE ||
+    input.type === PmsDocumentType.INSPECTION_REPORT ||
+    input.type === PmsDocumentType.OTHER;
+
+  if (!maintenanceTypeAllowed || (!input.workOrderId && !input.inspectionId)) {
+    throw new AppError(403, 'Maintenance users can only manage maintenance or inspection documents.');
   }
 }
 
@@ -1760,9 +1969,20 @@ const pmsLeaseInclude = {
       registrationStatus: true,
     },
   },
+  previousLease: {
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      startDate: true,
+      endDate: true,
+    },
+  },
   _count: {
     select: {
       rentDueItems: true,
+      renewalLeases: true,
+      pmsDocuments: true,
     },
   },
 };
@@ -1904,6 +2124,8 @@ function pmsLeaseResponse(lease: PmsLeaseWithRelations) {
     unit: lease.unit,
     contractDraftId: lease.contractDraftId,
     contractDraft: lease.contractDraft,
+    previousLeaseId: lease.previousLeaseId,
+    previousLease: lease.previousLease,
     title: lease.title,
     status: lease.status,
     startDate: lease.startDate,
@@ -1916,6 +2138,8 @@ function pmsLeaseResponse(lease: PmsLeaseWithRelations) {
     notes: lease.notes,
     counts: {
       rentDueItems: lease._count.rentDueItems,
+      renewalLeases: lease._count.renewalLeases,
+      documents: lease._count.pmsDocuments,
     },
     createdAt: lease.createdAt,
     updatedAt: lease.updatedAt,
@@ -2204,6 +2428,89 @@ const pmsInspectionInclude = {
 type PmsInspectionWithRelations = Prisma.PmsInspectionGetPayload<{
   include: typeof pmsInspectionInclude;
 }>;
+
+
+const pmsDocumentInclude = {
+  property: { select: { id: true, name: true, code: true, companyId: true } },
+  unit: { select: { id: true, unitNumber: true, unitName: true } },
+  tenant: { select: { id: true, fullName: true, phone: true, email: true } },
+  lease: { select: { id: true, title: true, status: true, startDate: true, endDate: true } },
+  workOrder: { select: { id: true, title: true, status: true } },
+  inspection: { select: { id: true, title: true, status: true, scheduledFor: true } },
+  uploadedBy: { select: { id: true, name: true, email: true } },
+  updatedBy: { select: { id: true, name: true, email: true } },
+} satisfies Prisma.PmsDocumentInclude;
+
+type PmsDocumentWithRelations = Prisma.PmsDocumentGetPayload<{
+  include: typeof pmsDocumentInclude;
+}>;
+
+const pmsChecklistInclude = {
+  property: { select: { id: true, name: true, code: true, companyId: true } },
+  unit: { select: { id: true, unitNumber: true, unitName: true } },
+  tenant: { select: { id: true, fullName: true, phone: true, email: true } },
+  lease: { select: { id: true, title: true, status: true, startDate: true, endDate: true } },
+  createdBy: { select: { id: true, name: true, email: true } },
+  updatedBy: { select: { id: true, name: true, email: true } },
+} satisfies Prisma.PmsMoveChecklistItemInclude;
+
+type PmsChecklistWithRelations = Prisma.PmsMoveChecklistItemGetPayload<{
+  include: typeof pmsChecklistInclude;
+}>;
+
+function pmsDocumentResponse(document: PmsDocumentWithRelations) {
+  return {
+    id: document.id,
+    companyId: document.companyId,
+    propertyId: document.propertyId,
+    property: document.property,
+    unitId: document.unitId,
+    unit: document.unit,
+    tenantId: document.tenantId,
+    tenant: document.tenant,
+    leaseId: document.leaseId,
+    lease: document.lease,
+    workOrderId: document.workOrderId,
+    workOrder: document.workOrder,
+    inspectionId: document.inspectionId,
+    inspection: document.inspection,
+    type: document.type,
+    title: document.title,
+    fileUrl: document.fileUrl,
+    status: document.status,
+    expiryDate: document.expiryDate,
+    notes: document.notes,
+    uploadedBy: document.uploadedBy,
+    updatedBy: document.updatedBy,
+    createdAt: document.createdAt,
+    updatedAt: document.updatedAt,
+  };
+}
+
+function pmsChecklistResponse(item: PmsChecklistWithRelations) {
+  return {
+    id: item.id,
+    companyId: item.companyId,
+    leaseId: item.leaseId,
+    lease: item.lease,
+    propertyId: item.propertyId,
+    property: item.property,
+    unitId: item.unitId,
+    unit: item.unit,
+    tenantId: item.tenantId,
+    tenant: item.tenant,
+    type: item.type,
+    title: item.title,
+    description: item.description,
+    status: item.status,
+    completedAt: item.completedAt,
+    notes: item.notes,
+    createdBy: item.createdBy,
+    updatedBy: item.updatedBy,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
 
 function pmsWorkOrderResponse(workOrder: PmsWorkOrderWithRelations) {
   return {
@@ -3280,6 +3587,188 @@ pmsRouter.patch("/leases/:leaseId", requireAuth(), async (req, res, next) => {
     });
 
     res.json({ lease: pmsLeaseResponse(lease) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/leases/:leaseId/renewal-draft", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const { leaseId } = pmsLeaseParamsSchema.parse(req.params);
+    const data = pmsLeaseRenewalDraftSchema.parse(req.body);
+    const userId = req.user.id;
+    const existing = await prisma.pmsLease.findUnique({
+      where: { id: leaseId },
+      include: pmsLeaseInclude,
+    });
+
+    if (!existing) throw new AppError(404, "PMS lease not found");
+
+    const access = await resolvePmsAccessOrThrow({ userId, companyId: existing.companyId });
+    assertCanManagePmsTenancies(access.member.role);
+
+    const renewal = await prisma.pmsLease.create({
+      data: {
+        companyId: existing.companyId,
+        tenantId: existing.tenantId,
+        propertyId: existing.propertyId,
+        unitId: existing.unitId,
+        previousLeaseId: existing.id,
+        title: normalizeNullableText(data.title) ?? `Renewal for ${existing.title ?? existing.unit.unitNumber}`,
+        status: PmsLeaseStatus.DRAFT,
+        startDate: data.startDate,
+        endDate: data.endDate ?? null,
+        rentFrequency: existing.rentFrequency,
+        rentAmount: data.rentAmount ?? existing.rentAmount,
+        currency: data.currency ?? existing.currency,
+        securityDeposit: data.securityDeposit ?? existing.securityDeposit,
+        dueDayOfMonth: data.dueDayOfMonth ?? existing.dueDayOfMonth,
+        contractDraftId: existing.contractDraftId,
+        notes: normalizeNullableText(data.notes),
+        createdById: userId,
+        updatedById: userId,
+      },
+      include: pmsLeaseInclude,
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS lease renewal draft created",
+      message: `${req.user.email} created a PMS renewal draft for lease ${existing.id}.`,
+      metadata: {
+        action: "renewal_draft",
+        resourceType: "pmsLease",
+        leaseId: renewal.id,
+        previousLeaseId: existing.id,
+      },
+    });
+
+    res.status(201).json({ lease: pmsLeaseResponse(renewal) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/leases/:leaseId/checklists", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const { leaseId } = pmsLeaseParamsSchema.parse(req.params);
+    const lease = await prisma.pmsLease.findUnique({ where: { id: leaseId }, select: { id: true, companyId: true } });
+    if (!lease) throw new AppError(404, "PMS lease not found");
+
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: lease.companyId });
+    assertCanViewPmsDocuments(access.member.role);
+
+    const checklistItems = await prisma.pmsMoveChecklistItem.findMany({
+      where: { companyId: access.company.id, leaseId },
+      include: pmsChecklistInclude,
+      orderBy: [{ type: "asc" }, { createdAt: "asc" }],
+    });
+
+    res.json({
+      workspace: { company: access.company, member: access.member, entitlement: access.entitlement },
+      checklistItems: checklistItems.map(pmsChecklistResponse),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/leases/:leaseId/checklists", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const { leaseId } = pmsLeaseParamsSchema.parse(req.params);
+    const data = pmsChecklistCreateSchema.parse(req.body);
+    const userId = req.user.id;
+    const lease = await prisma.pmsLease.findUnique({
+      where: { id: leaseId },
+      select: { id: true, companyId: true, propertyId: true, unitId: true, tenantId: true },
+    });
+    if (!lease) throw new AppError(404, "PMS lease not found");
+
+    const access = await resolvePmsAccessOrThrow({ userId, companyId: lease.companyId });
+    assertCanManagePmsTenancies(access.member.role);
+
+    const checklistItem = await prisma.pmsMoveChecklistItem.create({
+      data: {
+        companyId: lease.companyId,
+        leaseId: lease.id,
+        propertyId: lease.propertyId,
+        unitId: lease.unitId,
+        tenantId: lease.tenantId,
+        type: data.type,
+        title: data.title,
+        description: normalizeNullableText(data.description),
+        status: data.status,
+        completedAt: data.completedAt ?? (data.status === PmsMoveChecklistStatus.COMPLETED ? new Date() : null),
+        notes: normalizeNullableText(data.notes),
+        createdById: userId,
+        updatedById: userId,
+      },
+      include: pmsChecklistInclude,
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS move checklist item created",
+      message: `${req.user.email} created PMS ${checklistItem.type.toLowerCase().replace('_', '-')} checklist item ${checklistItem.title}.`,
+      metadata: { action: "create", resourceType: "pmsMoveChecklistItem", checklistItemId: checklistItem.id, leaseId },
+    });
+
+    res.status(201).json({ checklistItem: pmsChecklistResponse(checklistItem) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.patch("/lease-checklists/:checklistItemId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const { checklistItemId } = pmsChecklistItemParamsSchema.parse(req.params);
+    const data = pmsChecklistUpdateSchema.parse(req.body);
+    const existing = await prisma.pmsMoveChecklistItem.findUnique({ where: { id: checklistItemId } });
+    if (!existing) throw new AppError(404, "PMS move checklist item not found");
+
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
+    assertCanManagePmsTenancies(access.member.role);
+
+    const checklistItem = await prisma.pmsMoveChecklistItem.update({
+      where: { id: checklistItemId },
+      data: {
+        ...(data.type !== undefined ? { type: data.type } : {}),
+        ...(data.title !== undefined ? { title: data.title } : {}),
+        ...(data.description !== undefined ? { description: normalizeNullableText(data.description) } : {}),
+        ...(data.status !== undefined ? { status: data.status } : {}),
+        ...(data.completedAt !== undefined
+          ? { completedAt: data.completedAt }
+          : data.status === PmsMoveChecklistStatus.COMPLETED && !existing.completedAt
+            ? { completedAt: new Date() }
+            : {}),
+        ...(data.notes !== undefined ? { notes: normalizeNullableText(data.notes) } : {}),
+        updatedById: req.user.id,
+      },
+      include: pmsChecklistInclude,
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS move checklist item updated",
+      message: `${req.user.email} updated PMS move checklist item ${checklistItem.title}.`,
+      metadata: { action: "update", resourceType: "pmsMoveChecklistItem", checklistItemId: checklistItem.id, changedFields: Object.keys(data) },
+    });
+
+    res.json({ checklistItem: pmsChecklistResponse(checklistItem) });
   } catch (error) {
     next(error);
   }
@@ -5102,6 +5591,259 @@ pmsRouter.patch("/inspections/:inspectionId", requireAuth(), async (req, res, ne
     });
 
     res.json({ inspection: pmsInspectionResponse(inspection) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/documents", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const query = pmsDocumentListQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    assertCanViewPmsDocuments(access.member.role);
+    await assertPmsDocumentLinksBelongToCompany({
+      companyId: access.company.id,
+      propertyId: query.propertyId,
+      unitId: query.unitId,
+      tenantId: query.tenantId,
+      leaseId: query.leaseId,
+      workOrderId: query.workOrderId,
+      inspectionId: query.inspectionId,
+    });
+
+    const search = query.search?.trim();
+    const maintenanceOnly = access.member.role === PmsMemberRole.PMS_MAINTENANCE;
+    const where: Prisma.PmsDocumentWhereInput = {
+      companyId: access.company.id,
+      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.unitId ? { unitId: query.unitId } : {}),
+      ...(query.tenantId ? { tenantId: query.tenantId } : {}),
+      ...(query.leaseId ? { leaseId: query.leaseId } : {}),
+      ...(query.workOrderId ? { workOrderId: query.workOrderId } : {}),
+      ...(query.inspectionId ? { inspectionId: query.inspectionId } : {}),
+      ...(query.type !== "ALL" ? { type: query.type } : {}),
+      ...(query.status !== "ALL" ? { status: query.status } : {}),
+      ...(query.expiringWithinDays !== undefined ? { expiryDate: getPmsDocumentExpiryFilter({ expiringWithinDays: query.expiringWithinDays }) } : {}),
+      ...(maintenanceOnly
+        ? {
+            OR: [
+              { workOrderId: { not: null } },
+              { inspectionId: { not: null } },
+              { type: { in: [PmsDocumentType.MAINTENANCE_INVOICE, PmsDocumentType.INSPECTION_REPORT] } },
+            ],
+          }
+        : search
+          ? {
+              OR: [
+                { title: { contains: search, mode: "insensitive" } },
+                { notes: { contains: search, mode: "insensitive" } },
+                { tenant: { fullName: { contains: search, mode: "insensitive" } } },
+                { property: { name: { contains: search, mode: "insensitive" } } },
+                { unit: { unitNumber: { contains: search, mode: "insensitive" } } },
+              ],
+            }
+          : {}),
+    };
+
+    const [documents, total] = await prisma.$transaction([
+      prisma.pmsDocument.findMany({
+        where,
+        include: pmsDocumentInclude,
+        orderBy: buildPmsDocumentOrderBy(query),
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsDocument.count({ where }),
+    ]);
+
+    res.json({
+      workspace: { company: access.company, member: access.member, entitlement: access.entitlement },
+      documents: documents.map(pmsDocumentResponse),
+      pagination: { take: query.take, skip: query.skip, count: documents.length, total },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/documents/expiry-alerts", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const query = pmsDocumentExpiryQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    assertCanViewPmsDocuments(access.member.role);
+
+    const expiryDate = getPmsDocumentExpiryFilter({ expiringWithinDays: query.withinDays });
+    const documents = await prisma.pmsDocument.findMany({
+      where: {
+        companyId: access.company.id,
+        status: { not: PmsDocumentStatus.ARCHIVED },
+        expiryDate,
+      },
+      include: pmsDocumentInclude,
+      orderBy: [{ expiryDate: "asc" }, { updatedAt: "desc" }],
+      take: 50,
+    });
+
+    res.json({
+      workspace: { company: access.company, member: access.member, entitlement: access.entitlement },
+      documents: documents.map(pmsDocumentResponse),
+      withinDays: query.withinDays,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/documents", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const data = pmsDocumentCreateSchema.parse(req.body);
+    const userId = req.user.id;
+    const access = await resolvePmsAccessOrThrow({ userId, companyId: data.companyId });
+    if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) {
+      assertCanManagePmsMaintenanceDocuments(access.member.role);
+    } else {
+      assertCanManagePmsDocuments(access.member.role);
+    }
+    assertMaintenanceDocumentScope({ role: access.member.role, type: data.type, workOrderId: data.workOrderId, inspectionId: data.inspectionId });
+    await assertPmsDocumentLinksBelongToCompany({
+      companyId: access.company.id,
+      propertyId: data.propertyId,
+      unitId: data.unitId,
+      tenantId: data.tenantId,
+      leaseId: data.leaseId,
+      workOrderId: data.workOrderId,
+      inspectionId: data.inspectionId,
+    });
+
+    const document = await prisma.pmsDocument.create({
+      data: {
+        companyId: access.company.id,
+        propertyId: data.propertyId ?? null,
+        unitId: data.unitId ?? null,
+        tenantId: data.tenantId ?? null,
+        leaseId: data.leaseId ?? null,
+        workOrderId: data.workOrderId ?? null,
+        inspectionId: data.inspectionId ?? null,
+        type: data.type,
+        title: data.title,
+        fileUrl: data.fileUrl,
+        status: getPmsDocumentLifecycleStatus({ status: data.status, expiryDate: data.expiryDate ?? null }),
+        expiryDate: data.expiryDate ?? null,
+        notes: normalizeNullableText(data.notes),
+        uploadedById: userId,
+        updatedById: userId,
+      },
+      include: pmsDocumentInclude,
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS document created",
+      message: `${req.user.email} added PMS document ${document.title}.`,
+      metadata: { action: "create", resourceType: "pmsDocument", documentId: document.id, type: document.type },
+    });
+
+    res.status(201).json({ document: pmsDocumentResponse(document) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/documents/:documentId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const { documentId } = pmsDocumentParamsSchema.parse(req.params);
+    const document = await prisma.pmsDocument.findUnique({ where: { id: documentId }, include: pmsDocumentInclude });
+    if (!document) throw new AppError(404, "PMS document not found");
+
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: document.companyId });
+    assertCanViewPmsDocuments(access.member.role);
+    if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) {
+      assertMaintenanceDocumentScope({ role: access.member.role, type: document.type, workOrderId: document.workOrderId, inspectionId: document.inspectionId });
+    }
+
+    res.json({
+      workspace: { company: access.company, member: access.member, entitlement: access.entitlement },
+      document: pmsDocumentResponse(document),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const { documentId } = pmsDocumentParamsSchema.parse(req.params);
+    const data = pmsDocumentUpdateSchema.parse(req.body);
+    const existing = await prisma.pmsDocument.findUnique({ where: { id: documentId } });
+    if (!existing) throw new AppError(404, "PMS document not found");
+
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
+    if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) {
+      assertCanManagePmsMaintenanceDocuments(access.member.role);
+    } else {
+      assertCanManagePmsDocuments(access.member.role);
+    }
+    assertMaintenanceDocumentScope({
+      role: access.member.role,
+      type: data.type ?? existing.type,
+      workOrderId: data.workOrderId ?? existing.workOrderId,
+      inspectionId: data.inspectionId ?? existing.inspectionId,
+    });
+    await assertPmsDocumentLinksBelongToCompany({
+      companyId: existing.companyId,
+      propertyId: data.propertyId ?? existing.propertyId,
+      unitId: data.unitId ?? existing.unitId,
+      tenantId: data.tenantId ?? existing.tenantId,
+      leaseId: data.leaseId ?? existing.leaseId,
+      workOrderId: data.workOrderId ?? existing.workOrderId,
+      inspectionId: data.inspectionId ?? existing.inspectionId,
+    });
+
+    const expiryDate = data.expiryDate === undefined ? existing.expiryDate : data.expiryDate ?? null;
+    const document = await prisma.pmsDocument.update({
+      where: { id: documentId },
+      data: {
+        ...(data.propertyId !== undefined ? { propertyId: data.propertyId } : {}),
+        ...(data.unitId !== undefined ? { unitId: data.unitId } : {}),
+        ...(data.tenantId !== undefined ? { tenantId: data.tenantId } : {}),
+        ...(data.leaseId !== undefined ? { leaseId: data.leaseId } : {}),
+        ...(data.workOrderId !== undefined ? { workOrderId: data.workOrderId } : {}),
+        ...(data.inspectionId !== undefined ? { inspectionId: data.inspectionId } : {}),
+        ...(data.type !== undefined ? { type: data.type } : {}),
+        ...(data.title !== undefined ? { title: data.title } : {}),
+        ...(data.fileUrl !== undefined ? { fileUrl: data.fileUrl } : {}),
+        ...(data.status !== undefined || data.expiryDate !== undefined
+          ? { status: getPmsDocumentLifecycleStatus({ status: data.status ?? existing.status, expiryDate }) }
+          : {}),
+        ...(data.expiryDate !== undefined ? { expiryDate } : {}),
+        ...(data.notes !== undefined ? { notes: normalizeNullableText(data.notes) } : {}),
+        updatedById: req.user.id,
+      },
+      include: pmsDocumentInclude,
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS document updated",
+      message: `${req.user.email} updated PMS document ${document.title}.`,
+      metadata: { action: "update", resourceType: "pmsDocument", documentId: document.id, changedFields: Object.keys(data) },
+    });
+
+    res.json({ document: pmsDocumentResponse(document) });
   } catch (error) {
     next(error);
   }

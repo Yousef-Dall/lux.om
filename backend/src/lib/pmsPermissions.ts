@@ -110,3 +110,54 @@ export function assertCanManagePmsOperations(role: PmsMemberRole) {
     );
   }
 }
+
+
+export function canViewPmsDocuments(role: PmsMemberRole) {
+  return (
+    role === "PMS_OWNER" ||
+    role === "PMS_MANAGER" ||
+    role === "PMS_ACCOUNTANT" ||
+    role === "PMS_MAINTENANCE" ||
+    role === "PMS_AGENT" ||
+    role === "PMS_VIEWER"
+  );
+}
+
+export function assertCanViewPmsDocuments(role: PmsMemberRole) {
+  if (!canViewPmsDocuments(role)) {
+    throw new AppError(
+      403,
+      "Your PMS role cannot view document records."
+    );
+  }
+}
+
+export function canManagePmsDocuments(role: PmsMemberRole) {
+  return role === "PMS_OWNER" || role === "PMS_MANAGER";
+}
+
+export function assertCanManagePmsDocuments(role: PmsMemberRole) {
+  if (!canManagePmsDocuments(role)) {
+    throw new AppError(
+      403,
+      "Your PMS role can view documents but cannot manage them."
+    );
+  }
+}
+
+export function canManagePmsMaintenanceDocuments(role: PmsMemberRole) {
+  return (
+    role === "PMS_OWNER" ||
+    role === "PMS_MANAGER" ||
+    role === "PMS_MAINTENANCE"
+  );
+}
+
+export function assertCanManagePmsMaintenanceDocuments(role: PmsMemberRole) {
+  if (!canManagePmsMaintenanceDocuments(role)) {
+    throw new AppError(
+      403,
+      "Your PMS role cannot manage maintenance documents."
+    );
+  }
+}
