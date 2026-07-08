@@ -23,6 +23,20 @@ export type PmsRentDueStatus =
   | "PARTIALLY_PAID"
   | "PAID"
   | "CANCELLED";
+
+export type PmsRentPaymentMethod =
+  | "CASH"
+  | "BANK_TRANSFER"
+  | "CHEQUE"
+  | "CARD_MANUAL"
+  | "ONLINE_GATEWAY"
+  | "OTHER";
+export type PmsRentPaymentStatus =
+  | "PENDING"
+  | "CONFIRMED"
+  | "FAILED"
+  | "CANCELLED"
+  | "REFUNDED";
 export type PmsRentFrequency = "ONE_TIME" | "MONTHLY" | "QUARTERLY" | "YEARLY";
 export type PmsMaintenancePriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type PmsMaintenanceStatus =
@@ -221,12 +235,66 @@ export type PmsRentDueItem = {
   periodEnd?: string | null;
   amount: string;
   paidAmount: string;
+  balanceAmount?: string | null;
   currency: string;
   status: PmsRentDueStatus;
   paidAt?: string | null;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type PmsRentPayment = {
+  id: string;
+  companyId: string;
+  rentDueItemId: string;
+  rentDueItem: PmsRentDueItem;
+  leaseId: string;
+  lease: Pick<PmsLease, "id" | "title" | "status" | "startDate" | "endDate" | "rentFrequency">;
+  tenantId: string;
+  tenant?: Pick<PmsTenant, "id" | "fullName" | "phone" | "email">;
+  propertyId: string;
+  property: Pick<PmsProperty, "id" | "name" | "code">;
+  unitId: string;
+  unit: Pick<PmsUnit, "id" | "unitNumber" | "unitName">;
+  amount: string;
+  currency: string;
+  method: PmsRentPaymentMethod;
+  status: PmsRentPaymentStatus;
+  referenceNumber?: string | null;
+  notes?: string | null;
+  paidAt?: string | null;
+  receiptNumber?: string | null;
+  provider?: string | null;
+  providerReference?: string | null;
+  providerSessionId?: string | null;
+  checkoutUrl?: string | null;
+  confirmedAt?: string | null;
+  cancelledAt?: string | null;
+  recordedBy?: { id: string; name: string; email: string } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsRentReceipt = {
+  receiptNumber?: string | null;
+  paymentId: string;
+  rentDueItemId: string;
+  status: PmsRentPaymentStatus;
+  method: PmsRentPaymentMethod;
+  amount: string;
+  currency: string;
+  referenceNumber?: string | null;
+  providerReference?: string | null;
+  paidAt?: string | null;
+  confirmedAt?: string | null;
+  issuedAt: string;
+  tenant?: Pick<PmsTenant, "id" | "fullName" | "phone" | "email">;
+  property: Pick<PmsProperty, "id" | "name" | "code">;
+  unit: Pick<PmsUnit, "id" | "unitNumber" | "unitName">;
+  lease: Pick<PmsLease, "id" | "title" | "status" | "startDate" | "endDate" | "rentFrequency">;
+  rentDueItem: PmsRentDueItem;
+  recordedBy?: { id: string; name: string; email: string } | null;
 };
 
 export type PmsWorkOrder = {
@@ -512,6 +580,14 @@ export type PmsRentDueUpdatePayload = {
   paidAmount?: number | string;
   paidAt?: string | null;
   notes?: string | null;
+};
+
+export type PmsRentPaymentPayload = {
+  amount: number | string;
+  method?: Exclude<PmsRentPaymentMethod, "ONLINE_GATEWAY">;
+  referenceNumber?: string | null;
+  notes?: string | null;
+  paidAt?: string | null;
 };
 
 export type PmsWorkOrderPayload = {
@@ -941,6 +1017,33 @@ export async function updatePmsRentDueItem(
   return apiClient.patch<{ rentDueItem: PmsRentDueItem }>(
     `/api/pms/rent-due/${rentDueItemId}`,
     payload,
+    { token },
+  );
+}
+
+export async function listPmsRentDuePayments(token: string, rentDueItemId: string) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    rentDueItem: PmsRentDueItem;
+    payments: PmsRentPayment[];
+  }>(`/api/pms/rent-due/${rentDueItemId}/payments`, { token });
+}
+
+export async function recordPmsRentPayment(
+  token: string,
+  rentDueItemId: string,
+  payload: PmsRentPaymentPayload,
+) {
+  return apiClient.post<{
+    rentDueItem: PmsRentDueItem;
+    payment: PmsRentPayment;
+    receipt: PmsRentReceipt;
+  }>(`/api/pms/rent-due/${rentDueItemId}/payments`, payload, { token });
+}
+
+export async function getPmsRentPaymentReceipt(token: string, rentPaymentId: string) {
+  return apiClient.get<{ receipt: PmsRentReceipt }>(
+    `/api/pms/rent-payments/${rentPaymentId}/receipt`,
     { token },
   );
 }

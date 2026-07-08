@@ -19062,3 +19062,42 @@ transition: none;
     grid-template-columns: 1fr;
   }
 }
+
+.tenant-portal__actions,
+.tenant-portal__payment-history {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.tenant-portal__actions .button-link {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.45rem;
+}
+
+.tenant-portal__payment-history {
+  display: grid;
+}
+
+.tenant-portal__payment-history h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.tenant-portal__payment-row,
+.tenant-portal__receipt-panel {
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  border-radius: 1rem;
+  padding: 0.85rem;
+}
+
+.tenant-portal__payment-row {
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.tenant-portal__receipt-panel {
+  display: grid;
+  gap: 0.9rem;
+}

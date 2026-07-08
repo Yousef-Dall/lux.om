@@ -48,9 +48,9 @@ import {
   listPmsPropertyUnits,
   listPmsRentDueItems,
   listPmsTenants,
+  recordPmsRentPayment,
   listPmsUnits,
   listPmsWorkOrders,
-  updatePmsRentDueItem,
   updatePmsProperty,
   updatePmsUnit,
   updatePmsWorkOrder,
@@ -68,6 +68,7 @@ import {
   type PmsProperty,
   type PmsPropertyPayload,
   type PmsRentDueItem,
+  type PmsRentReceipt,
   type PmsReportsSummary,
   type PmsTenant,
   type PmsTenantPayload,
@@ -598,6 +599,7 @@ export default function PmsPortal() {
   const [rentDueItems, setRentDueItems] = useState<PmsRentDueItem[]>([]);
   const [workOrders, setWorkOrders] = useState<PmsWorkOrder[]>([]);
   const [reportsSummary, setReportsSummary] = useState<PmsReportsSummary | null>(null);
+  const [rentReceipt, setRentReceipt] = useState<PmsRentReceipt | null>(null);
   const [templates, setTemplates] = useState<PmsCommunicationTemplate[]>([]);
   const [policies, setPolicies] = useState<PmsPolicy[]>([]);
   const [inspections, setInspections] = useState<PmsInspection[]>([]);
@@ -733,8 +735,12 @@ export default function PmsPortal() {
           overdueRent: "دفعات متأخرة",
           paidRent: "دفعات مدفوعة",
           rentCollection: "تحصيل الإيجار",
-          markPaid: "تسجيل مدفوع",
-          confirmMarkPaid: "هل تريد تسجيل هذه الدفعة كمدفوعة؟",
+          markPaid: "تسجيل دفعة",
+          confirmMarkPaid: "أدخل مبلغ الدفعة",
+          paymentMethod: "طريقة الدفع",
+          paymentReference: "رقم المرجع",
+          printableReceipt: "إيصال قابل للطباعة",
+          printReceipt: "طباعة الإيصال",
           paidAmount: "المبلغ المدفوع",
           dueDate: "تاريخ الاستحقاق",
           amount: "المبلغ",
@@ -896,8 +902,12 @@ export default function PmsPortal() {
           overdueRent: "Overdue rent",
           paidRent: "Paid rent",
           rentCollection: "Rent collection",
-          markPaid: "Mark paid",
-          confirmMarkPaid: "Mark this rent due item as fully paid?",
+          markPaid: "Record payment",
+          confirmMarkPaid: "Enter payment amount",
+          paymentMethod: "Payment method",
+          paymentReference: "Reference number",
+          printableReceipt: "Printable receipt",
+          printReceipt: "Print receipt",
           paidAmount: "Paid amount",
           dueDate: "Due date",
           amount: "Amount",
@@ -1487,17 +1497,52 @@ export default function PmsPortal() {
     }
   }
 
-  async function handleMarkRentPaid(item: PmsRentDueItem) {
+  async function handleRecordRentPayment(item: PmsRentDueItem) {
     if (!token) return;
-    if (!window.confirm(copy.confirmMarkPaid)) return;
+
+    const suggestedAmount = item.balanceAmount || String(Math.max(Number(item.amount) - Number(item.paidAmount || 0), 0));
+    const amountInput = window.prompt(copy.confirmMarkPaid, suggestedAmount);
+    if (!amountInput) return;
+
+    const amount = Number(amountInput);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError(copy.unavailable);
+      return;
+    }
+
+    const methodInput = window.prompt(
+      `${copy.paymentMethod}: CASH, BANK_TRANSFER, CHEQUE, CARD_MANUAL, OTHER`,
+      "BANK_TRANSFER",
+    );
+    if (!methodInput) return;
+    const normalizedMethod = methodInput.trim().toUpperCase();
+    const allowedMethods = [
+      "CASH",
+      "BANK_TRANSFER",
+      "CHEQUE",
+      "CARD_MANUAL",
+      "OTHER",
+    ] as const;
+
+    if (!allowedMethods.includes(normalizedMethod as (typeof allowedMethods)[number])) {
+      setError(copy.unavailable);
+      return;
+    }
+
+    const method = normalizedMethod as (typeof allowedMethods)[number];
+    const referenceNumber = window.prompt(copy.paymentReference, "") || undefined;
 
     try {
       setSaving(true);
       setError("");
       setSuccess("");
-      await updatePmsRentDueItem(token, item.id, {
-        paidAmount: item.amount,
+      const response = await recordPmsRentPayment(token, item.id, {
+        amount,
+        method,
+        referenceNumber,
+        paidAt: new Date().toISOString(),
       });
+      setRentReceipt(response.receipt);
       setSuccess(copy.saved);
       await loadPortal();
     } catch (saveError) {
@@ -2158,13 +2203,16 @@ export default function PmsPortal() {
                     <span>{copy.status}: <strong>{activeLease.status}</strong></span>
                   </div>
                 </div>
+                {rentReceipt ? (
+                  <PmsRentReceiptPanel copy={copy} receipt={rentReceipt} language={language} />
+                ) : null}
                 <RentDueTable
                   copy={copy}
                   items={rentDueItems}
                   language={language}
                   canCollect={canCollect}
                   saving={saving}
-                  onMarkPaid={handleMarkRentPaid}
+                  onMarkPaid={handleRecordRentPayment}
                 />
               </section>
             ) : null}
@@ -2215,13 +2263,16 @@ export default function PmsPortal() {
                   summary={reportsSummary}
                   language={language}
                 />
+                {rentReceipt ? (
+                  <PmsRentReceiptPanel copy={copy} receipt={rentReceipt} language={language} />
+                ) : null}
                 <RentDueTable
                   copy={copy}
                   items={rentDueItems}
                   language={language}
                   canCollect={canCollect}
                   saving={saving}
-                  onMarkPaid={handleMarkRentPaid}
+                  onMarkPaid={handleRecordRentPayment}
                 />
               </section>
             ) : null}
@@ -3584,6 +3635,37 @@ function InspectionFields({
         <textarea value={form.feedback ?? ""} onChange={(event) => setForm((current) => ({ ...current, feedback: event.target.value }))} />
       </label>
     </div>
+  );
+}
+
+function PmsRentReceiptPanel({
+  copy,
+  receipt,
+  language,
+}: {
+  copy: PmsCopy;
+  receipt: PmsRentReceipt;
+  language: "en" | "ar";
+}) {
+  return (
+    <section className="pms-next-actions pms-receipt-panel">
+      <div className="pms-next-actions__header">
+        <p className="eyebrow">{copy.printableReceipt}</p>
+        <h2>{receipt.receiptNumber || copy.printableReceipt}</h2>
+      </div>
+      <div className="pms-detail-list">
+        <span>{copy.tenantName}: <strong>{receipt.tenant?.fullName || "—"}</strong></span>
+        <span>{copy.propertyName}: <strong>{receipt.property.name}</strong></span>
+        <span>{copy.unitNumber}: <strong>{receipt.unit.unitNumber}</strong></span>
+        <span>{copy.amount}: <strong>{receipt.amount} {receipt.currency}</strong></span>
+        <span>{copy.paymentMethod}: <strong>{receipt.method}</strong></span>
+        <span>{copy.paymentReference}: <strong>{receipt.referenceNumber || receipt.providerReference || "—"}</strong></span>
+        <span>{copy.dueDate}: <strong>{formatDate(receipt.rentDueItem.dueDate, language)}</strong></span>
+      </div>
+      <button className="button-link button-link--secondary" type="button" onClick={() => window.print()}>
+        {copy.printReceipt}
+      </button>
+    </section>
   );
 }
 

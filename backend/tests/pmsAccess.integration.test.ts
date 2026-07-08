@@ -38,6 +38,7 @@ async function clearPmsTestDatabase() {
   await prisma.pmsTenantPortalAccess.deleteMany();
   await prisma.pmsCommunicationTemplate.deleteMany();
   await prisma.pmsPolicy.deleteMany();
+  await prisma.pmsRentPayment.deleteMany();
   await prisma.pmsRentDueItem.deleteMany();
   await prisma.pmsLease.deleteMany();
   await prisma.pmsTenant.deleteMany();
@@ -46,6 +47,7 @@ async function clearPmsTestDatabase() {
   await prisma.listing.deleteMany();
   await prisma.developerProjectImage.deleteMany();
   await prisma.developerProject.deleteMany();
+  await prisma.pmsRentPayment.deleteMany();
   await prisma.pmsRentDueItem.deleteMany();
   await prisma.pmsLease.deleteMany();
   await prisma.pmsTenantPortalAccess.deleteMany();
@@ -702,16 +704,47 @@ describe("PMS company entitlement access architecture", () => {
     expect(rentDueResponse.body.rentDueItems).toHaveLength(3);
     expect(rentDueResponse.body.rentDueItems[0].amount).toBe("750");
 
-    const paymentResponse = await request(app)
-      .patch(`/api/pms/rent-due/${rentDueResponse.body.rentDueItems[0].id}`)
+    const partialPaymentResponse = await request(app)
+      .post(`/api/pms/rent-due/${rentDueResponse.body.rentDueItems[0].id}/payments`)
       .set("Authorization", `Bearer ${token}`)
       .send({
-        paidAmount: 750,
+        amount: 250,
+        method: "BANK_TRANSFER",
+        referenceNumber: "BANK-250",
       })
-      .expect(200);
+      .expect(201);
+
+    expect(partialPaymentResponse.body.rentDueItem.status).toBe("PARTIALLY_PAID");
+    expect(partialPaymentResponse.body.rentDueItem.paidAmount).toBe("250");
+
+    await request(app)
+      .post(`/api/pms/rent-due/${rentDueResponse.body.rentDueItems[0].id}/payments`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        amount: 501,
+        method: "CASH",
+      })
+      .expect(400);
+
+    const paymentResponse = await request(app)
+      .post(`/api/pms/rent-due/${rentDueResponse.body.rentDueItems[0].id}/payments`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        amount: 500,
+        method: "CASH",
+      })
+      .expect(201);
 
     expect(paymentResponse.body.rentDueItem.status).toBe("PAID");
     expect(paymentResponse.body.rentDueItem.paidAt).toBeTruthy();
+    expect(paymentResponse.body.receipt.receiptNumber).toBeTruthy();
+
+    const receiptResponse = await request(app)
+      .get(`/api/pms/rent-payments/${paymentResponse.body.payment.id}/receipt`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(receiptResponse.body.receipt.amount).toBe("500");
 
     const overviewResponse = await request(app)
       .get(`/api/pms/overview?companyId=${company.id}`)
@@ -857,9 +890,9 @@ describe("PMS company entitlement access architecture", () => {
       .expect(403);
 
     await request(app)
-      .patch(`/api/pms/rent-due/${companyBRentDue.id}`)
+      .post(`/api/pms/rent-due/${companyBRentDue.id}/payments`)
       .set("Authorization", `Bearer ${token}`)
-      .send({ paidAmount: 500 })
+      .send({ amount: 500, method: "BANK_TRANSFER" })
       .expect(403);
   });
 
@@ -959,7 +992,7 @@ describe("PMS company entitlement access architecture", () => {
       },
     });
 
-    await prisma.pmsRentDueItem.create({
+    const paidRentDueItem = await prisma.pmsRentDueItem.create({
       data: {
         companyId: company.id,
         leaseId: lease.id,
@@ -974,6 +1007,25 @@ describe("PMS company entitlement access architecture", () => {
         paidAt: new Date("2026-07-02T00:00:00.000Z"),
         createdById: admin.id,
         updatedById: admin.id,
+      },
+    });
+
+    await prisma.pmsRentPayment.create({
+      data: {
+        companyId: company.id,
+        rentDueItemId: paidRentDueItem.id,
+        leaseId: lease.id,
+        tenantId: tenant.id,
+        propertyId: property.id,
+        unitId: unit.id,
+        amount: 900,
+        currency: "OMR",
+        method: "BANK_TRANSFER",
+        status: "CONFIRMED",
+        paidAt: new Date("2026-07-02T00:00:00.000Z"),
+        confirmedAt: new Date("2026-07-02T00:00:00.000Z"),
+        receiptNumber: "PMS-RENT-TEST-001",
+        recordedById: manager.id,
       },
     });
 
@@ -1373,10 +1425,10 @@ describe("PMS company entitlement access architecture", () => {
     const viewerToken = signToken(viewer);
 
     await request(app)
-      .patch(`/api/pms/rent-due/${rentDueItem.id}`)
+      .post(`/api/pms/rent-due/${rentDueItem.id}/payments`)
       .set("Authorization", `Bearer ${accountantToken}`)
-      .send({ paidAmount: 600 })
-      .expect(200);
+      .send({ amount: 600, method: "BANK_TRANSFER" })
+      .expect(201);
 
     await request(app)
       .post("/api/pms/leases")
@@ -1417,9 +1469,15 @@ describe("PMS company entitlement access architecture", () => {
       .expect(201);
 
     await request(app)
-      .patch(`/api/pms/rent-due/${rentDueItem.id}`)
+      .post(`/api/pms/rent-due/${rentDueItem.id}/payments`)
       .set("Authorization", `Bearer ${maintenanceToken}`)
-      .send({ paidAmount: 600 })
+      .send({ amount: 600, method: "CASH" })
+      .expect(403);
+
+    await request(app)
+      .post(`/api/pms/rent-due/${rentDueItem.id}/payments`)
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .send({ amount: 600, method: "CASH" })
       .expect(403);
 
     await request(app)
@@ -1442,7 +1500,7 @@ describe("PMS company entitlement access architecture", () => {
         type: "ADMIN_PMS_ACCESS_UPDATED",
         title: {
           in: [
-            "PMS rent due item updated",
+            "PMS rent payment recorded",
             "PMS maintenance work order created",
           ],
         },
@@ -1452,7 +1510,7 @@ describe("PMS company entitlement access architecture", () => {
 
     expect(auditEvents.map((event) => event.title).sort()).toEqual([
       "PMS maintenance work order created",
-      "PMS rent due item updated",
+      "PMS rent payment recorded",
     ]);
   });
 
@@ -1920,6 +1978,51 @@ describe("PMS company entitlement access architecture", () => {
 
     expect(rentResponse.body.rentDueItems).toHaveLength(1);
     expect(rentResponse.body.rentDueItems[0].leaseId).toBe(lease.id);
+
+    const tenantRentDueItemId = rentResponse.body.rentDueItems[0].id;
+    const tenantPaymentResponse = await request(app)
+      .post(`/api/pms/rent-due/${tenantRentDueItemId}/payments`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .send({ amount: 400, method: "CHEQUE", referenceNumber: "CHEQUE-400" })
+      .expect(201);
+
+    expect(tenantPaymentResponse.body.rentDueItem.status).toBe("PARTIALLY_PAID");
+    expect(tenantPaymentResponse.body.receipt.receiptNumber).toBeTruthy();
+
+    const tenantPaymentsResponse = await request(app)
+      .get(`/api/tenant/rent/${tenantRentDueItemId}/payments`)
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .expect(200);
+
+    expect(tenantPaymentsResponse.body.payments).toHaveLength(1);
+    expect(tenantPaymentsResponse.body.payments[0].id).toBe(tenantPaymentResponse.body.payment.id);
+
+    const tenantReceiptResponse = await request(app)
+      .get(`/api/tenant/rent-payments/${tenantPaymentResponse.body.payment.id}/receipt`)
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .expect(200);
+
+    expect(tenantReceiptResponse.body.receipt.amount).toBe("400");
+
+    const otherRentDueItem = await prisma.pmsRentDueItem.findFirstOrThrow({
+      where: { tenantId: otherTenant.id },
+    });
+
+    const otherPaymentResponse = await request(app)
+      .post(`/api/pms/rent-due/${otherRentDueItem.id}/payments`)
+      .set("Authorization", `Bearer ${managerToken}`)
+      .send({ amount: 100, method: "CASH" })
+      .expect(201);
+
+    await request(app)
+      .get(`/api/tenant/rent/${otherRentDueItem.id}/payments`)
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .expect(404);
+
+    await request(app)
+      .get(`/api/tenant/rent-payments/${otherPaymentResponse.body.payment.id}/receipt`)
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .expect(404);
 
     const blockedForeignMaintenanceResponse = await request(app)
       .post("/api/tenant/maintenance")

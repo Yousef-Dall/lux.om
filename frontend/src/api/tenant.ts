@@ -6,6 +6,8 @@ import type {
   PmsMaintenanceStatus,
   PmsRentDueItem,
   PmsRentDueStatus,
+  PmsRentPayment,
+  PmsRentReceipt,
   PmsWorkOrder
 } from './pms';
 
@@ -85,6 +87,12 @@ export type TenantRentResponse = {
   };
 };
 
+export type TenantRentPaymentsResponse = {
+  workspace: TenantPortalWorkspace;
+  rentDueItem: PmsRentDueItem;
+  payments: PmsRentPayment[];
+};
+
 export type TenantMaintenanceResponse = {
   workspace: TenantPortalWorkspace;
   workOrders: PmsWorkOrder[];
@@ -143,6 +151,64 @@ export async function listTenantRent(
   return apiClient.get<TenantRentResponse>('/api/tenant/rent', {
     token,
     params
+  });
+}
+
+export async function listTenantRentPayments(
+  token: string,
+  rentDueItemId: string,
+  accessId?: string
+) {
+  return apiClient.get<TenantRentPaymentsResponse>(
+    `/api/tenant/rent/${rentDueItemId}/payments`,
+    { token, params: tenantParams(accessId) }
+  );
+}
+
+export async function createTenantRentCheckoutSession(
+  token: string,
+  rentDueItemId: string,
+  payload: { amount?: number | string } = {},
+  accessId?: string
+) {
+  return apiClient.post<{
+    workspace: TenantPortalWorkspace;
+    rentDueItem: PmsRentDueItem;
+    payment: PmsRentPayment;
+    checkoutUrl: string;
+  }>(`/api/tenant/rent/${rentDueItemId}/payments/session`, payload, {
+    token,
+    params: tenantParams(accessId)
+  });
+}
+
+export async function syncTenantRentPayment(
+  token: string,
+  rentPaymentId: string,
+  accessId?: string
+) {
+  return apiClient.post<{
+    workspace: TenantPortalWorkspace;
+    rentDueItem: PmsRentDueItem;
+    payment: PmsRentPayment;
+    receipt: PmsRentReceipt | null;
+  }>(`/api/tenant/rent-payments/${rentPaymentId}/sync`, {}, {
+    token,
+    params: tenantParams(accessId)
+  });
+}
+
+export async function getTenantRentPaymentReceipt(
+  token: string,
+  rentPaymentId: string,
+  accessId?: string
+) {
+  return apiClient.get<{
+    workspace: TenantPortalWorkspace;
+    receipt: PmsRentReceipt;
+  }>(`/api/tenant/rent-payments/${rentPaymentId}/receipt`, {
+    token,
+    params: tenantParams(accessId)
   });
 }
 

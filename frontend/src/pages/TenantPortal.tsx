@@ -1,15 +1,19 @@
-import { AlertTriangle, CalendarDays, FileText, Home, ReceiptText, ShieldCheck, UserCircle, Wrench } from 'lucide-react';
+import { AlertTriangle, CalendarDays, ExternalLink, FileText, Home, ReceiptText, ShieldCheck, UserCircle, Wrench } from 'lucide-react';
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { NavLink, Navigate, useLocation } from 'react-router-dom';
 
 import {
   createTenantMaintenanceRequest,
+  createTenantRentCheckoutSession,
   getTenantDocuments,
   getTenantLease,
   getTenantOverview,
   getTenantProfile,
+  getTenantRentPaymentReceipt,
   listTenantMaintenance,
   listTenantRent,
+  listTenantRentPayments,
+  syncTenantRentPayment,
   updateTenantProfile,
   type TenantLeaseResponse,
   type TenantMaintenanceResponse,
@@ -17,7 +21,7 @@ import {
   type TenantProfilePayload,
   type TenantRentResponse
 } from '../api/tenant';
-import type { PmsMaintenancePriority } from '../api/pms';
+import type { PmsMaintenancePriority, PmsRentDueItem, PmsRentPayment, PmsRentReceipt } from '../api/pms';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -84,6 +88,8 @@ export default function TenantPortal() {
   const [overview, setOverview] = useState<TenantOverview | null>(null);
   const [leaseData, setLeaseData] = useState<TenantLeaseResponse | null>(null);
   const [rentData, setRentData] = useState<TenantRentResponse | null>(null);
+  const [rentPaymentsByItemId, setRentPaymentsByItemId] = useState<Record<string, PmsRentPayment[]>>({});
+  const [rentReceipt, setRentReceipt] = useState<PmsRentReceipt | null>(null);
   const [maintenanceData, setMaintenanceData] = useState<TenantMaintenanceResponse | null>(null);
   const [profile, setProfile] = useState<TenantProfilePayload>({});
   const [documentsNote, setDocumentsNote] = useState('');
@@ -125,6 +131,20 @@ export default function TenantPortal() {
             unit: 'الوحدة',
             dates: 'الفترة',
             paymentNote: 'الدفع الإلكتروني للإيجار محفوظ لمرحلة المدفوعات القادمة.',
+            payRent: 'دفع الإيجار',
+            viewPayments: 'عرض سجل المدفوعات',
+            syncPayment: 'تحديث حالة الدفع',
+            viewReceipt: 'عرض الإيصال',
+            printableReceipt: 'إيصال قابل للطباعة',
+            printReceipt: 'طباعة الإيصال',
+            balance: 'الرصيد المتبقي',
+            paidAmount: 'المدفوع',
+            paymentHistory: 'سجل المدفوعات',
+            receiptNumber: 'رقم الإيصال',
+            paymentMethod: 'طريقة الدفع',
+            paymentReference: 'رقم المرجع',
+            paidAt: 'تاريخ الدفع',
+            noPayments: 'لا توجد مدفوعات مسجلة لهذا البند بعد.',
             noRent: 'لا توجد إيجارات مستحقة أو مسجلة بعد.',
             noMaintenance: 'لا توجد طلبات صيانة بعد.',
             newRequest: 'طلب صيانة جديد',
@@ -169,6 +189,20 @@ export default function TenantPortal() {
             unit: 'Unit',
             dates: 'Dates',
             paymentNote: 'Online rent payment is reserved for the next payment stage.',
+            payRent: 'Pay rent',
+            viewPayments: 'View payment history',
+            syncPayment: 'Sync payment status',
+            viewReceipt: 'View receipt',
+            printableReceipt: 'Printable receipt',
+            printReceipt: 'Print receipt',
+            balance: 'Balance',
+            paidAmount: 'Paid',
+            paymentHistory: 'Payment history',
+            receiptNumber: 'Receipt number',
+            paymentMethod: 'Payment method',
+            paymentReference: 'Reference number',
+            paidAt: 'Paid date',
+            noPayments: 'No payments are recorded for this rent item yet.',
             noRent: 'No rent dues or history are available yet.',
             noMaintenance: 'No maintenance requests yet.',
             newRequest: 'New maintenance request',
@@ -232,6 +266,8 @@ export default function TenantPortal() {
           emergencyContactEmail: profileResponse.profile.emergencyContactEmail ?? ''
         });
         setDocumentsNote(documentsResponse.foundation.note || copy.documentsText);
+        setRentPaymentsByItemId({});
+        setRentReceipt(null);
       } catch (loadError) {
         if (isMounted) setError(getErrorMessage(loadError));
       } finally {
@@ -310,6 +346,105 @@ export default function TenantPortal() {
       setSuccess(copy.saved);
     } catch (updateError) {
       setError(getErrorMessage(updateError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+
+  async function reloadRentWorkspace() {
+    if (!token || !activeAccessId) return;
+
+    const [overviewResponse, rentResponse] = await Promise.all([
+      getTenantOverview(token, activeAccessId),
+      listTenantRent(token, { accessId: activeAccessId, take: 50 })
+    ]);
+    setOverview(overviewResponse);
+    setRentData(rentResponse);
+  }
+
+  async function handleLoadRentPayments(item: PmsRentDueItem) {
+    if (!token || !activeAccessId) return;
+
+    setSaving(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await listTenantRentPayments(token, item.id, activeAccessId);
+      setRentPaymentsByItemId((current) => ({ ...current, [item.id]: response.payments }));
+    } catch (paymentsError) {
+      setError(getErrorMessage(paymentsError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCreateRentCheckout(item: PmsRentDueItem) {
+    if (!token || !activeAccessId) return;
+
+    if (!rentData?.paymentFoundation.onlineRentPaymentEnabled) {
+      setError(rentData?.paymentFoundation.note || copy.paymentNote);
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const amount = Number(item.balanceAmount ?? item.amount);
+      const response = await createTenantRentCheckoutSession(token, item.id, { amount }, activeAccessId);
+      setRentPaymentsByItemId((current) => ({
+        ...current,
+        [item.id]: [response.payment, ...(current[item.id] ?? []).filter((payment) => payment.id !== response.payment.id)]
+      }));
+      window.location.assign(response.checkoutUrl);
+    } catch (checkoutError) {
+      setError(getErrorMessage(checkoutError));
+      setSaving(false);
+    }
+  }
+
+  async function handleSyncRentPayment(payment: PmsRentPayment) {
+    if (!token || !activeAccessId) return;
+
+    setSaving(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await syncTenantRentPayment(token, payment.id, activeAccessId);
+      setRentReceipt(response.receipt);
+      setRentPaymentsByItemId((current) => {
+        const payments = current[response.rentDueItem.id] ?? [];
+        const nextPayments = payments.some((item) => item.id === response.payment.id)
+          ? payments.map((item) => (item.id === response.payment.id ? response.payment : item))
+          : [response.payment, ...payments];
+
+        return { ...current, [response.rentDueItem.id]: nextPayments };
+      });
+      await reloadRentWorkspace();
+      setSuccess(copy.saved);
+    } catch (syncError) {
+      setError(getErrorMessage(syncError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleViewRentReceipt(payment: PmsRentPayment) {
+    if (!token || !activeAccessId) return;
+
+    setSaving(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await getTenantRentPaymentReceipt(token, payment.id, activeAccessId);
+      setRentReceipt(response.receipt);
+    } catch (receiptError) {
+      setError(getErrorMessage(receiptError));
     } finally {
       setSaving(false);
     }
@@ -429,17 +564,75 @@ export default function TenantPortal() {
           {!loading && activeTab === 'rent' ? (
             <div className="tenant-portal__stack">
               <div className="tenant-portal__notice">{rentData?.paymentFoundation.note || copy.paymentNote}</div>
+              <TenantRentReceiptPanel copy={copy} receipt={rentReceipt} language={language} />
               {(rentData?.rentDueItems.length ?? 0) === 0 ? <TenantEmptyState title={copy.noRent} /> : null}
-              {rentData?.rentDueItems.map((item) => (
-                <InfoCard key={item.id} title={`${copy.dueDate}: ${formatDate(item.dueDate, language)}`}>
-                  <dl className="tenant-portal__details">
-                    <div><dt>{copy.amount}</dt><dd>{formatMoney(item.amount, item.currency)}</dd></div>
-                    <div><dt>{copy.status}</dt><dd><span className="tenant-portal__badge">{item.status}</span></dd></div>
-                    <div><dt>{copy.property}</dt><dd>{item.property.name}</dd></div>
-                    <div><dt>{copy.unit}</dt><dd>{item.unit.unitNumber}</dd></div>
-                  </dl>
-                </InfoCard>
-              ))}
+              {rentData?.rentDueItems.map((item) => {
+                const payments = rentPaymentsByItemId[item.id] ?? [];
+                const canPay = rentData?.paymentFoundation.onlineRentPaymentEnabled && !['PAID', 'CANCELLED'].includes(item.status);
+
+                return (
+                  <InfoCard key={item.id} title={`${copy.dueDate}: ${formatDate(item.dueDate, language)}`}>
+                    <dl className="tenant-portal__details">
+                      <div><dt>{copy.amount}</dt><dd>{formatMoney(item.amount, item.currency)}</dd></div>
+                      <div><dt>{copy.paidAmount}</dt><dd>{formatMoney(item.paidAmount, item.currency)}</dd></div>
+                      <div><dt>{copy.balance}</dt><dd>{formatMoney(item.balanceAmount, item.currency)}</dd></div>
+                      <div><dt>{copy.status}</dt><dd><span className="tenant-portal__badge">{item.status}</span></dd></div>
+                      <div><dt>{copy.property}</dt><dd>{item.property.name}</dd></div>
+                      <div><dt>{copy.unit}</dt><dd>{item.unit.unitNumber}</dd></div>
+                    </dl>
+
+                    <div className="tenant-portal__actions">
+                      {canPay ? (
+                        <button
+                          className="button-link button-link--primary"
+                          type="button"
+                          disabled={saving}
+                          onClick={() => void handleCreateRentCheckout(item)}
+                        >
+                          <ExternalLink size={16} aria-hidden="true" />
+                          {copy.payRent}
+                        </button>
+                      ) : null}
+                      <button
+                        className="button-link"
+                        type="button"
+                        disabled={saving}
+                        onClick={() => void handleLoadRentPayments(item)}
+                      >
+                        {copy.viewPayments}
+                      </button>
+                    </div>
+
+                    {payments.length > 0 ? (
+                      <div className="tenant-portal__payment-history">
+                        <h3>{copy.paymentHistory}</h3>
+                        {payments.map((payment) => (
+                          <article className="tenant-portal__payment-row" key={payment.id}>
+                            <dl className="tenant-portal__details">
+                              <div><dt>{copy.amount}</dt><dd>{formatMoney(payment.amount, payment.currency)}</dd></div>
+                              <div><dt>{copy.status}</dt><dd><span className="tenant-portal__badge">{payment.status}</span></dd></div>
+                              <div><dt>{copy.paymentMethod}</dt><dd>{payment.method}</dd></div>
+                              <div><dt>{copy.paidAt}</dt><dd>{formatDate(payment.paidAt ?? payment.confirmedAt ?? payment.createdAt, language)}</dd></div>
+                            </dl>
+                            <div className="tenant-portal__actions">
+                              {payment.status === 'PENDING' ? (
+                                <button className="button-link" type="button" disabled={saving} onClick={() => void handleSyncRentPayment(payment)}>
+                                  {copy.syncPayment}
+                                </button>
+                              ) : null}
+                              {payment.status === 'CONFIRMED' ? (
+                                <button className="button-link" type="button" disabled={saving} onClick={() => void handleViewRentReceipt(payment)}>
+                                  {copy.viewReceipt}
+                                </button>
+                              ) : null}
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : null}
+                  </InfoCard>
+                );
+              })}
             </div>
           ) : null}
 
@@ -535,6 +728,50 @@ function InfoCard({ children, empty, title }: { children?: ReactNode; empty?: st
     <article className="tenant-portal__card">
       <h2>{title}</h2>
       {children ?? (empty ? <p className="tenant-portal__empty">{empty}</p> : null)}
+    </article>
+  );
+}
+
+
+function TenantRentReceiptPanel({
+  copy,
+  language,
+  receipt
+}: {
+  copy: {
+    amount: string;
+    paidAt: string;
+    paymentMethod: string;
+    paymentReference: string;
+    printableReceipt: string;
+    printReceipt: string;
+    property: string;
+    receiptNumber: string;
+    status: string;
+    unit: string;
+  };
+  language: 'en' | 'ar';
+  receipt: PmsRentReceipt | null;
+}) {
+  if (!receipt) return null;
+
+  return (
+    <article className="tenant-portal__card tenant-portal__receipt-panel">
+      <div>
+        <p className="eyebrow">lux PMS</p>
+        <h2>{copy.printableReceipt}</h2>
+      </div>
+      <dl className="tenant-portal__details">
+        <div><dt>{copy.receiptNumber}</dt><dd>{receipt.receiptNumber ?? receipt.paymentId}</dd></div>
+        <div><dt>{copy.amount}</dt><dd>{formatMoney(receipt.amount, receipt.currency)}</dd></div>
+        <div><dt>{copy.status}</dt><dd><span className="tenant-portal__badge">{receipt.status}</span></dd></div>
+        <div><dt>{copy.paymentMethod}</dt><dd>{receipt.method}</dd></div>
+        <div><dt>{copy.paymentReference}</dt><dd>{receipt.referenceNumber ?? receipt.providerReference ?? '—'}</dd></div>
+        <div><dt>{copy.paidAt}</dt><dd>{formatDate(receipt.paidAt ?? receipt.confirmedAt ?? receipt.issuedAt, language)}</dd></div>
+        <div><dt>{copy.property}</dt><dd>{receipt.property.name}</dd></div>
+        <div><dt>{copy.unit}</dt><dd>{receipt.unit.unitNumber}</dd></div>
+      </dl>
+      <button className="button-link" type="button" onClick={() => window.print()}>{copy.printReceipt}</button>
     </article>
   );
 }

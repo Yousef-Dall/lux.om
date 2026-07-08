@@ -11,6 +11,8 @@ import {
   PmsOccupancyStatus,
   PmsPolicyCategory,
   PmsRentDueStatus,
+  PmsRentPaymentMethod,
+  PmsRentPaymentStatus,
   PmsUnitStatus,
   type Prisma,
 } from "@prisma/client";
@@ -30,6 +32,13 @@ import {
   assertCanManagePmsOperations,
   assertCanManagePmsTenancies,
 } from "../lib/pmsPermissions";
+import {
+  assertCanApplyRentPayment,
+  createPmsRentReceiptNumber,
+  decimalToNumber as rentDecimalToNumber,
+  getPaidRentStatus,
+  roundMoney,
+} from "../lib/pmsRentPayments";
 import { requireAdmin, requireAuth } from "../middleware/auth";
 import { AppError } from "../utils/http";
 
@@ -208,6 +217,10 @@ const pmsLeaseParamsSchema = z.object({
 
 const pmsRentDueParamsSchema = z.object({
   rentDueItemId: z.string().trim().min(1),
+});
+
+const pmsRentPaymentParamsSchema = z.object({
+  rentPaymentId: z.string().trim().min(1),
 });
 
 const pmsWorkOrderListQuerySchema = z.object({
@@ -404,6 +417,24 @@ const pmsRentDueUpdateSchema = z
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one rent due item field is required.",
   });
+
+const pmsManualRentPaymentSchema = z
+  .object({
+    amount: z.coerce.number().min(0.001).max(100000000),
+    method: z
+      .enum([
+        PmsRentPaymentMethod.CASH,
+        PmsRentPaymentMethod.BANK_TRANSFER,
+        PmsRentPaymentMethod.CHEQUE,
+        PmsRentPaymentMethod.CARD_MANUAL,
+        PmsRentPaymentMethod.OTHER,
+      ] as const)
+      .default(PmsRentPaymentMethod.BANK_TRANSFER),
+    referenceNumber: nullableTrimmedString(180),
+    notes: nullableTrimmedString(2000),
+    paidAt: z.coerce.date().optional(),
+  })
+  .strict();
 
 const nullableUrlList = z
   .array(z.string().trim().url().max(1000))
@@ -1612,6 +1643,55 @@ type PmsRentDueItemWithRelations = Prisma.PmsRentDueItemGetPayload<{
   include: typeof pmsRentDueItemInclude;
 }>;
 
+const pmsRentPaymentInclude = {
+  rentDueItem: {
+    include: pmsRentDueItemInclude,
+  },
+  tenant: {
+    select: {
+      id: true,
+      fullName: true,
+      phone: true,
+      email: true,
+    },
+  },
+  property: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+    },
+  },
+  unit: {
+    select: {
+      id: true,
+      unitNumber: true,
+      unitName: true,
+    },
+  },
+  lease: {
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      startDate: true,
+      endDate: true,
+      rentFrequency: true,
+    },
+  },
+  recordedBy: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  },
+} satisfies Prisma.PmsRentPaymentInclude;
+
+type PmsRentPaymentWithRelations = Prisma.PmsRentPaymentGetPayload<{
+  include: typeof pmsRentPaymentInclude;
+}>;
+
 function pmsTenantResponse(tenant: PmsTenantWithRelations) {
   return {
     id: tenant.id,
@@ -1696,9 +1776,124 @@ function pmsRentDueItemResponse(item: PmsRentDueItemWithRelations) {
     status: item.status,
     paidAt: item.paidAt,
     notes: item.notes,
+    balanceAmount: String(
+      Math.max(
+        roundMoney(rentDecimalToNumber(item.amount) - rentDecimalToNumber(item.paidAmount)),
+        0,
+      ),
+    ),
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };
+}
+
+function pmsRentPaymentResponse(payment: PmsRentPaymentWithRelations) {
+  return {
+    id: payment.id,
+    companyId: payment.companyId,
+    rentDueItemId: payment.rentDueItemId,
+    rentDueItem: pmsRentDueItemResponse(payment.rentDueItem),
+    leaseId: payment.leaseId,
+    lease: payment.lease,
+    tenantId: payment.tenantId,
+    tenant: payment.tenant,
+    propertyId: payment.propertyId,
+    property: payment.property,
+    unitId: payment.unitId,
+    unit: payment.unit,
+    amount: decimalToString(payment.amount),
+    currency: payment.currency,
+    method: payment.method,
+    status: payment.status,
+    referenceNumber: payment.referenceNumber,
+    notes: payment.notes,
+    paidAt: payment.paidAt,
+    receiptNumber: payment.receiptNumber,
+    provider: payment.provider,
+    providerReference: payment.providerReference,
+    providerSessionId: payment.providerSessionId,
+    checkoutUrl: payment.checkoutUrl,
+    confirmedAt: payment.confirmedAt,
+    cancelledAt: payment.cancelledAt,
+    recordedBy: payment.recordedBy,
+    createdAt: payment.createdAt,
+    updatedAt: payment.updatedAt,
+  };
+}
+
+function pmsRentReceiptResponse(payment: PmsRentPaymentWithRelations) {
+  return {
+    receiptNumber: payment.receiptNumber,
+    paymentId: payment.id,
+    rentDueItemId: payment.rentDueItemId,
+    status: payment.status,
+    method: payment.method,
+    amount: decimalToString(payment.amount),
+    currency: payment.currency,
+    referenceNumber: payment.referenceNumber,
+    providerReference: payment.providerReference,
+    paidAt: payment.paidAt,
+    confirmedAt: payment.confirmedAt,
+    issuedAt: payment.updatedAt,
+    tenant: payment.tenant,
+    property: payment.property,
+    unit: payment.unit,
+    lease: payment.lease,
+    rentDueItem: pmsRentDueItemResponse(payment.rentDueItem),
+    recordedBy: payment.recordedBy,
+  };
+}
+
+
+async function syncPmsRentDueItemFromConfirmedPayments(
+  tx: Prisma.TransactionClient,
+  input: { rentDueItemId: string; updatedById?: string | null },
+) {
+  const rentDueItem = await tx.pmsRentDueItem.findUniqueOrThrow({
+    where: { id: input.rentDueItemId },
+    select: {
+      id: true,
+      amount: true,
+      paidAmount: true,
+      dueDate: true,
+      status: true,
+    },
+  });
+
+  const [aggregate, latestConfirmedPayment] = await Promise.all([
+    tx.pmsRentPayment.aggregate({
+      where: {
+        rentDueItemId: input.rentDueItemId,
+        status: PmsRentPaymentStatus.CONFIRMED,
+      },
+      _sum: { amount: true },
+    }),
+    tx.pmsRentPayment.findFirst({
+      where: {
+        rentDueItemId: input.rentDueItemId,
+        status: PmsRentPaymentStatus.CONFIRMED,
+      },
+      orderBy: [{ paidAt: "desc" }, { updatedAt: "desc" }],
+      select: { paidAt: true, confirmedAt: true, updatedAt: true },
+    }),
+  ]);
+
+  const paidAmount = roundMoney(rentDecimalToNumber(aggregate._sum.amount));
+  const status = getPaidRentStatus({ rentDueItem, paidAmount });
+
+  return tx.pmsRentDueItem.update({
+    where: { id: input.rentDueItemId },
+    data: {
+      paidAmount,
+      status,
+      paidAt:
+        status === PmsRentDueStatus.PAID
+          ? (latestConfirmedPayment?.paidAt ?? latestConfirmedPayment?.confirmedAt ?? latestConfirmedPayment?.updatedAt ?? new Date())
+          : null,
+      ...(input.updatedById !== undefined ? { updatedById: input.updatedById } : {}),
+    },
+    include: pmsRentDueItemInclude,
+  });
 }
 
 
@@ -3044,6 +3239,172 @@ pmsRouter.patch("/rent-due/:rentDueItemId", requireAuth(), async (req, res, next
   }
 });
 
+pmsRouter.get("/rent-due/:rentDueItemId/payments", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { rentDueItemId } = pmsRentDueParamsSchema.parse(req.params);
+    const rentDueItem = await prisma.pmsRentDueItem.findUnique({
+      where: { id: rentDueItemId },
+      include: pmsRentDueItemInclude,
+    });
+
+    if (!rentDueItem) {
+      throw new AppError(404, "PMS rent due item not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: rentDueItem.companyId,
+    });
+
+    const payments = await prisma.pmsRentPayment.findMany({
+      where: { companyId: access.company.id, rentDueItemId },
+      include: pmsRentPaymentInclude,
+      orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+    });
+
+    res.json({
+      workspace: {
+        company: access.company,
+        member: access.member,
+        entitlement: access.entitlement,
+      },
+      rentDueItem: pmsRentDueItemResponse(rentDueItem),
+      payments: payments.map(pmsRentPaymentResponse),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/rent-due/:rentDueItemId/payments", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { rentDueItemId } = pmsRentDueParamsSchema.parse(req.params);
+    const data = pmsManualRentPaymentSchema.parse(req.body);
+    const rentDueItem = await prisma.pmsRentDueItem.findUnique({
+      where: { id: rentDueItemId },
+      include: pmsRentDueItemInclude,
+    });
+
+    if (!rentDueItem) {
+      throw new AppError(404, "PMS rent due item not found");
+    }
+
+    const access = await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: rentDueItem.companyId,
+    });
+    assertCanCollectPmsRent(access.member.role);
+
+    const confirmedAggregate = await prisma.pmsRentPayment.aggregate({
+      where: {
+        rentDueItemId,
+        status: PmsRentPaymentStatus.CONFIRMED,
+      },
+      _sum: { amount: true },
+    });
+    const confirmedAmount = roundMoney(rentDecimalToNumber(confirmedAggregate._sum.amount));
+    assertCanApplyRentPayment({
+      rentDueItem,
+      paymentAmount: data.amount,
+      existingConfirmedAmount: confirmedAmount,
+    });
+
+    const { payment, updatedRentDueItem } = await prisma.$transaction(async (tx) => {
+      const createdPayment = await tx.pmsRentPayment.create({
+        data: {
+          companyId: access.company.id,
+          rentDueItemId: rentDueItem.id,
+          leaseId: rentDueItem.leaseId,
+          tenantId: rentDueItem.tenantId,
+          propertyId: rentDueItem.propertyId,
+          unitId: rentDueItem.unitId,
+          amount: data.amount,
+          currency: rentDueItem.currency,
+          method: data.method,
+          status: PmsRentPaymentStatus.CONFIRMED,
+          referenceNumber: normalizeNullableText(data.referenceNumber),
+          notes: normalizeNullableText(data.notes),
+          paidAt: data.paidAt ?? new Date(),
+          confirmedAt: new Date(),
+          receiptNumber: createPmsRentReceiptNumber(),
+          recordedById: req.user!.id,
+        },
+        include: pmsRentPaymentInclude,
+      });
+      const refreshedRentDueItem = await syncPmsRentDueItemFromConfirmedPayments(tx, {
+        rentDueItemId,
+        updatedById: req.user!.id,
+      });
+
+      return { payment: createdPayment, updatedRentDueItem: refreshedRentDueItem };
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS rent payment recorded",
+      message: `${req.user.email} recorded ${payment.amount.toString()} ${payment.currency} rent payment.`,
+      metadata: {
+        action: "create",
+        resourceType: "pmsRentPayment",
+        rentPaymentId: payment.id,
+        rentDueItemId: payment.rentDueItemId,
+        tenantId: payment.tenantId,
+        method: payment.method,
+        status: payment.status,
+      },
+    });
+
+    res.status(201).json({
+      rentDueItem: pmsRentDueItemResponse(updatedRentDueItem),
+      payment: pmsRentPaymentResponse(payment),
+      receipt: pmsRentReceiptResponse(payment),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/rent-payments/:rentPaymentId/receipt", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new AppError(401, "Unauthorized");
+    }
+
+    const { rentPaymentId } = pmsRentPaymentParamsSchema.parse(req.params);
+    const payment = await prisma.pmsRentPayment.findUnique({
+      where: { id: rentPaymentId },
+      include: pmsRentPaymentInclude,
+    });
+
+    if (!payment) {
+      throw new AppError(404, "PMS rent payment receipt not found");
+    }
+
+    await resolvePmsAccessOrThrow({
+      userId: req.user.id,
+      companyId: payment.companyId,
+    });
+
+    if (payment.status !== PmsRentPaymentStatus.CONFIRMED) {
+      throw new AppError(400, "Only confirmed rent payments have printable receipts.");
+    }
+
+    res.json({ receipt: pmsRentReceiptResponse(payment) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 
 function buildPmsWorkOrderUpdateData(
   data: z.infer<typeof pmsWorkOrderUpdateSchema>,
@@ -3156,12 +3517,12 @@ async function buildPmsReportsSummary(companyId: string) {
     prisma.pmsUnit.count({ where: { companyId } }),
     prisma.pmsUnit.count({ where: { companyId, status: PmsUnitStatus.OCCUPIED } }),
     prisma.pmsUnit.count({ where: { companyId, status: PmsUnitStatus.VACANT } }),
-    prisma.pmsRentDueItem.aggregate({
+    prisma.pmsRentPayment.aggregate({
       where: {
         companyId,
-        status: { in: [PmsRentDueStatus.PAID, PmsRentDueStatus.PARTIALLY_PAID] },
+        status: PmsRentPaymentStatus.CONFIRMED,
       },
-      _sum: { paidAmount: true },
+      _sum: { amount: true },
     }),
     prisma.pmsRentDueItem.aggregate({
       where: {
@@ -3242,7 +3603,7 @@ async function buildPmsReportsSummary(companyId: string) {
 
   return {
     accounting: {
-      incomeCollected: decimalToString(rentCollected._sum.paidAmount),
+      incomeCollected: decimalToString(rentCollected._sum.amount),
       outstandingRent: decimalToString(outstandingRent._sum.amount),
       overdueRent: decimalToString(overdueRent._sum.amount),
       expenses: decimalToString(maintenanceCost),
@@ -3260,7 +3621,7 @@ async function buildPmsReportsSummary(companyId: string) {
           totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 1000) / 10 : 0,
       },
       revenue: {
-        collected: decimalToString(rentCollected._sum.paidAmount),
+        collected: decimalToString(rentCollected._sum.amount),
         outstanding: decimalToString(outstandingRent._sum.amount),
         overdue: decimalToString(overdueRent._sum.amount),
       },
@@ -4766,15 +5127,13 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
           amount: true,
         },
       }),
-      prisma.pmsRentDueItem.aggregate({
+      prisma.pmsRentPayment.aggregate({
         where: {
           companyId,
-          status: {
-            in: [PmsRentDueStatus.PAID, PmsRentDueStatus.PARTIALLY_PAID],
-          },
+          status: PmsRentPaymentStatus.CONFIRMED,
         },
         _sum: {
-          paidAmount: true,
+          amount: true,
         },
       }),
       prisma.pmsWorkOrder.count({
@@ -4889,7 +5248,7 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
         paidPmsRentDueItems,
         pmsRentDueAmount: decimalToString(pmsRentDueAggregate._sum.amount),
         pmsRentCollectedAmount: decimalToString(
-          pmsRentCollectedAggregate._sum.paidAmount,
+          pmsRentCollectedAggregate._sum.amount,
         ),
         openPmsWorkOrders,
         inProgressPmsWorkOrders,

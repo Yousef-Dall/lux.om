@@ -1,8 +1,11 @@
 import {
+  AccountSecurityEventType,
   NotificationType,
   PmsMaintenancePriority,
   PmsMaintenanceStatus,
   PmsRentDueStatus,
+  PmsRentPaymentMethod,
+  PmsRentPaymentStatus,
   type Prisma
 } from '@prisma/client';
 import { Router } from 'express';
@@ -14,6 +17,23 @@ import {
   type TenantPortalWorkspaceAccess
 } from '../lib/tenantPortalAccess';
 import { prisma } from '../lib/prisma';
+import {
+  assertCanApplyRentPayment,
+  callThawani,
+  createCheckoutUrl,
+  createPmsRentPaymentReference,
+  createPmsRentReceiptNumber,
+  createTenantRentReturnUrl,
+  decimalToNumber as rentDecimalToNumber,
+  getPaidRentStatus,
+  mapThawaniPaymentStatus,
+  RENT_PAYMENT_PROVIDER,
+  roundMoney,
+  toBaisa,
+  type ThawaniCreateSessionData,
+  type ThawaniRetrieveSessionData
+} from '../lib/pmsRentPayments';
+import { recordAccountSecurityEvent } from '../lib/accountSecurityEvents';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../utils/http';
 
@@ -33,6 +53,20 @@ const tenantRentQuerySchema = tenantAccessQuerySchema.extend({
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0)
 });
+
+const tenantRentDueParamsSchema = z.object({
+  rentDueItemId: z.string().trim().min(1)
+});
+
+const tenantRentPaymentParamsSchema = z.object({
+  rentPaymentId: z.string().trim().min(1)
+});
+
+const tenantOnlineRentPaymentSchema = z
+  .object({
+    amount: z.coerce.number().min(0.001).max(100000000).optional()
+  })
+  .strict();
 
 const tenantMaintenanceQuerySchema = tenantAccessQuerySchema.extend({
   status: z
@@ -154,6 +188,40 @@ type TenantWorkOrderWithRelations = Prisma.PmsWorkOrderGetPayload<{
   include: typeof tenantWorkOrderInclude;
 }>;
 
+const tenantRentPaymentInclude = {
+  rentDueItem: {
+    include: tenantRentDueInclude
+  },
+  property: {
+    select: {
+      id: true,
+      name: true,
+      code: true
+    }
+  },
+  unit: {
+    select: {
+      id: true,
+      unitNumber: true,
+      unitName: true
+    }
+  },
+  lease: {
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      startDate: true,
+      endDate: true,
+      rentFrequency: true
+    }
+  }
+} satisfies Prisma.PmsRentPaymentInclude;
+
+type TenantRentPaymentWithRelations = Prisma.PmsRentPaymentGetPayload<{
+  include: typeof tenantRentPaymentInclude;
+}>;
+
 function decimalToString(value: Prisma.Decimal | null | undefined) {
   return value === null || value === undefined ? null : value.toString();
 }
@@ -233,6 +301,7 @@ function tenantRentDueResponse(item: TenantRentDueWithRelations) {
     status: item.status,
     paidAt: item.paidAt,
     notes: null,
+    balanceAmount: String(Math.max(roundMoney(rentDecimalToNumber(item.amount) - rentDecimalToNumber(item.paidAmount)), 0)),
     createdAt: item.createdAt,
     updatedAt: item.updatedAt
   };
@@ -259,6 +328,197 @@ function tenantWorkOrderResponse(workOrder: TenantWorkOrderWithRelations) {
     createdAt: workOrder.createdAt,
     updatedAt: workOrder.updatedAt
   };
+}
+
+function tenantRentPaymentResponse(payment: TenantRentPaymentWithRelations) {
+  return {
+    id: payment.id,
+    companyId: payment.companyId,
+    rentDueItemId: payment.rentDueItemId,
+    rentDueItem: tenantRentDueResponse(payment.rentDueItem),
+    leaseId: payment.leaseId,
+    lease: payment.lease,
+    tenantId: payment.tenantId,
+    propertyId: payment.propertyId,
+    property: payment.property,
+    unitId: payment.unitId,
+    unit: payment.unit,
+    amount: decimalToString(payment.amount),
+    currency: payment.currency,
+    method: payment.method,
+    status: payment.status,
+    referenceNumber: payment.referenceNumber,
+    paidAt: payment.paidAt,
+    receiptNumber: payment.receiptNumber,
+    provider: payment.provider,
+    providerReference: payment.providerReference,
+    providerSessionId: payment.providerSessionId,
+    checkoutUrl: payment.checkoutUrl,
+    confirmedAt: payment.confirmedAt,
+    cancelledAt: payment.cancelledAt,
+    createdAt: payment.createdAt,
+    updatedAt: payment.updatedAt
+  };
+}
+
+function tenantRentReceiptResponse(payment: TenantRentPaymentWithRelations) {
+  return {
+    receiptNumber: payment.receiptNumber,
+    paymentId: payment.id,
+    rentDueItemId: payment.rentDueItemId,
+    status: payment.status,
+    method: payment.method,
+    amount: decimalToString(payment.amount),
+    currency: payment.currency,
+    referenceNumber: payment.referenceNumber,
+    providerReference: payment.providerReference,
+    paidAt: payment.paidAt,
+    confirmedAt: payment.confirmedAt,
+    issuedAt: payment.updatedAt,
+    property: payment.property,
+    unit: payment.unit,
+    lease: payment.lease,
+    rentDueItem: tenantRentDueResponse(payment.rentDueItem)
+  };
+}
+
+function tenantOnlineRentPaymentEnabled() {
+  return Boolean(
+    process.env.THAWANI_SECRET_KEY?.trim() &&
+      process.env.THAWANI_PUBLISHABLE_KEY?.trim()
+  );
+}
+
+async function syncTenantRentDueItemFromConfirmedPayments(
+  tx: Prisma.TransactionClient,
+  input: { rentDueItemId: string; updatedById?: string | null }
+) {
+  const rentDueItem = await tx.pmsRentDueItem.findUniqueOrThrow({
+    where: { id: input.rentDueItemId },
+    select: {
+      id: true,
+      amount: true,
+      paidAmount: true,
+      dueDate: true,
+      status: true
+    }
+  });
+
+  const [aggregate, latestConfirmedPayment] = await Promise.all([
+    tx.pmsRentPayment.aggregate({
+      where: {
+        rentDueItemId: input.rentDueItemId,
+        status: PmsRentPaymentStatus.CONFIRMED
+      },
+      _sum: { amount: true }
+    }),
+    tx.pmsRentPayment.findFirst({
+      where: {
+        rentDueItemId: input.rentDueItemId,
+        status: PmsRentPaymentStatus.CONFIRMED
+      },
+      orderBy: [{ paidAt: 'desc' }, { updatedAt: 'desc' }],
+      select: { paidAt: true, confirmedAt: true, updatedAt: true }
+    })
+  ]);
+
+  const paidAmount = roundMoney(rentDecimalToNumber(aggregate._sum.amount));
+  const status = getPaidRentStatus({ rentDueItem, paidAmount });
+
+  return tx.pmsRentDueItem.update({
+    where: { id: input.rentDueItemId },
+    data: {
+      paidAmount,
+      status,
+      paidAt:
+        status === PmsRentDueStatus.PAID
+          ? (latestConfirmedPayment?.paidAt ??
+            latestConfirmedPayment?.confirmedAt ??
+            latestConfirmedPayment?.updatedAt ??
+            new Date())
+          : null,
+      ...(input.updatedById !== undefined ? { updatedById: input.updatedById } : {})
+    },
+    include: tenantRentDueInclude
+  });
+}
+
+async function createTenantThawaniRentCheckoutSession(input: {
+  accessId: string;
+  rentDueItem: TenantRentDueWithRelations;
+  paymentId: string;
+  reference: string;
+  amount: number;
+  tenantEmail?: string | null;
+  tenantPhone?: string | null;
+}) {
+  if (input.amount <= 0 || toBaisa(input.amount) < 100) {
+    throw new AppError(400, 'Rent payment amount is below the minimum Thawani amount.');
+  }
+
+  const session = await callThawani<ThawaniCreateSessionData>('/checkout/session', {
+    method: 'POST',
+    body: JSON.stringify({
+      client_reference_id: input.reference,
+      mode: 'payment',
+      products: [
+        {
+          name: `Rent ${input.rentDueItem.unit.unitNumber}`.slice(0, 40),
+          quantity: 1,
+          unit_amount: toBaisa(input.amount)
+        }
+      ],
+      success_url: createTenantRentReturnUrl({
+        accessId: input.accessId,
+        rentDueItemId: input.rentDueItem.id,
+        paymentReference: input.reference,
+        result: 'success'
+      }),
+      cancel_url: createTenantRentReturnUrl({
+        accessId: input.accessId,
+        rentDueItemId: input.rentDueItem.id,
+        paymentReference: input.reference,
+        result: 'cancel'
+      }),
+      metadata: {
+        pms_rent_payment_id: input.paymentId,
+        pms_rent_due_item_id: input.rentDueItem.id,
+        customer_name: input.rentDueItem.lease.title ?? 'Tenant rent',
+        customer_email: input.tenantEmail ?? '',
+        customer_phone: input.tenantPhone ?? ''
+      }
+    })
+  });
+
+  if (!session.session_id) {
+    throw new AppError(502, 'Thawani did not return a checkout session id.');
+  }
+
+  return {
+    sessionId: session.session_id,
+    checkoutUrl: createCheckoutUrl(session.session_id)
+  };
+}
+
+function assertTenantThawaniRentSessionMatchesPayment(
+  session: ThawaniRetrieveSessionData,
+  payment: { id: string; providerSessionId: string | null; providerReference: string | null; rentDueItemId: string }
+) {
+  if (session.session_id !== payment.providerSessionId) {
+    throw new AppError(502, 'Thawani rent payment session mismatch.');
+  }
+
+  if (session.client_reference_id && payment.providerReference && session.client_reference_id !== payment.providerReference) {
+    throw new AppError(502, 'Thawani rent payment reference mismatch.');
+  }
+
+  if (session.metadata?.pms_rent_payment_id && session.metadata.pms_rent_payment_id !== payment.id) {
+    throw new AppError(502, 'Thawani rent payment metadata mismatch.');
+  }
+
+  if (session.metadata?.pms_rent_due_item_id && session.metadata.pms_rent_due_item_id !== payment.rentDueItemId) {
+    throw new AppError(502, 'Thawani rent due metadata mismatch.');
+  }
 }
 
 async function getTenantLeaseForMaintenance(input: {
@@ -443,8 +703,10 @@ tenantRouter.get('/overview', requireAuth(), async (req, res, next) => {
           : null
       },
       paymentFoundation: {
-        onlineRentPaymentEnabled: false,
-        note: 'Online rent checkout is not enabled in this tenant portal stage.'
+        onlineRentPaymentEnabled: tenantOnlineRentPaymentEnabled(),
+        note: tenantOnlineRentPaymentEnabled()
+          ? 'Online rent checkout is available for unpaid or partially paid rent.'
+          : 'Online rent checkout requires Thawani rent payment configuration. Manual receipts remain visible here.'
       }
     });
   } catch (error) {
@@ -519,9 +781,357 @@ tenantRouter.get('/rent', requireAuth(), async (req, res, next) => {
         total
       },
       paymentFoundation: {
-        onlineRentPaymentEnabled: false,
-        note: 'Rent payments and receipts are reserved for the next payment stage.'
+        onlineRentPaymentEnabled: tenantOnlineRentPaymentEnabled(),
+        note: tenantOnlineRentPaymentEnabled()
+          ? 'Online rent checkout is available for unpaid or partially paid rent.'
+          : 'Online rent checkout requires Thawani rent payment configuration. Manual receipts remain visible here.'
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+tenantRouter.get('/rent/:rentDueItemId/payments', requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, 'Unauthorized');
+
+    const query = tenantAccessQuerySchema.parse(req.query);
+    const { rentDueItemId } = tenantRentDueParamsSchema.parse(req.params);
+    const access = await resolveTenantAccessOrThrow({
+      userId: req.user.id,
+      accessId: query.accessId
+    });
+
+    const rentDueItem = await prisma.pmsRentDueItem.findFirst({
+      where: {
+        id: rentDueItemId,
+        companyId: access.company.id,
+        tenantId: access.tenant.id
+      },
+      include: tenantRentDueInclude
+    });
+
+    if (!rentDueItem) {
+      throw new AppError(404, 'Tenant rent due item not found.');
+    }
+
+    const payments = await prisma.pmsRentPayment.findMany({
+      where: {
+        companyId: access.company.id,
+        tenantId: access.tenant.id,
+        rentDueItemId
+      },
+      include: tenantRentPaymentInclude,
+      orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }]
+    });
+
+    res.json({
+      workspace: tenantWorkspaceResponse(access),
+      rentDueItem: tenantRentDueResponse(rentDueItem),
+      payments: payments.map(tenantRentPaymentResponse)
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+tenantRouter.post('/rent/:rentDueItemId/payments/session', requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, 'Unauthorized');
+
+    const query = tenantAccessQuerySchema.parse(req.query);
+    const { rentDueItemId } = tenantRentDueParamsSchema.parse(req.params);
+    const data = tenantOnlineRentPaymentSchema.parse(req.body);
+    const access = await resolveTenantAccessOrThrow({
+      userId: req.user.id,
+      accessId: query.accessId
+    });
+
+    const rentDueItem = await prisma.pmsRentDueItem.findFirst({
+      where: {
+        id: rentDueItemId,
+        companyId: access.company.id,
+        tenantId: access.tenant.id
+      },
+      include: tenantRentDueInclude
+    });
+
+    if (!rentDueItem) {
+      throw new AppError(404, 'Tenant rent due item not found.');
+    }
+
+    if (!tenantOnlineRentPaymentEnabled()) {
+      throw new AppError(503, 'Online rent checkout requires Thawani rent payment configuration.');
+    }
+
+    const existingPendingPayment = await prisma.pmsRentPayment.findFirst({
+      where: {
+        companyId: access.company.id,
+        tenantId: access.tenant.id,
+        rentDueItemId,
+        method: PmsRentPaymentMethod.ONLINE_GATEWAY,
+        status: PmsRentPaymentStatus.PENDING,
+        providerSessionId: { not: null },
+        checkoutUrl: { not: null }
+      },
+      include: tenantRentPaymentInclude,
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (existingPendingPayment?.checkoutUrl) {
+      res.json({
+        workspace: tenantWorkspaceResponse(access),
+        rentDueItem: tenantRentDueResponse(rentDueItem),
+        payment: tenantRentPaymentResponse(existingPendingPayment),
+        checkoutUrl: existingPendingPayment.checkoutUrl
+      });
+      return;
+    }
+
+    const confirmedAggregate = await prisma.pmsRentPayment.aggregate({
+      where: {
+        rentDueItemId,
+        status: PmsRentPaymentStatus.CONFIRMED
+      },
+      _sum: { amount: true }
+    });
+    const confirmedAmount = roundMoney(rentDecimalToNumber(confirmedAggregate._sum.amount));
+    const remainingAmount = roundMoney(rentDecimalToNumber(rentDueItem.amount) - confirmedAmount);
+    const paymentAmount = data.amount ?? remainingAmount;
+
+    assertCanApplyRentPayment({
+      rentDueItem,
+      paymentAmount,
+      existingConfirmedAmount: confirmedAmount
+    });
+
+    const reference = createPmsRentPaymentReference();
+    const createdPayment = await prisma.pmsRentPayment.create({
+      data: {
+        companyId: access.company.id,
+        rentDueItemId: rentDueItem.id,
+        leaseId: rentDueItem.leaseId,
+        tenantId: rentDueItem.tenantId,
+        propertyId: rentDueItem.propertyId,
+        unitId: rentDueItem.unitId,
+        amount: paymentAmount,
+        currency: rentDueItem.currency,
+        method: PmsRentPaymentMethod.ONLINE_GATEWAY,
+        status: PmsRentPaymentStatus.PENDING,
+        provider: RENT_PAYMENT_PROVIDER,
+        providerReference: reference,
+        recordedById: req.user.id
+      },
+      include: tenantRentPaymentInclude
+    });
+
+    try {
+      const session = await createTenantThawaniRentCheckoutSession({
+        accessId: access.access.id,
+        rentDueItem,
+        paymentId: createdPayment.id,
+        reference,
+        amount: paymentAmount,
+        tenantEmail: access.tenant.email,
+        tenantPhone: access.tenant.phone
+      });
+
+      const payment = await prisma.pmsRentPayment.update({
+        where: { id: createdPayment.id },
+        data: {
+          providerSessionId: session.sessionId,
+          checkoutUrl: session.checkoutUrl
+        },
+        include: tenantRentPaymentInclude
+      });
+
+      await recordAccountSecurityEvent(prisma, {
+        userId: req.user.id,
+        actorId: req.user.id,
+        type: AccountSecurityEventType.ADMIN_PMS_ACCESS_UPDATED,
+        title: 'PMS tenant rent checkout created',
+        message: `${req.user.email} created an online rent checkout session.`,
+        metadata: {
+          action: 'create',
+          resourceType: 'pmsRentPayment',
+          companyId: access.company.id,
+          rentPaymentId: payment.id,
+          rentDueItemId: payment.rentDueItemId,
+          tenantId: payment.tenantId,
+          provider: payment.provider,
+          status: payment.status
+        }
+      });
+
+      res.status(201).json({
+        workspace: tenantWorkspaceResponse(access),
+        rentDueItem: tenantRentDueResponse(rentDueItem),
+        payment: tenantRentPaymentResponse(payment),
+        checkoutUrl: session.checkoutUrl
+      });
+    } catch (checkoutError) {
+      await prisma.pmsRentPayment.update({
+        where: { id: createdPayment.id },
+        data: { status: PmsRentPaymentStatus.FAILED, cancelledAt: new Date() }
+      });
+      throw checkoutError;
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+tenantRouter.post('/rent-payments/:rentPaymentId/sync', requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, 'Unauthorized');
+
+    const query = tenantAccessQuerySchema.parse(req.query);
+    const { rentPaymentId } = tenantRentPaymentParamsSchema.parse(req.params);
+    const access = await resolveTenantAccessOrThrow({
+      userId: req.user.id,
+      accessId: query.accessId
+    });
+
+    const payment = await prisma.pmsRentPayment.findFirst({
+      where: {
+        id: rentPaymentId,
+        companyId: access.company.id,
+        tenantId: access.tenant.id
+      },
+      include: tenantRentPaymentInclude
+    });
+
+    if (!payment) {
+      throw new AppError(404, 'Tenant rent payment not found.');
+    }
+
+    if (!payment.providerSessionId) {
+      throw new AppError(400, 'Rent payment checkout session has not been created yet.');
+    }
+
+    if (payment.status === PmsRentPaymentStatus.CONFIRMED) {
+      res.json({
+        workspace: tenantWorkspaceResponse(access),
+        rentDueItem: tenantRentDueResponse(payment.rentDueItem),
+        payment: tenantRentPaymentResponse(payment),
+        receipt: payment.receiptNumber ? tenantRentReceiptResponse(payment) : null
+      });
+      return;
+    }
+
+    const thawaniSession = await callThawani<ThawaniRetrieveSessionData>(`/checkout/session/${payment.providerSessionId}`);
+    assertTenantThawaniRentSessionMatchesPayment(thawaniSession, payment);
+    const nextStatus = mapThawaniPaymentStatus(thawaniSession.payment_status);
+
+    if (nextStatus === PmsRentPaymentStatus.CONFIRMED) {
+      const confirmedAggregate = await prisma.pmsRentPayment.aggregate({
+        where: {
+          rentDueItemId: payment.rentDueItemId,
+          status: PmsRentPaymentStatus.CONFIRMED
+        },
+        _sum: { amount: true }
+      });
+      assertCanApplyRentPayment({
+        rentDueItem: payment.rentDueItem,
+        paymentAmount: rentDecimalToNumber(payment.amount),
+        existingConfirmedAmount: roundMoney(rentDecimalToNumber(confirmedAggregate._sum.amount))
+      });
+    }
+
+    const { updatedPayment, updatedRentDueItem } = await prisma.$transaction(async (tx) => {
+      const changedPayment = await tx.pmsRentPayment.update({
+        where: { id: payment.id },
+        data: {
+          status: nextStatus,
+          ...(nextStatus === PmsRentPaymentStatus.CONFIRMED
+            ? {
+                confirmedAt: new Date(),
+                paidAt: payment.paidAt ?? new Date(),
+                receiptNumber: payment.receiptNumber ?? createPmsRentReceiptNumber()
+              }
+            : {}),
+          ...(nextStatus === PmsRentPaymentStatus.FAILED
+            ? { cancelledAt: new Date() }
+            : {})
+        },
+        include: tenantRentPaymentInclude
+      });
+
+      const refreshedRentDueItem =
+        nextStatus === PmsRentPaymentStatus.CONFIRMED
+          ? await syncTenantRentDueItemFromConfirmedPayments(tx, {
+              rentDueItemId: payment.rentDueItemId,
+              updatedById: req.user!.id
+            })
+          : payment.rentDueItem;
+
+      return { updatedPayment: changedPayment, updatedRentDueItem: refreshedRentDueItem };
+    });
+
+    await recordAccountSecurityEvent(prisma, {
+      userId: req.user.id,
+      actorId: req.user.id,
+      type: AccountSecurityEventType.ADMIN_PMS_ACCESS_UPDATED,
+      title: 'PMS tenant rent payment synced',
+      message: `${req.user.email} synced an online rent payment status.`,
+      metadata: {
+        action: 'sync',
+        resourceType: 'pmsRentPayment',
+        companyId: access.company.id,
+        rentPaymentId: updatedPayment.id,
+        rentDueItemId: updatedPayment.rentDueItemId,
+        tenantId: updatedPayment.tenantId,
+        provider: updatedPayment.provider,
+        status: updatedPayment.status
+      }
+    });
+
+    res.json({
+      workspace: tenantWorkspaceResponse(access),
+      rentDueItem: tenantRentDueResponse(updatedRentDueItem),
+      payment: tenantRentPaymentResponse(updatedPayment),
+      receipt:
+        updatedPayment.status === PmsRentPaymentStatus.CONFIRMED
+          ? tenantRentReceiptResponse(updatedPayment)
+          : null
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+tenantRouter.get('/rent-payments/:rentPaymentId/receipt', requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, 'Unauthorized');
+
+    const query = tenantAccessQuerySchema.parse(req.query);
+    const { rentPaymentId } = tenantRentPaymentParamsSchema.parse(req.params);
+    const access = await resolveTenantAccessOrThrow({
+      userId: req.user.id,
+      accessId: query.accessId
+    });
+
+    const payment = await prisma.pmsRentPayment.findFirst({
+      where: {
+        id: rentPaymentId,
+        companyId: access.company.id,
+        tenantId: access.tenant.id
+      },
+      include: tenantRentPaymentInclude
+    });
+
+    if (!payment) {
+      throw new AppError(404, 'Tenant rent payment receipt not found.');
+    }
+
+    if (payment.status !== PmsRentPaymentStatus.CONFIRMED) {
+      throw new AppError(400, 'Only confirmed rent payments have printable receipts.');
+    }
+
+    res.json({
+      workspace: tenantWorkspaceResponse(access),
+      receipt: tenantRentReceiptResponse(payment)
     });
   } catch (error) {
     next(error);

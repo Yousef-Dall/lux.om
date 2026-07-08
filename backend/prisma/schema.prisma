@@ -169,6 +169,23 @@ enum PmsRentDueStatus {
   CANCELLED
 }
 
+enum PmsRentPaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  CARD_MANUAL
+  ONLINE_GATEWAY
+  OTHER
+}
+
+enum PmsRentPaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
 enum PmsMaintenancePriority {
   LOW
   MEDIUM
@@ -509,6 +526,7 @@ model User {
   pmsLeasesUpdated       PmsLease[] @relation("PmsLeaseUpdatedBy")
   pmsRentDueItemsCreated PmsRentDueItem[] @relation("PmsRentDueItemCreatedBy")
   pmsRentDueItemsUpdated PmsRentDueItem[] @relation("PmsRentDueItemUpdatedBy")
+  pmsRentPaymentsRecorded PmsRentPayment[] @relation("PmsRentPaymentRecordedBy")
   pmsWorkOrdersCreated   PmsWorkOrder[] @relation("PmsWorkOrderCreatedBy")
   pmsWorkOrdersUpdated   PmsWorkOrder[] @relation("PmsWorkOrderUpdatedBy")
   pmsCommunicationTemplatesCreated PmsCommunicationTemplate[] @relation("PmsCommunicationTemplateCreatedBy")
@@ -634,6 +652,7 @@ model DeveloperCompany {
   pmsTenants     PmsTenant[]
   pmsLeases      PmsLease[]
   pmsRentDueItems PmsRentDueItem[]
+  pmsRentPayments PmsRentPayment[]
   pmsWorkOrders PmsWorkOrder[]
   pmsCommunicationTemplates PmsCommunicationTemplate[]
   pmsPolicies PmsPolicy[]
@@ -1800,6 +1819,7 @@ model PmsProperty {
   units PmsUnit[]
   pmsLeases PmsLease[]
   pmsRentDueItems PmsRentDueItem[]
+  pmsRentPayments PmsRentPayment[]
   pmsWorkOrders PmsWorkOrder[]
   pmsInspections PmsInspection[]
 
@@ -1850,6 +1870,7 @@ model PmsUnit {
 
   pmsLeases PmsLease[]
   pmsRentDueItems PmsRentDueItem[]
+  pmsRentPayments PmsRentPayment[]
   pmsWorkOrders PmsWorkOrder[]
   pmsInspections PmsInspection[]
 
@@ -1894,6 +1915,7 @@ model PmsTenant {
 
   leases       PmsLease[]
   rentDueItems PmsRentDueItem[]
+  rentPayments PmsRentPayment[]
   pmsWorkOrders PmsWorkOrder[]
   pmsInspections PmsInspection[]
   pmsTenantPortalAccesses PmsTenantPortalAccess[]
@@ -1947,6 +1969,7 @@ model PmsLease {
   updatedBy   User? @relation("PmsLeaseUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   rentDueItems PmsRentDueItem[]
+  rentPayments PmsRentPayment[]
   pmsInspections PmsInspection[]
 
   createdAt DateTime @default(now())
@@ -1997,6 +2020,8 @@ model PmsRentDueItem {
   updatedById String?
   updatedBy   User? @relation("PmsRentDueItemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
+  rentPayments PmsRentPayment[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2009,6 +2034,58 @@ model PmsRentDueItem {
   @@index([unitId])
   @@index([createdById])
   @@index([updatedById])
+}
+
+model PmsRentPayment {
+  id              String                 @id @default(cuid())
+  amount          Decimal                @db.Decimal(12, 3)
+  currency        String                 @default("OMR") @db.VarChar(3)
+  method          PmsRentPaymentMethod
+  status          PmsRentPaymentStatus   @default(CONFIRMED)
+  referenceNumber String?
+  notes           String?
+  paidAt          DateTime?
+  receiptNumber   String?                @unique
+
+  provider          String?
+  providerReference String?               @unique
+  providerSessionId String?               @unique
+  checkoutUrl       String?
+  confirmedAt       DateTime?
+  cancelledAt       DateTime?
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  rentDueItemId String
+  rentDueItem   PmsRentDueItem @relation(fields: [rentDueItemId], references: [id], onDelete: Cascade)
+
+  leaseId String
+  lease   PmsLease @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
+  tenantId String
+  tenant   PmsTenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  propertyId String
+  property   PmsProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  unitId String
+  unit   PmsUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  recordedById String?
+  recordedBy   User? @relation("PmsRentPaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, status])
+  @@index([rentDueItemId, status])
+  @@index([tenantId, status])
+  @@index([leaseId])
+  @@index([propertyId])
+  @@index([unitId])
+  @@index([recordedById])
+  @@index([paidAt])
 }
 
 model PmsWorkOrder {
