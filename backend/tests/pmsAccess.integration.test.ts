@@ -44,6 +44,7 @@ async function clearPmsTestDatabase() {
   await prisma.pmsTenantPortalAccess.deleteMany();
   await prisma.pmsCommunicationLog.deleteMany();
   await prisma.pmsCommunicationTemplate.deleteMany();
+  await prisma.pmsImportBatch.deleteMany();
   await prisma.pmsPolicy.deleteMany();
   await prisma.pmsAccountingLedgerEntry.deleteMany();
   await prisma.pmsMaintenanceQuote.deleteMany();
@@ -2709,6 +2710,68 @@ describe("PMS company entitlement access architecture", () => {
       .expect(200);
 
     expect(tenantConfirmResponse.body.workOrder.tenantConfirmedAt).toBeTruthy();
+  });
+
+
+  it("previews, commits, and scopes PMS bulk import/export", async () => {
+    const admin = await prisma.user.create({ data: { name: "Stage 18 Admin", email: "stage18-admin@lux.test", password: "test-password", role: "ADMIN", emailVerified: true } });
+    const manager = await prisma.user.create({ data: { name: "Stage 18 Manager", email: "stage18-manager@lux.test", password: "test-password", role: "DEVELOPER", emailVerified: true } });
+    const viewer = await prisma.user.create({ data: { name: "Stage 18 Viewer", email: "stage18-viewer@lux.test", password: "test-password", role: "USER", emailVerified: true } });
+    const otherManager = await prisma.user.create({ data: { name: "Stage 18 Other", email: "stage18-other@lux.test", password: "test-password", role: "DEVELOPER", emailVerified: true } });
+    const company = await prisma.developerCompany.create({ data: { slug: "stage18-company", nameEn: "Stage 18 Company", verified: true } });
+    const otherCompany = await prisma.developerCompany.create({ data: { slug: "stage18-other-company", nameEn: "Stage 18 Other Company", verified: true } });
+    await prisma.pmsCompanyEntitlement.createMany({ data: [
+      { companyId: company.id, status: "ACTIVE", createdById: admin.id, updatedById: admin.id },
+      { companyId: otherCompany.id, status: "ACTIVE", createdById: admin.id, updatedById: admin.id },
+    ] });
+    await prisma.pmsCompanyMember.createMany({ data: [
+      { companyId: company.id, userId: manager.id, role: "PMS_MANAGER", active: true, createdById: admin.id },
+      { companyId: company.id, userId: viewer.id, role: "PMS_VIEWER", active: true, createdById: admin.id },
+      { companyId: otherCompany.id, userId: otherManager.id, role: "PMS_MANAGER", active: true, createdById: admin.id },
+    ] });
+    const managerToken = signToken(manager);
+    const viewerToken = signToken(viewer);
+    const otherToken = signToken(otherManager);
+
+    const propertyCsv = "name,code,city\nBulk Tower,BULK-1,Muscat\n,BAD,Muscat";
+    const previewResponse = await request(app)
+      .post("/api/pms/imports/preview")
+      .set("Authorization", `Bearer ${managerToken}`)
+      .send({ companyId: company.id, type: "PROPERTIES", filename: "properties.csv", csvText: propertyCsv })
+      .expect(200);
+
+    expect(previewResponse.body.preview.validRows).toHaveLength(1);
+    expect(previewResponse.body.preview.invalidRows).toHaveLength(1);
+    expect(await prisma.pmsProperty.count({ where: { companyId: company.id } })).toBe(0);
+
+    await request(app)
+      .post("/api/pms/imports/commit")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .send({ companyId: company.id, type: "PROPERTIES", filename: "properties.csv", csvText: propertyCsv })
+      .expect(403);
+
+    const commitResponse = await request(app)
+      .post("/api/pms/imports/commit")
+      .set("Authorization", `Bearer ${managerToken}`)
+      .send({ companyId: company.id, type: "PROPERTIES", filename: "properties.csv", csvText: propertyCsv })
+      .expect(201);
+
+    expect(commitResponse.body.batch.successfulRows).toBe(1);
+    expect(commitResponse.body.batch.failedRows).toBe(1);
+    expect(await prisma.pmsProperty.count({ where: { companyId: company.id } })).toBe(1);
+
+    await request(app)
+      .get(`/api/pms/exports/properties.csv?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${otherToken}`)
+      .expect(403);
+
+    const exportResponse = await request(app)
+      .get(`/api/pms/exports/properties.csv?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .expect(200);
+
+    expect(exportResponse.text).toContain("Bulk Tower");
+    expect(exportResponse.text).not.toContain("Stage 18 Other Company");
   });
 
 });

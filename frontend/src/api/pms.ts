@@ -1824,6 +1824,81 @@ export async function updatePmsLeaseChecklistItem(
   );
 }
 
+
+export type PmsImportType = "PROPERTIES" | "UNITS" | "TENANTS" | "LEASES";
+export type PmsImportStatus = "PREVIEWED" | "COMMITTED" | "PARTIAL" | "FAILED";
+
+export type PmsImportRowPreview = {
+  rowNumber: number;
+  valid: boolean;
+  errors: string[];
+  data: Record<string, unknown>;
+};
+
+export type PmsImportPreview = {
+  type: PmsImportType;
+  headers: string[];
+  totalRows: number;
+  validRows: PmsImportRowPreview[];
+  invalidRows: PmsImportRowPreview[];
+};
+
+export type PmsImportBatch = {
+  id: string;
+  companyId: string;
+  type: PmsImportType;
+  filename?: string | null;
+  status: PmsImportStatus;
+  totalRows: number;
+  successfulRows: number;
+  failedRows: number;
+  metadata?: unknown;
+  createdBy?: { id: string; name: string; email: string; role: UserRole } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsImportPayload = {
+  companyId: string;
+  type: PmsImportType;
+  filename?: string | null;
+  csvText: string;
+};
+
+export async function previewPmsImport(token: string, payload: PmsImportPayload) {
+  return apiClient.post<{ preview: PmsImportPreview }>("/api/pms/imports/preview", payload, { token });
+}
+
+export async function commitPmsImport(token: string, payload: PmsImportPayload) {
+  return apiClient.post<{ preview: PmsImportPreview; batch: PmsImportBatch }>("/api/pms/imports/commit", payload, { token });
+}
+
+export async function listPmsImportBatches(
+  token: string,
+  params: { companyId?: string; type?: PmsImportType | "ALL"; status?: PmsImportStatus | "ALL"; take?: number; skip?: number } = {},
+) {
+  return apiClient.get<{ batches: PmsImportBatch[]; page: { take: number; skip: number; count: number; total: number } }>(
+    "/api/pms/import-batches",
+    { token, params },
+  );
+}
+
+export function getPmsImportTemplateUrl(type: PmsImportType, companyId?: string) {
+  const params = new URLSearchParams();
+  if (companyId) params.set("companyId", companyId);
+  const query = params.toString();
+  return `/api/pms/imports/templates/${type}.csv${query ? `?${query}` : ""}`;
+}
+
+export type PmsExportType = "properties" | "units" | "tenants" | "leases" | "rent-roll" | "maintenance" | "accounting-summary";
+
+export function getPmsExportUrl(type: PmsExportType, companyId?: string) {
+  const params = new URLSearchParams();
+  if (companyId) params.set("companyId", companyId);
+  const query = params.toString();
+  return `/api/pms/exports/${type}.csv${query ? `?${query}` : ""}`;
+}
+
 export async function listAdminPmsCompanies(
   params: AdminPmsCompaniesQuery,
   token: string,

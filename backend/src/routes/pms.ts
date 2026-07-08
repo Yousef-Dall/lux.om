@@ -10,6 +10,8 @@ import {
   PmsDocumentStatus,
   PmsDocumentType,
   PmsEntitlementStatus,
+  PmsImportStatus,
+  PmsImportType,
   PmsInspectionStatus,
   PmsLeaseStatus,
   PmsMoveChecklistStatus,
@@ -40,7 +42,9 @@ import {
 import {
   assertCanCollectPmsRent,
   assertCanManagePmsAccounting,
+  assertCanExportPmsData,
   assertCanManagePmsDocuments,
+  assertCanManagePmsImports,
   assertCanManagePmsMaintenanceDocuments,
   assertCanManagePmsInventory,
   assertCanViewPmsAccounting,
@@ -510,6 +514,48 @@ const pmsDocumentUpdateSchema = pmsDocumentCreateSchema
 const pmsDocumentExpiryQuerySchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   withinDays: z.coerce.number().int().min(1).max(365).default(30),
+});
+
+const pmsImportBodySchema = z
+  .object({
+    companyId: z.string().trim().min(1),
+    type: z.nativeEnum(PmsImportType),
+    filename: nullableTrimmedString(240),
+    csvText: z.string().min(1).max(2_000_000),
+  })
+  .strict();
+
+const pmsImportBatchListQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  type: z.enum(["ALL", ...Object.values(PmsImportType)] as ["ALL", ...PmsImportType[]]).default("ALL"),
+  status: z.enum(["ALL", ...Object.values(PmsImportStatus)] as ["ALL", ...PmsImportStatus[]]).default("ALL"),
+  take: z.coerce.number().int().min(1).max(100).default(25),
+  skip: z.coerce.number().int().min(0).default(0),
+});
+
+const pmsImportTypeParamsSchema = z.object({
+  type: z.nativeEnum(PmsImportType),
+});
+
+const pmsExportTypeParamsSchema = z.object({
+  type: z.enum([
+    "properties",
+    "units",
+    "tenants",
+    "leases",
+    "rent-roll",
+    "maintenance",
+    "accounting-summary",
+  ]),
+});
+
+const pmsExportQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+  unitId: z.string().trim().min(1).optional(),
+  tenantId: z.string().trim().min(1).optional(),
+  dateFrom: z.coerce.date().optional(),
+  dateTo: z.coerce.date().optional(),
 });
 
 const pmsLeaseRenewalDraftSchema = z
@@ -5894,6 +5940,570 @@ pmsRouter.get("/reports/summary", requireAuth(), async (req, res, next) => {
     next(error);
   }
 });
+
+
+type PmsCsvRow = Record<string, string>;
+type PmsImportRowPreview = {
+  rowNumber: number;
+  valid: boolean;
+  errors: string[];
+  data: Record<string, unknown>;
+};
+
+type PmsImportPreview = {
+  type: PmsImportType;
+  headers: string[];
+  totalRows: number;
+  validRows: PmsImportRowPreview[];
+  invalidRows: PmsImportRowPreview[];
+};
+
+function escapeCsvCell(value: unknown) {
+  if (value === null || value === undefined) return "";
+  const text = value instanceof Date ? value.toISOString() : String(value);
+  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+}
+
+function toCsv(headers: string[], rows: Array<Array<unknown>>) {
+  return [
+    headers.map(escapeCsvCell).join(","),
+    ...rows.map((row) => row.map(escapeCsvCell).join(",")),
+  ].join("\n");
+}
+
+function sendPmsCsv(res: any, filename: string, csv: string) {
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(`\uFEFF${csv}`);
+}
+
+function normalizeCsvHeader(value: string) {
+  return value.trim().replace(/^\uFEFF/, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function parseCsvLine(line: string) {
+  const cells: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"' && inQuotes && next === '"') {
+      current += '"';
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  cells.push(current.trim());
+  return cells;
+}
+
+function parseCsvText(csvText: string) {
+  const lines = csvText.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter((line) => line.trim().length > 0);
+  if (lines.length === 0) throw new AppError(400, "CSV file is empty.");
+
+  const rawHeaders = parseCsvLine(lines[0]);
+  const headers = rawHeaders.map(normalizeCsvHeader);
+  if (headers.length === 0 || headers.every((header) => !header)) {
+    throw new AppError(400, "CSV header row is required.");
+  }
+
+  const rows = lines.slice(1).map((line, index) => {
+    const cells = parseCsvLine(line);
+    const row: PmsCsvRow = {};
+    headers.forEach((header, headerIndex) => {
+      if (!header) return;
+      row[header] = cells[headerIndex]?.trim() ?? "";
+    });
+    return { rowNumber: index + 2, row };
+  });
+
+  return { headers: rawHeaders, rows };
+}
+
+function csvValue(row: PmsCsvRow, aliases: string[]) {
+  for (const alias of aliases) {
+    const value = row[normalizeCsvHeader(alias)];
+    if (value !== undefined && value.trim() !== "") return value.trim();
+  }
+  return "";
+}
+
+function parseOptionalBoolean(value: string) {
+  if (!value) return undefined;
+  const normalized = value.toLowerCase();
+  if (["true", "yes", "1", "active"].includes(normalized)) return true;
+  if (["false", "no", "0", "inactive"].includes(normalized)) return false;
+  return undefined;
+}
+
+function parseOptionalNumber(value: string) {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseRequiredDate(value: string) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function importRow(rowNumber: number, data: Record<string, unknown>, errors: string[]): PmsImportRowPreview {
+  return { rowNumber, valid: errors.length === 0, errors, data };
+}
+
+function splitImportRows(rows: PmsImportRowPreview[]): PmsImportPreview["validRows" | "invalidRows"] {
+  return rows.filter((row) => row.valid);
+}
+
+async function buildPmsImportPreview(input: {
+  companyId: string;
+  type: PmsImportType;
+  csvText: string;
+}): Promise<PmsImportPreview> {
+  const parsed = parseCsvText(input.csvText);
+  const companyId = input.companyId;
+
+  if (input.type === PmsImportType.PROPERTIES) {
+    const existingCodes = new Set(
+      (await prisma.pmsProperty.findMany({
+        where: { companyId, code: { not: null } },
+        select: { code: true },
+      })).map((property) => property.code?.toLowerCase()).filter(Boolean) as string[],
+    );
+    const seenCodes = new Set<string>();
+    const rows = parsed.rows.map(({ rowNumber, row }) => {
+      const name = csvValue(row, ["name", "propertyName", "property"]);
+      const code = csvValue(row, ["code", "propertyCode"]);
+      const errors: string[] = [];
+      if (!name) errors.push("Property name is required.");
+      if (code) {
+        const codeKey = code.toLowerCase();
+        if (existingCodes.has(codeKey)) errors.push("Property code already exists in this company.");
+        if (seenCodes.has(codeKey)) errors.push("Duplicate property code in this CSV.");
+        seenCodes.add(codeKey);
+      }
+      const active = parseOptionalBoolean(csvValue(row, ["active", "status"]));
+      return importRow(rowNumber, {
+        companyId,
+        name,
+        code: code || null,
+        propertyType: csvValue(row, ["propertyType", "type"]) || null,
+        addressLine: csvValue(row, ["address", "addressLine"]) || null,
+        city: csvValue(row, ["city"]) || null,
+        area: csvValue(row, ["area"]) || null,
+        notes: csvValue(row, ["notes"]) || null,
+        active: active ?? true,
+      }, errors);
+    });
+    return { type: input.type, headers: parsed.headers, totalRows: rows.length, validRows: splitImportRows(rows), invalidRows: rows.filter((row) => !row.valid) };
+  }
+
+  const properties = await prisma.pmsProperty.findMany({
+    where: { companyId },
+    select: { id: true, name: true, code: true },
+  });
+  const propertyById = new Map(properties.map((property) => [property.id, property]));
+  const propertyByCode = new Map(properties.filter((property) => property.code).map((property) => [property.code!.toLowerCase(), property]));
+  const propertyByName = new Map(properties.map((property) => [property.name.toLowerCase(), property]));
+
+  if (input.type === PmsImportType.UNITS) {
+    const existingUnits = await prisma.pmsUnit.findMany({
+      where: { companyId },
+      select: { propertyId: true, unitNumber: true },
+    });
+    const existingUnitKeys = new Set(existingUnits.map((unit) => `${unit.propertyId}:${unit.unitNumber.toLowerCase()}`));
+    const seenUnitKeys = new Set<string>();
+    const rows = parsed.rows.map(({ rowNumber, row }) => {
+      const propertyIdValue = csvValue(row, ["propertyId"]);
+      const propertyCode = csvValue(row, ["propertyCode", "code"]);
+      const propertyName = csvValue(row, ["propertyName", "property"]);
+      const property = propertyById.get(propertyIdValue) || propertyByCode.get(propertyCode.toLowerCase()) || propertyByName.get(propertyName.toLowerCase());
+      const unitNumber = csvValue(row, ["unitNumber", "unit", "number"]);
+      const errors: string[] = [];
+      if (!property) errors.push("A matching propertyId, propertyCode, or propertyName is required.");
+      if (!unitNumber) errors.push("Unit number is required.");
+      if (property && unitNumber) {
+        const key = `${property.id}:${unitNumber.toLowerCase()}`;
+        if (existingUnitKeys.has(key)) errors.push("Unit already exists for this property.");
+        if (seenUnitKeys.has(key)) errors.push("Duplicate unit in this CSV.");
+        seenUnitKeys.add(key);
+      }
+      const rentAmount = parseOptionalNumber(csvValue(row, ["rentAmount", "rent"]));
+      const bedrooms = parseOptionalNumber(csvValue(row, ["bedrooms", "beds"]));
+      const bathrooms = parseOptionalNumber(csvValue(row, ["bathrooms", "baths"]));
+      const areaSqm = parseOptionalNumber(csvValue(row, ["areaSqm", "area"]));
+      return importRow(rowNumber, {
+        companyId,
+        propertyId: property?.id,
+        unitNumber,
+        unitName: csvValue(row, ["unitName", "name"]) || null,
+        floor: csvValue(row, ["floor"]) || null,
+        bedrooms: bedrooms ?? null,
+        bathrooms: bathrooms ?? null,
+        areaSqm: areaSqm ?? null,
+        status: Object.values(PmsUnitStatus).includes(csvValue(row, ["status"]).toUpperCase() as PmsUnitStatus)
+          ? csvValue(row, ["status"]).toUpperCase()
+          : PmsUnitStatus.VACANT,
+        occupancyStatus: null,
+        rentAmount: rentAmount ?? null,
+        currency: (csvValue(row, ["currency"]) || "OMR").toUpperCase(),
+        notes: csvValue(row, ["notes"]) || null,
+      }, errors);
+    });
+    return { type: input.type, headers: parsed.headers, totalRows: rows.length, validRows: splitImportRows(rows), invalidRows: rows.filter((row) => !row.valid) };
+  }
+
+  if (input.type === PmsImportType.TENANTS) {
+    const existingEmails = new Set(
+      (await prisma.pmsTenant.findMany({
+        where: { companyId, email: { not: null } },
+        select: { email: true },
+      })).map((tenant) => tenant.email?.toLowerCase()).filter(Boolean) as string[],
+    );
+    const seenEmails = new Set<string>();
+    const rows = parsed.rows.map(({ rowNumber, row }) => {
+      const fullName = csvValue(row, ["fullName", "tenantName", "name"]);
+      const email = csvValue(row, ["email", "tenantEmail"]);
+      const errors: string[] = [];
+      if (!fullName) errors.push("Tenant full name is required.");
+      if (email) {
+        const key = email.toLowerCase();
+        if (existingEmails.has(key)) errors.push("Tenant email already exists in this company.");
+        if (seenEmails.has(key)) errors.push("Duplicate tenant email in this CSV.");
+        seenEmails.add(key);
+      }
+      return importRow(rowNumber, {
+        companyId,
+        fullName,
+        phone: csvValue(row, ["phone", "tenantPhone"]) || null,
+        email: email || null,
+        nationality: csvValue(row, ["nationality"]) || null,
+        nationalId: csvValue(row, ["nationalId", "idNumber"]) || null,
+        passportNumber: csvValue(row, ["passportNumber", "passport"]) || null,
+        emergencyContactName: csvValue(row, ["emergencyContactName"]) || null,
+        emergencyContactPhone: csvValue(row, ["emergencyContactPhone"]) || null,
+        emergencyContactEmail: csvValue(row, ["emergencyContactEmail"]) || null,
+        notes: csvValue(row, ["notes"]) || null,
+        active: parseOptionalBoolean(csvValue(row, ["active"])) ?? true,
+      }, errors);
+    });
+    return { type: input.type, headers: parsed.headers, totalRows: rows.length, validRows: splitImportRows(rows), invalidRows: rows.filter((row) => !row.valid) };
+  }
+
+  const tenants = await prisma.pmsTenant.findMany({
+    where: { companyId },
+    select: { id: true, fullName: true, email: true },
+  });
+  const tenantById = new Map(tenants.map((tenant) => [tenant.id, tenant]));
+  const tenantByEmail = new Map(tenants.filter((tenant) => tenant.email).map((tenant) => [tenant.email!.toLowerCase(), tenant]));
+  const tenantByName = new Map(tenants.map((tenant) => [tenant.fullName.toLowerCase(), tenant]));
+  const units = await prisma.pmsUnit.findMany({
+    where: { companyId },
+    select: { id: true, unitNumber: true, propertyId: true },
+  });
+  const unitByPropertyAndNumber = new Map(units.map((unit) => [`${unit.propertyId}:${unit.unitNumber.toLowerCase()}`, unit]));
+  const occupiedLeaseUnits = new Set((await prisma.pmsLease.findMany({
+    where: { companyId, status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] } },
+    select: { unitId: true },
+  })).map((lease) => lease.unitId));
+
+  const rows = parsed.rows.map(({ rowNumber, row }) => {
+    const tenantIdValue = csvValue(row, ["tenantId"]);
+    const tenantEmail = csvValue(row, ["tenantEmail", "email"]);
+    const tenantName = csvValue(row, ["tenantName", "fullName"]);
+    const tenant = tenantById.get(tenantIdValue) || tenantByEmail.get(tenantEmail.toLowerCase()) || tenantByName.get(tenantName.toLowerCase());
+    const propertyIdValue = csvValue(row, ["propertyId"]);
+    const propertyCode = csvValue(row, ["propertyCode"]);
+    const propertyName = csvValue(row, ["propertyName", "property"]);
+    const property = propertyById.get(propertyIdValue) || propertyByCode.get(propertyCode.toLowerCase()) || propertyByName.get(propertyName.toLowerCase());
+    const unitNumber = csvValue(row, ["unitNumber", "unit"]);
+    const unit = property && unitNumber ? unitByPropertyAndNumber.get(`${property.id}:${unitNumber.toLowerCase()}`) : undefined;
+    const startDate = parseRequiredDate(csvValue(row, ["startDate", "leaseStart"]));
+    const endDateRaw = csvValue(row, ["endDate", "leaseEnd"]);
+    const endDate = endDateRaw ? parseRequiredDate(endDateRaw) : null;
+    const rentAmount = parseOptionalNumber(csvValue(row, ["rentAmount", "rent"]));
+    const errors: string[] = [];
+    if (!tenant) errors.push("A matching tenantId, tenantEmail, or tenantName is required.");
+    if (!property) errors.push("A matching propertyId, propertyCode, or propertyName is required.");
+    if (!unit) errors.push("A matching unitNumber under the property is required.");
+    if (!startDate) errors.push("Valid startDate is required.");
+    if (endDateRaw && !endDate) errors.push("endDate is invalid.");
+    if (!rentAmount || rentAmount <= 0) errors.push("rentAmount must be greater than zero.");
+    if (unit && occupiedLeaseUnits.has(unit.id)) errors.push("Unit already has an active or expiring lease.");
+    return importRow(rowNumber, {
+      companyId,
+      tenantId: tenant?.id,
+      propertyId: property?.id,
+      unitId: unit?.id,
+      title: csvValue(row, ["title", "leaseTitle"]) || null,
+      status: PmsLeaseStatus.DRAFT,
+      startDate: startDate?.toISOString(),
+      endDate: endDate?.toISOString() ?? null,
+      rentFrequency: Object.values(PaymentScheduleFrequency).includes(csvValue(row, ["rentFrequency", "frequency"]).toUpperCase() as PaymentScheduleFrequency)
+        ? csvValue(row, ["rentFrequency", "frequency"]).toUpperCase()
+        : PaymentScheduleFrequency.MONTHLY,
+      rentAmount: rentAmount ?? 0,
+      currency: (csvValue(row, ["currency"]) || "OMR").toUpperCase(),
+      securityDeposit: parseOptionalNumber(csvValue(row, ["securityDeposit", "deposit"])) ?? null,
+      dueDayOfMonth: parseOptionalNumber(csvValue(row, ["dueDayOfMonth", "dueDay"])) ?? null,
+      notes: csvValue(row, ["notes"]) || null,
+    }, errors);
+  });
+  return { type: input.type, headers: parsed.headers, totalRows: rows.length, validRows: splitImportRows(rows), invalidRows: rows.filter((row) => !row.valid) };
+}
+
+function pmsImportBatchResponse(batch: Prisma.PmsImportBatchGetPayload<{ include: { createdBy: { select: { id: true; name: true; email: true; role: true } } } }>) {
+  return {
+    id: batch.id,
+    companyId: batch.companyId,
+    type: batch.type,
+    filename: batch.filename,
+    status: batch.status,
+    totalRows: batch.totalRows,
+    successfulRows: batch.successfulRows,
+    failedRows: batch.failedRows,
+    metadata: batch.metadata,
+    createdBy: batch.createdBy,
+    createdAt: batch.createdAt,
+    updatedAt: batch.updatedAt,
+  };
+}
+
+const pmsImportBatchInclude = {
+  createdBy: { select: { id: true, name: true, email: true, role: true } },
+} satisfies Prisma.PmsImportBatchInclude;
+
+async function commitPmsImportRows(input: {
+  companyId: string;
+  type: PmsImportType;
+  filename?: string | null;
+  preview: PmsImportPreview;
+  userId: string;
+}) {
+  const validRows = input.preview.validRows;
+  const invalidRows = input.preview.invalidRows;
+  return prisma.$transaction(async (tx) => {
+    const batch = await tx.pmsImportBatch.create({
+      data: {
+        companyId: input.companyId,
+        type: input.type,
+        filename: input.filename || null,
+        status: invalidRows.length > 0 ? PmsImportStatus.PARTIAL : PmsImportStatus.COMMITTED,
+        totalRows: input.preview.totalRows,
+        successfulRows: validRows.length,
+        failedRows: invalidRows.length,
+        createdById: input.userId,
+        metadata: {
+          invalidRows,
+          headers: input.preview.headers,
+        } as Prisma.InputJsonObject,
+      },
+      include: pmsImportBatchInclude,
+    });
+
+    for (const row of validRows) {
+      const data = row.data as any;
+      if (input.type === PmsImportType.PROPERTIES) {
+        await tx.pmsProperty.create({ data: { ...data, createdById: input.userId, updatedById: input.userId } });
+      } else if (input.type === PmsImportType.UNITS) {
+        await tx.pmsUnit.create({ data: { ...data, createdById: input.userId, updatedById: input.userId } });
+      } else if (input.type === PmsImportType.TENANTS) {
+        await tx.pmsTenant.create({ data: { ...data, createdById: input.userId, updatedById: input.userId } });
+      } else if (input.type === PmsImportType.LEASES) {
+        await tx.pmsLease.create({ data: { ...data, startDate: new Date(data.startDate), endDate: data.endDate ? new Date(data.endDate) : null, createdById: input.userId, updatedById: input.userId } });
+        if (data.unitId) {
+          await tx.pmsUnit.updateMany({
+            where: { id: data.unitId, companyId: input.companyId },
+            data: { status: PmsUnitStatus.OCCUPIED, occupancyStatus: PmsOccupancyStatus.OCCUPIED, updatedById: input.userId },
+          });
+        }
+      }
+    }
+
+    return batch;
+  });
+}
+
+function pmsExportKey(type: string): "properties" | "units" | "tenants" | "leases" | "rent_roll" | "maintenance" | "accounting" {
+  if (type === "rent-roll") return "rent_roll";
+  if (type === "accounting-summary") return "accounting";
+  return type as "properties" | "units" | "tenants" | "leases" | "maintenance";
+}
+
+
+
+pmsRouter.get("/import-batches", requireAuth(), async (req, res, next) => {
+  try {
+    const query = pmsImportBatchListQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user!.id, companyId: query.companyId });
+    assertCanManagePmsImports(access.member.role);
+    const where: Prisma.PmsImportBatchWhereInput = {
+      companyId: access.company.id,
+      ...(query.type !== "ALL" ? { type: query.type } : {}),
+      ...(query.status !== "ALL" ? { status: query.status } : {}),
+    };
+    const [batches, total] = await prisma.$transaction([
+      prisma.pmsImportBatch.findMany({ where, include: pmsImportBatchInclude, orderBy: { createdAt: "desc" }, take: query.take, skip: query.skip }),
+      prisma.pmsImportBatch.count({ where }),
+    ]);
+    res.json({ batches: batches.map(pmsImportBatchResponse), page: { take: query.take, skip: query.skip, count: batches.length, total } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/imports/templates/:type.csv", requireAuth(), async (req, res, next) => {
+  try {
+    const { type } = pmsImportTypeParamsSchema.parse(req.params);
+    const query = pmsOverviewQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user!.id, companyId: query.companyId });
+    assertCanManagePmsImports(access.member.role);
+    const headersByType: Record<PmsImportType, string[]> = {
+      PROPERTIES: ["name", "code", "propertyType", "address", "city", "area", "notes", "active"],
+      UNITS: ["propertyCode", "propertyName", "unitNumber", "unitName", "floor", "bedrooms", "bathrooms", "areaSqm", "rentAmount", "currency", "status", "notes"],
+      TENANTS: ["fullName", "phone", "email", "nationality", "nationalId", "passportNumber", "emergencyContactName", "emergencyContactPhone", "emergencyContactEmail", "notes", "active"],
+      LEASES: ["tenantEmail", "tenantName", "propertyCode", "propertyName", "unitNumber", "title", "startDate", "endDate", "rentFrequency", "rentAmount", "currency", "securityDeposit", "dueDayOfMonth", "notes"],
+    };
+    sendPmsCsv(res, `pms-${type.toLowerCase()}-template.csv`, toCsv(headersByType[type], []));
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/imports/preview", requireAuth(), async (req, res, next) => {
+  try {
+    const data = pmsImportBodySchema.parse(req.body);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user!.id, companyId: data.companyId });
+    assertCanManagePmsImports(access.member.role);
+    const preview = await buildPmsImportPreview({ companyId: access.company.id, type: data.type, csvText: data.csvText });
+    res.json({ preview });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/imports/commit", requireAuth(), async (req, res, next) => {
+  try {
+    const data = pmsImportBodySchema.parse(req.body);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user!.id, companyId: data.companyId });
+    assertCanManagePmsImports(access.member.role);
+    const preview = await buildPmsImportPreview({ companyId: access.company.id, type: data.type, csvText: data.csvText });
+    if (preview.validRows.length === 0) {
+      const batch = await prisma.pmsImportBatch.create({
+        data: {
+          companyId: access.company.id,
+          type: data.type,
+          filename: data.filename || null,
+          status: PmsImportStatus.FAILED,
+          totalRows: preview.totalRows,
+          successfulRows: 0,
+          failedRows: preview.invalidRows.length,
+          createdById: req.user!.id,
+          metadata: { invalidRows: preview.invalidRows, headers: preview.headers } as Prisma.InputJsonObject,
+        },
+        include: pmsImportBatchInclude,
+      });
+      res.status(400).json({ preview, batch: pmsImportBatchResponse(batch), message: "No valid rows to import." });
+      return;
+    }
+    const batch = await commitPmsImportRows({ companyId: access.company.id, type: data.type, filename: data.filename, preview, userId: req.user!.id });
+    await recordPmsWorkspaceAudit({
+      actorId: req.user!.id,
+      actorEmail: req.user!.email,
+      companyId: access.company.id,
+      title: "PMS bulk import committed",
+      message: `${req.user!.email} imported ${preview.validRows.length} ${data.type.toLowerCase()} rows.`,
+      metadata: { type: data.type, batchId: batch.id, successfulRows: preview.validRows.length, failedRows: preview.invalidRows.length },
+    });
+    res.status(201).json({ preview, batch: pmsImportBatchResponse(batch) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/exports/:type.csv", requireAuth(), async (req, res, next) => {
+  try {
+    const { type } = pmsExportTypeParamsSchema.parse(req.params);
+    const query = pmsExportQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user!.id, companyId: query.companyId });
+    const exportKey = pmsExportKey(type);
+    assertCanExportPmsData(access.member.role, exportKey);
+    await assertPmsFilterLinksBelongToCompany({
+      companyId: access.company.id,
+      propertyId: query.propertyId,
+      unitId: query.unitId,
+      tenantId: query.tenantId,
+    });
+    const companyId = access.company.id;
+    if (type === "properties") {
+      const rows = await prisma.pmsProperty.findMany({ where: { companyId }, orderBy: { name: "asc" } });
+      sendPmsCsv(res, "pms-properties.csv", toCsv(["id", "name", "code", "propertyType", "addressLine", "city", "area", "active", "createdAt"], rows.map((row) => [row.id, row.name, row.code, row.propertyType, row.addressLine, row.city, row.area, row.active, row.createdAt])));
+      return;
+    }
+    if (type === "units") {
+      const rows = await prisma.pmsUnit.findMany({ where: { companyId, ...(query.propertyId ? { propertyId: query.propertyId } : {}) }, include: { property: { select: { name: true, code: true } } }, orderBy: [{ property: { name: "asc" } }, { unitNumber: "asc" }] });
+      sendPmsCsv(res, "pms-units.csv", toCsv(["id", "property", "propertyCode", "unitNumber", "unitName", "floor", "bedrooms", "bathrooms", "areaSqm", "status", "occupancyStatus", "rentAmount", "currency"], rows.map((row) => [row.id, row.property.name, row.property.code, row.unitNumber, row.unitName, row.floor, row.bedrooms, row.bathrooms, row.areaSqm, row.status, row.occupancyStatus, row.rentAmount, row.currency])));
+      return;
+    }
+    if (type === "tenants") {
+      const rows = await prisma.pmsTenant.findMany({ where: { companyId, ...(query.tenantId ? { id: query.tenantId } : {}) }, orderBy: { fullName: "asc" } });
+      sendPmsCsv(res, "pms-tenants.csv", toCsv(["id", "fullName", "phone", "email", "nationality", "nationalId", "passportNumber", "active"], rows.map((row) => [row.id, row.fullName, row.phone, row.email, row.nationality, row.nationalId, row.passportNumber, row.active])));
+      return;
+    }
+    if (type === "leases") {
+      const rows = await prisma.pmsLease.findMany({ where: { companyId, ...(query.propertyId ? { propertyId: query.propertyId } : {}), ...(query.unitId ? { unitId: query.unitId } : {}), ...(query.tenantId ? { tenantId: query.tenantId } : {}) }, include: pmsLeaseInclude, orderBy: { startDate: "desc" } });
+      sendPmsCsv(res, "pms-leases.csv", toCsv(["id", "title", "tenant", "property", "unit", "status", "startDate", "endDate", "rentAmount", "currency", "securityDeposit"], rows.map((row) => [row.id, row.title, row.tenant.fullName, row.property.name, row.unit.unitNumber, row.status, row.startDate, row.endDate, row.rentAmount, row.currency, row.securityDeposit])));
+      return;
+    }
+    if (type === "rent-roll") {
+      const rows = await prisma.pmsRentDueItem.findMany({ where: { companyId, ...(query.propertyId ? { propertyId: query.propertyId } : {}), ...(query.unitId ? { unitId: query.unitId } : {}), ...(query.tenantId ? { tenantId: query.tenantId } : {}) }, include: pmsRentDueItemInclude, orderBy: { dueDate: "asc" } });
+      sendPmsCsv(res, "pms-rent-roll.csv", toCsv(["id", "tenant", "property", "unit", "dueDate", "amount", "paidAmount", "currency", "status"], rows.map((row) => [row.id, row.tenant.fullName, row.property.name, row.unit.unitNumber, row.dueDate, row.amount, row.paidAmount, row.currency, row.status])));
+      return;
+    }
+    if (type === "maintenance") {
+      const rows = await prisma.pmsWorkOrder.findMany({ where: { companyId, ...(query.propertyId ? { propertyId: query.propertyId } : {}), ...(query.unitId ? { unitId: query.unitId } : {}), ...(query.tenantId ? { tenantId: query.tenantId } : {}) }, include: pmsWorkOrderInclude, orderBy: { updatedAt: "desc" } });
+      sendPmsCsv(res, "pms-maintenance.csv", toCsv(["id", "title", "property", "unit", "tenant", "vendor", "priority", "status", "cost", "currency", "targetDate", "isOverdue"], rows.map((row) => [row.id, row.title, row.property.name, row.unit?.unitNumber, row.tenant?.fullName, row.vendor?.name, row.priority, row.status, row.cost, row.currency, row.targetDate,
+        Boolean(
+          row.targetDate &&
+            row.targetDate < new Date() &&
+            row.status !== PmsMaintenanceStatus.RESOLVED &&
+            row.status !== PmsMaintenanceStatus.CANCELLED
+        )])));
+      return;
+    }
+    const where: Prisma.PmsAccountingLedgerEntryWhereInput = {
+      companyId,
+      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.unitId ? { unitId: query.unitId } : {}),
+      ...(query.tenantId ? { tenantId: query.tenantId } : {}),
+      ...(query.dateFrom || query.dateTo ? { transactionDate: buildPmsAccountingDateFilter({ dateFrom: query.dateFrom, dateTo: query.dateTo }) } : {}),
+    };
+    const rows = await prisma.pmsAccountingLedgerEntry.findMany({ where, include: pmsAccountingLedgerEntryInclude, orderBy: { transactionDate: "desc" } });
+    sendPmsCsv(res, "pms-accounting-summary.csv", toCsv(["id", "type", "category", "amount", "currency", "transactionDate", "property", "unit", "tenant", "source", "referenceNumber"], rows.map((row) => [row.id, row.type, row.category, row.amount, row.currency, row.transactionDate, row.property?.name, row.unit?.unitNumber, row.tenant?.fullName, row.source, row.referenceNumber])));
+  } catch (error) {
+    next(error);
+  }
+});
+
 
 pmsRouter.get("/communication-templates", requireAuth(), async (req, res, next) => {
   try {

@@ -256,6 +256,20 @@ enum PmsReminderType {
   MAINTENANCE_STATUS
 }
 
+enum PmsImportType {
+  PROPERTIES
+  UNITS
+  TENANTS
+  LEASES
+}
+
+enum PmsImportStatus {
+  PREVIEWED
+  COMMITTED
+  PARTIAL
+  FAILED
+}
+
 enum PmsPolicyCategory {
   GENERAL
   RENT
@@ -620,6 +634,7 @@ model User {
   pmsCommunicationTemplatesUpdated PmsCommunicationTemplate[] @relation("PmsCommunicationTemplateUpdatedBy")
   pmsCommunicationLogsCreated PmsCommunicationLog[] @relation("PmsCommunicationLogCreatedBy")
   pmsCommunicationLogsSent PmsCommunicationLog[] @relation("PmsCommunicationLogSentBy")
+  pmsImportBatchesCreated PmsImportBatch[] @relation("PmsImportBatchCreatedBy")
   pmsPoliciesCreated     PmsPolicy[] @relation("PmsPolicyCreatedBy")
   pmsPoliciesUpdated     PmsPolicy[] @relation("PmsPolicyUpdatedBy")
   pmsInspectionsCreated  PmsInspection[] @relation("PmsInspectionCreatedBy")
@@ -752,6 +767,7 @@ model DeveloperCompany {
   pmsMaintenanceQuotes PmsMaintenanceQuote[]
   pmsCommunicationTemplates PmsCommunicationTemplate[]
   pmsCommunicationLogs PmsCommunicationLog[]
+  pmsImportBatches PmsImportBatch[]
   pmsPolicies PmsPolicy[]
   pmsInspections PmsInspection[]
   pmsDocuments PmsDocument[]
@@ -2492,6 +2508,31 @@ model PmsCommunicationLog {
   @@index([workOrderId])
   @@index([createdById])
   @@index([sentById])
+}
+
+model PmsImportBatch {
+  id             String          @id @default(cuid())
+  type           PmsImportType
+  filename       String?
+  status         PmsImportStatus @default(PREVIEWED)
+  totalRows      Int             @default(0)
+  successfulRows Int             @default(0)
+  failedRows     Int             @default(0)
+  metadata       Json?
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User? @relation("PmsImportBatchCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, type])
+  @@index([companyId, status])
+  @@index([createdById])
+  @@index([createdAt])
 }
 
 model PmsPolicy {

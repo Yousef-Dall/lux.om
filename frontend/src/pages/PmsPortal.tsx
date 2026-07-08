@@ -43,6 +43,9 @@ import {
   createPmsTenant,
   createPmsUnit,
   createPmsWorkOrder,
+  commitPmsImport,
+  getPmsExportUrl,
+  getPmsImportTemplateUrl,
   getPmsLease,
   getPmsOverview,
   getPmsProperty,
@@ -50,6 +53,7 @@ import {
   getPmsReportsSummary,
   listPmsAccountingLedger,
   listPmsDocuments,
+  listPmsImportBatches,
   listPmsDocumentExpiryAlerts,
   listPmsLeaseChecklists,
   listPmsCommunicationTemplates,
@@ -67,6 +71,7 @@ import {
   recordPmsRentPayment,
   listPmsUnits,
   listPmsWorkOrders,
+  previewPmsImport,
   updatePmsProperty,
   updatePmsUnit,
   updatePmsLeaseChecklistItem,
@@ -84,6 +89,9 @@ import {
   type PmsDocumentStatus,
   type PmsDocumentType,
   type PmsInspection,
+  type PmsImportBatch,
+  type PmsImportPreview,
+  type PmsImportType,
   type PmsInspectionPayload,
   type PmsLease,
   type PmsLeasePayload,
@@ -149,6 +157,7 @@ const pmsNavigation = [
     icon: CreditCard,
     available: true,
   },
+  { to: "/pms/import-export", key: "importExport", icon: FileText, available: true },
   { to: "/pms/reports", key: "reports", icon: BarChart3, available: true },
   { to: "/pms/settings", key: "settings", icon: Settings, available: true },
 ] as const;
@@ -434,6 +443,10 @@ function canEditMaintenance(role?: string) {
 }
 
 function canEditOperations(role?: string) {
+  return role === "PMS_OWNER" || role === "PMS_MANAGER";
+}
+
+function canManageImports(role?: string) {
   return role === "PMS_OWNER" || role === "PMS_MANAGER";
 }
 
@@ -767,6 +780,11 @@ export default function PmsPortal() {
   const [templates, setTemplates] = useState<PmsCommunicationTemplate[]>([]);
   const [communicationLogs, setCommunicationLogs] = useState<PmsCommunicationLog[]>([]);
   const [reminderCandidates, setReminderCandidates] = useState<PmsReminderCandidate[]>([]);
+  const [importPreview, setImportPreview] = useState<PmsImportPreview | null>(null);
+  const [importBatches, setImportBatches] = useState<PmsImportBatch[]>([]);
+  const [importType, setImportType] = useState<PmsImportType>("PROPERTIES");
+  const [importFilename, setImportFilename] = useState("");
+  const [importCsvText, setImportCsvText] = useState("");
   const [communicationPreview, setCommunicationPreview] = useState<{ subject?: string | null; body: string } | null>(null);
   const [policies, setPolicies] = useState<PmsPolicy[]>([]);
   const [inspections, setInspections] = useState<PmsInspection[]>([]);
@@ -1016,6 +1034,19 @@ export default function PmsPortal() {
           inspections: "الفحوصات",
           communications: "التواصل",
           policies: "السياسات",
+          importExport: "الاستيراد والتصدير",
+          bulkImport: "استيراد CSV",
+          bulkExport: "تصدير CSV",
+          importType: "نوع الاستيراد",
+          csvFile: "ملف CSV",
+          previewImport: "معاينة الاستيراد",
+          commitImport: "اعتماد الاستيراد",
+          validRows: "صفوف صحيحة",
+          invalidRows: "صفوف بها أخطاء",
+          importBatches: "دفعات الاستيراد",
+          downloadTemplate: "تحميل نموذج CSV",
+          exportData: "تصدير البيانات",
+          previewDoesNotWrite: "المعاينة لا تنشئ أي سجلات. الاعتماد فقط يستورد الصفوف الصحيحة.",
           emptyReports: "لا توجد بيانات تقارير كافية بعد.",
         }
       : {
@@ -1225,6 +1256,19 @@ export default function PmsPortal() {
           inspections: "Inspections",
           communications: "Communications",
           policies: "Policies",
+          importExport: "Import / Export",
+          bulkImport: "CSV import",
+          bulkExport: "CSV export",
+          importType: "Import type",
+          csvFile: "CSV file",
+          previewImport: "Preview import",
+          commitImport: "Commit import",
+          validRows: "Valid rows",
+          invalidRows: "Invalid rows",
+          importBatches: "Import batches",
+          downloadTemplate: "Download CSV template",
+          exportData: "Export data",
+          previewDoesNotWrite: "Preview does not create records. Commit imports valid rows only.",
           emptyReports: "Not enough PMS report data yet.",
         };
 
@@ -1246,6 +1290,8 @@ export default function PmsPortal() {
                 ? "maintenance"
                 : location.pathname.startsWith("/pms/accounting")
                   ? "accounting"
+                  : location.pathname.startsWith("/pms/import-export")
+                    ? "importExport"
                   : location.pathname.startsWith("/pms/reports")
                     ? "reports"
                     : location.pathname.startsWith("/pms/settings")
@@ -1258,6 +1304,7 @@ export default function PmsPortal() {
   const canSeeAccounting = canViewAccounting(overview?.workspace.member.role);
   const canManageMaintenance = canEditMaintenance(overview?.workspace.member.role);
   const canManageOperations = canEditOperations(overview?.workspace.member.role);
+  const canManageImportRecords = canManageImports(overview?.workspace.member.role);
   const canSeeDocuments = canViewDocuments(overview?.workspace.member.role);
   const canManageDocumentRecords = canManageDocuments(overview?.workspace.member.role);
 
@@ -1398,6 +1445,11 @@ export default function PmsPortal() {
         setWorkOrders(workOrdersResponse.workOrders);
         setActiveProperty(null);
         setActiveLease(null);
+      } else if (section === "importExport") {
+        const batchesResponse = await listPmsImportBatches(token, { companyId, take: 25 });
+        setImportBatches(batchesResponse.batches);
+        setActiveProperty(null);
+        setActiveLease(null);
       } else if (section === "reports") {
         const summaryResponse = await getPmsReportsSummary(token, companyId);
         setReportsSummary(summaryResponse);
@@ -1439,6 +1491,8 @@ export default function PmsPortal() {
         setTemplates([]);
         setCommunicationLogs([]);
         setReminderCandidates([]);
+        setImportBatches([]);
+        setImportPreview(null);
         setCommunicationPreview(null);
         setPolicies([]);
         setInspections([]);
@@ -1582,6 +1636,64 @@ export default function PmsPortal() {
           }
         : {}),
     }));
+  }
+
+  async function handleImportFileChange(file?: File | null) {
+    if (!file) return;
+    setImportFilename(file.name);
+    setImportCsvText(await file.text());
+    setImportPreview(null);
+  }
+
+  async function handlePreviewImport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !overview || !canManageImportRecords) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      const response = await previewPmsImport(token, {
+        companyId: overview.workspace.company.id,
+        type: importType,
+        filename: importFilename || null,
+        csvText: importCsvText,
+      });
+      setImportPreview(response.preview);
+    } catch (saveError) {
+      console.error(saveError);
+      setError(saveError instanceof ApiError ? saveError.message : copy.unavailable);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCommitImport() {
+    if (!token || !overview || !canManageImportRecords || !importCsvText) return;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      const response = await commitPmsImport(token, {
+        companyId: overview.workspace.company.id,
+        type: importType,
+        filename: importFilename || null,
+        csvText: importCsvText,
+      });
+      setImportPreview(response.preview);
+      setSuccess(copy.saved);
+      const batchesResponse = await listPmsImportBatches(token, {
+        companyId: overview.workspace.company.id,
+        take: 25,
+      });
+      setImportBatches(batchesResponse.batches);
+    } catch (saveError) {
+      console.error(saveError);
+      setError(saveError instanceof ApiError ? saveError.message : copy.unavailable);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleCreateProperty(event: FormEvent<HTMLFormElement>) {
@@ -3036,6 +3148,96 @@ export default function PmsPortal() {
                   saving={saving}
                   onMarkPaid={handleRecordRentPayment}
                 />
+              </section>
+            ) : null}
+
+            {section === "importExport" ? (
+              <section className="pms-panel-grid pms-panel-grid--inventory">
+                <form className="pms-form-card" onSubmit={handlePreviewImport}>
+                  <div>
+                    <p className="eyebrow">{copy.privateInventory}</p>
+                    <h2>{copy.bulkImport}</h2>
+                    <p>{copy.previewDoesNotWrite}</p>
+                  </div>
+                  {!canManageImportRecords ? <p className="form-error">{copy.cannotEdit}</p> : null}
+                  <label>
+                    {copy.importType}
+                    <select value={importType} onChange={(event) => { setImportType(event.target.value as PmsImportType); setImportPreview(null); }}>
+                      <option value="PROPERTIES">{copy.properties}</option>
+                      <option value="UNITS">{copy.units}</option>
+                      <option value="TENANTS">{copy.tenants}</option>
+                      <option value="LEASES">{copy.rentals}</option>
+                    </select>
+                  </label>
+                  <label>
+                    {copy.csvFile}
+                    <input type="file" accept=".csv,text/csv" onChange={(event) => void handleImportFileChange(event.target.files?.[0])} />
+                  </label>
+                  <textarea
+                    rows={8}
+                    value={importCsvText}
+                    onChange={(event) => { setImportCsvText(event.target.value); setImportPreview(null); }}
+                    placeholder="name,code,city"
+                  />
+                  <div className="pms-card-actions">
+                    <a className="button-link" href={overview ? getPmsImportTemplateUrl(importType, overview.workspace.company.id) : getPmsImportTemplateUrl(importType)}>
+                      {copy.downloadTemplate}
+                    </a>
+                    <button className="button-link button-link--primary" type="submit" disabled={!canManageImportRecords || saving || !importCsvText.trim()}>
+                      {copy.previewImport}
+                    </button>
+                    <button className="button-link" type="button" disabled={!canManageImportRecords || saving || !importPreview || importPreview.validRows.length === 0} onClick={() => void handleCommitImport()}>
+                      {copy.commitImport}
+                    </button>
+                  </div>
+                </form>
+
+                <div className="pms-next-actions">
+                  <div className="pms-next-actions__header">
+                    <p className="eyebrow">{copy.importExport}</p>
+                    <h2>{copy.bulkExport}</h2>
+                  </div>
+                  <div className="pms-card-actions pms-card-actions--wrap">
+                    {([
+                      ["properties", copy.properties],
+                      ["units", copy.units],
+                      ["tenants", copy.tenants],
+                      ["leases", copy.rentals],
+                      ["rent-roll", copy.rentCollection],
+                      ["maintenance", copy.maintenance],
+                      ["accounting-summary", copy.accountingSummary],
+                    ] as const).map(([type, label]) => (
+                      <a key={type} className="button-link" href={overview ? getPmsExportUrl(type, overview.workspace.company.id) : getPmsExportUrl(type)}>
+                        {copy.exportData} · {label}
+                      </a>
+                    ))}
+                  </div>
+
+                  {importPreview ? (
+                    <article className="pms-inventory-card pms-inventory-card--highlight">
+                      <div>
+                        <strong>{copy.previewImport}</strong>
+                        <span>{copy.validRows}: {formatNumber(importPreview.validRows.length, language)} · {copy.invalidRows}: {formatNumber(importPreview.invalidRows.length, language)}</span>
+                        {importPreview.invalidRows.slice(0, 5).map((row) => (
+                          <small key={row.rowNumber}>Row {row.rowNumber}: {row.errors.join("; ")}</small>
+                        ))}
+                      </div>
+                    </article>
+                  ) : null}
+
+                  <div className="pms-inventory-list">
+                    <p className="eyebrow">{copy.importBatches}</p>
+                    {importBatches.map((batch) => (
+                      <article key={batch.id} className="pms-inventory-card">
+                        <div>
+                          <strong>{batch.type} · {batch.status}</strong>
+                          <span>{copy.validRows}: {batch.successfulRows} · {copy.invalidRows}: {batch.failedRows}</span>
+                          <small>{batch.filename || formatDate(batch.createdAt, language)}</small>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
               </section>
             ) : null}
 

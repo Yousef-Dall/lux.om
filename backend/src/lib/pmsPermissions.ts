@@ -200,3 +200,39 @@ export function assertCanSendPmsCommunication(
     );
   }
 }
+
+export function canManagePmsImports(role: PmsMemberRole) {
+  return role === "PMS_OWNER" || role === "PMS_MANAGER";
+}
+
+export function assertCanManagePmsImports(role: PmsMemberRole) {
+  if (!canManagePmsImports(role)) {
+    throw new AppError(
+      403,
+      "Your PMS role cannot import bulk PMS records."
+    );
+  }
+}
+
+export function canExportPmsData(
+  role: PmsMemberRole,
+  type?: "properties" | "units" | "tenants" | "leases" | "rent_roll" | "maintenance" | "accounting",
+) {
+  if (role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_AGENT") return true;
+  if (role === "PMS_VIEWER") return type !== "accounting";
+  if (role === "PMS_ACCOUNTANT") return type === "rent_roll" || type === "accounting" || type === "leases" || type === "tenants";
+  if (role === "PMS_MAINTENANCE") return type === "maintenance";
+  return false;
+}
+
+export function assertCanExportPmsData(
+  role: PmsMemberRole,
+  type?: "properties" | "units" | "tenants" | "leases" | "rent_roll" | "maintenance" | "accounting",
+) {
+  if (!canExportPmsData(role, type)) {
+    throw new AppError(
+      403,
+      "Your PMS role cannot export this data."
+    );
+  }
+}
