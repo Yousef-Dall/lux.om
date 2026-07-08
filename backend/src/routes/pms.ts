@@ -1,10 +1,12 @@
 import {
   AccountSecurityEventType,
+  EmailDeliveryStatus,
   NotificationType,
   PaymentScheduleFrequency,
   PmsAccountingEntryType,
   PmsAccountingSource,
   PmsCommunicationChannel,
+  PmsCommunicationLogStatus,
   PmsDocumentStatus,
   PmsDocumentType,
   PmsEntitlementStatus,
@@ -22,6 +24,7 @@ import {
   PmsRentDueStatus,
   PmsRentPaymentMethod,
   PmsRentPaymentStatus,
+  PmsReminderType,
   PmsUnitStatus,
   type Prisma,
 } from "@prisma/client";
@@ -43,6 +46,8 @@ import {
   assertCanViewPmsAccounting,
   assertCanManagePmsMaintenance,
   assertCanManagePmsOperations,
+  assertCanSendPmsCommunication,
+  assertCanViewPmsCommunications,
   assertCanManagePmsTenancies,
   assertCanViewPmsDocuments,
 } from "../lib/pmsPermissions";
@@ -726,6 +731,48 @@ const pmsCommunicationTemplateUpdateSchema = pmsCommunicationTemplateCreateSchem
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one communication template field is required.",
   });
+
+
+const pmsCommunicationLogListQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  search: z.string().trim().max(160).optional(),
+  channel: z.enum(["ALL", ...Object.values(PmsCommunicationChannel)] as ["ALL", ...PmsCommunicationChannel[]]).default("ALL"),
+  status: z.enum(["ALL", ...Object.values(PmsCommunicationLogStatus)] as ["ALL", ...PmsCommunicationLogStatus[]]).default("ALL"),
+  tenantId: nullableId,
+  leaseId: nullableId,
+  rentDueItemId: nullableId,
+  workOrderId: nullableId,
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  skip: z.coerce.number().int().min(0).default(0),
+});
+
+const pmsCommunicationContextSchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  templateId: nullableId,
+  tenantId: nullableId,
+  leaseId: nullableId,
+  rentDueItemId: nullableId,
+  workOrderId: nullableId,
+  channel: z.nativeEnum(PmsCommunicationChannel).optional(),
+  subject: nullableTrimmedString(240),
+  body: z.string().trim().min(1).max(8000).optional(),
+  variables: z.record(z.string(), z.string()).optional(),
+}).strict();
+
+const pmsCommunicationSendSchema = pmsCommunicationContextSchema.extend({
+  channel: z.nativeEnum(PmsCommunicationChannel),
+  body: z.string().trim().min(1).max(8000),
+  status: z.nativeEnum(PmsCommunicationLogStatus).default(PmsCommunicationLogStatus.LOGGED),
+  notes: nullableTrimmedString(2000),
+}).strict();
+
+const pmsReminderCandidateQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  type: z.nativeEnum(PmsReminderType).default(PmsReminderType.RENT_DUE_SOON),
+  days: z.coerce.number().int().min(1).max(120).default(7),
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  skip: z.coerce.number().int().min(0).default(0),
+});
 
 const pmsPolicyCreateSchema = z
   .object({
@@ -2772,6 +2819,172 @@ function pmsCommunicationTemplateResponse(template: {
     createdAt: template.createdAt,
     updatedAt: template.updatedAt,
   };
+}
+
+
+const pmsCommunicationLogInclude = {
+  template: { select: { id: true, name: true, channel: true, type: true } },
+  tenant: { select: { id: true, fullName: true, phone: true, email: true } },
+  lease: { select: { id: true, title: true, status: true, startDate: true, endDate: true } },
+  rentDueItem: { select: { id: true, dueDate: true, amount: true, paidAmount: true, currency: true, status: true } },
+  workOrder: { select: { id: true, title: true, status: true, priority: true } },
+  createdBy: { select: { id: true, name: true, email: true, role: true } },
+  sentBy: { select: { id: true, name: true, email: true, role: true } },
+} satisfies Prisma.PmsCommunicationLogInclude;
+
+type PmsCommunicationLogWithRelations = Prisma.PmsCommunicationLogGetPayload<{
+  include: typeof pmsCommunicationLogInclude;
+}>;
+
+function pmsCommunicationLogResponse(log: PmsCommunicationLogWithRelations) {
+  return {
+    id: log.id,
+    companyId: log.companyId,
+    templateId: log.templateId,
+    template: log.template,
+    tenantId: log.tenantId,
+    tenant: log.tenant,
+    leaseId: log.leaseId,
+    lease: log.lease,
+    rentDueItemId: log.rentDueItemId,
+    rentDueItem: log.rentDueItem
+      ? {
+          ...log.rentDueItem,
+          amount: decimalToString(log.rentDueItem.amount),
+          paidAmount: decimalToString(log.rentDueItem.paidAmount),
+        }
+      : null,
+    workOrderId: log.workOrderId,
+    workOrder: log.workOrder,
+    channel: log.channel,
+    subject: log.subject,
+    body: log.body,
+    status: log.status,
+    deliveryMetadata: log.deliveryMetadata,
+    sentAt: log.sentAt,
+    notes: log.notes,
+    createdBy: log.createdBy,
+    sentBy: log.sentBy,
+    createdAt: log.createdAt,
+    updatedAt: log.updatedAt,
+  };
+}
+
+const TEMPLATE_VARIABLE_LABELS = [
+  "tenantName",
+  "propertyName",
+  "unitLabel",
+  "dueDate",
+  "amount",
+  "leaseEndDate",
+  "maintenanceTitle",
+  "maintenanceStatus",
+] as const;
+
+function inferCommunicationContext(data: {
+  rentDueItemId?: string | null;
+  workOrderId?: string | null;
+  leaseId?: string | null;
+}): "rent" | "maintenance" | "general" {
+  if (data.rentDueItemId) return "rent";
+  if (data.workOrderId) return "maintenance";
+  if (data.leaseId) return "general";
+  return "general";
+}
+
+function renderPmsTemplate(input: string | null | undefined, variables: Record<string, string>) {
+  if (!input) return input ?? null;
+  return input.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => variables[key] ?? "");
+}
+
+async function buildPmsCommunicationVariables(companyId: string, data: {
+  tenantId?: string | null;
+  leaseId?: string | null;
+  rentDueItemId?: string | null;
+  workOrderId?: string | null;
+  variables?: Record<string, string>;
+}) {
+  let tenant: { fullName: string; email: string | null } | null = null;
+  let property: { name: string } | null = null;
+  let unit: { unitNumber: string; unitName: string | null } | null = null;
+  let lease: { endDate: Date | null } | null = null;
+  let rentDueItem: { dueDate: Date; amount: Prisma.Decimal; currency: string } | null = null;
+  let workOrder: { title: string; status: PmsMaintenanceStatus } | null = null;
+
+  if (data.rentDueItemId) {
+    const rent = await prisma.pmsRentDueItem.findFirst({
+      where: { id: data.rentDueItemId, companyId },
+      include: {
+        tenant: { select: { fullName: true, email: true } },
+        property: { select: { name: true } },
+        unit: { select: { unitNumber: true, unitName: true } },
+        lease: { select: { endDate: true } },
+      },
+    });
+    if (!rent) throw new AppError(404, "PMS rent due item not found");
+    tenant = rent.tenant;
+    property = rent.property;
+    unit = rent.unit;
+    lease = rent.lease;
+    rentDueItem = { dueDate: rent.dueDate, amount: rent.amount, currency: rent.currency };
+  } else if (data.workOrderId) {
+    const work = await prisma.pmsWorkOrder.findFirst({
+      where: { id: data.workOrderId, companyId },
+      include: {
+        tenant: { select: { fullName: true, email: true } },
+        property: { select: { name: true } },
+        unit: { select: { unitNumber: true, unitName: true } },
+      },
+    });
+    if (!work) throw new AppError(404, "PMS work order not found");
+    tenant = work.tenant;
+    property = work.property;
+    unit = work.unit;
+    workOrder = { title: work.title, status: work.status };
+  } else if (data.leaseId) {
+    const existingLease = await prisma.pmsLease.findFirst({
+      where: { id: data.leaseId, companyId },
+      include: {
+        tenant: { select: { fullName: true, email: true } },
+        property: { select: { name: true } },
+        unit: { select: { unitNumber: true, unitName: true } },
+      },
+    });
+    if (!existingLease) throw new AppError(404, "PMS lease not found");
+    tenant = existingLease.tenant;
+    property = existingLease.property;
+    unit = existingLease.unit;
+    lease = { endDate: existingLease.endDate };
+  } else if (data.tenantId) {
+    const existingTenant = await prisma.pmsTenant.findFirst({
+      where: { id: data.tenantId, companyId },
+      select: { fullName: true, email: true },
+    });
+    if (!existingTenant) throw new AppError(404, "PMS tenant not found");
+    tenant = existingTenant;
+  }
+
+  return {
+    tenantName: tenant?.fullName ?? "",
+    propertyName: property?.name ?? "",
+    unitLabel: unit ? [unit.unitNumber, unit.unitName].filter(Boolean).join(" · ") : "",
+    dueDate: rentDueItem?.dueDate ? rentDueItem.dueDate.toISOString().slice(0, 10) : "",
+    amount: rentDueItem ? `${decimalToString(rentDueItem.amount)} ${rentDueItem.currency}` : "",
+    leaseEndDate: lease?.endDate ? lease.endDate.toISOString().slice(0, 10) : "",
+    maintenanceTitle: workOrder?.title ?? "",
+    maintenanceStatus: workOrder?.status ?? "",
+    ...(data.variables ?? {}),
+  };
+}
+
+async function findTenantPortalNotificationUser(companyId: string, tenantId?: string | null) {
+  if (!tenantId) return null;
+  const access = await prisma.pmsTenantPortalAccess.findFirst({
+    where: { companyId, tenantId, active: true },
+    orderBy: { updatedAt: "desc" },
+    select: { userId: true },
+  });
+  return access?.userId ?? null;
 }
 
 function pmsPolicyResponse(policy: {
@@ -5823,6 +6036,336 @@ pmsRouter.patch("/communication-templates/:templateId", requireAuth(), async (re
     });
 
     res.json({ template: pmsCommunicationTemplateResponse(template) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+pmsRouter.get("/communication-logs", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const query = pmsCommunicationLogListQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    assertCanViewPmsCommunications(access.member.role);
+
+    const search = query.search?.trim();
+    const where: Prisma.PmsCommunicationLogWhereInput = {
+      companyId: access.company.id,
+      ...(query.channel !== "ALL" ? { channel: query.channel } : {}),
+      ...(query.status !== "ALL" ? { status: query.status } : {}),
+      ...(query.tenantId ? { tenantId: query.tenantId } : {}),
+      ...(query.leaseId ? { leaseId: query.leaseId } : {}),
+      ...(query.rentDueItemId ? { rentDueItemId: query.rentDueItemId } : {}),
+      ...(query.workOrderId ? { workOrderId: query.workOrderId } : {}),
+      ...(search
+        ? {
+            OR: [
+              { subject: { contains: search, mode: "insensitive" } },
+              { body: { contains: search, mode: "insensitive" } },
+              { notes: { contains: search, mode: "insensitive" } },
+              { tenant: { fullName: { contains: search, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
+    };
+
+    const [logs, total] = await prisma.$transaction([
+      prisma.pmsCommunicationLog.findMany({
+        where,
+        include: pmsCommunicationLogInclude,
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsCommunicationLog.count({ where }),
+    ]);
+
+    res.json({
+      workspace: { company: access.company, member: access.member, entitlement: access.entitlement },
+      logs: logs.map(pmsCommunicationLogResponse),
+      pagination: { take: query.take, skip: query.skip, count: logs.length, total },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/communication-templates/preview", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const data = pmsCommunicationContextSchema.parse(req.body);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
+    assertCanViewPmsCommunications(access.member.role);
+
+    const template = data.templateId
+      ? await prisma.pmsCommunicationTemplate.findFirst({
+          where: { id: data.templateId, companyId: access.company.id },
+        })
+      : null;
+
+    if (data.templateId && !template) {
+      throw new AppError(404, "PMS communication template not found");
+    }
+
+    const variables = await buildPmsCommunicationVariables(access.company.id, data);
+    const subjectSource = data.subject ?? template?.subject ?? null;
+    const bodySource = data.body ?? template?.body ?? "";
+    const channel = data.channel ?? template?.channel ?? PmsCommunicationChannel.EMAIL;
+
+    res.json({
+      channel,
+      variables,
+      availableVariables: TEMPLATE_VARIABLE_LABELS,
+      subject: renderPmsTemplate(subjectSource, variables),
+      body: renderPmsTemplate(bodySource, variables) ?? "",
+      template: template ? pmsCommunicationTemplateResponse(template) : null,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/communication-logs/send", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const data = pmsCommunicationSendSchema.parse(req.body);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
+    const context = inferCommunicationContext(data);
+    assertCanSendPmsCommunication(access.member.role, context);
+
+    const template = data.templateId
+      ? await prisma.pmsCommunicationTemplate.findFirst({
+          where: { id: data.templateId, companyId: access.company.id },
+        })
+      : null;
+    if (data.templateId && !template) throw new AppError(404, "PMS communication template not found");
+
+    const variables = await buildPmsCommunicationVariables(access.company.id, data);
+    const subject = renderPmsTemplate(data.subject ?? template?.subject ?? null, variables);
+    const body = renderPmsTemplate(data.body ?? template?.body ?? "", variables) ?? "";
+    const shouldCreateNotification = data.channel === PmsCommunicationChannel.INTERNAL || data.channel === PmsCommunicationChannel.EMAIL;
+    const targetUserId = shouldCreateNotification
+      ? await findTenantPortalNotificationUser(access.company.id, data.tenantId)
+      : null;
+
+    const log = await prisma.$transaction(async (tx) => {
+      const createdLog = await tx.pmsCommunicationLog.create({
+        data: {
+          companyId: access.company.id,
+          templateId: template?.id ?? null,
+          tenantId: data.tenantId ?? null,
+          leaseId: data.leaseId ?? null,
+          rentDueItemId: data.rentDueItemId ?? null,
+          workOrderId: data.workOrderId ?? null,
+          channel: data.channel,
+          subject,
+          body,
+          status: data.status === PmsCommunicationLogStatus.DRAFT ? PmsCommunicationLogStatus.LOGGED : data.status,
+          notes: normalizeNullableText(data.notes),
+          deliveryMetadata: {
+            schedulerReady: true,
+            whatsappCopyOnly: data.channel === PmsCommunicationChannel.WHATSAPP,
+            smsPlaceholderOnly: data.channel === PmsCommunicationChannel.SMS,
+            inAppNotificationCreated: Boolean(targetUserId),
+          },
+          sentAt: data.status === PmsCommunicationLogStatus.SENT ? new Date() : null,
+          createdById: req.user!.id,
+          sentById: req.user!.id,
+        },
+        include: pmsCommunicationLogInclude,
+      });
+
+      if (targetUserId) {
+        await tx.notification.create({
+          data: {
+            userId: targetUserId,
+            type: context === "maintenance"
+              ? NotificationType.PMS_MAINTENANCE_REQUEST_CREATED
+              : NotificationType.RENT_PAYMENT_DUE,
+            title: subject || "PMS notice",
+            message: body.slice(0, 500),
+          },
+        });
+      }
+
+      if (data.channel === PmsCommunicationChannel.EMAIL) {
+        await tx.emailDeliveryEvent.create({
+          data: {
+            status: EmailDeliveryStatus.LOGGED,
+            deliveryMode: "pms-communication-log",
+            notificationType: context === "maintenance"
+              ? NotificationType.PMS_MAINTENANCE_REQUEST_CREATED
+              : NotificationType.RENT_PAYMENT_DUE,
+            title: subject || "PMS notice",
+            recipientUserId: targetUserId,
+            recipientEmail: null,
+            reason: "PMS email send is logged and adapter-ready; no direct SMTP dispatch is wired for PMS notices yet.",
+          },
+        });
+      }
+
+      return createdLog;
+    });
+
+    await recordPmsWorkspaceAudit({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      companyId: access.company.id,
+      title: "PMS communication logged",
+      message: `${req.user.email} logged a PMS ${data.channel.toLowerCase()} communication.`,
+      metadata: {
+        action: "sendOrLog",
+        resourceType: "pmsCommunicationLog",
+        logId: log.id,
+        channel: log.channel,
+        status: log.status,
+        context,
+      },
+    });
+
+    res.status(201).json({ log: pmsCommunicationLogResponse(log) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/communications/reminders", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const query = pmsReminderCandidateQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    assertCanViewPmsCommunications(access.member.role);
+
+    const now = new Date();
+    const until = new Date(now.getTime() + query.days * 24 * 60 * 60 * 1000);
+    let candidates: unknown[] = [];
+
+    if (query.type === PmsReminderType.RENT_DUE_SOON) {
+      const items = await prisma.pmsRentDueItem.findMany({
+        where: {
+          companyId: access.company.id,
+          status: { in: [PmsRentDueStatus.UNPAID, PmsRentDueStatus.DUE_SOON, PmsRentDueStatus.PARTIALLY_PAID] },
+          dueDate: { gte: now, lte: until },
+        },
+        include: {
+          tenant: { select: { id: true, fullName: true, email: true } },
+          property: { select: { id: true, name: true } },
+          unit: { select: { id: true, unitNumber: true, unitName: true } },
+        },
+        orderBy: [{ dueDate: "asc" }, { id: "asc" }],
+        take: query.take,
+        skip: query.skip,
+      });
+      candidates = items.map((item) => ({
+        type: query.type,
+        rentDueItemId: item.id,
+        tenantId: item.tenantId,
+        tenant: item.tenant,
+        property: item.property,
+        unit: item.unit,
+        dueDate: item.dueDate,
+        amount: decimalToString(item.amount),
+        paidAmount: decimalToString(item.paidAmount),
+        currency: item.currency,
+        status: item.status,
+      }));
+    } else if (query.type === PmsReminderType.OVERDUE_RENT) {
+      const items = await prisma.pmsRentDueItem.findMany({
+        where: {
+          companyId: access.company.id,
+          status: { in: [PmsRentDueStatus.UNPAID, PmsRentDueStatus.OVERDUE, PmsRentDueStatus.PARTIALLY_PAID] },
+          dueDate: { lt: now },
+        },
+        include: {
+          tenant: { select: { id: true, fullName: true, email: true } },
+          property: { select: { id: true, name: true } },
+          unit: { select: { id: true, unitNumber: true, unitName: true } },
+        },
+        orderBy: [{ dueDate: "asc" }, { id: "asc" }],
+        take: query.take,
+        skip: query.skip,
+      });
+      candidates = items.map((item) => ({
+        type: query.type,
+        rentDueItemId: item.id,
+        tenantId: item.tenantId,
+        tenant: item.tenant,
+        property: item.property,
+        unit: item.unit,
+        dueDate: item.dueDate,
+        amount: decimalToString(item.amount),
+        paidAmount: decimalToString(item.paidAmount),
+        currency: item.currency,
+        status: item.status,
+      }));
+    } else if (query.type === PmsReminderType.LEASE_EXPIRY) {
+      const leases = await prisma.pmsLease.findMany({
+        where: {
+          companyId: access.company.id,
+          status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] },
+          endDate: { gte: now, lte: until },
+        },
+        include: {
+          tenant: { select: { id: true, fullName: true, email: true } },
+          property: { select: { id: true, name: true } },
+          unit: { select: { id: true, unitNumber: true, unitName: true } },
+        },
+        orderBy: [{ endDate: "asc" }, { id: "asc" }],
+        take: query.take,
+        skip: query.skip,
+      });
+      candidates = leases.map((lease) => ({
+        type: query.type,
+        leaseId: lease.id,
+        tenantId: lease.tenantId,
+        tenant: lease.tenant,
+        property: lease.property,
+        unit: lease.unit,
+        leaseEndDate: lease.endDate,
+        status: lease.status,
+      }));
+    } else {
+      const workOrders = await prisma.pmsWorkOrder.findMany({
+        where: {
+          companyId: access.company.id,
+          status: { in: [PmsMaintenanceStatus.OPEN, PmsMaintenanceStatus.IN_PROGRESS, PmsMaintenanceStatus.WAITING_VENDOR, PmsMaintenanceStatus.RESOLVED] },
+        },
+        include: {
+          tenant: { select: { id: true, fullName: true, email: true } },
+          property: { select: { id: true, name: true } },
+          unit: { select: { id: true, unitNumber: true, unitName: true } },
+          vendor: { select: { id: true, name: true, trade: true } },
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        take: query.take,
+        skip: query.skip,
+      });
+      candidates = workOrders.map((workOrder) => ({
+        type: query.type,
+        workOrderId: workOrder.id,
+        tenantId: workOrder.tenantId,
+        tenant: workOrder.tenant,
+        property: workOrder.property,
+        unit: workOrder.unit,
+        vendor: workOrder.vendor,
+        maintenanceTitle: workOrder.title,
+        maintenanceStatus: workOrder.status,
+        priority: workOrder.priority,
+      }));
+    }
+
+    res.json({
+      workspace: { company: access.company, member: access.member, entitlement: access.entitlement },
+      type: query.type,
+      schedulerReady: true,
+      candidates,
+      pagination: { take: query.take, skip: query.skip, count: candidates.length },
+    });
   } catch (error) {
     next(error);
   }

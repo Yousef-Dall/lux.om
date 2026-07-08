@@ -241,6 +241,21 @@ enum PmsCommunicationChannel {
   INTERNAL
 }
 
+enum PmsCommunicationLogStatus {
+  DRAFT
+  LOGGED
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum PmsReminderType {
+  RENT_DUE_SOON
+  OVERDUE_RENT
+  LEASE_EXPIRY
+  MAINTENANCE_STATUS
+}
+
 enum PmsPolicyCategory {
   GENERAL
   RENT
@@ -603,6 +618,8 @@ model User {
   pmsMaintenanceQuotesApproved PmsMaintenanceQuote[] @relation("PmsMaintenanceQuoteApprovedBy")
   pmsCommunicationTemplatesCreated PmsCommunicationTemplate[] @relation("PmsCommunicationTemplateCreatedBy")
   pmsCommunicationTemplatesUpdated PmsCommunicationTemplate[] @relation("PmsCommunicationTemplateUpdatedBy")
+  pmsCommunicationLogsCreated PmsCommunicationLog[] @relation("PmsCommunicationLogCreatedBy")
+  pmsCommunicationLogsSent PmsCommunicationLog[] @relation("PmsCommunicationLogSentBy")
   pmsPoliciesCreated     PmsPolicy[] @relation("PmsPolicyCreatedBy")
   pmsPoliciesUpdated     PmsPolicy[] @relation("PmsPolicyUpdatedBy")
   pmsInspectionsCreated  PmsInspection[] @relation("PmsInspectionCreatedBy")
@@ -734,6 +751,7 @@ model DeveloperCompany {
   pmsVendors PmsVendor[]
   pmsMaintenanceQuotes PmsMaintenanceQuote[]
   pmsCommunicationTemplates PmsCommunicationTemplate[]
+  pmsCommunicationLogs PmsCommunicationLog[]
   pmsPolicies PmsPolicy[]
   pmsInspections PmsInspection[]
   pmsDocuments PmsDocument[]
@@ -2005,6 +2023,7 @@ model PmsTenant {
   rentDueItems PmsRentDueItem[]
   rentPayments PmsRentPayment[]
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
+  pmsCommunicationLogs PmsCommunicationLog[]
   pmsWorkOrders PmsWorkOrder[]
   pmsInspections PmsInspection[]
   pmsTenantPortalAccesses PmsTenantPortalAccess[]
@@ -2066,6 +2085,7 @@ model PmsLease {
   rentDueItems PmsRentDueItem[]
   rentPayments PmsRentPayment[]
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
+  pmsCommunicationLogs PmsCommunicationLog[]
   pmsInspections PmsInspection[]
   pmsDocuments PmsDocument[]
   pmsMoveChecklistItems PmsMoveChecklistItem[]
@@ -2121,6 +2141,7 @@ model PmsRentDueItem {
 
   rentPayments PmsRentPayment[]
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
+  pmsCommunicationLogs PmsCommunicationLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2303,6 +2324,7 @@ model PmsWorkOrder {
 
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
   pmsDocuments PmsDocument[]
+  pmsCommunicationLogs PmsCommunicationLog[]
   quotes PmsMaintenanceQuote[]
 
   createdAt DateTime @default(now())
@@ -2412,6 +2434,8 @@ model PmsCommunicationTemplate {
   updatedById String?
   updatedBy   User? @relation("PmsCommunicationTemplateUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
+  communicationLogs PmsCommunicationLog[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2419,6 +2443,55 @@ model PmsCommunicationTemplate {
   @@index([companyId, channel])
   @@index([createdById])
   @@index([updatedById])
+}
+
+model PmsCommunicationLog {
+  id      String                    @id @default(cuid())
+  channel PmsCommunicationChannel
+  subject String?
+  body    String
+  status  PmsCommunicationLogStatus @default(LOGGED)
+  deliveryMetadata Json?
+  sentAt  DateTime?
+  notes   String?
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  templateId String?
+  template   PmsCommunicationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  tenantId String?
+  tenant   PmsTenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  leaseId String?
+  lease   PmsLease? @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+
+  rentDueItemId String?
+  rentDueItem   PmsRentDueItem? @relation(fields: [rentDueItemId], references: [id], onDelete: SetNull)
+
+  workOrderId String?
+  workOrder   PmsWorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User? @relation("PmsCommunicationLogCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  sentById String?
+  sentBy   User? @relation("PmsCommunicationLogSentBy", fields: [sentById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, createdAt])
+  @@index([companyId, channel])
+  @@index([companyId, status])
+  @@index([templateId])
+  @@index([tenantId])
+  @@index([leaseId])
+  @@index([rentDueItemId])
+  @@index([workOrderId])
+  @@index([createdById])
+  @@index([sentById])
 }
 
 model PmsPolicy {

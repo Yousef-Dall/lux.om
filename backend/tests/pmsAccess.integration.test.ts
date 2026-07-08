@@ -11,6 +11,7 @@ async function clearPmsTestDatabase() {
   await prisma.inquiry.deleteMany();
   await prisma.accountSecurityEvent.deleteMany();
   await prisma.notification.deleteMany();
+  await prisma.emailDeliveryEvent.deleteMany();
   await prisma.bookingEvent.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.booking.deleteMany();
@@ -41,6 +42,7 @@ async function clearPmsTestDatabase() {
   await prisma.pmsWorkOrder.deleteMany();
   await prisma.pmsVendor.deleteMany();
   await prisma.pmsTenantPortalAccess.deleteMany();
+  await prisma.pmsCommunicationLog.deleteMany();
   await prisma.pmsCommunicationTemplate.deleteMany();
   await prisma.pmsPolicy.deleteMany();
   await prisma.pmsAccountingLedgerEntry.deleteMany();
@@ -1967,6 +1969,71 @@ describe("PMS company entitlement access architecture", () => {
 
     expect(inspectionsResponse.body.pagination.total).toBe(1);
     expect(inspectionsResponse.body.inspections[0].title).toBe("Move in inspection");
+
+  });
+
+  it("previews, logs, and scopes PMS communications", async () => {
+    const owner = await prisma.user.create({
+      data: { name: "Comms Owner", email: "comms-owner@lux.test", password: "test-password", role: "USER", emailVerified: true },
+    });
+    const tenantUser = await prisma.user.create({
+      data: { name: "Comms Tenant", email: "comms-tenant@lux.test", password: "test-password", role: "USER", emailVerified: true },
+    });
+    const otherOwner = await prisma.user.create({
+      data: { name: "Other Comms Owner", email: "other-comms-owner@lux.test", password: "test-password", role: "USER", emailVerified: true },
+    });
+    const company = await prisma.developerCompany.create({ data: { slug: "comms-company", nameEn: "Comms Company" } });
+    const otherCompany = await prisma.developerCompany.create({ data: { slug: "other-comms-company", nameEn: "Other Comms Company" } });
+    await prisma.pmsCompanyEntitlement.create({ data: { companyId: company.id, status: "ACTIVE", createdById: owner.id, updatedById: owner.id } });
+    await prisma.pmsCompanyEntitlement.create({ data: { companyId: otherCompany.id, status: "ACTIVE", createdById: otherOwner.id, updatedById: otherOwner.id } });
+    await prisma.pmsCompanyMember.create({ data: { companyId: company.id, userId: owner.id, role: "PMS_MANAGER", createdById: owner.id } });
+    await prisma.pmsCompanyMember.create({ data: { companyId: otherCompany.id, userId: otherOwner.id, role: "PMS_MANAGER", createdById: otherOwner.id } });
+    const property = await prisma.pmsProperty.create({ data: { companyId: company.id, name: "Comms Tower", createdById: owner.id, updatedById: owner.id } });
+    const unit = await prisma.pmsUnit.create({ data: { companyId: company.id, propertyId: property.id, unitNumber: "101", createdById: owner.id, updatedById: owner.id } });
+    const tenant = await prisma.pmsTenant.create({ data: { companyId: company.id, fullName: "Tenant Example", email: tenantUser.email, createdById: owner.id, updatedById: owner.id } });
+    await prisma.pmsTenantPortalAccess.create({ data: { companyId: company.id, tenantId: tenant.id, userId: tenantUser.id, createdById: owner.id } });
+    const lease = await prisma.pmsLease.create({ data: { companyId: company.id, tenantId: tenant.id, propertyId: property.id, unitId: unit.id, startDate: new Date("2026-07-01"), endDate: new Date("2026-12-31"), rentAmount: 500, currency: "OMR", createdById: owner.id, updatedById: owner.id } });
+    const rentDueItem = await prisma.pmsRentDueItem.create({ data: { companyId: company.id, leaseId: lease.id, tenantId: tenant.id, propertyId: property.id, unitId: unit.id, dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), amount: 500, currency: "OMR", status: "DUE_SOON", createdById: owner.id, updatedById: owner.id } });
+    const token = signToken(owner);
+    const otherToken = signToken(otherOwner);
+
+    const templateResponse = await request(app)
+      .post("/api/pms/communication-templates")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, name: "Rent due notice", channel: "EMAIL", type: "rent", subject: "Rent for {{tenantName}}", body: "Please pay {{amount}} by {{dueDate}}." })
+      .expect(201);
+
+    const previewResponse = await request(app)
+      .post("/api/pms/communication-templates/preview")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, templateId: templateResponse.body.template.id, rentDueItemId: rentDueItem.id })
+      .expect(200);
+    expect(previewResponse.body.subject).toBe("Rent for Tenant Example");
+    expect(previewResponse.body.body).toContain("500");
+
+    const sendResponse = await request(app)
+      .post("/api/pms/communication-logs/send")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, templateId: templateResponse.body.template.id, tenantId: tenant.id, rentDueItemId: rentDueItem.id, channel: "EMAIL", body: "Please pay {{amount}} by {{dueDate}}." })
+      .expect(201);
+    expect(sendResponse.body.log.tenant.fullName).toBe("Tenant Example");
+
+    const logsResponse = await request(app)
+      .get(`/api/pms/communication-logs?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(logsResponse.body.pagination.total).toBe(1);
+
+    await request(app)
+      .get(`/api/pms/communication-logs?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${otherToken}`)
+      .expect(403);
+
+    const remindersResponse = await request(app)
+      .get(`/api/pms/communications/reminders?companyId=${company.id}&type=RENT_DUE_SOON&days=7`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(remindersResponse.body.candidates[0].rentDueItemId).toBe(rentDueItem.id);
   });
 
 

@@ -29,6 +29,8 @@ import { ApiError } from "../api/client";
 import {
   createPmsAccountingLedgerEntry,
   createPmsCommunicationTemplate,
+  previewPmsCommunication,
+  sendPmsCommunication,
   createPmsInspection,
   createPmsDocument,
   createPmsLeaseChecklistItem,
@@ -51,6 +53,8 @@ import {
   listPmsDocumentExpiryAlerts,
   listPmsLeaseChecklists,
   listPmsCommunicationTemplates,
+  listPmsCommunicationLogs,
+  listPmsReminderCandidates,
   listPmsInspections,
   listPmsLeaseRentDueItems,
   listPmsLeases,
@@ -71,8 +75,10 @@ import {
   upsertPmsTenantPortalAccess,
   type PmsAccountingLedgerEntry,
   type PmsAccountingLedgerPayload,
+  type PmsCommunicationLog,
   type PmsCommunicationTemplate,
   type PmsCommunicationTemplatePayload,
+  type PmsReminderCandidate,
   type PmsDocument,
   type PmsDocumentPayload,
   type PmsDocumentStatus,
@@ -759,6 +765,9 @@ export default function PmsPortal() {
   const [ownerStatement, setOwnerStatement] = useState<PmsOwnerStatement | null>(null);
   const [rentReceipt, setRentReceipt] = useState<PmsRentReceipt | null>(null);
   const [templates, setTemplates] = useState<PmsCommunicationTemplate[]>([]);
+  const [communicationLogs, setCommunicationLogs] = useState<PmsCommunicationLog[]>([]);
+  const [reminderCandidates, setReminderCandidates] = useState<PmsReminderCandidate[]>([]);
+  const [communicationPreview, setCommunicationPreview] = useState<{ subject?: string | null; body: string } | null>(null);
   const [policies, setPolicies] = useState<PmsPolicy[]>([]);
   const [inspections, setInspections] = useState<PmsInspection[]>([]);
   const [documents, setDocuments] = useState<PmsDocument[]>([]);
@@ -965,6 +974,14 @@ export default function PmsPortal() {
           resolve: "إنهاء",
           confirmResolve: "هل تريد إنهاء طلب الصيانة هذا؟",
           createTemplate: "إضافة قالب تواصل",
+          previewTemplate: "معاينة القالب",
+          sendNotice: "إرسال إشعار",
+          communicationHistory: "سجل التواصل",
+          reminderCenter: "مركز التذكيرات",
+          reminderCandidates: "مرشحون للتذكير",
+          whatsappCopyOnly: "واتساب محفوظ كنص/قالب فقط إلى أن يتم ربط تكامل حقيقي.",
+          templateVariables: "المتغيرات المتاحة",
+          templatePreview: "معاينة القالب",
           templateName: "اسم القالب",
           channel: "القناة",
           subject: "الموضوع",
@@ -1166,6 +1183,14 @@ export default function PmsPortal() {
           resolve: "Resolve",
           confirmResolve: "Resolve this maintenance work order?",
           createTemplate: "Create communication template",
+          previewTemplate: "Preview template",
+          sendNotice: "Send notice",
+          communicationHistory: "Communication history",
+          reminderCenter: "Reminder center",
+          reminderCandidates: "Reminder candidates",
+          whatsappCopyOnly: "WhatsApp is copy/template only until a real integration is configured.",
+          templateVariables: "Available variables",
+          templatePreview: "Template preview",
           templateName: "Template name",
           channel: "Channel",
           subject: "Subject",
@@ -1379,13 +1404,15 @@ export default function PmsPortal() {
         setActiveProperty(null);
         setActiveLease(null);
       } else if (section === "settings") {
-        const [propertiesResponse, unitsResponse, tenantsResponse, leasesResponse, templatesResponse, policiesResponse, inspectionsResponse] =
+        const [propertiesResponse, unitsResponse, tenantsResponse, leasesResponse, templatesResponse, communicationLogsResponse, remindersResponse, policiesResponse, inspectionsResponse] =
           await Promise.all([
             listPmsProperties(token, { companyId, take: 100 }),
             listPmsUnits(token, { companyId, take: 200 }),
             listPmsTenants(token, { companyId, take: 100 }),
             listPmsLeases(token, { companyId, take: 100 }),
             listPmsCommunicationTemplates(token, { companyId, take: 100 }),
+            listPmsCommunicationLogs(token, { companyId, take: 25 }),
+            listPmsReminderCandidates(token, { companyId, type: "RENT_DUE_SOON", days: 14, take: 25 }),
             listPmsPolicies(token, { companyId, take: 100 }),
             listPmsInspections(token, { companyId, take: 100 }),
           ]);
@@ -1394,6 +1421,8 @@ export default function PmsPortal() {
         setTenants(tenantsResponse.tenants);
         setLeases(leasesResponse.leases);
         setTemplates(templatesResponse.templates);
+        setCommunicationLogs(communicationLogsResponse.logs);
+        setReminderCandidates(remindersResponse.candidates);
         setPolicies(policiesResponse.policies);
         setInspections(inspectionsResponse.inspections);
         setActiveProperty(null);
@@ -1408,6 +1437,9 @@ export default function PmsPortal() {
         setVendors([]);
         setReportsSummary(null);
         setTemplates([]);
+        setCommunicationLogs([]);
+        setReminderCandidates([]);
+        setCommunicationPreview(null);
         setPolicies([]);
         setInspections([]);
         setDocuments([]);
@@ -2012,6 +2044,52 @@ export default function PmsPortal() {
       setError(
         saveError instanceof ApiError ? saveError.message : copy.unavailable,
       );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+
+  async function handlePreviewTemplate(template: PmsCommunicationTemplate) {
+    if (!token || !overview) return;
+    try {
+      setSaving(true);
+      setError("");
+      const preview = await previewPmsCommunication(token, {
+        companyId: overview.workspace.company.id,
+        templateId: template.id,
+      });
+      setCommunicationPreview({ subject: preview.subject, body: preview.body });
+    } catch (previewError) {
+      console.error(previewError);
+      setError(previewError instanceof ApiError ? previewError.message : copy.unavailable);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSendTemplate(template: PmsCommunicationTemplate) {
+    if (!token || !overview) return;
+    const tenantId = window.prompt(`${copy.tenants} ID`, tenants[0]?.id ?? "") || undefined;
+    if (!tenantId) return;
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await sendPmsCommunication(token, {
+        companyId: overview.workspace.company.id,
+        templateId: template.id,
+        tenantId,
+        channel: template.channel,
+        subject: template.subject,
+        body: template.body,
+        status: "LOGGED",
+      });
+      setSuccess(copy.saved);
+      await loadPortal();
+    } catch (sendError) {
+      console.error(sendError);
+      setError(sendError instanceof ApiError ? sendError.message : copy.unavailable);
     } finally {
       setSaving(false);
     }
@@ -2982,6 +3060,40 @@ export default function PmsPortal() {
                         <div>
                           <strong>{template.name}</strong>
                           <span>{template.channel} · {template.type || copy.communications}</span>
+                          {template.channel === "WHATSAPP" ? <small>{copy.whatsappCopyOnly}</small> : null}
+                        </div>
+                        <div className="pms-card-actions">
+                          <button className="button-link" type="button" disabled={saving} onClick={() => void handlePreviewTemplate(template)}>
+                            {copy.previewTemplate}
+                          </button>
+                          <button className="button-link button-link--primary" type="button" disabled={saving || tenants.length === 0} onClick={() => void handleSendTemplate(template)}>
+                            {copy.sendNotice}
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                    {communicationPreview ? (
+                      <article className="pms-inventory-card pms-inventory-card--highlight">
+                        <div>
+                          <strong>{copy.templatePreview}</strong>
+                          <span>{communicationPreview.subject || copy.subject}</span>
+                          <p>{communicationPreview.body}</p>
+                        </div>
+                      </article>
+                    ) : null}
+                    <article className="pms-inventory-card">
+                      <div>
+                        <strong>{copy.reminderCenter}</strong>
+                        <span>{copy.reminderCandidates}: {formatNumber(reminderCandidates.length, language)}</span>
+                        <small>{copy.templateVariables}: tenantName, propertyName, unitLabel, dueDate, amount, leaseEndDate, maintenanceTitle, maintenanceStatus</small>
+                      </div>
+                    </article>
+                    {communicationLogs.slice(0, 5).map((log) => (
+                      <article key={log.id} className="pms-inventory-card">
+                        <div>
+                          <strong>{log.subject || copy.communicationHistory}</strong>
+                          <span>{log.channel} · {log.status} · {formatDate(log.createdAt, language)}</span>
+                          <small>{log.tenant?.fullName || log.template?.name || copy.communications}</small>
                         </div>
                       </article>
                     ))}

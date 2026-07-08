@@ -77,6 +77,8 @@ export type PmsMaintenanceStatus =
 export type PmsMaintenanceQuoteStatus = "REQUESTED" | "SUBMITTED" | "APPROVED" | "REJECTED";
 export type PmsMaintenanceRecurrenceType = "NONE" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
 export type PmsCommunicationChannel = "EMAIL" | "WHATSAPP" | "SMS" | "INTERNAL";
+export type PmsCommunicationLogStatus = "DRAFT" | "LOGGED" | "SENT" | "FAILED" | "SKIPPED";
+export type PmsReminderType = "RENT_DUE_SOON" | "OVERDUE_RENT" | "LEASE_EXPIRY" | "MAINTENANCE_STATUS";
 export type PmsPolicyCategory =
   | "GENERAL"
   | "RENT"
@@ -497,6 +499,54 @@ export type PmsCommunicationTemplate = {
   updatedAt: string;
 };
 
+
+export type PmsCommunicationLog = {
+  id: string;
+  companyId: string;
+  templateId?: string | null;
+  template?: Pick<PmsCommunicationTemplate, "id" | "name" | "channel" | "type"> | null;
+  tenantId?: string | null;
+  tenant?: Pick<PmsTenant, "id" | "fullName" | "phone" | "email"> | null;
+  leaseId?: string | null;
+  lease?: Pick<PmsLease, "id" | "title" | "status" | "startDate" | "endDate"> | null;
+  rentDueItemId?: string | null;
+  rentDueItem?: Pick<PmsRentDueItem, "id" | "dueDate" | "amount" | "paidAmount" | "currency" | "status"> | null;
+  workOrderId?: string | null;
+  workOrder?: Pick<PmsWorkOrder, "id" | "title" | "status" | "priority"> | null;
+  channel: PmsCommunicationChannel;
+  subject?: string | null;
+  body: string;
+  status: PmsCommunicationLogStatus;
+  deliveryMetadata?: unknown;
+  sentAt?: string | null;
+  notes?: string | null;
+  createdBy?: { id: string; name: string; email: string; role: UserRole } | null;
+  sentBy?: { id: string; name: string; email: string; role: UserRole } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsReminderCandidate = {
+  type: PmsReminderType;
+  rentDueItemId?: string;
+  leaseId?: string;
+  workOrderId?: string;
+  tenantId?: string | null;
+  tenant?: Pick<PmsTenant, "id" | "fullName" | "email"> | null;
+  property?: Pick<PmsProperty, "id" | "name"> | null;
+  unit?: Pick<PmsUnit, "id" | "unitNumber" | "unitName"> | null;
+  vendor?: Pick<PmsVendor, "id" | "name" | "trade"> | null;
+  dueDate?: string | null;
+  leaseEndDate?: string | null;
+  amount?: string;
+  paidAmount?: string;
+  currency?: string;
+  status?: PmsRentDueStatus | PmsLeaseStatus | PmsMaintenanceStatus;
+  maintenanceTitle?: string;
+  maintenanceStatus?: PmsMaintenanceStatus;
+  priority?: PmsMaintenancePriority;
+};
+
 export type PmsPolicy = {
   id: string;
   companyId: string;
@@ -858,6 +908,26 @@ export type PmsCommunicationTemplatePayload = {
   body: string;
   active?: boolean;
   notes?: string | null;
+};
+
+
+export type PmsCommunicationSendPayload = {
+  companyId?: string;
+  templateId?: string | null;
+  tenantId?: string | null;
+  leaseId?: string | null;
+  rentDueItemId?: string | null;
+  workOrderId?: string | null;
+  channel: PmsCommunicationChannel;
+  subject?: string | null;
+  body: string;
+  status?: PmsCommunicationLogStatus;
+  notes?: string | null;
+  variables?: Record<string, string>;
+};
+
+export type PmsCommunicationPreviewPayload = Partial<PmsCommunicationSendPayload> & {
+  body?: string;
 };
 
 export type PmsPolicyPayload = {
@@ -1532,6 +1602,73 @@ export async function createPmsCommunicationTemplate(
     payload,
     { token },
   );
+}
+
+
+export async function previewPmsCommunication(
+  token: string,
+  payload: PmsCommunicationPreviewPayload,
+) {
+  return apiClient.post<{
+    channel: PmsCommunicationChannel;
+    variables: Record<string, string>;
+    availableVariables: string[];
+    subject?: string | null;
+    body: string;
+    template?: PmsCommunicationTemplate | null;
+  }>("/api/pms/communication-templates/preview", payload, { token });
+}
+
+export async function listPmsCommunicationLogs(
+  token: string,
+  params: {
+    companyId?: string;
+    search?: string;
+    channel?: "ALL" | PmsCommunicationChannel;
+    status?: "ALL" | PmsCommunicationLogStatus;
+    tenantId?: string | null;
+    leaseId?: string | null;
+    rentDueItemId?: string | null;
+    workOrderId?: string | null;
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    logs: PmsCommunicationLog[];
+    pagination: { take: number; skip: number; count: number; total: number };
+  }>("/api/pms/communication-logs", { token, params });
+}
+
+export async function sendPmsCommunication(
+  token: string,
+  payload: PmsCommunicationSendPayload & { companyId: string },
+) {
+  return apiClient.post<{ log: PmsCommunicationLog }>(
+    "/api/pms/communication-logs/send",
+    payload,
+    { token },
+  );
+}
+
+export async function listPmsReminderCandidates(
+  token: string,
+  params: {
+    companyId?: string;
+    type?: PmsReminderType;
+    days?: number;
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    type: PmsReminderType;
+    schedulerReady: boolean;
+    candidates: PmsReminderCandidate[];
+    pagination: { take: number; skip: number; count: number };
+  }>("/api/pms/communications/reminders", { token, params });
 }
 
 export async function listPmsPolicies(

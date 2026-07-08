@@ -161,3 +161,42 @@ export function assertCanManagePmsMaintenanceDocuments(role: PmsMemberRole) {
     );
   }
 }
+
+export function canViewPmsCommunications(role: PmsMemberRole) {
+  return (
+    role === "PMS_OWNER" ||
+    role === "PMS_MANAGER" ||
+    role === "PMS_ACCOUNTANT" ||
+    role === "PMS_MAINTENANCE" ||
+    role === "PMS_AGENT" ||
+    role === "PMS_VIEWER"
+  );
+}
+
+export function assertCanViewPmsCommunications(role: PmsMemberRole) {
+  if (!canViewPmsCommunications(role)) {
+    throw new AppError(403, "Your PMS role cannot view communication records.");
+  }
+}
+
+export function canSendPmsCommunication(
+  role: PmsMemberRole,
+  context?: "rent" | "maintenance" | "general",
+) {
+  if (role === "PMS_OWNER" || role === "PMS_MANAGER") return true;
+  if (role === "PMS_ACCOUNTANT") return context === "rent";
+  if (role === "PMS_MAINTENANCE") return context === "maintenance";
+  return false;
+}
+
+export function assertCanSendPmsCommunication(
+  role: PmsMemberRole,
+  context?: "rent" | "maintenance" | "general",
+) {
+  if (!canSendPmsCommunication(role, context)) {
+    throw new AppError(
+      403,
+      "Your PMS role cannot send this communication."
+    );
+  }
+}
