@@ -967,6 +967,22 @@ export default function App() {
             }
           />
           <Route
+            path="/pms/import-export"
+            element={
+              <RequirePms>
+                <PmsPortal />
+              </RequirePms>
+            }
+          />
+          <Route
+            path="/pms/staff"
+            element={
+              <RequirePms>
+                <PmsPortal />
+              </RequirePms>
+            }
+          />
+          <Route
             path="/pms/maintenance"
             element={
               <RequirePms>
