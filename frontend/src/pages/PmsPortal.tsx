@@ -139,39 +139,24 @@ import { cn } from "../utils/format";
 import { parseCoordinatesFromMapInput } from "../utils/mapLocation";
 
 const pmsNavigation = [
-  { to: "/pms/overview", key: "overview", icon: Home, available: true },
-  {
-    to: "/pms/properties",
-    key: "properties",
-    icon: Building2,
-    available: true,
-  },
-  { to: "/pms/units", key: "units", icon: KeyRound, available: true },
-  {
-    to: "/pms/tenants",
-    key: "tenants",
-    icon: UserRoundCheck,
-    available: true,
-  },
-  { to: "/pms/rentals", key: "rentals", icon: ClipboardList, available: true },
-  { to: "/pms/documents", key: "documents", icon: FileText, available: true },
-  {
-    to: "/pms/maintenance",
-    key: "maintenance",
-    icon: Wrench,
-    available: true,
-  },
-  {
-    to: "/pms/accounting",
-    key: "accounting",
-    icon: CreditCard,
-    available: true,
-  },
-  { to: "/pms/import-export", key: "importExport", icon: FileText, available: true },
-  { to: "/pms/staff", key: "staff", icon: UserCog, available: true },
-  { to: "/pms/reports", key: "reports", icon: BarChart3, available: true },
-  { to: "/pms/settings", key: "settings", icon: Settings, available: true },
-] as const;
+  { to: "/pms/overview", key: "overview", icon: Home, permission: null },
+  { to: "/pms/properties", key: "properties", icon: Building2, permission: "INVENTORY_VIEW" },
+  { to: "/pms/units", key: "units", icon: KeyRound, permission: "INVENTORY_VIEW" },
+  { to: "/pms/tenants", key: "tenants", icon: UserRoundCheck, permission: "TENANCY_VIEW" },
+  { to: "/pms/rentals", key: "rentals", icon: ClipboardList, permission: "TENANCY_VIEW" },
+  { to: "/pms/documents", key: "documents", icon: FileText, permission: "DOCUMENTS_VIEW" },
+  { to: "/pms/maintenance", key: "maintenance", icon: Wrench, permission: "MAINTENANCE_VIEW" },
+  { to: "/pms/accounting", key: "accounting", icon: CreditCard, permission: "ACCOUNTING_VIEW" },
+  { to: "/pms/import-export", key: "importExport", icon: FileText, permission: "IMPORT_EXPORT" },
+  { to: "/pms/staff", key: "staff", icon: UserCog, permission: "STAFF_MANAGE" },
+  { to: "/pms/reports", key: "reports", icon: BarChart3, permission: "REPORTS_VIEW" },
+  { to: "/pms/settings", key: "settings", icon: Settings, permission: "SETTINGS_MANAGE" },
+] as const satisfies ReadonlyArray<{
+  to: string;
+  key: "overview" | "properties" | "units" | "tenants" | "rentals" | "documents" | "maintenance" | "accounting" | "importExport" | "staff" | "reports" | "settings";
+  icon: typeof Home;
+  permission: PmsPermissionKey | null;
+}>;
 
 const pmsRoles: PmsMemberRole[] = [
   "PMS_OWNER",
@@ -2761,31 +2746,27 @@ export default function PmsPortal() {
         </NavLink>
 
         <nav className="pms-sidebar__nav">
-          {pmsNavigation.map((item) => {
-            const Icon = item.icon;
-            const label = copy[item.key];
+          {pmsNavigation
+            .filter((item) =>
+              !item.permission || overview?.workspace.member.permissionKeys.includes(item.permission),
+            )
+            .map((item) => {
+              const Icon = item.icon;
+              const label = copy[item.key];
 
-            return (
-              <NavLink
-                key={item.key}
-                to={item.to}
-                className={({ isActive }) =>
-                  cn(
-                    "pms-sidebar__link",
-                    isActive && item.available && "pms-sidebar__link--active",
-                    !item.available && "pms-sidebar__link--disabled",
-                  )
-                }
-                onClick={(event) => {
-                  if (!item.available) event.preventDefault();
-                }}
-              >
-                <Icon size={18} aria-hidden="true" />
-                <span>{label}</span>
-                {!item.available ? <small>{copy.soon}</small> : null}
-              </NavLink>
-            );
-          })}
+              return (
+                <NavLink
+                  key={item.key}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    cn("pms-sidebar__link", isActive && "pms-sidebar__link--active")
+                  }
+                >
+                  <Icon size={18} aria-hidden="true" />
+                  <span>{label}</span>
+                </NavLink>
+              );
+            })}
         </nav>
       </aside>
 

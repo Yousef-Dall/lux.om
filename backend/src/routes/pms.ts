@@ -386,8 +386,16 @@ const pmsMaintenanceQuoteCreateSchema = z
   })
   .strict();
 
-const pmsMaintenanceQuoteUpdateSchema = pmsMaintenanceQuoteCreateSchema
-  .partial()
+const pmsMaintenanceQuoteUpdateSchema = z
+  .object({
+    vendorId: nullableId.optional(),
+    amount: z.coerce.number().min(0).max(100000000).optional(),
+    currency: z.string().trim().length(3).toUpperCase().optional(),
+    description: nullableTrimmedString(4000).optional(),
+    status: z.nativeEnum(PmsMaintenanceQuoteStatus).optional(),
+    notes: nullableTrimmedString(2000).optional(),
+  })
+  .strict()
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one maintenance quote field is required.",
   });
@@ -8630,6 +8638,8 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
     }
 
     const companyId = access.company.id;
+    const scopedPropertyId = pmsScopedPropertyIdWhere(access);
+    const scopedPropertyWhere = pmsScopedPropertyWhere(access);
     const now = new Date();
     const expiringWindowEnd = new Date(now);
     expiringWindowEnd.setDate(expiringWindowEnd.getDate() + 60);
@@ -8781,28 +8791,33 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
       prisma.pmsProperty.count({
         where: {
           companyId,
+          ...scopedPropertyWhere,
         },
       }),
       prisma.pmsUnit.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
         },
       }),
       prisma.pmsUnit.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: PmsUnitStatus.VACANT,
         },
       }),
       prisma.pmsUnit.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: PmsUnitStatus.OCCUPIED,
         },
       }),
       prisma.pmsUnit.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: PmsUnitStatus.MAINTENANCE,
         },
       }),
@@ -8810,11 +8825,13 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
         where: {
           companyId,
           active: true,
+          ...(scopedPropertyId ? { leases: { some: { propertyId: scopedPropertyId } } } : {}),
         },
       }),
       prisma.pmsLease.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: {
             in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING],
           },
@@ -8823,6 +8840,7 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
       prisma.pmsLease.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: {
             in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING],
           },
@@ -8835,6 +8853,7 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
       prisma.pmsRentDueItem.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: {
             in: [PmsRentDueStatus.UNPAID, PmsRentDueStatus.DUE_SOON],
           },
@@ -8843,6 +8862,7 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
       prisma.pmsRentDueItem.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           OR: [
             { status: PmsRentDueStatus.OVERDUE },
             {
@@ -8861,18 +8881,21 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
       prisma.pmsRentDueItem.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: PmsRentDueStatus.PARTIALLY_PAID,
         },
       }),
       prisma.pmsRentDueItem.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: PmsRentDueStatus.PAID,
         },
       }),
       prisma.pmsRentDueItem.aggregate({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: {
             notIn: [PmsRentDueStatus.PAID, PmsRentDueStatus.CANCELLED],
           },
@@ -8884,6 +8907,7 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
       prisma.pmsRentPayment.aggregate({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: PmsRentPaymentStatus.CONFIRMED,
         },
         _sum: {
@@ -8893,18 +8917,21 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
       prisma.pmsWorkOrder.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: PmsMaintenanceStatus.OPEN,
         },
       }),
       prisma.pmsWorkOrder.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: PmsMaintenanceStatus.IN_PROGRESS,
         },
       }),
       prisma.pmsWorkOrder.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           priority: PmsMaintenancePriority.URGENT,
           status: {
             notIn: [PmsMaintenanceStatus.RESOLVED, PmsMaintenanceStatus.CANCELLED],
@@ -8914,6 +8941,7 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
       prisma.pmsWorkOrder.aggregate({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: {
             not: PmsMaintenanceStatus.CANCELLED,
           },
@@ -8925,12 +8953,14 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
       prisma.pmsInspection.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: PmsInspectionStatus.SCHEDULED,
         },
       }),
       prisma.pmsInspection.count({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: PmsInspectionStatus.NEEDS_ACTION,
         },
       }),
@@ -8949,6 +8979,7 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
       prisma.pmsLease.findMany({
         where: {
           companyId,
+          propertyId: scopedPropertyId,
           status: {
             in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING],
           },

@@ -59,3 +59,11 @@ This creates one demo PMS company workspace, property, unit, tenant, lease, rent
 ## Backup and rollback
 
 Before production PMS migrations, take a PostgreSQL backup. App rollback can use the previous deploy artifact. Data rollback should be a deliberate database restore from backup because PMS migrations add financial and tenant records that should not be automatically deleted.
+
+## Stage 21A workspace scope and navigation checks
+
+- Treat the selected PMS company and the member property scope as mandatory filters for every dashboard metric, alert, export, and list response.
+- A member with selected-property access must never receive aggregate counts or financial totals from unassigned properties.
+- `workspace.member.permissionKeys` is the effective permission set: default role permissions plus active custom grants.
+- PMS navigation should only expose modules represented in the effective permission set. Backend authorization remains authoritative for direct API requests.
+- During release verification, test one unrestricted owner, one property-scoped staff member, and one user without PMS access.

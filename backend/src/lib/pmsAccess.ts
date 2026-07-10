@@ -5,6 +5,7 @@ import {
   type PmsPermissionKey,
 } from '@prisma/client';
 
+import { getDefaultPmsPermissionKeys } from './pmsPermissions';
 import { prisma } from './prisma';
 
 export const ACTIVE_PMS_ENTITLEMENT_STATUSES: PmsEntitlementStatus[] = [
@@ -112,7 +113,10 @@ export async function resolvePmsWorkspaceAccess(input: {
       userId: member.userId,
       role: member.role,
       active: member.active,
-      permissionKeys: member.permissions.map((permission) => permission.key),
+      permissionKeys: Array.from(new Set([
+        ...getDefaultPmsPermissionKeys(member.role),
+        ...member.permissions.map((permission) => permission.key),
+      ])),
       propertyScope: {
         allProperties: propertyIds.length === 0,
         propertyIds,
@@ -186,7 +190,10 @@ export async function getUserPmsAccessSummary(userId: string) {
       return {
         memberId: workspace.id,
         role: workspace.role,
-        permissionKeys: workspace.permissions.map((permission) => permission.key),
+        permissionKeys: Array.from(new Set([
+          ...getDefaultPmsPermissionKeys(workspace.role),
+          ...workspace.permissions.map((permission) => permission.key),
+        ])),
         propertyScope: {
           allProperties: propertyIds.length === 0,
           propertyIds,

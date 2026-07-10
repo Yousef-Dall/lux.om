@@ -2613,7 +2613,7 @@ describe("PMS company entitlement access architecture", () => {
       .expect(200);
 
     expect(tenantDocumentsResponse.body.documents).toHaveLength(1);
-    expect(tenantDocumentsResponse.body.documents[0].tenant.id).toBe(tenant.id);
+    expect(tenantDocumentsResponse.body.documents[0].tenantId).toBe(tenant.id);
 
     const otherTenantDocumentsResponse = await request(app)
       .get("/api/tenant/documents")
@@ -2632,7 +2632,7 @@ describe("PMS company entitlement access architecture", () => {
       })
       .expect(201);
 
-    expect(tenantUploadResponse.body.document.tenant.id).toBe(tenant.id);
+    expect(tenantUploadResponse.body.document.tenantId).toBe(tenant.id);
 
     const expiryResponse = await request(app)
       .get(`/api/pms/documents/expiry-alerts?companyId=${company.id}&withinDays=365`)
@@ -2859,6 +2859,29 @@ describe("PMS advanced permissions and property scopes", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ companyId: company.id, name: "Unauthorized New Property" })
       .expect(403);
+  });
+
+  it("scopes overview metrics and exposes effective permissions for property-scoped staff", async () => {
+    const { staff, company, propertyA, propertyB } = await setupScopedCompany();
+    await prisma.pmsUnit.createMany({
+      data: [
+        { companyId: company.id, propertyId: propertyA.id, unitNumber: "A-101", status: "OCCUPIED", occupancyStatus: "OCCUPIED" },
+        { companyId: company.id, propertyId: propertyB.id, unitNumber: "B-101", status: "VACANT", occupancyStatus: "VACANT" },
+      ],
+    });
+
+    const response = await request(app)
+      .get(`/api/pms/overview?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${signToken(staff)}`)
+      .expect(200);
+
+    expect(response.body.workspace.member.permissionKeys).toContain("INVENTORY_VIEW");
+    expect(response.body.workspace.member.permissionKeys).not.toContain("STAFF_MANAGE");
+    expect(response.body.metrics.totalPmsProperties).toBe(1);
+    expect(response.body.metrics.totalPmsUnits).toBe(1);
+    expect(response.body.metrics.occupiedPmsUnits).toBe(1);
+    expect(response.body.metrics.vacantPmsUnits).toBe(0);
+    expect(response.body.metrics.pmsOccupancyRate).toBe(100);
   });
 
   it("lets PMS owners manage staff property scopes and audits the change", async () => {
