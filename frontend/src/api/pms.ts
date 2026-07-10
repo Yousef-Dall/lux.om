@@ -97,7 +97,7 @@ export type PmsMaintenanceQuoteStatus = "REQUESTED" | "SUBMITTED" | "APPROVED" |
 export type PmsMaintenanceRecurrenceType = "NONE" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
 export type PmsCommunicationChannel = "EMAIL" | "WHATSAPP" | "SMS" | "INTERNAL";
 export type PmsCommunicationLogStatus = "DRAFT" | "LOGGED" | "SENT" | "FAILED" | "SKIPPED";
-export type PmsReminderType = "RENT_DUE_SOON" | "OVERDUE_RENT" | "LEASE_EXPIRY" | "MAINTENANCE_STATUS";
+export type PmsReminderType = "RENT_DUE_SOON" | "OVERDUE_RENT" | "LEASE_EXPIRY" | "MAINTENANCE_STATUS" | "DOCUMENT_EXPIRY";
 export type PmsPolicyCategory =
   | "GENERAL"
   | "RENT"
@@ -579,10 +579,13 @@ export type PmsCommunicationLog = {
 };
 
 export type PmsReminderCandidate = {
+  candidateKey: string;
   type: PmsReminderType;
+  propertyId?: string | null;
   rentDueItemId?: string;
   leaseId?: string;
   workOrderId?: string;
+  documentId?: string;
   tenantId?: string | null;
   tenant?: Pick<PmsTenant, "id" | "fullName" | "email"> | null;
   property?: Pick<PmsProperty, "id" | "name"> | null;
@@ -590,6 +593,7 @@ export type PmsReminderCandidate = {
   vendor?: Pick<PmsVendor, "id" | "name" | "trade"> | null;
   dueDate?: string | null;
   leaseEndDate?: string | null;
+  documentExpiryDate?: string | null;
   amount?: string;
   paidAmount?: string;
   currency?: string;
@@ -597,6 +601,9 @@ export type PmsReminderCandidate = {
   maintenanceTitle?: string;
   maintenanceStatus?: PmsMaintenanceStatus;
   priority?: PmsMaintenancePriority;
+  reminderReason?: string;
+  subject: string;
+  body: string;
 };
 
 export type PmsPolicy = {
@@ -765,42 +772,131 @@ export type PmsWorkspaceOverview = {
 };
 
 
+export type PmsCommandPriority = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+export type PmsCommandStatus = "OPEN" | "OVERDUE" | "UPCOMING" | "NEEDS_REVIEW";
+export type PmsHealthStatus = "HEALTHY" | "WATCH" | "AT_RISK" | "NO_DATA";
+
+export type PmsHealthSignal = {
+  score: number | null;
+  status: PmsHealthStatus;
+  label: string;
+  detail: string;
+};
+
 export type PmsCommandCenter = {
   workspace: PmsWorkspaceOverview["workspace"];
   generatedAt: string;
+  filters: {
+    propertyId: string | null;
+    dateFrom: string;
+    dateTo: string;
+    riskWindowDays: number;
+    status: "ALL" | PmsCommandStatus;
+    priority: "ALL" | PmsCommandPriority;
+  };
   period: { from: string; to: string };
+  riskWindow: { from: string; to: string; days: number };
+  properties: Array<Pick<PmsProperty, "id" | "name" | "code" | "active">>;
+  health: {
+    portfolio: PmsHealthSignal;
+    occupancy: PmsHealthSignal;
+    collection: PmsHealthSignal;
+    arrears: PmsHealthSignal;
+    maintenance: PmsHealthSignal;
+    compliance: PmsHealthSignal;
+    tenantExperience: PmsHealthSignal;
+  };
   metrics: {
-    totalProperties: number;
-    totalUnits: number;
+    totalProperties: number | null;
+    totalUnits: number | null;
+    occupiedUnits: number | null;
     occupancyRate: number | null;
-    vacantUnits: number;
+    vacantUnits: number | null;
+    incompleteProperties: number | null;
+    incompleteUnits: number | null;
     overdueRentItems: number | null;
     overdueRentAmount: string | null;
+    outstandingRentItems: number | null;
+    outstandingRentAmount: string | null;
+    rentScheduledThisPeriod: string | null;
     rentCollectedThisPeriod: string | null;
+    rentCollectionRate: number | null;
     leasesExpiringSoon: number | null;
     activeMaintenanceRequests: number | null;
     overdueMaintenanceRequests: number | null;
+    urgentMaintenanceRequests: number | null;
     missingLeaseDocuments: number | null;
     expiringDocuments: number | null;
+    expiredDocuments: number | null;
+    inspectionsDue: number | null;
     ownerStatementReadyProperties: number | null;
+    ownerStatementNeedsReviewProperties: number | null;
+    highRiskTenantAccounts: number | null;
+    tenantExperienceSignals: number | null;
+  };
+  riskSignals: {
+    highRiskTenants: Array<{
+      tenantId: string;
+      tenantName: string;
+      propertyId: string;
+      propertyName: string;
+      leaseId: string;
+      oldestDueDate: string;
+      outstandingAmount: string;
+      overdueItems: number;
+      riskScore: number;
+      priority: PmsCommandPriority;
+      reasons: string[];
+      href: string;
+    }>;
+    incompleteSetup: { properties: number; units: number } | null;
   };
   automation: {
     rentRemindersDue: number | null;
     leaseExpiryRemindersDue: number | null;
     maintenanceRemindersDue: number | null;
     documentExpiryRemindersDue: number | null;
+    items: Array<{
+      type: PmsReminderType;
+      label: string;
+      count: number | null;
+      canRun: boolean;
+      lastGeneratedAt: string | null;
+      href: string;
+    }>;
   };
   priorityQueue: Array<{
     id: string;
     type: string;
-    priority: "CRITICAL" | "HIGH" | "MEDIUM";
+    status: PmsCommandStatus;
+    priority: PmsCommandPriority;
+    riskScore: number;
     title: string;
     detail: string;
+    reasons: string[];
     propertyId: string | null;
     propertyName: string | null;
     dueAt: string | null;
     href: string;
   }>;
+  prioritySummary: {
+    total: number;
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
+  emptyState: string | null;
+};
+
+export type PmsAutomationRunResult = {
+  workspace: PmsWorkspaceOverview["workspace"];
+  dryRun: boolean;
+  type: PmsReminderType;
+  candidateCount: number;
+  createdCount: number;
+  skippedCount: number;
+  candidates: PmsReminderCandidate[];
 };
 export type AdminPmsMember = {
   id: string;
@@ -1182,11 +1278,34 @@ export async function getPmsOverview(token: string, companyId?: string) {
   });
 }
 
-export async function getPmsCommandCenter(token: string, companyId?: string, propertyId?: string) {
-  return apiClient.get<PmsCommandCenter>("/api/pms/command-center", {
-    token,
-    params: { companyId, propertyId },
-  });
+export async function getPmsCommandCenter(
+  token: string,
+  params: {
+    companyId?: string;
+    propertyId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    riskWindowDays?: number;
+    status?: "ALL" | PmsCommandStatus;
+    priority?: "ALL" | PmsCommandPriority;
+    take?: number;
+  } = {},
+) {
+  return apiClient.get<PmsCommandCenter>("/api/pms/command-center", { token, params });
+}
+
+export async function runPmsAutomation(
+  token: string,
+  payload: {
+    companyId: string;
+    propertyId?: string;
+    type: PmsReminderType;
+    days?: number;
+    take?: number;
+    dryRun?: boolean;
+  },
+) {
+  return apiClient.post<PmsAutomationRunResult>("/api/pms/automations/run", payload, { token });
 }
 
 export async function listPmsProperties(
@@ -1800,6 +1919,7 @@ export async function listPmsReminderCandidates(
   token: string,
   params: {
     companyId?: string;
+    propertyId?: string;
     type?: PmsReminderType;
     days?: number;
     take?: number;

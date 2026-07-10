@@ -90,6 +90,10 @@ Before production PMS migrations, take a PostgreSQL backup. App rollback can use
 
 ## PMS command center checks
 
-The PMS overview loads `/api/pms/command-center` for live operational intelligence. Verify that overdue rent, maintenance SLA risk, lease expiry, document expiry, inspection follow-up, and owner-statement review items match the underlying workspace records. Property-scoped staff must see only assigned-property metrics and queue items. Permission-restricted categories return `null` metrics and are omitted from the queue rather than leaking financial or document data.
+The PMS overview loads `/api/pms/command-center` for live operational intelligence. Verify that overdue rent, outstanding balances, selected-period collection, maintenance SLA risk, urgent work, lease expiry, document gaps, inspection follow-up, setup completeness, and owner-statement readiness match the underlying workspace records. Property-scoped staff must see only assigned-property metrics and queue items. Permission-restricted categories return `null` metrics and are omitted from the queue rather than leaking financial, tenant, or document data.
 
-The automation queue is a due-candidate foundation. It reports real reminder candidates but does not claim external delivery until a configured email, SMS, or WhatsApp adapter records a communication event.
+Exercise the property, date-range, risk-window, status, and priority filters during release verification. The date range is financial reporting scope; the risk window controls upcoming lease, document, inspection, and reminder signals. Health cards must display `NO_DATA` instead of invented scores when the required records do not exist.
+
+The automation queue is an auditable internal-alert foundation. Preview candidates with `GET /api/pms/communications/reminders`. Execute them with `POST /api/pms/automations/run`; execution writes `INTERNAL` / `LOGGED` communication records and a workspace audit event, but does not send email, SMS, or WhatsApp messages. Candidate keys are deduplicated per UTC day. Run the same automation twice in release testing and confirm the second run reports skipped duplicates.
+
+See `docs/pms-stage21b-command-center.md` for metric definitions, supported filters, automation types, permission behavior, and the verification checklist.

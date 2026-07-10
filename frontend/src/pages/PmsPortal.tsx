@@ -54,6 +54,7 @@ import {
   getPmsProperty,
   getPmsOwnerStatement,
   getPmsReportsSummary,
+  runPmsAutomation,
   listPmsAccountingLedger,
   listPmsDocuments,
   listPmsImportBatches,
@@ -130,6 +131,9 @@ import {
   type PmsVendorPayload,
   type PmsWorkspaceOverview,
   type PmsCommandCenter,
+  type PmsCommandPriority,
+  type PmsCommandStatus,
+  type PmsReminderType,
   type PmsWorkOrder,
   type PmsWorkOrderPayload,
 } from "../api/pms";
@@ -840,8 +844,18 @@ export default function PmsPortal() {
 
   const [overview, setOverview] = useState<PmsWorkspaceOverview | null>(null);
   const [commandCenter, setCommandCenter] = useState<PmsCommandCenter | null>(null);
-  const [commandPriorityFilter, setCommandPriorityFilter] = useState<"ALL" | "CRITICAL" | "HIGH" | "MEDIUM">("ALL");
+  const [commandPriorityFilter, setCommandPriorityFilter] = useState<"ALL" | PmsCommandPriority>("ALL");
+  const [commandStatusFilter, setCommandStatusFilter] = useState<"ALL" | PmsCommandStatus>("ALL");
   const [commandPropertyFilter, setCommandPropertyFilter] = useState("ALL");
+  const [commandDateFrom, setCommandDateFrom] = useState(() => {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  });
+  const [commandDateTo, setCommandDateTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [commandRiskWindowDays, setCommandRiskWindowDays] = useState(60);
+  const [commandLoading, setCommandLoading] = useState(false);
+  const [commandError, setCommandError] = useState("");
+  const [automationRunning, setAutomationRunning] = useState<PmsReminderType | null>(null);
   const [properties, setProperties] = useState<PmsProperty[]>([]);
   const [units, setUnits] = useState<PmsUnit[]>([]);
   const [tenants, setTenants] = useState<PmsTenant[]>([]);
@@ -1533,9 +1547,6 @@ export default function PmsPortal() {
         return;
       }
 
-      const commandCenterResponse = await getPmsCommandCenter(token, companyId);
-      setCommandCenter(commandCenterResponse);
-
       if (section === "properties") {
         const propertyResponse = await listPmsProperties(token, {
           companyId,
@@ -1779,6 +1790,63 @@ export default function PmsPortal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [copy.unavailable, selectedCompanyId, selectedLeaseId, selectedPropertyId, section, token]);
 
+  useEffect(() => {
+    if (!token || !overview || section !== "overview") {
+      setCommandCenter(null);
+      setCommandError("");
+      return;
+    }
+
+    const activeToken = token;
+    const companyId = overview.workspace.company.id;
+    let active = true;
+    async function loadOperationalCommandCenter() {
+      try {
+        setCommandLoading(true);
+        setCommandError("");
+        const response = await getPmsCommandCenter(activeToken, {
+          companyId,
+          propertyId: commandPropertyFilter === "ALL" ? undefined : commandPropertyFilter,
+          dateFrom: commandDateFrom || undefined,
+          dateTo: commandDateTo || undefined,
+          riskWindowDays: commandRiskWindowDays,
+          status: commandStatusFilter,
+          priority: commandPriorityFilter,
+          take: 30,
+        });
+        if (active) setCommandCenter(response);
+      } catch (loadError) {
+        console.error(loadError);
+        if (active) {
+          setCommandCenter(null);
+          setCommandError(loadError instanceof ApiError ? loadError.message : copy.unavailable);
+        }
+      } finally {
+        if (active) setCommandLoading(false);
+      }
+    }
+
+    void loadOperationalCommandCenter();
+    return () => {
+      active = false;
+    };
+  }, [
+    commandDateFrom,
+    commandDateTo,
+    commandPriorityFilter,
+    commandPropertyFilter,
+    commandRiskWindowDays,
+    commandStatusFilter,
+    copy.unavailable,
+    overview,
+    section,
+    token,
+  ]);
+
+  useEffect(() => {
+    setCommandPropertyFilter("ALL");
+  }, [overview?.workspace.company.id]);
+
   const overviewMetrics = useMemo(() => {
     if (!overview) return [];
 
@@ -1836,22 +1904,25 @@ export default function PmsPortal() {
     overview,
   ]);
 
-  const commandCenterPropertyOptions = useMemo(() => {
-    if (!commandCenter) return [];
-    const values = new Map<string, string>();
-    commandCenter.priorityQueue.forEach((item) => {
-      if (item.propertyId && item.propertyName) values.set(item.propertyId, item.propertyName);
-    });
-    return Array.from(values, ([id, name]) => ({ id, name }));
-  }, [commandCenter]);
+  const commandCenterPropertyOptions = useMemo(
+    () => commandCenter?.properties.map((property) => ({ id: property.id, name: property.name })) ?? [],
+    [commandCenter],
+  );
 
-  const filteredPriorityQueue = useMemo(() => {
+  const filteredPriorityQueue = commandCenter?.priorityQueue ?? [];
+
+  const commandHealthSignals = useMemo(() => {
     if (!commandCenter) return [];
-    return commandCenter.priorityQueue.filter((item) =>
-      (commandPriorityFilter === "ALL" || item.priority === commandPriorityFilter) &&
-      (commandPropertyFilter === "ALL" || item.propertyId === commandPropertyFilter),
-    );
-  }, [commandCenter, commandPriorityFilter, commandPropertyFilter]);
+    return [
+      commandCenter.health.portfolio,
+      commandCenter.health.occupancy,
+      commandCenter.health.collection,
+      commandCenter.health.arrears,
+      commandCenter.health.maintenance,
+      commandCenter.health.compliance,
+      commandCenter.health.tenantExperience,
+    ];
+  }, [commandCenter]);
 
   const launchChecklistItems = useMemo(() => {
     if (!overview) return [];
@@ -1943,6 +2014,45 @@ export default function PmsPortal() {
           }
         : {}),
     }));
+  }
+
+  async function handleRunPmsAutomation(type: PmsReminderType) {
+    if (!token || !overview) return;
+
+    try {
+      setAutomationRunning(type);
+      setError("");
+      setSuccess("");
+      const result = await runPmsAutomation(token, {
+        companyId: overview.workspace.company.id,
+        propertyId: commandPropertyFilter === "ALL" ? undefined : commandPropertyFilter,
+        type,
+        days: commandRiskWindowDays,
+        take: 25,
+        dryRun: false,
+      });
+      setSuccess(
+        language === "ar"
+          ? `تم إنشاء ${result.createdCount} تنبيه داخلي وتخطي ${result.skippedCount} مكرر.`
+          : `${result.createdCount} internal alerts generated; ${result.skippedCount} duplicates skipped.`,
+      );
+      const refreshed = await getPmsCommandCenter(token, {
+        companyId: overview.workspace.company.id,
+        propertyId: commandPropertyFilter === "ALL" ? undefined : commandPropertyFilter,
+        dateFrom: commandDateFrom || undefined,
+        dateTo: commandDateTo || undefined,
+        riskWindowDays: commandRiskWindowDays,
+        status: commandStatusFilter,
+        priority: commandPriorityFilter,
+        take: 30,
+      });
+      setCommandCenter(refreshed);
+    } catch (automationError) {
+      console.error(automationError);
+      setError(automationError instanceof ApiError ? automationError.message : copy.unavailable);
+    } finally {
+      setAutomationRunning(null);
+    }
   }
 
   async function handleImportFileChange(file?: File | null) {
@@ -2980,29 +3090,171 @@ export default function PmsPortal() {
                   ))}
                 </section>
 
-                {commandCenter ? (
-                  <section className="pms-command-center">
-                    <div className="pms-command-center__header">
-                      <div><p className="eyebrow">{language === "ar" ? "الذكاء التشغيلي" : "Operational intelligence"}</p><h2>{language === "ar" ? "ما يحتاج إلى انتباه الآن" : "What needs attention now"}</h2></div>
-                      <div className="pms-command-center__filters">
-                        <select aria-label="Property" value={commandPropertyFilter} onChange={(event) => setCommandPropertyFilter(event.target.value)}><option value="ALL">{language === "ar" ? "كل العقارات" : "All properties"}</option>{commandCenterPropertyOptions.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select>
-                        <select aria-label="Priority" value={commandPriorityFilter} onChange={(event) => setCommandPriorityFilter(event.target.value as typeof commandPriorityFilter)}><option value="ALL">{language === "ar" ? "كل الأولويات" : "All priorities"}</option><option value="CRITICAL">CRITICAL</option><option value="HIGH">HIGH</option><option value="MEDIUM">MEDIUM</option></select>
+                <section className="pms-command-center">
+                  <div className="pms-command-center__header">
+                    <div>
+                      <p className="eyebrow">{language === "ar" ? "الذكاء التشغيلي" : "Operational intelligence"}</p>
+                      <h2>{language === "ar" ? "ما يحتاج إلى انتباه الآن" : "What needs attention now"}</h2>
+                      <p>
+                        {language === "ar"
+                          ? "مؤشرات حقيقية ومخاطر مرتبة حسب الأولوية ضمن نطاق صلاحياتك."
+                          : "Live operational signals and prioritized risks within your workspace scope."}
+                      </p>
+                    </div>
+                    <div className="pms-command-center__filters">
+                      <label>
+                        <span>{language === "ar" ? "العقار" : "Property"}</span>
+                        <select value={commandPropertyFilter} onChange={(event) => setCommandPropertyFilter(event.target.value)}>
+                          <option value="ALL">{language === "ar" ? "كل العقارات" : "All properties"}</option>
+                          {commandCenterPropertyOptions.map((property) => (
+                            <option key={property.id} value={property.id}>{property.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>{language === "ar" ? "من" : "From"}</span>
+                        <input type="date" value={commandDateFrom} onChange={(event) => setCommandDateFrom(event.target.value)} />
+                      </label>
+                      <label>
+                        <span>{language === "ar" ? "إلى" : "To"}</span>
+                        <input type="date" value={commandDateTo} onChange={(event) => setCommandDateTo(event.target.value)} />
+                      </label>
+                      <label>
+                        <span>{language === "ar" ? "نافذة المخاطر" : "Risk window"}</span>
+                        <select value={commandRiskWindowDays} onChange={(event) => setCommandRiskWindowDays(Number(event.target.value))}>
+                          <option value={30}>30 {language === "ar" ? "يوماً" : "days"}</option>
+                          <option value={60}>60 {language === "ar" ? "يوماً" : "days"}</option>
+                          <option value={90}>90 {language === "ar" ? "يوماً" : "days"}</option>
+                          <option value={120}>120 {language === "ar" ? "يوماً" : "days"}</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>{language === "ar" ? "الحالة" : "Status"}</span>
+                        <select value={commandStatusFilter} onChange={(event) => setCommandStatusFilter(event.target.value as typeof commandStatusFilter)}>
+                          <option value="ALL">{language === "ar" ? "كل الحالات" : "All statuses"}</option>
+                          <option value="OVERDUE">{language === "ar" ? "متأخر" : "Overdue"}</option>
+                          <option value="UPCOMING">{language === "ar" ? "قادم" : "Upcoming"}</option>
+                          <option value="NEEDS_REVIEW">{language === "ar" ? "يحتاج مراجعة" : "Needs review"}</option>
+                          <option value="OPEN">{language === "ar" ? "مفتوح" : "Open"}</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>{language === "ar" ? "الأولوية" : "Priority"}</span>
+                        <select value={commandPriorityFilter} onChange={(event) => setCommandPriorityFilter(event.target.value as typeof commandPriorityFilter)}>
+                          <option value="ALL">{language === "ar" ? "كل الأولويات" : "All priorities"}</option>
+                          <option value="CRITICAL">CRITICAL</option>
+                          <option value="HIGH">HIGH</option>
+                          <option value="MEDIUM">MEDIUM</option>
+                          <option value="LOW">LOW</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+
+                  {commandLoading ? (
+                    <div className="pms-command-state"><Loader2 className="spin" size={20} /><span>{language === "ar" ? "جاري حساب المؤشرات..." : "Calculating operational signals..."}</span></div>
+                  ) : commandError ? (
+                    <div className="pms-command-state pms-command-state--error" role="alert">{commandError}</div>
+                  ) : commandCenter ? (
+                    <>
+                      <div className="pms-command-health-grid">
+                        {commandHealthSignals.map((signal) => (
+                          <article key={signal.label} className={`pms-health-card pms-health-card--${signal.status.toLowerCase().replace("_", "-")}`}>
+                            <span>{signal.label}</span>
+                            <strong>{signal.score == null ? "—" : `${signal.score}/100`}</strong>
+                            <small>{signal.detail}</small>
+                          </article>
+                        ))}
                       </div>
-                    </div>
-                    <div className="pms-command-health-grid">
-                      <article><span>{language === "ar" ? "إيجار متأخر" : "Overdue rent"}</span><strong>{commandCenter.metrics.overdueRentAmount == null ? "—" : `${commandCenter.metrics.overdueRentAmount} OMR`}</strong><small>{commandCenter.metrics.overdueRentItems ?? "—"} accounts</small></article>
-                      <article><span>{language === "ar" ? "المحصل هذا الشهر" : "Collected this month"}</span><strong>{commandCenter.metrics.rentCollectedThisPeriod == null ? "—" : `${commandCenter.metrics.rentCollectedThisPeriod} OMR`}</strong></article>
-                      <article><span>{language === "ar" ? "صيانة متأخرة" : "Maintenance overdue"}</span><strong>{commandCenter.metrics.overdueMaintenanceRequests ?? "—"}</strong><small>{commandCenter.metrics.activeMaintenanceRequests ?? "—"} active</small></article>
-                      <article><span>{language === "ar" ? "فجوات المستندات" : "Document gaps"}</span><strong>{commandCenter.metrics.missingLeaseDocuments ?? "—"}</strong><small>{commandCenter.metrics.expiringDocuments ?? "—"} expiring</small></article>
-                      <article><span>{language === "ar" ? "عقود تنتهي قريباً" : "Leases expiring"}</span><strong>{commandCenter.metrics.leasesExpiringSoon ?? "—"}</strong><small>60 days</small></article>
-                      <article><span>{language === "ar" ? "كشوف الملاك" : "Owner statements"}</span><strong>{commandCenter.metrics.ownerStatementReadyProperties ?? "—"}</strong><small>ready for review</small></article>
-                    </div>
-                    <div className="pms-command-center__body">
-                      <div className="pms-priority-queue"><h3>{language === "ar" ? "صندوق العمليات" : "Operations inbox"}</h3>{filteredPriorityQueue.length ? filteredPriorityQueue.map((item) => <Link key={item.id} className="pms-priority-item" to={item.href}><span className={`pms-priority-item__badge pms-priority-item__badge--${item.priority.toLowerCase()}`}>{item.priority}</span><span><strong>{item.title}</strong><small>{item.detail}{item.propertyName ? ` · ${item.propertyName}` : ""}{item.dueAt ? ` · ${formatDate(item.dueAt, language)}` : ""}</small></span><ChevronRight size={16} /></Link>) : <p>{language === "ar" ? "لا توجد عناصر مطابقة." : "No matching priority items."}</p>}</div>
-                      <div className="pms-automation-queue"><h3>{language === "ar" ? "قائمة الأتمتة" : "Automation queue"}</h3><div><span>Rent reminders</span><strong>{commandCenter.automation.rentRemindersDue ?? "—"}</strong></div><div><span>Lease expiry</span><strong>{commandCenter.automation.leaseExpiryRemindersDue ?? "—"}</strong></div><div><span>Maintenance</span><strong>{commandCenter.automation.maintenanceRemindersDue ?? "—"}</strong></div><div><span>Documents</span><strong>{commandCenter.automation.documentExpiryRemindersDue ?? "—"}</strong></div></div>
-                    </div>
-                  </section>
-                ) : null}
+
+                      <div className="pms-command-kpi-grid">
+                        <article><span>{language === "ar" ? "الإشغال" : "Occupancy"}</span><strong>{formatPercent(commandCenter.metrics.occupancyRate, language)}</strong><small>{commandCenter.metrics.occupiedUnits ?? "—"} / {commandCenter.metrics.totalUnits ?? "—"} {language === "ar" ? "وحدة" : "units"}</small></article>
+                        <article><span>{language === "ar" ? "إيجار مستحق" : "Outstanding rent"}</span><strong>{commandCenter.metrics.outstandingRentAmount == null ? "—" : `${commandCenter.metrics.outstandingRentAmount} OMR`}</strong><small>{commandCenter.metrics.outstandingRentItems ?? "—"} {language === "ar" ? "بند" : "items"}</small></article>
+                        <article><span>{language === "ar" ? "إيجار متأخر" : "Overdue rent"}</span><strong>{commandCenter.metrics.overdueRentAmount == null ? "—" : `${commandCenter.metrics.overdueRentAmount} OMR`}</strong><small>{commandCenter.metrics.highRiskTenantAccounts ?? "—"} {language === "ar" ? "حساب عالي المخاطر" : "high-risk accounts"}</small></article>
+                        <article><span>{language === "ar" ? "معدل التحصيل" : "Collection rate"}</span><strong>{formatPercent(commandCenter.metrics.rentCollectionRate, language)}</strong><small>{commandCenter.metrics.rentCollectedThisPeriod == null ? "—" : `${commandCenter.metrics.rentCollectedThisPeriod} OMR`} {language === "ar" ? "محصل" : "collected"}</small></article>
+                        <article><span>{language === "ar" ? "عقود تنتهي" : "Leases expiring"}</span><strong>{commandCenter.metrics.leasesExpiringSoon ?? "—"}</strong><small>{commandCenter.riskWindow.days} {language === "ar" ? "يوماً" : "day window"}</small></article>
+                        <article><span>{language === "ar" ? "صيانة متأخرة" : "Maintenance overdue"}</span><strong>{commandCenter.metrics.overdueMaintenanceRequests ?? "—"}</strong><small>{commandCenter.metrics.urgentMaintenanceRequests ?? "—"} {language === "ar" ? "عاجلة" : "urgent"}</small></article>
+                        <article><span>{language === "ar" ? "فجوات الامتثال" : "Compliance gaps"}</span><strong>{(commandCenter.metrics.missingLeaseDocuments ?? 0) + (commandCenter.metrics.expiredDocuments ?? 0)}</strong><small>{commandCenter.metrics.expiringDocuments ?? "—"} {language === "ar" ? "تنتهي قريباً" : "expiring soon"}</small></article>
+                        <article><span>{language === "ar" ? "كشوف جاهزة" : "Statements ready"}</span><strong>{commandCenter.metrics.ownerStatementReadyProperties ?? "—"}</strong><small>{language === "ar" ? "تحتاج مراجعة" : "ready for review"}</small></article>
+                      </div>
+
+                      <div className="pms-priority-summary" aria-label={language === "ar" ? "ملخص الأولويات" : "Priority summary"}>
+                        <span><strong>{commandCenter.prioritySummary.critical}</strong> Critical</span>
+                        <span><strong>{commandCenter.prioritySummary.high}</strong> High</span>
+                        <span><strong>{commandCenter.prioritySummary.medium}</strong> Medium</span>
+                        <span><strong>{commandCenter.prioritySummary.low}</strong> Low</span>
+                      </div>
+
+                      <div className="pms-command-center__body">
+                        <div className="pms-priority-queue">
+                          <div className="pms-command-section-heading">
+                            <div><h3>{language === "ar" ? "صندوق العمليات" : "Operations inbox"}</h3><p>{language === "ar" ? "مرتّب حسب درجة المخاطر والاستحقاق." : "Ranked by risk score and due date."}</p></div>
+                            <strong>{filteredPriorityQueue.length}</strong>
+                          </div>
+                          {filteredPriorityQueue.length ? filteredPriorityQueue.map((item) => (
+                            <Link key={item.id} className="pms-priority-item" to={item.href}>
+                              <span className={`pms-priority-item__badge pms-priority-item__badge--${item.priority.toLowerCase()}`}>{item.priority}</span>
+                              <span>
+                                <strong>{item.title}</strong>
+                                <small>{item.detail}{item.propertyName ? ` · ${item.propertyName}` : ""}{item.dueAt ? ` · ${formatDate(item.dueAt, language)}` : ""}</small>
+                                <small>{language === "ar" ? "درجة المخاطر" : "Risk score"}: {item.riskScore}/100 · {item.status.replaceAll("_", " ")}</small>
+                              </span>
+                              <ChevronRight size={16} />
+                            </Link>
+                          )) : (
+                            <div className="pms-command-empty">
+                              <ShieldCheck size={22} />
+                              <p>{commandCenter.emptyState ?? (language === "ar" ? "لا توجد عناصر مطابقة." : "No matching priority items.")}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="pms-automation-queue">
+                          <div className="pms-command-section-heading">
+                            <div><h3>{language === "ar" ? "قائمة الأتمتة" : "Automation queue"}</h3><p>{language === "ar" ? "تنشئ تنبيهات داخلية مدققة ولا ترسل رسائل خارجية." : "Creates audited internal alerts; no external messages are sent."}</p></div>
+                          </div>
+                          {commandCenter.automation.items.map((item) => (
+                            <div key={item.type} className="pms-automation-item">
+                              <span>
+                                <strong>{item.label}</strong>
+                                <small>{item.lastGeneratedAt ? `${language === "ar" ? "آخر تشغيل" : "Last run"}: ${formatDate(item.lastGeneratedAt, language)}` : (language === "ar" ? "لم يتم التشغيل بعد" : "Not run in this period")}</small>
+                              </span>
+                              <strong>{item.count ?? "—"}</strong>
+                              <button
+                                className="button-link"
+                                type="button"
+                                disabled={!item.canRun || !item.count || automationRunning !== null}
+                                onClick={() => void handleRunPmsAutomation(item.type)}
+                              >
+                                {automationRunning === item.type
+                                  ? (language === "ar" ? "جاري الإنشاء..." : "Generating...")
+                                  : (language === "ar" ? "إنشاء تنبيهات" : "Generate alerts")}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {commandCenter.riskSignals.highRiskTenants.length ? (
+                        <div className="pms-risk-accounts">
+                          <div className="pms-command-section-heading"><div><h3>{language === "ar" ? "حسابات المستأجرين عالية المخاطر" : "High-risk tenant accounts"}</h3><p>{language === "ar" ? "مبنية على عمر المتأخرات والرصيد وتكرار البنود." : "Based on arrears age, outstanding balance, and repeated overdue items."}</p></div></div>
+                          <div className="pms-compact-table" role="table">
+                            {commandCenter.riskSignals.highRiskTenants.slice(0, 5).map((tenant) => (
+                              <Link key={tenant.tenantId} to={tenant.href} role="row">
+                                <span><strong>{tenant.tenantName}</strong><small>{tenant.propertyName}</small></span>
+                                <span>{tenant.outstandingAmount} OMR</span>
+                                <span>{tenant.overdueItems} {language === "ar" ? "متأخر" : "overdue"}</span>
+                                <span className={`pms-priority-item__badge pms-priority-item__badge--${tenant.priority.toLowerCase()}`}>{tenant.riskScore}</span>
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div className="pms-command-state">{language === "ar" ? "لا توجد بيانات تشغيلية متاحة." : "No operational data is available."}</div>
+                  )}
+                </section>
 
                 <section className="pms-next-actions">
                   <div className="pms-next-actions__header">

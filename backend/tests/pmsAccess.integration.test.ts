@@ -2916,29 +2916,279 @@ describe("PMS advanced permissions and property scopes", () => {
 
   it("computes a property-scoped PMS command center and priority queue", async () => {
     const { staff, company, propertyA, propertyB } = await setupScopedCompany();
-    const unitA = await prisma.pmsUnit.create({ data: { companyId: company.id, propertyId: propertyA.id, unitNumber: "A-201", status: "OCCUPIED", occupancyStatus: "OCCUPIED" } });
-    await prisma.pmsUnit.create({ data: { companyId: company.id, propertyId: propertyB.id, unitNumber: "B-201", status: "VACANT", occupancyStatus: "VACANT" } });
-    const tenant = await prisma.pmsTenant.create({ data: { companyId: company.id, fullName: "Scoped Risk Tenant" } });
-    const lease = await prisma.pmsLease.create({ data: { companyId: company.id, propertyId: propertyA.id, unitId: unitA.id, tenantId: tenant.id, startDate: new Date(Date.now() - 30 * 86400000), endDate: new Date(Date.now() + 20 * 86400000), rentAmount: 500, status: "ACTIVE" } });
-    await prisma.pmsRentDueItem.create({ data: { companyId: company.id, propertyId: propertyA.id, unitId: unitA.id, tenantId: tenant.id, leaseId: lease.id, dueDate: new Date(Date.now() - 40 * 86400000), amount: 500, paidAmount: 100, status: "OVERDUE" } });
-    await prisma.pmsWorkOrder.create({ data: { companyId: company.id, propertyId: propertyA.id, unitId: unitA.id, title: "Urgent scoped repair", priority: "URGENT", status: "OPEN", targetDate: new Date(Date.now() - 2 * 86400000) } });
+    const now = Date.now();
+    const unitA = await prisma.pmsUnit.create({
+      data: {
+        companyId: company.id,
+        propertyId: propertyA.id,
+        unitNumber: "A-201",
+        status: "OCCUPIED",
+        occupancyStatus: "OCCUPIED",
+      },
+    });
+    await prisma.pmsUnit.create({
+      data: {
+        companyId: company.id,
+        propertyId: propertyB.id,
+        unitNumber: "B-201",
+        status: "VACANT",
+        occupancyStatus: "VACANT",
+      },
+    });
+    const tenant = await prisma.pmsTenant.create({
+      data: { companyId: company.id, fullName: "Scoped Risk Tenant" },
+    });
+    const lease = await prisma.pmsLease.create({
+      data: {
+        companyId: company.id,
+        propertyId: propertyA.id,
+        unitId: unitA.id,
+        tenantId: tenant.id,
+        startDate: new Date(now - 30 * 86_400_000),
+        endDate: new Date(now + 20 * 86_400_000),
+        rentAmount: 500,
+        status: "ACTIVE",
+      },
+    });
+    const dueItem = await prisma.pmsRentDueItem.create({
+      data: {
+        companyId: company.id,
+        propertyId: propertyA.id,
+        unitId: unitA.id,
+        tenantId: tenant.id,
+        leaseId: lease.id,
+        dueDate: new Date(now - 40 * 86_400_000),
+        amount: 500,
+        paidAmount: 100,
+        status: "OVERDUE",
+      },
+    });
+    await prisma.pmsRentPayment.create({
+      data: {
+        companyId: company.id,
+        propertyId: propertyA.id,
+        unitId: unitA.id,
+        tenantId: tenant.id,
+        leaseId: lease.id,
+        rentDueItemId: dueItem.id,
+        amount: 100,
+        method: "BANK_TRANSFER",
+        status: "CONFIRMED",
+        paidAt: new Date(now - 2 * 86_400_000),
+      },
+    });
+    await prisma.pmsWorkOrder.createMany({
+      data: [
+        {
+          companyId: company.id,
+          propertyId: propertyA.id,
+          unitId: unitA.id,
+          title: "Urgent overdue scoped repair",
+          priority: "URGENT",
+          status: "OPEN",
+          targetDate: new Date(now - 2 * 86_400_000),
+        },
+        {
+          companyId: company.id,
+          propertyId: propertyA.id,
+          unitId: unitA.id,
+          title: "Urgent upcoming scoped repair",
+          priority: "URGENT",
+          status: "OPEN",
+          targetDate: new Date(now + 5 * 86_400_000),
+        },
+      ],
+    });
+    await prisma.pmsDocument.create({
+      data: {
+        companyId: company.id,
+        propertyId: propertyA.id,
+        leaseId: lease.id,
+        type: "OTHER",
+        title: "Insurance certificate",
+        fileUrl: "/uploads/insurance.pdf",
+        expiryDate: new Date(now + 7 * 86_400_000),
+      },
+    });
+    await prisma.pmsInspection.create({
+      data: {
+        companyId: company.id,
+        propertyId: propertyA.id,
+        unitId: unitA.id,
+        tenantId: tenant.id,
+        leaseId: lease.id,
+        title: "Move-in follow-up",
+        status: "NEEDS_ACTION",
+        scheduledFor: new Date(now - 1 * 86_400_000),
+      },
+    });
 
+    const dateFrom = new Date(now - 60 * 86_400_000).toISOString();
+    const dateTo = new Date(now + 1 * 86_400_000).toISOString();
+    const token = signToken(staff);
     const response = await request(app)
-      .get(`/api/pms/command-center?companyId=${company.id}`)
-      .set("Authorization", `Bearer ${signToken(staff)}`)
+      .get(`/api/pms/command-center?companyId=${company.id}&dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}&riskWindowDays=60&take=50`)
+      .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
     expect(response.body.metrics.totalProperties).toBe(1);
     expect(response.body.metrics.totalUnits).toBe(1);
     expect(response.body.metrics.occupancyRate).toBe(100);
-    expect(response.body.metrics.overdueRentAmount).toBe("400.00");
+    expect(response.body.metrics.incompleteProperties).toBe(1);
+    expect(response.body.metrics.incompleteUnits).toBe(1);
+    expect(response.body.metrics.overdueRentAmount).toBe("400");
+    expect(response.body.metrics.outstandingRentAmount).toBe("400");
+    expect(response.body.metrics.rentCollectedThisPeriod).toBe("100");
+    expect(response.body.metrics.leasesExpiringSoon).toBe(1);
+    expect(response.body.metrics.activeMaintenanceRequests).toBe(2);
     expect(response.body.metrics.overdueMaintenanceRequests).toBe(1);
-    expect(response.body.priorityQueue.some((item: { type: string }) => item.type === "OVERDUE_RENT")).toBe(true);
+    expect(response.body.metrics.urgentMaintenanceRequests).toBe(2);
+    expect(response.body.metrics.missingLeaseDocuments).toBe(1);
+    expect(response.body.metrics.expiringDocuments).toBe(1);
+    expect(response.body.metrics.inspectionsDue).toBe(1);
+    expect(response.body.metrics.ownerStatementReadyProperties).toBe(1);
+    expect(response.body.metrics.highRiskTenantAccounts).toBe(1);
+    expect(response.body.health.portfolio.score).toEqual(expect.any(Number));
+    expect(response.body.health.collection.status).not.toBe("NO_DATA");
+    expect(response.body.riskSignals.highRiskTenants[0].tenantId).toBe(tenant.id);
+    expect(response.body.automation.rentRemindersDue).toBeGreaterThanOrEqual(1);
+    expect(response.body.automation.documentExpiryRemindersDue).toBe(1);
+
+    const queueTypes = response.body.priorityQueue.map((item: { type: string }) => item.type);
+    expect(queueTypes).toContain("OVERDUE_RENT");
+    expect(queueTypes).toContain("MAINTENANCE_OVERDUE");
+    expect(queueTypes).toContain("URGENT_MAINTENANCE");
+    expect(queueTypes).toContain("LEASE_EXPIRING");
+    expect(queueTypes).toContain("MISSING_DOCUMENT");
+    expect(queueTypes).toContain("DOCUMENT_EXPIRING");
+    expect(queueTypes).toContain("INSPECTION_DUE");
     expect(response.body.priorityQueue.every((item: { propertyId: string | null }) => item.propertyId === propertyA.id)).toBe(true);
+
+    const openResponse = await request(app)
+      .get(`/api/pms/command-center?companyId=${company.id}&status=OPEN&priority=HIGH&take=50`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(openResponse.body.priorityQueue).toHaveLength(1);
+    expect(openResponse.body.priorityQueue[0].type).toBe("URGENT_MAINTENANCE");
+    expect(openResponse.body.filters.status).toBe("OPEN");
+    expect(openResponse.body.filters.priority).toBe("HIGH");
 
     await request(app)
       .get(`/api/pms/command-center?companyId=${company.id}&propertyId=${propertyB.id}`)
-      .set("Authorization", `Bearer ${signToken(staff)}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(403);
+  });
+
+  it("generates scoped idempotent PMS automation alerts with role-aware access", async () => {
+    const { staff, staffMember, company, propertyA, propertyB } = await setupScopedCompany();
+    const unit = await prisma.pmsUnit.create({
+      data: {
+        companyId: company.id,
+        propertyId: propertyA.id,
+        unitNumber: "A-AUTO",
+        status: "OCCUPIED",
+        occupancyStatus: "OCCUPIED",
+      },
+    });
+    const tenant = await prisma.pmsTenant.create({
+      data: { companyId: company.id, fullName: "Automation Tenant" },
+    });
+    const lease = await prisma.pmsLease.create({
+      data: {
+        companyId: company.id,
+        propertyId: propertyA.id,
+        unitId: unit.id,
+        tenantId: tenant.id,
+        startDate: new Date(Date.now() - 90 * 86_400_000),
+        endDate: new Date(Date.now() + 20 * 86_400_000),
+        rentAmount: 600,
+        status: "ACTIVE",
+      },
+    });
+    const dueItem = await prisma.pmsRentDueItem.create({
+      data: {
+        companyId: company.id,
+        propertyId: propertyA.id,
+        unitId: unit.id,
+        tenantId: tenant.id,
+        leaseId: lease.id,
+        dueDate: new Date(Date.now() - 10 * 86_400_000),
+        amount: 600,
+        paidAmount: 0,
+        status: "OVERDUE",
+      },
+    });
+    const token = signToken(staff);
+
+    const preview = await request(app)
+      .post("/api/pms/automations/run")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, propertyId: propertyA.id, type: "OVERDUE_RENT", days: 30, dryRun: true })
+      .expect(200);
+    expect(preview.body.candidateCount).toBe(1);
+    expect(preview.body.createdCount).toBe(0);
+    expect(preview.body.candidates[0].rentDueItemId).toBe(dueItem.id);
+
+    const firstRun = await request(app)
+      .post("/api/pms/automations/run")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, propertyId: propertyA.id, type: "OVERDUE_RENT", days: 30, dryRun: false })
+      .expect(201);
+    expect(firstRun.body.createdCount).toBe(1);
+    expect(firstRun.body.skippedCount).toBe(0);
+
+    const secondRun = await request(app)
+      .post("/api/pms/automations/run")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, propertyId: propertyA.id, type: "OVERDUE_RENT", days: 30, dryRun: false })
+      .expect(201);
+    expect(secondRun.body.createdCount).toBe(0);
+    expect(secondRun.body.skippedCount).toBe(1);
+
+    const automationLogs = await prisma.pmsCommunicationLog.findMany({
+      where: { companyId: company.id, rentDueItemId: dueItem.id, body: { startsWith: "[PMS automation:" } },
+    });
+    expect(automationLogs).toHaveLength(1);
+    expect(automationLogs[0].channel).toBe("INTERNAL");
+    expect(automationLogs[0].status).toBe("LOGGED");
+    expect(automationLogs[0].notes).toContain("External delivery is not enabled");
+
+    const audit = await prisma.accountSecurityEvent.findFirst({
+      where: {
+        actorId: staff.id,
+        title: "PMS automation alerts generated",
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(audit).toBeTruthy();
+
+    await request(app)
+      .post("/api/pms/automations/run")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, propertyId: propertyB.id, type: "OVERDUE_RENT", dryRun: true })
+      .expect(403);
+
+    await prisma.pmsCompanyMember.update({
+      where: { id: staffMember.id },
+      data: { role: "PMS_ACCOUNTANT" },
+    });
+
+    await request(app)
+      .post("/api/pms/automations/run")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, propertyId: propertyA.id, type: "LEASE_EXPIRY", dryRun: true })
+      .expect(200);
+
+    await request(app)
+      .post("/api/pms/automations/run")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, propertyId: propertyA.id, type: "LEASE_EXPIRY", dryRun: false })
+      .expect(403);
+
+    await request(app)
+      .post("/api/pms/automations/run")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, propertyId: propertyA.id, type: "MAINTENANCE_STATUS", dryRun: true })
       .expect(403);
   });
 
