@@ -427,6 +427,7 @@ export default function Dashboard() {
           workspaceSignals: 'مؤشرات التشغيل',
           openWorkspace: 'فتح القسم',
           quickActions: 'إجراءات سريعة',
+          openCrm: 'فتح CRM',
           inventorySignal: 'المخزون',
           inventorySignalHelp: 'عناصر منشورة أو قيد المراجعة',
           demandSignal: 'الطلب',
@@ -506,6 +507,7 @@ export default function Dashboard() {
           workspaceSignals: 'Operational signals',
           openWorkspace: 'Open section',
           quickActions: 'Quick actions',
+          openCrm: 'Open CRM',
           inventorySignal: 'Inventory',
           inventorySignalHelp: 'Published and pending records',
           demandSignal: 'Demand',
@@ -1755,6 +1757,11 @@ export default function Dashboard() {
                 <ArrowRight size={15} aria-hidden="true" />
               </ButtonLink>
             ))}
+            {user?.role !== 'USER' || canAccessAdmin ? (
+              <ButtonLink to="/crm" variant="secondary">
+                {copy.openCrm}
+              </ButtonLink>
+            ) : null}
             {canAccessAdmin ? (
               <ButtonLink to="/admin" variant="secondary">
                 {copy.openAdmin}

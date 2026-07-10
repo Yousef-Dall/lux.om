@@ -28,7 +28,9 @@ export type PmsPermissionKey =
   | "DOCUMENTS_VIEW"
   | "DOCUMENTS_MANAGE"
   | "STAFF_MANAGE"
-  | "IMPORT_EXPORT";
+  | "IMPORT_EXPORT"
+  | "CRM_VIEW"
+  | "CRM_MANAGE";
 
 export type PmsUnitStatus =
   "VACANT" | "OCCUPIED" | "RESERVED" | "MAINTENANCE" | "UNAVAILABLE";

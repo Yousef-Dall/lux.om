@@ -17,6 +17,7 @@ import { activitiesRouter } from './routes/activities';
 import { authRouter } from './routes/auth';
 import { bookingsRouter } from './routes/bookings';
 import { contractsRouter } from './routes/contracts';
+import { crmRouter } from './routes/crm';
 import { marketInsightsRouter } from './routes/marketInsights';
 import { mediaQualityRouter } from './routes/mediaQuality';
 import { mapRouter } from './routes/map';
@@ -112,6 +113,7 @@ const SENSITIVE_API_PREFIXES = [
   '/api/uploads',
   '/api/bookings',
   '/api/contracts',
+  '/api/crm',
   '/api/rent-payments',
   '/api/transactions',
   '/api/reports',
@@ -506,6 +508,7 @@ export function createApp() {
   app.use('/api/notifications', notificationsRouter);
   app.use('/api/uploads', uploadRateLimiter, uploadsRouter);
   app.use('/api/contracts', contractsRouter);
+  app.use('/api/crm', crmRouter);
   app.use('/api/rent-payments', rentPaymentsRouter);
   app.use('/api/transactions', transactionsRouter);
   app.use('/api/market-insights', marketInsightsRouter);

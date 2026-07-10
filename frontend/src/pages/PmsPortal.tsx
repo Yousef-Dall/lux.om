@@ -146,6 +146,7 @@ import { parseCoordinatesFromMapInput } from "../utils/mapLocation";
 
 const pmsNavigation = [
   { to: "/pms/overview", key: "overview", group: "workspace", icon: Home, permission: null },
+  { to: "/crm", key: "crm", group: "workspace", icon: UserRoundCheck, permission: "CRM_VIEW" },
   { to: "/pms/properties", key: "properties", group: "workspace", icon: Building2, permission: "INVENTORY_VIEW" },
   { to: "/pms/units", key: "units", group: "workspace", icon: KeyRound, permission: "INVENTORY_VIEW" },
   { to: "/pms/tenants", key: "tenants", group: "leasing", icon: UserRoundCheck, permission: "TENANCY_VIEW" },
@@ -159,7 +160,7 @@ const pmsNavigation = [
   { to: "/pms/settings", key: "settings", group: "control", icon: Settings, permission: "SETTINGS_MANAGE" },
 ] as const satisfies ReadonlyArray<{
   to: string;
-  key: "overview" | "properties" | "units" | "tenants" | "rentals" | "documents" | "maintenance" | "accounting" | "importExport" | "staff" | "reports" | "settings";
+  key: "overview" | "crm" | "properties" | "units" | "tenants" | "rentals" | "documents" | "maintenance" | "accounting" | "importExport" | "staff" | "reports" | "settings";
   group: "workspace" | "leasing" | "operations" | "control";
   icon: typeof Home;
   permission: PmsPermissionKey | null;
@@ -202,6 +203,11 @@ const pmsPermissionGroups: Array<{
     permissions: ["MAINTENANCE_VIEW", "MAINTENANCE_MANAGE", "DOCUMENTS_VIEW", "DOCUMENTS_MANAGE", "COMMUNICATIONS_SEND"],
   },
   {
+    key: "crm",
+    label: { en: "CRM", ar: "إدارة العملاء" },
+    permissions: ["CRM_VIEW", "CRM_MANAGE"],
+  },
+  {
     key: "admin",
     label: { en: "Administration", ar: "الإدارة" },
     permissions: ["SETTINGS_MANAGE", "STAFF_MANAGE"],
@@ -226,6 +232,8 @@ const pmsPermissionLabels: Record<PmsPermissionKey, { en: string; ar: string }> 
   DOCUMENTS_MANAGE: { en: "Manage documents", ar: "إدارة المستندات" },
   STAFF_MANAGE: { en: "Manage staff", ar: "إدارة الفريق" },
   IMPORT_EXPORT: { en: "Import / export", ar: "استيراد وتصدير" },
+  CRM_VIEW: { en: "View CRM", ar: "عرض إدارة العملاء" },
+  CRM_MANAGE: { en: "Manage CRM", ar: "إدارة العملاء" },
 };
 
 const unitStatuses: PmsUnitStatus[] = [
@@ -943,6 +951,7 @@ export default function PmsPortal() {
           unavailable: "تعذر تحميل بيانات PMS.",
           saved: "تم الحفظ بنجاح.",
           overview: "نظرة عامة",
+          crm: "إدارة العملاء",
           properties: "العقارات",
           units: "الوحدات",
           tenants: "المستأجرون",
@@ -1204,6 +1213,7 @@ export default function PmsPortal() {
           unavailable: "Could not load PMS data.",
           saved: "Saved successfully.",
           overview: "Overview",
+          crm: "CRM",
           properties: "Properties",
           units: "Units",
           tenants: "Tenants",

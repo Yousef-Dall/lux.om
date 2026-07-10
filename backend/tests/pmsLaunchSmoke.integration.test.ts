@@ -15,6 +15,9 @@ async function clearPmsLaunchSmokeDatabase() {
     throw new Error(`Refusing destructive cleanup for database: ${databaseName}`);
   }
 
+  await prisma.crmActivity.deleteMany();
+  await prisma.crmLead.deleteMany();
+  await prisma.crmContact.deleteMany();
   await prisma.inquiry.deleteMany();
   await prisma.accountSecurityEvent.deleteMany();
   await prisma.notification.deleteMany();

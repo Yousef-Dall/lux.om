@@ -82,6 +82,60 @@ enum InquiryType {
   GENERAL
 }
 
+enum CrmLeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  VIEWING_SCHEDULED
+  PROPOSAL_SENT
+  NEGOTIATION
+  WON
+  LOST
+  ARCHIVED
+}
+
+enum CrmLeadPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CrmLeadSource {
+  LISTING_INQUIRY
+  PROJECT_INQUIRY
+  DEVELOPER_PROFILE
+  TRAVEL_AGENCY_PROFILE
+  ACTIVITY_INQUIRY
+  ACTIVITY_BOOKING
+  MAP_DISCOVERY
+  CONTACT_FORM
+  INVESTOR_WATCHLIST
+  VALUATION_REQUEST
+  SAVED_SEARCH
+  PMS_OWNER
+  PMS_TENANT
+  PMS_MAINTENANCE_VENDOR
+  MANUAL
+  ADMIN_CREATED
+}
+
+enum CrmActivityType {
+  NOTE
+  TASK
+  CALL
+  EMAIL
+  MEETING
+  STATUS_CHANGE
+  ASSIGNMENT
+}
+
+enum CrmActivityStatus {
+  OPEN
+  COMPLETED
+  CANCELLED
+}
+
 enum NotificationType {
   ACCOUNT_SECURITY
   BOOKING_CREATED
@@ -155,6 +209,8 @@ enum PmsPermissionKey {
   DOCUMENTS_MANAGE
   STAFF_MANAGE
   IMPORT_EXPORT
+  CRM_VIEW
+  CRM_MANAGE
 }
 
 enum PmsUnitStatus {
@@ -711,6 +767,17 @@ model User {
   savedSearches          SavedSearch[]
   investorWatchlistItems InvestorWatchlistItem[]
 
+  crmContactsOwned      CrmContact[]  @relation("CrmContactOwner")
+  crmContactsLinked     CrmContact[]  @relation("CrmContactUser")
+  crmContactsCreated    CrmContact[]  @relation("CrmContactCreatedBy")
+  crmLeadsOwned         CrmLead[]     @relation("CrmLeadOwner")
+  crmLeadsAssigned      CrmLead[]     @relation("CrmLeadAssignedTo")
+  crmLeadsCreated       CrmLead[]     @relation("CrmLeadCreatedBy")
+  crmLeadsUpdated       CrmLead[]     @relation("CrmLeadUpdatedBy")
+  crmActivitiesCreated  CrmActivity[] @relation("CrmActivityCreatedBy")
+  crmActivitiesAssigned CrmActivity[] @relation("CrmActivityAssignedTo")
+  crmActivitiesUpdated  CrmActivity[] @relation("CrmActivityUpdatedBy")
+
   @@index([role])
   @@index([suspendedAt])
   @@index([deactivatedAt])
@@ -798,6 +865,8 @@ model DeveloperCompany {
   pmsInspections PmsInspection[]
   pmsDocuments PmsDocument[]
   pmsMoveChecklistItems PmsMoveChecklistItem[]
+  crmContacts CrmContact[]
+  crmLeads    CrmLead[]
 
   @@index([verified])
   @@index([featured])
@@ -898,6 +967,7 @@ model DeveloperProject {
   listings      Listing[]
   pmsProperties PmsProperty[]
   pmsUnits      PmsUnit[]
+  crmLeads      CrmLead[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1030,6 +1100,7 @@ model Listing {
   watchlistItems      InvestorWatchlistItem[]
   linkedPmsProperties PmsProperty[] @relation("PmsPropertyPublicListing")
   linkedPmsUnits      PmsUnit[] @relation("PmsUnitPublicListing")
+  crmLeads            CrmLead[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1190,6 +1261,7 @@ model Activity {
   transactions MarketplaceTransaction[]
   reviews      Review[]
   savedBy      SavedActivity[]
+  crmLeads     CrmLead[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1288,6 +1360,7 @@ model Booking {
   transactions  MarketplaceTransaction[]
   notifications Notification[]
   events        BookingEvent[]
+  crmLead       CrmLead?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1340,6 +1413,8 @@ model Inquiry {
 
   activityId String?
   activity   Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+
+  crmLead CrmLead?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1785,6 +1860,7 @@ model ValuationRequest {
   reviewedBy   User?   @relation("ValuationReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   watchlistItems InvestorWatchlistItem[]
+  crmLead        CrmLead?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2057,6 +2133,7 @@ model PmsProperty {
   pmsMoveChecklistItems PmsMoveChecklistItem[]
   pmsPortfolioProperties PmsPortfolioProperty[]
   pmsMemberPropertyAccesses PmsMemberPropertyAccess[]
+  crmLeads CrmLead[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2161,6 +2238,8 @@ model PmsTenant {
   pmsTenantPortalAccesses PmsTenantPortalAccess[]
   pmsDocuments PmsDocument[]
   pmsMoveChecklistItems PmsMoveChecklistItem[]
+  crmContacts CrmContact[]
+  crmLeads    CrmLead[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2501,6 +2580,7 @@ model PmsVendor {
 
   workOrders PmsWorkOrder[]
   quotes     PmsMaintenanceQuote[]
+  crmLeads   CrmLead[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2949,6 +3029,8 @@ model SavedSearch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  crmLeads CrmLead[]
+
   @@index([userId])
   @@index([category])
   @@index([alertFrequency])
@@ -2974,9 +3056,166 @@ model InvestorWatchlistItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  crmLeads CrmLead[]
+
   @@index([userId])
   @@index([listingId])
   @@index([valuationRequestId])
+}
+
+model CrmContact {
+  id              String  @id @default(cuid())
+  fullName        String
+  email           String?
+  phone           String?
+  normalizedEmail String?
+  normalizedPhone String?
+  notes           String?
+
+  companyId String?
+  company   DeveloperCompany? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  ownerUserId String?
+  ownerUser   User? @relation("CrmContactOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User? @relation("CrmContactUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  pmsTenantId String?
+  pmsTenant   PmsTenant? @relation(fields: [pmsTenantId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User? @relation("CrmContactCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  leads CrmLead[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, normalizedEmail])
+  @@index([companyId, normalizedPhone])
+  @@index([ownerUserId, normalizedEmail])
+  @@index([ownerUserId, normalizedPhone])
+  @@index([userId])
+  @@index([pmsTenantId])
+  @@index([createdAt])
+}
+
+model CrmLead {
+  id           String          @id @default(cuid())
+  title        String
+  description  String?
+  status       CrmLeadStatus   @default(NEW)
+  priority     CrmLeadPriority @default(MEDIUM)
+  source       CrmLeadSource   @default(MANUAL)
+  sourceLabel  String?
+  expectedValue Decimal?       @db.Decimal(14, 3)
+  currency      String         @default("OMR") @db.VarChar(3)
+  nextFollowUpAt DateTime?
+  lostReason     String?
+  archivedAt     DateTime?
+
+  contactId String
+  contact   CrmContact @relation(fields: [contactId], references: [id], onDelete: Restrict)
+
+  companyId String?
+  company   DeveloperCompany? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  ownerUserId String?
+  ownerUser   User? @relation("CrmLeadOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  assignedToId String?
+  assignedTo   User? @relation("CrmLeadAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User? @relation("CrmLeadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  updatedById String?
+  updatedBy   User? @relation("CrmLeadUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  inquiryId String? @unique
+  inquiry   Inquiry? @relation(fields: [inquiryId], references: [id], onDelete: SetNull)
+
+  bookingId String? @unique
+  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  listingId String?
+  listing   Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+
+  activityId String?
+  activity   Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+
+  developerProjectId String?
+  developerProject   DeveloperProject? @relation(fields: [developerProjectId], references: [id], onDelete: SetNull)
+
+  valuationRequestId String? @unique
+  valuationRequest   ValuationRequest? @relation(fields: [valuationRequestId], references: [id], onDelete: SetNull)
+
+  savedSearchId String?
+  savedSearch   SavedSearch? @relation(fields: [savedSearchId], references: [id], onDelete: SetNull)
+
+  watchlistItemId String?
+  watchlistItem   InvestorWatchlistItem? @relation(fields: [watchlistItemId], references: [id], onDelete: SetNull)
+
+  pmsTenantId String?
+  pmsTenant   PmsTenant? @relation(fields: [pmsTenantId], references: [id], onDelete: SetNull)
+
+  pmsPropertyId String?
+  pmsProperty   PmsProperty? @relation(fields: [pmsPropertyId], references: [id], onDelete: SetNull)
+
+  pmsVendorId String?
+  pmsVendor   PmsVendor? @relation(fields: [pmsVendorId], references: [id], onDelete: SetNull)
+
+  activities CrmActivity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, status, updatedAt])
+  @@index([ownerUserId, status, updatedAt])
+  @@index([assignedToId, status, nextFollowUpAt])
+  @@index([contactId])
+  @@index([source])
+  @@index([priority])
+  @@index([createdAt])
+  @@index([listingId])
+  @@index([activityId])
+  @@index([developerProjectId])
+  @@index([savedSearchId])
+  @@index([watchlistItemId])
+  @@index([pmsTenantId])
+  @@index([pmsPropertyId])
+  @@index([pmsVendorId])
+}
+
+model CrmActivity {
+  id          String            @id @default(cuid())
+  type        CrmActivityType
+  status      CrmActivityStatus @default(OPEN)
+  subject     String
+  body        String?
+  dueAt       DateTime?
+  completedAt DateTime?
+
+  leadId String
+  lead   CrmLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User? @relation("CrmActivityCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  assignedToId String?
+  assignedTo   User? @relation("CrmActivityAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  updatedById String?
+  updatedBy   User? @relation("CrmActivityUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadId, createdAt])
+  @@index([leadId, status, dueAt])
+  @@index([assignedToId, status, dueAt])
+  @@index([type])
 }
 
 model OauthLoginCode {

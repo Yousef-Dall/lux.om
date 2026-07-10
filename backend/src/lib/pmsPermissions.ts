@@ -19,7 +19,9 @@ export type PmsPermissionKeyLike =
   | "DOCUMENTS_VIEW"
   | "DOCUMENTS_MANAGE"
   | "STAFF_MANAGE"
-  | "IMPORT_EXPORT";
+  | "IMPORT_EXPORT"
+  | "CRM_VIEW"
+  | "CRM_MANAGE";
 
 export const DEFAULT_PMS_ROLE_PERMISSIONS: Record<PmsMemberRole, PmsPermissionKeyLike[]> = {
   PMS_OWNER: [
@@ -40,6 +42,8 @@ export const DEFAULT_PMS_ROLE_PERMISSIONS: Record<PmsMemberRole, PmsPermissionKe
     "DOCUMENTS_MANAGE",
     "STAFF_MANAGE",
     "IMPORT_EXPORT",
+    "CRM_VIEW",
+    "CRM_MANAGE",
   ],
   PMS_MANAGER: [
     "INVENTORY_VIEW",
@@ -58,6 +62,8 @@ export const DEFAULT_PMS_ROLE_PERMISSIONS: Record<PmsMemberRole, PmsPermissionKe
     "DOCUMENTS_VIEW",
     "DOCUMENTS_MANAGE",
     "IMPORT_EXPORT",
+    "CRM_VIEW",
+    "CRM_MANAGE",
   ],
   PMS_ACCOUNTANT: [
     "TENANCY_VIEW",
@@ -84,6 +90,8 @@ export const DEFAULT_PMS_ROLE_PERMISSIONS: Record<PmsMemberRole, PmsPermissionKe
     "MAINTENANCE_MANAGE",
     "REPORTS_VIEW",
     "DOCUMENTS_VIEW",
+    "CRM_VIEW",
+    "CRM_MANAGE",
   ],
   PMS_VIEWER: [
     "INVENTORY_VIEW",
@@ -128,6 +136,31 @@ export function assertHasPmsPermission(
   if (!hasPmsPermission(subject, permission)) {
     throw new AppError(403, message);
   }
+}
+
+
+export function canViewCrm(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "CRM_VIEW");
+}
+
+export function assertCanViewCrm(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "CRM_VIEW",
+    "Your workspace access cannot view CRM records.",
+  );
+}
+
+export function canManageCrm(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "CRM_MANAGE");
+}
+
+export function assertCanManageCrm(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "CRM_MANAGE",
+    "Your workspace access can view CRM records but cannot change them.",
+  );
 }
 
 export function canManagePmsInventory(subject: PmsPermissionSubject) {

@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { createCrmLeadForInquiry } from '../services/crmLeadService';
 import { AppError } from '../utils/http';
 
 export const inquiriesRouter = Router();
@@ -80,55 +81,87 @@ inquiriesRouter.post('/', requireAuth(false), async (req, res, next) => {
       throw new AppError(400, 'activityId is required for activity inquiries');
     }
 
-    if (data.listingId) {
-      const listing = await prisma.listing.findUnique({
-        where: {
-          id: data.listingId
-        },
-        select: {
-          id: true,
-          status: true
-        }
-      });
+    const [listing, activity] = await Promise.all([
+      data.listingId
+        ? prisma.listing.findUnique({
+            where: { id: data.listingId },
+            select: {
+              id: true,
+              status: true,
+              ownerId: true,
+              developerId: true,
+              title: true,
+              titleEn: true,
+              titleAr: true
+            }
+          })
+        : Promise.resolve(null),
+      data.activityId
+        ? prisma.activity.findUnique({
+            where: { id: data.activityId },
+            select: {
+              id: true,
+              status: true,
+              ownerId: true,
+              titleEn: true,
+              titleAr: true
+            }
+          })
+        : Promise.resolve(null)
+    ]);
 
-      if (!listing || listing.status !== 'APPROVED') {
-        throw new AppError(404, 'Listing not found');
-      }
+    if (data.listingId && (!listing || listing.status !== 'APPROVED')) {
+      throw new AppError(404, 'Listing not found');
     }
 
-    if (data.activityId) {
-      const activity = await prisma.activity.findUnique({
-        where: {
-          id: data.activityId
-        },
-        select: {
-          id: true,
-          status: true
-        }
-      });
-
-      if (!activity || activity.status !== 'APPROVED') {
-        throw new AppError(404, 'Activity not found');
-      }
+    if (data.activityId && (!activity || activity.status !== 'APPROVED')) {
+      throw new AppError(404, 'Activity not found');
     }
 
-    const inquiry = await prisma.inquiry.create({
-      data: {
-        type: data.type,
-        name: data.name,
-        email: data.email,
-        phone: data.phone?.trim() || null,
-        message: data.message,
-        userId: req.user?.id ?? null,
-        listingId: data.listingId ?? null,
-        activityId: data.activityId ?? null
-      },
-      include: inquiryInclude
+    const inquiry = await prisma.$transaction(async (tx) => {
+      const created = await tx.inquiry.create({
+        data: {
+          type: data.type,
+          name: data.name,
+          email: data.email,
+          phone: data.phone?.trim() || null,
+          message: data.message,
+          userId: req.user?.id ?? null,
+          listingId: data.listingId ?? null,
+          activityId: data.activityId ?? null
+        },
+        include: inquiryInclude
+      });
+
+      await createCrmLeadForInquiry(tx, {
+        inquiryId: created.id,
+        type: created.type,
+        name: created.name,
+        email: created.email,
+        phone: created.phone,
+        message: created.message,
+        userId: created.userId,
+        listing: listing
+          ? {
+              id: listing.id,
+              ownerId: listing.ownerId,
+              developerId: listing.developerId,
+              title: listing.titleEn || listing.titleAr || listing.title
+            }
+          : null,
+        activity: activity
+          ? {
+              id: activity.id,
+              ownerId: activity.ownerId,
+              title: activity.titleEn || activity.titleAr || 'Activity'
+            }
+          : null
+      });
+
+      return created;
     });
 
-    res.status(201).json({
-      inquiry
-    });
+    res.status(201).json({ inquiry });
   } catch (error) {
     next(error);
   }

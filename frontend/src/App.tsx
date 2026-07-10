@@ -46,6 +46,7 @@ const AdminTrustReports = lazy(() => import('./pages/AdminTrustReports'));
 const PmsPortal = lazy(() => import('./pages/PmsPortal'));
 const TenantPortal = lazy(() => import('./pages/TenantPortal'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Crm = lazy(() => import('./pages/Crm'));
 const DeveloperProjectDetails = lazy(() => import('./pages/DeveloperProjectDetails'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Notifications = lazy(() => import('./pages/Notifications'));
@@ -208,6 +209,10 @@ const seoCopy = {
       title: 'Dashboard | lux.om',
       description: 'Manage your lux.om bookings, listings, activities, notifications, and account.'
     },
+    crm: {
+      title: 'CRM | lux.om',
+      description: 'Manage private marketplace and PMS leads, relationships, tasks, and follow-up.'
+    },
     admin: {
       title: 'Admin | lux.om',
       description: 'Manage lux.om marketplace publishing, bookings, finance, partners, and inquiries.'
@@ -296,6 +301,10 @@ const seoCopy = {
       title: 'لوحة التحكم | lux.om',
       description: 'إدارة حجوزاتك وإعلاناتك وأنشطتك وإشعاراتك وحسابك في lux.om.'
     },
+    crm: {
+      title: 'CRM | lux.om',
+      description: 'إدارة عملاء السوق وPMS والعلاقات والمهام والمتابعة ضمن مساحة خاصة.'
+    },
     admin: {
       title: 'الإدارة | lux.om',
       description: 'إدارة النشر والحجوزات والمالية والشركاء والاستفسارات في lux.om.'
@@ -342,6 +351,7 @@ function getSeoKey(pathname: string) {
   if (pathname.startsWith('/refund-policy')) return 'refundPolicy';
   if (pathname.startsWith('/verification-policy')) return 'verificationPolicy';
   if (pathname.startsWith('/dashboard')) return 'dashboard';
+  if (pathname.startsWith('/crm')) return 'crm';
   if (pathname.startsWith('/notifications')) return 'dashboard';
   if (pathname.startsWith('/admin')) return 'admin';
   if (pathname.startsWith('/pms')) return 'pms';
@@ -690,6 +700,7 @@ export default function App() {
     isPmsRoute ||
     isTenantRoute ||
     pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/crm') ||
     pathname.startsWith('/profile') ||
     pathname.startsWith('/notifications') ||
     pathname.startsWith('/add-listing') ||
@@ -806,6 +817,23 @@ export default function App() {
             element={
               <RequireAuth>
                 <Dashboard />
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="/crm"
+            element={
+              <RequireAuth>
+                <Crm />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/crm/:leadId"
+            element={
+              <RequireAuth>
+                <Crm />
               </RequireAuth>
             }
           />

@@ -54,6 +54,9 @@ async function clearTestDatabase() {
     );
   }
 
+  await prisma.crmActivity.deleteMany();
+  await prisma.crmLead.deleteMany();
+  await prisma.crmContact.deleteMany();
   await prisma.inquiry.deleteMany();
   await prisma.pmsCompanyMember.deleteMany();
   await prisma.pmsCompanyEntitlement.deleteMany();

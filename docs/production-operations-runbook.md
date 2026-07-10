@@ -139,3 +139,13 @@ Weekly:
 - Review SMTP provider delivery and bounce dashboard.
 - Review production logs for repeated auth or rate-limit errors.
 - Confirm backups are healthy.
+
+## CRM Stage 21C operational checks
+
+The private CRM is served at `/crm` with API routes under `/api/crm`. Treat CRM contact data, notes, assignments, expected values, source links, and timeline records as confidential operational data. CRM endpoints are included in the sensitive no-store API policy.
+
+Before release, verify one marketplace-owner workspace, one global admin, one unrestricted PMS CRM member, and two property-scoped PMS CRM members. Confirm source-owner, company, and assigned-property boundaries using direct API requests as well as the UI. General contact-form leads with no owner or company must remain admin-only.
+
+Marketplace listing and activity inquiries create their CRM lead inside the same transaction. After deployment, submit one test inquiry and confirm the inquiry, contact, lead, source link, assignment, and initial timeline note are present exactly once.
+
+See `docs/crm-stage21c-foundation.md` for data ownership, API routes, transition rules, and the complete verification checklist.

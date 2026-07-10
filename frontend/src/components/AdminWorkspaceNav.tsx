@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Mail,
   ShieldCheck,
+  UserRoundCheck,
   Users
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
@@ -33,6 +34,11 @@ const adminWorkspaceLinks = [
     icon: Building2
   },
   {
+    to: '/crm',
+    key: 'crm',
+    icon: UserRoundCheck
+  },
+  {
     to: '/admin/reports',
     key: 'reports',
     icon: AlertTriangle
@@ -53,6 +59,7 @@ export default function AdminWorkspaceNav() {
           emailDeliveries: 'سجل البريد',
           reports: 'البلاغات',
           pms: 'صلاحيات PMS',
+          crm: 'CRM',
           aria: 'تنقل مساحة الإدارة'
         }
       : {
@@ -64,6 +71,7 @@ export default function AdminWorkspaceNav() {
           emailDeliveries: 'Email deliveries',
           reports: 'Reports',
           pms: 'PMS access',
+          crm: 'CRM',
           aria: 'Admin workspace navigation'
         };
 
