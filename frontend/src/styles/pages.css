@@ -18200,7 +18200,21 @@ transition: none;
 
 .pms-sidebar__nav {
   display: grid;
+  gap: 18px;
+}
+
+.pms-sidebar__group {
+  display: grid;
   gap: 8px;
+}
+
+.pms-sidebar__group-label {
+  padding-inline: 10px;
+  color: rgba(255, 247, 223, 0.48);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .pms-sidebar__link {
@@ -18443,6 +18457,10 @@ transition: none;
 
   .pms-sidebar__nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pms-sidebar__group {
+    align-content: start;
   }
 
   .pms-header,

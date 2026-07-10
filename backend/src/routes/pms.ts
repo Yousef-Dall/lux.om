@@ -43,6 +43,7 @@ import {
 } from "../lib/pmsAccess";
 import {
   assertCanCollectPmsRent,
+  assertCanViewPmsRent,
   assertCanManagePmsAccounting,
   assertCanExportPmsData,
   assertCanManagePmsDocuments,
@@ -52,7 +53,9 @@ import {
   assertCanManagePmsMaintenanceDocuments,
   assertCanManagePmsInventory,
   assertCanViewPmsAccounting,
+  assertCanViewPmsReports,
   assertCanManagePmsMaintenance,
+  assertCanViewPmsMaintenance,
   assertCanManagePmsOperations,
   assertCanSendPmsCommunication,
   assertCanViewPmsCommunications,
@@ -2096,6 +2099,204 @@ function assertCanAccessPmsPropertyScope(access: PmsWorkspaceAccess, propertyId:
   }
 }
 
+function assertCanAccessOptionalPmsPropertyScope(
+  access: PmsWorkspaceAccess,
+  propertyId: string | null | undefined,
+) {
+  if (!isPmsPropertyScopeRestricted(access)) return;
+  if (!propertyId) {
+    throw new AppError(
+      403,
+      "Property-scoped PMS members can only access records linked to an assigned property.",
+    );
+  }
+  assertCanAccessPmsPropertyScope(access, propertyId);
+}
+
+function pmsRequestedOrScopedPropertyIdWhere(
+  access: PmsWorkspaceAccess,
+  requestedPropertyId?: string | null,
+): string | Prisma.StringFilter | undefined {
+  if (requestedPropertyId) {
+    assertCanAccessPmsPropertyScope(access, requestedPropertyId);
+    return requestedPropertyId;
+  }
+
+  return pmsScopedPropertyIdWhere(access);
+}
+
+function assertCanRunPmsBulkImport(access: PmsWorkspaceAccess) {
+  if (isPmsPropertyScopeRestricted(access)) {
+    throw new AppError(
+      403,
+      "Bulk PMS imports require workspace-wide property access.",
+    );
+  }
+}
+
+function assertCanAdministerPmsStaff(access: PmsWorkspaceAccess) {
+  assertCanManagePmsStaff(access.member);
+  if (isPmsPropertyScopeRestricted(access)) {
+    throw new AppError(
+      403,
+      "PMS staff administration requires workspace-wide property access.",
+    );
+  }
+}
+
+function assertCanDelegatePmsStaffAccess(
+  access: PmsWorkspaceAccess,
+  input: {
+    role?: PmsMemberRole;
+    permissionKeys?: readonly PmsPermissionKey[];
+    existingRole?: PmsMemberRole;
+    existingPermissionKeys?: readonly PmsPermissionKey[];
+  },
+) {
+  if (access.member.role === PmsMemberRole.PMS_OWNER) return;
+
+  if (input.role === PmsMemberRole.PMS_OWNER || input.existingRole === PmsMemberRole.PMS_OWNER) {
+    throw new AppError(403, "Only a PMS owner can create or change owner access.");
+  }
+
+  const delegatedRole = input.role ?? input.existingRole;
+  const delegatedCustomPermissions =
+    input.permissionKeys ?? input.existingPermissionKeys ?? [];
+  const delegatedPermissions: readonly PmsPermissionKey[] = delegatedRole
+    ? Array.from(
+        new Set([
+          ...getDefaultPmsPermissionKeys(delegatedRole),
+          ...delegatedCustomPermissions,
+        ]),
+      )
+    : delegatedCustomPermissions;
+
+  if (delegatedPermissions.includes(PmsPermissionKey.STAFF_MANAGE)) {
+    throw new AppError(403, "Only a PMS owner can delegate staff administration.");
+  }
+
+  const actorPermissions: readonly string[] = access.member.permissionKeys;
+  const elevatedPermission = delegatedPermissions.find(
+    (permission) => !actorPermissions.includes(permission),
+  );
+  if (elevatedPermission) {
+    throw new AppError(
+      403,
+      `You cannot delegate the ${elevatedPermission} PMS permission.`,
+    );
+  }
+}
+
+async function assertPmsOwnerContinuity(input: {
+  companyId: string;
+  memberId: string;
+  existingRole: PmsMemberRole;
+  nextRole?: PmsMemberRole;
+  nextActive?: boolean;
+}) {
+  const removesActiveOwner =
+    input.existingRole === PmsMemberRole.PMS_OWNER &&
+    ((input.nextRole !== undefined && input.nextRole !== PmsMemberRole.PMS_OWNER) ||
+      input.nextActive === false);
+  if (!removesActiveOwner) return;
+
+  const otherActiveOwners = await prisma.pmsCompanyMember.count({
+    where: {
+      companyId: input.companyId,
+      id: { not: input.memberId },
+      role: PmsMemberRole.PMS_OWNER,
+      active: true,
+    },
+  });
+  if (otherActiveOwners === 0) {
+    throw new AppError(400, "At least one active PMS owner must remain in the workspace.");
+  }
+}
+
+async function assertCanAccessPmsUnitScope(
+  access: PmsWorkspaceAccess,
+  unitId: string,
+) {
+  if (!isPmsPropertyScopeRestricted(access)) return;
+
+  const unit = await prisma.pmsUnit.findFirst({
+    where: { id: unitId, companyId: access.company.id },
+    select: { propertyId: true },
+  });
+
+  if (!unit) {
+    throw new AppError(400, "PMS unit must belong to this PMS company.");
+  }
+  assertCanAccessPmsPropertyScope(access, unit.propertyId);
+}
+
+async function assertCanAccessPmsTenantScope(
+  access: PmsWorkspaceAccess,
+  tenantId: string,
+) {
+  if (!isPmsPropertyScopeRestricted(access)) return;
+
+  const linkedLease = await prisma.pmsLease.findFirst({
+    where: {
+      companyId: access.company.id,
+      tenantId,
+      propertyId: { in: access.member.propertyScope.propertyIds },
+    },
+    select: { id: true },
+  });
+
+  if (!linkedLease) {
+    throw new AppError(403, "Your PMS access is restricted to tenants in selected properties.");
+  }
+}
+
+async function assertCanAccessPmsCommunicationScope(
+  access: PmsWorkspaceAccess,
+  input: {
+    tenantId?: string | null;
+    leaseId?: string | null;
+    rentDueItemId?: string | null;
+    workOrderId?: string | null;
+  },
+) {
+  if (!isPmsPropertyScopeRestricted(access)) return;
+
+  if (input.leaseId) {
+    const lease = await prisma.pmsLease.findFirst({
+      where: { id: input.leaseId, companyId: access.company.id },
+      select: { propertyId: true },
+    });
+    if (!lease) throw new AppError(400, "PMS communication lease must belong to this company.");
+    assertCanAccessPmsPropertyScope(access, lease.propertyId);
+  }
+
+  if (input.rentDueItemId) {
+    const rentDueItem = await prisma.pmsRentDueItem.findFirst({
+      where: { id: input.rentDueItemId, companyId: access.company.id },
+      select: { propertyId: true },
+    });
+    if (!rentDueItem) {
+      throw new AppError(400, "PMS communication rent item must belong to this company.");
+    }
+    assertCanAccessPmsPropertyScope(access, rentDueItem.propertyId);
+  }
+
+  if (input.workOrderId) {
+    const workOrder = await prisma.pmsWorkOrder.findFirst({
+      where: { id: input.workOrderId, companyId: access.company.id },
+      select: { propertyId: true },
+    });
+    if (!workOrder) {
+      throw new AppError(400, "PMS communication work order must belong to this company.");
+    }
+    assertCanAccessPmsPropertyScope(access, workOrder.propertyId);
+  }
+
+  if (input.tenantId) {
+    await assertCanAccessPmsTenantScope(access, input.tenantId);
+  }
+}
+
 async function assertPmsPropertyIdsBelongToCompany(companyId: string, propertyIds: string[]) {
   const uniqueIds = Array.from(new Set(propertyIds));
   if (uniqueIds.length === 0) return;
@@ -2578,7 +2779,10 @@ type PmsRentPaymentWithRelations = Prisma.PmsRentPaymentGetPayload<{
   include: typeof pmsRentPaymentInclude;
 }>;
 
-function pmsTenantResponse(tenant: PmsTenantWithRelations) {
+function pmsTenantResponse(
+  tenant: PmsTenantWithRelations,
+  scopedLeaseCount?: number,
+) {
   return {
     id: tenant.id,
     companyId: tenant.companyId,
@@ -2594,7 +2798,7 @@ function pmsTenantResponse(tenant: PmsTenantWithRelations) {
     notes: tenant.notes,
     active: tenant.active,
     counts: {
-      leases: tenant._count.leases,
+      leases: scopedLeaseCount ?? tenant._count.leases,
     },
     portalAccesses: tenant.pmsTenantPortalAccesses.map((access) => ({
       id: access.id,
@@ -3721,8 +3925,12 @@ pmsRouter.get("/tenants", requireAuth(), async (req, res, next) => {
       companyId: query.companyId,
     });
     const search = query.search?.trim();
+    const scopedPropertyId = pmsScopedPropertyIdWhere(access);
     const where: Prisma.PmsTenantWhereInput = {
       companyId: access.company.id,
+      ...(scopedPropertyId
+        ? { leases: { some: { propertyId: scopedPropertyId } } }
+        : {}),
       ...(query.active === "ACTIVE" ? { active: true } : {}),
       ...(query.active === "INACTIVE" ? { active: false } : {}),
       ...(search
@@ -3748,6 +3956,20 @@ pmsRouter.get("/tenants", requireAuth(), async (req, res, next) => {
       }),
       prisma.pmsTenant.count({ where }),
     ]);
+    const scopedLeases = scopedPropertyId
+      ? await prisma.pmsLease.findMany({
+          where: {
+            companyId: access.company.id,
+            tenantId: { in: tenants.map((tenant) => tenant.id) },
+            propertyId: scopedPropertyId,
+          },
+          select: { tenantId: true },
+        })
+      : [];
+    const scopedLeaseCounts = scopedLeases.reduce((counts, lease) => {
+      counts.set(lease.tenantId, (counts.get(lease.tenantId) ?? 0) + 1);
+      return counts;
+    }, new Map<string, number>());
 
     res.json({
       workspace: {
@@ -3755,7 +3977,12 @@ pmsRouter.get("/tenants", requireAuth(), async (req, res, next) => {
         member: access.member,
         entitlement: access.entitlement,
       },
-      tenants: tenants.map(pmsTenantResponse),
+      tenants: tenants.map((tenant) =>
+        pmsTenantResponse(
+          tenant,
+          scopedPropertyId ? scopedLeaseCounts.get(tenant.id) ?? 0 : undefined,
+        ),
+      ),
       pagination: {
         take: query.take,
         skip: query.skip,
@@ -3779,7 +4006,7 @@ pmsRouter.post("/tenants", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: data.companyId,
     });
-    assertCanManagePmsTenancies(access.member.role);
+    assertCanManagePmsTenancies(access.member);
 
     const tenant = await prisma.pmsTenant.create({
       data: {
@@ -3836,6 +4063,16 @@ pmsRouter.get("/tenants/:tenantId", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: tenant.companyId,
     });
+    await assertCanAccessPmsTenantScope(access, tenant.id);
+    const scopedLeaseCount = isPmsPropertyScopeRestricted(access)
+      ? await prisma.pmsLease.count({
+          where: {
+            companyId: access.company.id,
+            tenantId: tenant.id,
+            propertyId: { in: access.member.propertyScope.propertyIds },
+          },
+        })
+      : undefined;
 
     res.json({
       workspace: {
@@ -3843,7 +4080,7 @@ pmsRouter.get("/tenants/:tenantId", requireAuth(), async (req, res, next) => {
         member: access.member,
         entitlement: access.entitlement,
       },
-      tenant: pmsTenantResponse(tenant),
+      tenant: pmsTenantResponse(tenant, scopedLeaseCount),
     });
   } catch (error) {
     next(error);
@@ -3871,13 +4108,23 @@ pmsRouter.patch("/tenants/:tenantId", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: existing.companyId,
     });
-    assertCanManagePmsTenancies(access.member.role);
+    assertCanManagePmsTenancies(access.member);
+    await assertCanAccessPmsTenantScope(access, existing.id);
 
     const tenant = await prisma.pmsTenant.update({
       where: { id: tenantId },
       data: buildPmsTenantWriteData(data, req.user.id),
       include: pmsTenantInclude,
     });
+    const scopedLeaseCount = isPmsPropertyScopeRestricted(access)
+      ? await prisma.pmsLease.count({
+          where: {
+            companyId: access.company.id,
+            tenantId: tenant.id,
+            propertyId: { in: access.member.propertyScope.propertyIds },
+          },
+        })
+      : undefined;
 
     await recordPmsWorkspaceAudit({
       actorId: req.user.id,
@@ -3893,7 +4140,7 @@ pmsRouter.patch("/tenants/:tenantId", requireAuth(), async (req, res, next) => {
       },
     });
 
-    res.json({ tenant: pmsTenantResponse(tenant) });
+    res.json({ tenant: pmsTenantResponse(tenant, scopedLeaseCount) });
   } catch (error) {
     next(error);
   }
@@ -3920,7 +4167,8 @@ pmsRouter.post("/tenants/:tenantId/portal-access", requireAuth(), async (req, re
       userId: req.user.id,
       companyId: tenant.companyId,
     });
-    assertCanManagePmsTenancies(access.member.role);
+    assertCanManagePmsTenancies(access.member);
+    await assertCanAccessPmsTenantScope(access, tenant.id);
 
     const targetUser = await prisma.user.findFirst({
       where: data.userId ? { id: data.userId } : { email: data.email ?? '' },
@@ -4024,11 +4272,12 @@ pmsRouter.get("/leases", requireAuth(), async (req, res, next) => {
       unitId: query.unitId,
     });
     const search = query.search?.trim();
+    const propertyId = pmsRequestedOrScopedPropertyIdWhere(access, query.propertyId);
     const where: Prisma.PmsLeaseWhereInput = {
       companyId: access.company.id,
       ...(query.status !== "ALL" ? { status: query.status } : {}),
       ...(query.tenantId ? { tenantId: query.tenantId } : {}),
-      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(propertyId ? { propertyId } : {}),
       ...(query.unitId ? { unitId: query.unitId } : {}),
       ...(search
         ? {
@@ -4084,7 +4333,8 @@ pmsRouter.post("/leases", requireAuth(), async (req, res, next) => {
       userId,
       companyId: data.companyId,
     });
-    assertCanManagePmsTenancies(access.member.role);
+    assertCanManagePmsTenancies(access.member);
+    assertCanAccessPmsPropertyScope(access, data.propertyId);
 
     const [tenant, property, unit] = await Promise.all([
       prisma.pmsTenant.findFirst({
@@ -4242,6 +4492,7 @@ pmsRouter.get("/leases/:leaseId", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: lease.companyId,
     });
+    assertCanAccessPmsPropertyScope(access, lease.propertyId);
 
     res.json({
       workspace: {
@@ -4267,7 +4518,7 @@ pmsRouter.patch("/leases/:leaseId", requireAuth(), async (req, res, next) => {
     const userId = req.user.id;
     const existing = await prisma.pmsLease.findUnique({
       where: { id: leaseId },
-      select: { id: true, companyId: true, unitId: true, startDate: true, endDate: true },
+      select: { id: true, companyId: true, propertyId: true, unitId: true, startDate: true, endDate: true },
     });
 
     if (!existing) {
@@ -4278,7 +4529,8 @@ pmsRouter.patch("/leases/:leaseId", requireAuth(), async (req, res, next) => {
       userId,
       companyId: existing.companyId,
     });
-    assertCanManagePmsTenancies(access.member.role);
+    assertCanManagePmsTenancies(access.member);
+    assertCanAccessPmsPropertyScope(access, existing.propertyId);
 
     if (data.startDate && data.endDate && data.endDate < data.startDate) {
       throw new AppError(400, "Lease end date must be after the start date.");
@@ -4372,7 +4624,8 @@ pmsRouter.post("/leases/:leaseId/renewal-draft", requireAuth(), async (req, res,
     if (!existing) throw new AppError(404, "PMS lease not found");
 
     const access = await resolvePmsAccessOrThrow({ userId, companyId: existing.companyId });
-    assertCanManagePmsTenancies(access.member.role);
+    assertCanManagePmsTenancies(access.member);
+    assertCanAccessPmsPropertyScope(access, existing.propertyId);
 
     const renewal = await prisma.pmsLease.create({
       data: {
@@ -4423,11 +4676,15 @@ pmsRouter.get("/leases/:leaseId/checklists", requireAuth(), async (req, res, nex
     if (!req.user) throw new AppError(401, "Unauthorized");
 
     const { leaseId } = pmsLeaseParamsSchema.parse(req.params);
-    const lease = await prisma.pmsLease.findUnique({ where: { id: leaseId }, select: { id: true, companyId: true } });
+    const lease = await prisma.pmsLease.findUnique({
+      where: { id: leaseId },
+      select: { id: true, companyId: true, propertyId: true },
+    });
     if (!lease) throw new AppError(404, "PMS lease not found");
 
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: lease.companyId });
-    assertCanViewPmsDocuments(access.member.role);
+    assertCanViewPmsDocuments(access.member);
+    assertCanAccessPmsPropertyScope(access, lease.propertyId);
 
     const checklistItems = await prisma.pmsMoveChecklistItem.findMany({
       where: { companyId: access.company.id, leaseId },
@@ -4458,7 +4715,8 @@ pmsRouter.post("/leases/:leaseId/checklists", requireAuth(), async (req, res, ne
     if (!lease) throw new AppError(404, "PMS lease not found");
 
     const access = await resolvePmsAccessOrThrow({ userId, companyId: lease.companyId });
-    assertCanManagePmsTenancies(access.member.role);
+    assertCanManagePmsTenancies(access.member);
+    assertCanAccessPmsPropertyScope(access, lease.propertyId);
 
     const checklistItem = await prisma.pmsMoveChecklistItem.create({
       data: {
@@ -4504,7 +4762,8 @@ pmsRouter.patch("/lease-checklists/:checklistItemId", requireAuth(), async (req,
     if (!existing) throw new AppError(404, "PMS move checklist item not found");
 
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
-    assertCanManagePmsTenancies(access.member.role);
+    assertCanManagePmsTenancies(access.member);
+    assertCanAccessPmsPropertyScope(access, existing.propertyId);
 
     const checklistItem = await prisma.pmsMoveChecklistItem.update({
       where: { id: checklistItemId },
@@ -4549,7 +4808,7 @@ pmsRouter.get("/leases/:leaseId/rent-due", requireAuth(), async (req, res, next)
     const query = pmsRentDueListQuerySchema.omit({ leaseId: true }).parse(req.query);
     const lease = await prisma.pmsLease.findUnique({
       where: { id: leaseId },
-      select: { id: true, companyId: true },
+      select: { id: true, companyId: true, propertyId: true },
     });
 
     if (!lease) {
@@ -4560,6 +4819,8 @@ pmsRouter.get("/leases/:leaseId/rent-due", requireAuth(), async (req, res, next)
       userId: req.user.id,
       companyId: lease.companyId,
     });
+    assertCanViewPmsRent(access.member);
+    assertCanAccessPmsPropertyScope(access, lease.propertyId);
     const dueDate = buildPmsRentDueDateFilter(query);
     const where: Prisma.PmsRentDueItemWhereInput = {
       companyId: access.company.id,
@@ -4609,6 +4870,7 @@ pmsRouter.get("/rent-due", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: query.companyId,
     });
+    assertCanViewPmsRent(access.member);
     await assertPmsFilterLinksBelongToCompany({
       companyId: access.company.id,
       leaseId: query.leaseId,
@@ -4617,11 +4879,12 @@ pmsRouter.get("/rent-due", requireAuth(), async (req, res, next) => {
       unitId: query.unitId,
     });
     const dueDate = buildPmsRentDueDateFilter(query);
+    const propertyId = pmsRequestedOrScopedPropertyIdWhere(access, query.propertyId);
     const where: Prisma.PmsRentDueItemWhereInput = {
       companyId: access.company.id,
       ...(query.leaseId ? { leaseId: query.leaseId } : {}),
       ...(query.tenantId ? { tenantId: query.tenantId } : {}),
-      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(propertyId ? { propertyId } : {}),
       ...(query.unitId ? { unitId: query.unitId } : {}),
       ...(query.status !== "ALL" ? { status: query.status } : {}),
       ...(dueDate ? { dueDate } : {}),
@@ -4667,7 +4930,7 @@ pmsRouter.patch("/rent-due/:rentDueItemId", requireAuth(), async (req, res, next
     const data = pmsRentDueUpdateSchema.parse(req.body);
     const existing = await prisma.pmsRentDueItem.findUnique({
       where: { id: rentDueItemId },
-      select: { id: true, companyId: true, amount: true },
+      select: { id: true, companyId: true, propertyId: true, amount: true },
     });
 
     if (!existing) {
@@ -4678,7 +4941,8 @@ pmsRouter.patch("/rent-due/:rentDueItemId", requireAuth(), async (req, res, next
       userId: req.user.id,
       companyId: existing.companyId,
     });
-    assertCanCollectPmsRent(access.member.role);
+    assertCanCollectPmsRent(access.member);
+    assertCanAccessPmsPropertyScope(access, existing.propertyId);
 
     const paidAmount = data.paidAmount;
     const amountNumber = Number(existing.amount);
@@ -4752,6 +5016,8 @@ pmsRouter.get("/rent-due/:rentDueItemId/payments", requireAuth(), async (req, re
       userId: req.user.id,
       companyId: rentDueItem.companyId,
     });
+    assertCanViewPmsRent(access.member);
+    assertCanAccessPmsPropertyScope(access, rentDueItem.propertyId);
 
     const payments = await prisma.pmsRentPayment.findMany({
       where: { companyId: access.company.id, rentDueItemId },
@@ -4794,7 +5060,8 @@ pmsRouter.post("/rent-due/:rentDueItemId/payments", requireAuth(), async (req, r
       userId: req.user.id,
       companyId: rentDueItem.companyId,
     });
-    assertCanCollectPmsRent(access.member.role);
+    assertCanCollectPmsRent(access.member);
+    assertCanAccessPmsPropertyScope(access, rentDueItem.propertyId);
 
     const confirmedAggregate = await prisma.pmsRentPayment.aggregate({
       where: {
@@ -4904,10 +5171,12 @@ pmsRouter.get("/rent-payments/:rentPaymentId/receipt", requireAuth(), async (req
       throw new AppError(404, "PMS rent payment receipt not found");
     }
 
-    await resolvePmsAccessOrThrow({
+    const access = await resolvePmsAccessOrThrow({
       userId: req.user.id,
       companyId: payment.companyId,
     });
+    assertCanViewPmsRent(access.member);
+    assertCanAccessPmsPropertyScope(access, payment.propertyId);
 
     if (payment.status !== PmsRentPaymentStatus.CONFIRMED) {
       throw new AppError(400, "Only confirmed rent payments have printable receipts.");
@@ -5013,10 +5282,14 @@ function buildPmsInspectionUpdateData(
   };
 }
 
-async function buildPmsReportsSummary(companyId: string) {
+async function buildPmsReportsSummary(
+  companyId: string,
+  propertyId?: Prisma.StringFilter,
+) {
   const now = new Date();
   const renewalWindowEnd = new Date(now);
   renewalWindowEnd.setDate(renewalWindowEnd.getDate() + 60);
+  const propertyWhere = propertyId ? { propertyId } : {};
 
   const [
     totalUnits,
@@ -5040,12 +5313,17 @@ async function buildPmsReportsSummary(companyId: string) {
     overdueTopList,
     expiringLeases,
   ] = await prisma.$transaction([
-    prisma.pmsUnit.count({ where: { companyId } }),
-    prisma.pmsUnit.count({ where: { companyId, status: PmsUnitStatus.OCCUPIED } }),
-    prisma.pmsUnit.count({ where: { companyId, status: PmsUnitStatus.VACANT } }),
+    prisma.pmsUnit.count({ where: { companyId, ...propertyWhere } }),
+    prisma.pmsUnit.count({
+      where: { companyId, ...propertyWhere, status: PmsUnitStatus.OCCUPIED },
+    }),
+    prisma.pmsUnit.count({
+      where: { companyId, ...propertyWhere, status: PmsUnitStatus.VACANT },
+    }),
     prisma.pmsRentPayment.aggregate({
       where: {
         companyId,
+        ...propertyWhere,
         status: PmsRentPaymentStatus.CONFIRMED,
       },
       _sum: { amount: true },
@@ -5053,13 +5331,15 @@ async function buildPmsReportsSummary(companyId: string) {
     prisma.pmsRentDueItem.aggregate({
       where: {
         companyId,
+        ...propertyWhere,
         status: { notIn: [PmsRentDueStatus.PAID, PmsRentDueStatus.CANCELLED] },
       },
-      _sum: { amount: true },
+      _sum: { amount: true, paidAmount: true },
     }),
     prisma.pmsRentDueItem.aggregate({
       where: {
         companyId,
+        ...propertyWhere,
         OR: [
           { status: PmsRentDueStatus.OVERDUE },
           {
@@ -5074,11 +5354,12 @@ async function buildPmsReportsSummary(companyId: string) {
           },
         ],
       },
-      _sum: { amount: true },
+      _sum: { amount: true, paidAmount: true },
     }),
     prisma.pmsWorkOrder.aggregate({
       where: {
         companyId,
+        ...propertyWhere,
         status: { not: PmsMaintenanceStatus.CANCELLED },
       },
       _sum: { cost: true },
@@ -5086,31 +5367,73 @@ async function buildPmsReportsSummary(companyId: string) {
     prisma.pmsAccountingLedgerEntry.aggregate({
       where: {
         companyId,
+        ...propertyWhere,
         source: PmsAccountingSource.MANUAL,
-        type: { in: [PmsAccountingEntryType.INCOME, PmsAccountingEntryType.LATE_FEE, PmsAccountingEntryType.DEPOSIT, PmsAccountingEntryType.ADJUSTMENT] },
+        type: {
+          in: [
+            PmsAccountingEntryType.INCOME,
+            PmsAccountingEntryType.LATE_FEE,
+            PmsAccountingEntryType.DEPOSIT,
+            PmsAccountingEntryType.ADJUSTMENT,
+          ],
+        },
       },
       _sum: { amount: true },
     }),
     prisma.pmsAccountingLedgerEntry.aggregate({
       where: {
         companyId,
+        ...propertyWhere,
         source: PmsAccountingSource.MANUAL,
-        type: { in: [PmsAccountingEntryType.EXPENSE, PmsAccountingEntryType.REFUND] },
+        type: {
+          in: [PmsAccountingEntryType.EXPENSE, PmsAccountingEntryType.REFUND],
+        },
       },
       _sum: { amount: true },
     }),
-    prisma.pmsWorkOrder.count({ where: { companyId, status: PmsMaintenanceStatus.OPEN } }),
-    prisma.pmsWorkOrder.count({ where: { companyId, status: PmsMaintenanceStatus.IN_PROGRESS } }),
-    prisma.pmsWorkOrder.count({ where: { companyId, status: PmsMaintenanceStatus.RESOLVED } }),
-    prisma.pmsWorkOrder.count({ where: { companyId, priority: PmsMaintenancePriority.URGENT } }),
-    prisma.pmsInspection.count({ where: { companyId, status: PmsInspectionStatus.SCHEDULED } }),
-    prisma.pmsInspection.count({ where: { companyId, status: PmsInspectionStatus.COMPLETED } }),
-    prisma.pmsInspection.count({ where: { companyId, status: PmsInspectionStatus.NEEDS_ACTION } }),
+    prisma.pmsWorkOrder.count({
+      where: { companyId, ...propertyWhere, status: PmsMaintenanceStatus.OPEN },
+    }),
+    prisma.pmsWorkOrder.count({
+      where: {
+        companyId,
+        ...propertyWhere,
+        status: PmsMaintenanceStatus.IN_PROGRESS,
+      },
+    }),
+    prisma.pmsWorkOrder.count({
+      where: {
+        companyId,
+        ...propertyWhere,
+        status: PmsMaintenanceStatus.RESOLVED,
+      },
+    }),
+    prisma.pmsWorkOrder.count({
+      where: {
+        companyId,
+        ...propertyWhere,
+        priority: PmsMaintenancePriority.URGENT,
+      },
+    }),
+    prisma.pmsInspection.count({
+      where: { companyId, ...propertyWhere, status: PmsInspectionStatus.SCHEDULED },
+    }),
+    prisma.pmsInspection.count({
+      where: { companyId, ...propertyWhere, status: PmsInspectionStatus.COMPLETED },
+    }),
+    prisma.pmsInspection.count({
+      where: {
+        companyId,
+        ...propertyWhere,
+        status: PmsInspectionStatus.NEEDS_ACTION,
+      },
+    }),
     prisma.pmsCommunicationTemplate.count({ where: { companyId, active: true } }),
     prisma.pmsPolicy.count({ where: { companyId, active: true } }),
     prisma.pmsRentDueItem.findMany({
       where: {
         companyId,
+        ...propertyWhere,
         OR: [
           { status: PmsRentDueStatus.OVERDUE },
           {
@@ -5132,6 +5455,7 @@ async function buildPmsReportsSummary(companyId: string) {
     prisma.pmsLease.findMany({
       where: {
         companyId,
+        ...propertyWhere,
         status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] },
         endDate: { gte: now, lte: renewalWindowEnd },
       },
@@ -5142,14 +5466,28 @@ async function buildPmsReportsSummary(companyId: string) {
   ]);
 
   const maintenanceCost = maintenanceCosts._sum.cost;
-  const incomeCollectedAmount = Number(rentCollected._sum.amount ?? 0) + Number(manualIncomeEntries._sum.amount ?? 0);
-  const expenseAmount = Number(maintenanceCost ?? 0) + Number(manualExpenseEntries._sum.amount ?? 0);
+  const incomeCollectedAmount =
+    Number(rentCollected._sum.amount ?? 0) +
+    Number(manualIncomeEntries._sum.amount ?? 0);
+  const expenseAmount =
+    Number(maintenanceCost ?? 0) +
+    Number(manualExpenseEntries._sum.amount ?? 0);
+  const outstandingRentAmount = Math.max(
+    Number(outstandingRent._sum.amount ?? 0) -
+      Number(outstandingRent._sum.paidAmount ?? 0),
+    0,
+  );
+  const overdueRentAmount = Math.max(
+    Number(overdueRent._sum.amount ?? 0) -
+      Number(overdueRent._sum.paidAmount ?? 0),
+    0,
+  );
 
   return {
     accounting: {
       incomeCollected: moneyString(incomeCollectedAmount),
-      outstandingRent: decimalToString(outstandingRent._sum.amount),
-      overdueRent: decimalToString(overdueRent._sum.amount),
+      outstandingRent: moneyString(outstandingRentAmount),
+      overdueRent: moneyString(overdueRentAmount),
       expenses: moneyString(expenseAmount),
       maintenanceCosts: decimalToString(maintenanceCost),
       lateFeeFoundationEnabled: false,
@@ -5166,8 +5504,8 @@ async function buildPmsReportsSummary(companyId: string) {
       },
       revenue: {
         collected: moneyString(incomeCollectedAmount),
-        outstanding: decimalToString(outstandingRent._sum.amount),
-        overdue: decimalToString(overdueRent._sum.amount),
+        outstanding: moneyString(outstandingRentAmount),
+        overdue: moneyString(overdueRentAmount),
       },
       overdueTopList: overdueTopList.map(pmsRentDueItemResponse),
       maintenance: {
@@ -5193,14 +5531,13 @@ async function buildPmsReportsSummary(companyId: string) {
   };
 }
 
-
 pmsRouter.get("/vendors", requireAuth(), async (req, res, next) => {
   try {
     if (!req.user) throw new AppError(401, "Unauthorized");
 
     const query = pmsVendorListQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
-    assertCanManagePmsMaintenance(access.member.role);
+    assertCanViewPmsMaintenance(access.member);
 
     const search = query.search?.trim();
     const where: Prisma.PmsVendorWhereInput = {
@@ -5247,7 +5584,7 @@ pmsRouter.post("/vendors", requireAuth(), async (req, res, next) => {
 
     const data = pmsVendorCreateSchema.parse(req.body);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
-    assertCanManagePmsMaintenance(access.member.role);
+    assertCanManagePmsMaintenance(access.member);
 
     const vendor = await prisma.pmsVendor.create({
       data: {
@@ -5289,7 +5626,7 @@ pmsRouter.patch("/vendors/:vendorId", requireAuth(), async (req, res, next) => {
     if (!existing) throw new AppError(404, "PMS vendor not found");
 
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
-    assertCanManagePmsMaintenance(access.member.role);
+    assertCanManagePmsMaintenance(access.member);
 
     const vendor = await prisma.pmsVendor.update({
       where: { id: vendorId },
@@ -5325,11 +5662,15 @@ pmsRouter.get("/maintenance/:workOrderId/quotes", requireAuth(), async (req, res
     if (!req.user) throw new AppError(401, "Unauthorized");
 
     const { workOrderId } = pmsWorkOrderParamsSchema.parse(req.params);
-    const workOrder = await prisma.pmsWorkOrder.findUnique({ where: { id: workOrderId }, select: { id: true, companyId: true } });
+    const workOrder = await prisma.pmsWorkOrder.findUnique({
+      where: { id: workOrderId },
+      select: { id: true, companyId: true, propertyId: true },
+    });
     if (!workOrder) throw new AppError(404, "PMS maintenance work order not found");
 
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: workOrder.companyId });
-    assertCanManagePmsMaintenance(access.member.role);
+    assertCanViewPmsMaintenance(access.member);
+    assertCanAccessPmsPropertyScope(access, workOrder.propertyId);
 
     const quotes = await prisma.pmsMaintenanceQuote.findMany({
       where: { companyId: access.company.id, workOrderId },
@@ -5356,7 +5697,8 @@ pmsRouter.post("/maintenance/:workOrderId/quotes", requireAuth(), async (req, re
     if (!workOrder) throw new AppError(404, "PMS maintenance work order not found");
 
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: workOrder.companyId });
-    assertCanManagePmsMaintenance(access.member.role);
+    assertCanManagePmsMaintenance(access.member);
+    assertCanAccessPmsPropertyScope(access, workOrder.propertyId);
     await assertPmsOperationalLinksBelongToCompany({ companyId: access.company.id, propertyId: workOrder.propertyId, vendorId: data.vendorId });
 
     const quote = await prisma.pmsMaintenanceQuote.create({
@@ -5410,10 +5752,11 @@ pmsRouter.patch("/maintenance/quotes/:quoteId", requireAuth(), async (req, res, 
     if (!existing) throw new AppError(404, "PMS maintenance quote not found");
 
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
-    assertCanManagePmsMaintenance(access.member.role);
+    assertCanManagePmsMaintenance(access.member);
+    assertCanAccessPmsPropertyScope(access, existing.workOrder.propertyId);
 
     if (data.status === PmsMaintenanceQuoteStatus.APPROVED) {
-      assertCanManagePmsOperations(access.member.role);
+      assertCanManagePmsOperations(access.member);
     }
     if (data.vendorId) {
       await assertPmsOperationalLinksBelongToCompany({ companyId: existing.companyId, propertyId: existing.workOrder.propertyId, vendorId: data.vendorId });
@@ -5492,6 +5835,7 @@ pmsRouter.get("/maintenance", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: query.companyId,
     });
+    assertCanViewPmsMaintenance(access.member);
     await assertPmsFilterLinksBelongToCompany({
       companyId: access.company.id,
       tenantId: query.tenantId,
@@ -5500,9 +5844,10 @@ pmsRouter.get("/maintenance", requireAuth(), async (req, res, next) => {
       vendorId: query.vendorId,
     });
     const search = query.search?.trim();
+    const propertyId = pmsRequestedOrScopedPropertyIdWhere(access, query.propertyId);
     const where: Prisma.PmsWorkOrderWhereInput = {
       companyId: access.company.id,
-      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(propertyId ? { propertyId } : {}),
       ...(query.unitId ? { unitId: query.unitId } : {}),
       ...(query.tenantId ? { tenantId: query.tenantId } : {}),
       ...(query.vendorId ? { vendorId: query.vendorId } : {}),
@@ -5565,7 +5910,8 @@ pmsRouter.post("/maintenance", requireAuth(), async (req, res, next) => {
       userId,
       companyId: data.companyId,
     });
-    assertCanManagePmsMaintenance(access.member.role);
+    assertCanManagePmsMaintenance(access.member);
+    assertCanAccessPmsPropertyScope(access, data.propertyId);
     await assertPmsOperationalLinksBelongToCompany({
       companyId: access.company.id,
       propertyId: data.propertyId,
@@ -5653,6 +5999,8 @@ pmsRouter.get("/maintenance/:workOrderId", requireAuth(), async (req, res, next)
       userId: req.user.id,
       companyId: workOrder.companyId,
     });
+    assertCanViewPmsMaintenance(access.member);
+    assertCanAccessPmsPropertyScope(access, workOrder.propertyId);
 
     res.json({
       workspace: {
@@ -5689,7 +6037,8 @@ pmsRouter.patch("/maintenance/:workOrderId", requireAuth(), async (req, res, nex
       userId,
       companyId: existing.companyId,
     });
-    assertCanManagePmsMaintenance(access.member.role);
+    assertCanManagePmsMaintenance(access.member);
+    assertCanAccessPmsPropertyScope(access, existing.propertyId);
     await assertPmsOperationalLinksBelongToCompany({
       companyId: existing.companyId,
       propertyId: existing.propertyId,
@@ -5735,6 +6084,7 @@ pmsRouter.patch("/maintenance/:workOrderId", requireAuth(), async (req, res, nex
 function buildPmsAccountingWhere(
   companyId: string,
   query: z.infer<typeof pmsAccountingQuerySchema>,
+  propertyId?: string | Prisma.StringFilter,
 ): Prisma.PmsAccountingLedgerEntryWhereInput {
   const transactionDate = buildPmsAccountingDateFilter({
     dateFrom: query.dateFrom,
@@ -5743,7 +6093,7 @@ function buildPmsAccountingWhere(
 
   return {
     companyId,
-    ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+    ...(propertyId ? { propertyId } : {}),
     ...(query.unitId ? { unitId: query.unitId } : {}),
     ...(query.tenantId ? { tenantId: query.tenantId } : {}),
     ...(query.leaseId ? { leaseId: query.leaseId } : {}),
@@ -5805,6 +6155,7 @@ function buildPmsAccountingLedgerUpdateData(
 async function buildPmsOwnerStatement(input: {
   companyId: string;
   propertyId?: string;
+  propertyScope?: Prisma.StringFilter;
   unitId?: string;
   dateFrom?: Date;
   dateTo?: Date;
@@ -5812,17 +6163,18 @@ async function buildPmsOwnerStatement(input: {
 }) {
   const range = getPmsStatementRange(input);
   const closedDateFilter = buildPmsAccountingDateFilter({ dateFrom: range.start, dateTo: range.end });
+  const propertyId = input.propertyId ?? input.propertyScope;
   const paymentWhere: Prisma.PmsRentPaymentWhereInput = {
     companyId: input.companyId,
     status: PmsRentPaymentStatus.CONFIRMED,
-    ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+    ...(propertyId ? { propertyId } : {}),
     ...(input.unitId ? { unitId: input.unitId } : {}),
     ...(closedDateFilter ? { paidAt: closedDateFilter } : {}),
   };
   const ledgerWhere: Prisma.PmsAccountingLedgerEntryWhereInput = {
     companyId: input.companyId,
     source: PmsAccountingSource.MANUAL,
-    ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+    ...(propertyId ? { propertyId } : {}),
     ...(input.unitId ? { unitId: input.unitId } : {}),
     ...(closedDateFilter ? { transactionDate: closedDateFilter } : {}),
   };
@@ -5830,7 +6182,7 @@ async function buildPmsOwnerStatement(input: {
     companyId: input.companyId,
     status: { not: PmsMaintenanceStatus.CANCELLED },
     cost: { not: null },
-    ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+    ...(propertyId ? { propertyId } : {}),
     ...(input.unitId ? { unitId: input.unitId } : {}),
     ...(closedDateFilter
       ? {
@@ -5844,7 +6196,7 @@ async function buildPmsOwnerStatement(input: {
   const rentDueWhere: Prisma.PmsRentDueItemWhereInput = {
     companyId: input.companyId,
     status: { notIn: [PmsRentDueStatus.PAID, PmsRentDueStatus.CANCELLED] },
-    ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+    ...(propertyId ? { propertyId } : {}),
     ...(input.unitId ? { unitId: input.unitId } : {}),
     ...(closedDateFilter ? { dueDate: closedDateFilter } : {}),
   };
@@ -5852,7 +6204,7 @@ async function buildPmsOwnerStatement(input: {
     companyId: input.companyId,
     status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] },
     securityDeposit: { not: null },
-    ...(input.propertyId ? { propertyId: input.propertyId } : {}),
+    ...(propertyId ? { propertyId } : {}),
     ...(input.unitId ? { unitId: input.unitId } : {}),
   };
 
@@ -5862,8 +6214,6 @@ async function buildPmsOwnerStatement(input: {
     maintenanceCosts,
     outstandingItems,
     securityDeposits,
-    property,
-    unit,
   ] = await prisma.$transaction([
     prisma.pmsRentPayment.findMany({
       where: paymentWhere,
@@ -5889,12 +6239,15 @@ async function buildPmsOwnerStatement(input: {
       where: activeLeaseWhere,
       select: { id: true, title: true, securityDeposit: true, currency: true, tenant: { select: { id: true, fullName: true } }, unit: { select: { id: true, unitNumber: true } } },
     }),
+  ]);
+
+  const [property, unit] = await Promise.all([
     input.propertyId
       ? prisma.pmsProperty.findUnique({ where: { id: input.propertyId }, select: { id: true, name: true, code: true } })
-      : prisma.pmsProperty.findFirst({ where: { companyId: input.companyId }, select: { id: true, name: true, code: true } }),
+      : Promise.resolve(null),
     input.unitId
       ? prisma.pmsUnit.findUnique({ where: { id: input.unitId }, select: { id: true, unitNumber: true, unitName: true } })
-      : prisma.pmsUnit.findFirst({ where: { companyId: input.companyId }, select: { id: true, unitNumber: true, unitName: true } }),
+      : Promise.resolve(null),
   ]);
 
   const rentCollected = sumDecimal(rentPayments.map((payment) => payment.amount));
@@ -5990,7 +6343,7 @@ pmsRouter.get("/accounting/ledger", requireAuth(), async (req, res, next) => {
 
     const query = pmsAccountingQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
-    assertCanViewPmsAccounting(access.member.role);
+    assertCanViewPmsAccounting(access.member);
     await assertPmsFilterLinksBelongToCompany({
       companyId: access.company.id,
       propertyId: query.propertyId,
@@ -6001,7 +6354,11 @@ pmsRouter.get("/accounting/ledger", requireAuth(), async (req, res, next) => {
       workOrderId: query.workOrderId,
     });
 
-    const where = buildPmsAccountingWhere(access.company.id, query);
+    const where = buildPmsAccountingWhere(
+      access.company.id,
+      query,
+      pmsRequestedOrScopedPropertyIdWhere(access, query.propertyId),
+    );
     const [ledgerEntries, total] = await prisma.$transaction([
       prisma.pmsAccountingLedgerEntry.findMany({
         where,
@@ -6033,7 +6390,7 @@ pmsRouter.get("/accounting/ledger.csv", requireAuth(), async (req, res, next) =>
 
     const query = pmsAccountingQuerySchema.parse({ ...req.query, take: 200, skip: 0 });
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
-    assertCanViewPmsAccounting(access.member.role);
+    assertCanViewPmsAccounting(access.member);
     await assertPmsFilterLinksBelongToCompany({
       companyId: access.company.id,
       propertyId: query.propertyId,
@@ -6045,7 +6402,11 @@ pmsRouter.get("/accounting/ledger.csv", requireAuth(), async (req, res, next) =>
     });
 
     const entries = await prisma.pmsAccountingLedgerEntry.findMany({
-      where: buildPmsAccountingWhere(access.company.id, query),
+      where: buildPmsAccountingWhere(
+        access.company.id,
+        query,
+        pmsRequestedOrScopedPropertyIdWhere(access, query.propertyId),
+      ),
       include: pmsAccountingLedgerEntryInclude,
       orderBy: buildPmsAccountingOrderBy(query),
       take: 1000,
@@ -6082,7 +6443,8 @@ pmsRouter.post("/accounting/ledger", requireAuth(), async (req, res, next) => {
 
     const data = pmsAccountingLedgerEntrySchema.parse(req.body);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
-    assertCanManagePmsAccounting(access.member.role);
+    assertCanManagePmsAccounting(access.member);
+    assertCanAccessOptionalPmsPropertyScope(access, data.propertyId);
     await assertPmsFilterLinksBelongToCompany({
       companyId: access.company.id,
       propertyId: data.propertyId,
@@ -6119,22 +6481,43 @@ pmsRouter.patch("/accounting/ledger/:ledgerEntryId", requireAuth(), async (req, 
 
     const { ledgerEntryId } = pmsAccountingLedgerParamsSchema.parse(req.params);
     const data = pmsAccountingLedgerEntryUpdateSchema.parse(req.body);
-    const existing = await prisma.pmsAccountingLedgerEntry.findUnique({ where: { id: ledgerEntryId }, select: { id: true, companyId: true, source: true } });
+    const existing = await prisma.pmsAccountingLedgerEntry.findUnique({
+      where: { id: ledgerEntryId },
+      select: {
+        id: true,
+        companyId: true,
+        propertyId: true,
+        unitId: true,
+        tenantId: true,
+        leaseId: true,
+        rentDueItemId: true,
+        workOrderId: true,
+        source: true,
+      },
+    });
     if (!existing) throw new AppError(404, "PMS accounting ledger entry not found");
     if (existing.source !== PmsAccountingSource.MANUAL) {
       throw new AppError(400, "Only manual PMS accounting ledger entries can be edited.");
     }
 
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
-    assertCanManagePmsAccounting(access.member.role);
+    assertCanManagePmsAccounting(access.member);
+    assertCanAccessOptionalPmsPropertyScope(access, existing.propertyId);
+    const targetPropertyId =
+      data.propertyId === undefined ? existing.propertyId : data.propertyId;
+    assertCanAccessOptionalPmsPropertyScope(access, targetPropertyId);
     await assertPmsFilterLinksBelongToCompany({
       companyId: access.company.id,
-      propertyId: data.propertyId,
-      unitId: data.unitId,
-      tenantId: data.tenantId,
-      leaseId: data.leaseId,
-      rentDueItemId: data.rentDueItemId,
-      workOrderId: data.workOrderId,
+      propertyId: targetPropertyId,
+      unitId: data.unitId === undefined ? existing.unitId : data.unitId,
+      tenantId: data.tenantId === undefined ? existing.tenantId : data.tenantId,
+      leaseId: data.leaseId === undefined ? existing.leaseId : data.leaseId,
+      rentDueItemId:
+        data.rentDueItemId === undefined
+          ? existing.rentDueItemId
+          : data.rentDueItemId,
+      workOrderId:
+        data.workOrderId === undefined ? existing.workOrderId : data.workOrderId,
     });
 
     const ledgerEntry = await prisma.pmsAccountingLedgerEntry.update({
@@ -6164,9 +6547,19 @@ pmsRouter.get("/accounting/property-summary", requireAuth(), async (req, res, ne
 
     const query = pmsAccountingStatementQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
-    assertCanViewPmsAccounting(access.member.role);
+    assertCanViewPmsAccounting(access.member);
     await assertPmsFilterLinksBelongToCompany({ companyId: access.company.id, propertyId: query.propertyId, unitId: query.unitId });
-    const statement = await buildPmsOwnerStatement({ companyId: access.company.id, propertyId: query.propertyId, unitId: query.unitId, dateFrom: query.dateFrom, dateTo: query.dateTo, month: query.month });
+    if (query.unitId) await assertCanAccessPmsUnitScope(access, query.unitId);
+    const propertyScope = pmsRequestedOrScopedPropertyIdWhere(access, query.propertyId);
+    const statement = await buildPmsOwnerStatement({
+      companyId: access.company.id,
+      propertyId: query.propertyId,
+      propertyScope: typeof propertyScope === "string" ? undefined : propertyScope,
+      unitId: query.unitId,
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
+      month: query.month,
+    });
 
     res.json({ workspace: { company: access.company, member: access.member, entitlement: access.entitlement }, summary: statement.totals, statement });
   } catch (error) {
@@ -6180,9 +6573,19 @@ pmsRouter.get("/accounting/owner-statement", requireAuth(), async (req, res, nex
 
     const query = pmsAccountingStatementQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
-    assertCanViewPmsAccounting(access.member.role);
+    assertCanViewPmsAccounting(access.member);
     await assertPmsFilterLinksBelongToCompany({ companyId: access.company.id, propertyId: query.propertyId, unitId: query.unitId });
-    const statement = await buildPmsOwnerStatement({ companyId: access.company.id, propertyId: query.propertyId, unitId: query.unitId, dateFrom: query.dateFrom, dateTo: query.dateTo, month: query.month });
+    if (query.unitId) await assertCanAccessPmsUnitScope(access, query.unitId);
+    const propertyScope = pmsRequestedOrScopedPropertyIdWhere(access, query.propertyId);
+    const statement = await buildPmsOwnerStatement({
+      companyId: access.company.id,
+      propertyId: query.propertyId,
+      propertyScope: typeof propertyScope === "string" ? undefined : propertyScope,
+      unitId: query.unitId,
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
+      month: query.month,
+    });
 
     res.json({ workspace: { company: access.company, member: access.member, entitlement: access.entitlement }, statement });
   } catch (error) {
@@ -6201,8 +6604,11 @@ pmsRouter.get("/reports/summary", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: query.companyId,
     });
-    assertCanViewPmsAccounting(access.member.role);
-    const summary = await buildPmsReportsSummary(access.company.id);
+    assertCanViewPmsReports(access.member);
+    const summary = await buildPmsReportsSummary(
+      access.company.id,
+      pmsScopedPropertyIdWhere(access),
+    );
 
     res.json({
       workspace: {
@@ -6631,7 +7037,8 @@ pmsRouter.get("/import-batches", requireAuth(), async (req, res, next) => {
   try {
     const query = pmsImportBatchListQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user!.id, companyId: query.companyId });
-    assertCanManagePmsImports(access.member.role);
+    assertCanManagePmsImports(access.member);
+    assertCanRunPmsBulkImport(access);
     const where: Prisma.PmsImportBatchWhereInput = {
       companyId: access.company.id,
       ...(query.type !== "ALL" ? { type: query.type } : {}),
@@ -6652,7 +7059,8 @@ pmsRouter.get("/imports/templates/:type.csv", requireAuth(), async (req, res, ne
     const { type } = pmsImportTypeParamsSchema.parse(req.params);
     const query = pmsOverviewQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user!.id, companyId: query.companyId });
-    assertCanManagePmsImports(access.member.role);
+    assertCanManagePmsImports(access.member);
+    assertCanRunPmsBulkImport(access);
     const headersByType: Record<PmsImportType, string[]> = {
       PROPERTIES: ["name", "code", "propertyType", "address", "city", "area", "notes", "active"],
       UNITS: ["propertyCode", "propertyName", "unitNumber", "unitName", "floor", "bedrooms", "bathrooms", "areaSqm", "rentAmount", "currency", "status", "notes"],
@@ -6669,7 +7077,8 @@ pmsRouter.post("/imports/preview", requireAuth(), async (req, res, next) => {
   try {
     const data = pmsImportBodySchema.parse(req.body);
     const access = await resolvePmsAccessOrThrow({ userId: req.user!.id, companyId: data.companyId });
-    assertCanManagePmsImports(access.member.role);
+    assertCanManagePmsImports(access.member);
+    assertCanRunPmsBulkImport(access);
     const preview = await buildPmsImportPreview({ companyId: access.company.id, type: data.type, csvText: data.csvText });
     res.json({ preview });
   } catch (error) {
@@ -6681,7 +7090,8 @@ pmsRouter.post("/imports/commit", requireAuth(), async (req, res, next) => {
   try {
     const data = pmsImportBodySchema.parse(req.body);
     const access = await resolvePmsAccessOrThrow({ userId: req.user!.id, companyId: data.companyId });
-    assertCanManagePmsImports(access.member.role);
+    assertCanManagePmsImports(access.member);
+    assertCanRunPmsBulkImport(access);
     const preview = await buildPmsImportPreview({ companyId: access.company.id, type: data.type, csvText: data.csvText });
     if (preview.validRows.length === 0) {
       const batch = await prisma.pmsImportBatch.create({
@@ -6722,7 +7132,7 @@ pmsRouter.get("/exports/:type.csv", requireAuth(), async (req, res, next) => {
     const query = pmsExportQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user!.id, companyId: query.companyId });
     const exportKey = pmsExportKey(type);
-    assertCanExportPmsData(access.member.role, exportKey);
+    assertCanExportPmsData(access.member, exportKey);
     await assertPmsFilterLinksBelongToCompany({
       companyId: access.company.id,
       propertyId: query.propertyId,
@@ -6730,33 +7140,47 @@ pmsRouter.get("/exports/:type.csv", requireAuth(), async (req, res, next) => {
       tenantId: query.tenantId,
     });
     const companyId = access.company.id;
+    const propertyId = pmsRequestedOrScopedPropertyIdWhere(access, query.propertyId);
     if (type === "properties") {
-      const rows = await prisma.pmsProperty.findMany({ where: { companyId }, orderBy: { name: "asc" } });
+      const rows = await prisma.pmsProperty.findMany({
+        where: {
+          companyId,
+          ...(propertyId ? { id: propertyId } : {}),
+        },
+        orderBy: { name: "asc" },
+      });
       sendPmsCsv(res, "pms-properties.csv", toCsv(["id", "name", "code", "propertyType", "addressLine", "city", "area", "active", "createdAt"], rows.map((row) => [row.id, row.name, row.code, row.propertyType, row.addressLine, row.city, row.area, row.active, row.createdAt])));
       return;
     }
     if (type === "units") {
-      const rows = await prisma.pmsUnit.findMany({ where: { companyId, ...(query.propertyId ? { propertyId: query.propertyId } : {}) }, include: { property: { select: { name: true, code: true } } }, orderBy: [{ property: { name: "asc" } }, { unitNumber: "asc" }] });
+      const rows = await prisma.pmsUnit.findMany({ where: { companyId, ...(propertyId ? { propertyId } : {}) }, include: { property: { select: { name: true, code: true } } }, orderBy: [{ property: { name: "asc" } }, { unitNumber: "asc" }] });
       sendPmsCsv(res, "pms-units.csv", toCsv(["id", "property", "propertyCode", "unitNumber", "unitName", "floor", "bedrooms", "bathrooms", "areaSqm", "status", "occupancyStatus", "rentAmount", "currency"], rows.map((row) => [row.id, row.property.name, row.property.code, row.unitNumber, row.unitName, row.floor, row.bedrooms, row.bathrooms, row.areaSqm, row.status, row.occupancyStatus, row.rentAmount, row.currency])));
       return;
     }
     if (type === "tenants") {
-      const rows = await prisma.pmsTenant.findMany({ where: { companyId, ...(query.tenantId ? { id: query.tenantId } : {}) }, orderBy: { fullName: "asc" } });
+      const rows = await prisma.pmsTenant.findMany({
+        where: {
+          companyId,
+          ...(query.tenantId ? { id: query.tenantId } : {}),
+          ...(propertyId ? { leases: { some: { propertyId } } } : {}),
+        },
+        orderBy: { fullName: "asc" },
+      });
       sendPmsCsv(res, "pms-tenants.csv", toCsv(["id", "fullName", "phone", "email", "nationality", "nationalId", "passportNumber", "active"], rows.map((row) => [row.id, row.fullName, row.phone, row.email, row.nationality, row.nationalId, row.passportNumber, row.active])));
       return;
     }
     if (type === "leases") {
-      const rows = await prisma.pmsLease.findMany({ where: { companyId, ...(query.propertyId ? { propertyId: query.propertyId } : {}), ...(query.unitId ? { unitId: query.unitId } : {}), ...(query.tenantId ? { tenantId: query.tenantId } : {}) }, include: pmsLeaseInclude, orderBy: { startDate: "desc" } });
+      const rows = await prisma.pmsLease.findMany({ where: { companyId, ...(propertyId ? { propertyId } : {}), ...(query.unitId ? { unitId: query.unitId } : {}), ...(query.tenantId ? { tenantId: query.tenantId } : {}) }, include: pmsLeaseInclude, orderBy: { startDate: "desc" } });
       sendPmsCsv(res, "pms-leases.csv", toCsv(["id", "title", "tenant", "property", "unit", "status", "startDate", "endDate", "rentAmount", "currency", "securityDeposit"], rows.map((row) => [row.id, row.title, row.tenant.fullName, row.property.name, row.unit.unitNumber, row.status, row.startDate, row.endDate, row.rentAmount, row.currency, row.securityDeposit])));
       return;
     }
     if (type === "rent-roll") {
-      const rows = await prisma.pmsRentDueItem.findMany({ where: { companyId, ...(query.propertyId ? { propertyId: query.propertyId } : {}), ...(query.unitId ? { unitId: query.unitId } : {}), ...(query.tenantId ? { tenantId: query.tenantId } : {}) }, include: pmsRentDueItemInclude, orderBy: { dueDate: "asc" } });
+      const rows = await prisma.pmsRentDueItem.findMany({ where: { companyId, ...(propertyId ? { propertyId } : {}), ...(query.unitId ? { unitId: query.unitId } : {}), ...(query.tenantId ? { tenantId: query.tenantId } : {}) }, include: pmsRentDueItemInclude, orderBy: { dueDate: "asc" } });
       sendPmsCsv(res, "pms-rent-roll.csv", toCsv(["id", "tenant", "property", "unit", "dueDate", "amount", "paidAmount", "currency", "status"], rows.map((row) => [row.id, row.tenant.fullName, row.property.name, row.unit.unitNumber, row.dueDate, row.amount, row.paidAmount, row.currency, row.status])));
       return;
     }
     if (type === "maintenance") {
-      const rows = await prisma.pmsWorkOrder.findMany({ where: { companyId, ...(query.propertyId ? { propertyId: query.propertyId } : {}), ...(query.unitId ? { unitId: query.unitId } : {}), ...(query.tenantId ? { tenantId: query.tenantId } : {}) }, include: pmsWorkOrderInclude, orderBy: { updatedAt: "desc" } });
+      const rows = await prisma.pmsWorkOrder.findMany({ where: { companyId, ...(propertyId ? { propertyId } : {}), ...(query.unitId ? { unitId: query.unitId } : {}), ...(query.tenantId ? { tenantId: query.tenantId } : {}) }, include: pmsWorkOrderInclude, orderBy: { updatedAt: "desc" } });
       sendPmsCsv(res, "pms-maintenance.csv", toCsv(["id", "title", "property", "unit", "tenant", "vendor", "priority", "status", "cost", "currency", "targetDate", "isOverdue"], rows.map((row) => [row.id, row.title, row.property.name, row.unit?.unitNumber, row.tenant?.fullName, row.vendor?.name, row.priority, row.status, row.cost, row.currency, row.targetDate,
         Boolean(
           row.targetDate &&
@@ -6768,7 +7192,7 @@ pmsRouter.get("/exports/:type.csv", requireAuth(), async (req, res, next) => {
     }
     const where: Prisma.PmsAccountingLedgerEntryWhereInput = {
       companyId,
-      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(propertyId ? { propertyId } : {}),
       ...(query.unitId ? { unitId: query.unitId } : {}),
       ...(query.tenantId ? { tenantId: query.tenantId } : {}),
       ...(query.dateFrom || query.dateTo ? { transactionDate: buildPmsAccountingDateFilter({ dateFrom: query.dateFrom, dateTo: query.dateTo }) } : {}),
@@ -6843,7 +7267,7 @@ pmsRouter.post("/communication-templates", requireAuth(), async (req, res, next)
     const data = pmsCommunicationTemplateCreateSchema.parse(req.body);
     const userId = req.user.id;
     const access = await resolvePmsAccessOrThrow({ userId, companyId: data.companyId });
-    assertCanManagePmsOperations(access.member.role);
+    assertCanManagePmsOperations(access.member);
 
     const template = await prisma.pmsCommunicationTemplate.create({
       data: {
@@ -6899,7 +7323,7 @@ pmsRouter.patch("/communication-templates/:templateId", requireAuth(), async (re
     }
 
     const access = await resolvePmsAccessOrThrow({ userId, companyId: existing.companyId });
-    assertCanManagePmsOperations(access.member.role);
+    assertCanManagePmsOperations(access.member);
 
     const template = await prisma.pmsCommunicationTemplate.update({
       where: { id: templateId },
@@ -6934,9 +7358,31 @@ pmsRouter.get("/communication-logs", requireAuth(), async (req, res, next) => {
 
     const query = pmsCommunicationLogListQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
-    assertCanViewPmsCommunications(access.member.role);
+    assertCanViewPmsCommunications(access.member);
 
     const search = query.search?.trim();
+    const propertyScope = pmsScopedPropertyIdWhere(access);
+    const andFilters: Prisma.PmsCommunicationLogWhereInput[] = [];
+    if (propertyScope) {
+      andFilters.push({
+        OR: [
+          { lease: { is: { propertyId: propertyScope } } },
+          { rentDueItem: { is: { propertyId: propertyScope } } },
+          { workOrder: { is: { propertyId: propertyScope } } },
+          { tenant: { is: { leases: { some: { propertyId: propertyScope } } } } },
+        ],
+      });
+    }
+    if (search) {
+      andFilters.push({
+        OR: [
+          { subject: { contains: search, mode: "insensitive" } },
+          { body: { contains: search, mode: "insensitive" } },
+          { notes: { contains: search, mode: "insensitive" } },
+          { tenant: { fullName: { contains: search, mode: "insensitive" } } },
+        ],
+      });
+    }
     const where: Prisma.PmsCommunicationLogWhereInput = {
       companyId: access.company.id,
       ...(query.channel !== "ALL" ? { channel: query.channel } : {}),
@@ -6945,16 +7391,7 @@ pmsRouter.get("/communication-logs", requireAuth(), async (req, res, next) => {
       ...(query.leaseId ? { leaseId: query.leaseId } : {}),
       ...(query.rentDueItemId ? { rentDueItemId: query.rentDueItemId } : {}),
       ...(query.workOrderId ? { workOrderId: query.workOrderId } : {}),
-      ...(search
-        ? {
-            OR: [
-              { subject: { contains: search, mode: "insensitive" } },
-              { body: { contains: search, mode: "insensitive" } },
-              { notes: { contains: search, mode: "insensitive" } },
-              { tenant: { fullName: { contains: search, mode: "insensitive" } } },
-            ],
-          }
-        : {}),
+      ...(andFilters.length > 0 ? { AND: andFilters } : {}),
     };
 
     const [logs, total] = await prisma.$transaction([
@@ -6984,7 +7421,8 @@ pmsRouter.post("/communication-templates/preview", requireAuth(), async (req, re
 
     const data = pmsCommunicationContextSchema.parse(req.body);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
-    assertCanViewPmsCommunications(access.member.role);
+    assertCanViewPmsCommunications(access.member);
+    await assertCanAccessPmsCommunicationScope(access, data);
 
     const template = data.templateId
       ? await prisma.pmsCommunicationTemplate.findFirst({
@@ -7021,7 +7459,8 @@ pmsRouter.post("/communication-logs/send", requireAuth(), async (req, res, next)
     const data = pmsCommunicationSendSchema.parse(req.body);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
     const context = inferCommunicationContext(data);
-    assertCanSendPmsCommunication(access.member.role, context);
+    assertCanSendPmsCommunication(access.member, context);
+    await assertCanAccessPmsCommunicationScope(access, data);
 
     const template = data.templateId
       ? await prisma.pmsCommunicationTemplate.findFirst({
@@ -7125,16 +7564,18 @@ pmsRouter.get("/communications/reminders", requireAuth(), async (req, res, next)
 
     const query = pmsReminderCandidateQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
-    assertCanViewPmsCommunications(access.member.role);
+    assertCanViewPmsCommunications(access.member);
 
     const now = new Date();
     const until = new Date(now.getTime() + query.days * 24 * 60 * 60 * 1000);
+    const propertyId = pmsScopedPropertyIdWhere(access);
     let candidates: unknown[] = [];
 
     if (query.type === PmsReminderType.RENT_DUE_SOON) {
       const items = await prisma.pmsRentDueItem.findMany({
         where: {
           companyId: access.company.id,
+          ...(propertyId ? { propertyId } : {}),
           status: { in: [PmsRentDueStatus.UNPAID, PmsRentDueStatus.DUE_SOON, PmsRentDueStatus.PARTIALLY_PAID] },
           dueDate: { gte: now, lte: until },
         },
@@ -7164,6 +7605,7 @@ pmsRouter.get("/communications/reminders", requireAuth(), async (req, res, next)
       const items = await prisma.pmsRentDueItem.findMany({
         where: {
           companyId: access.company.id,
+          ...(propertyId ? { propertyId } : {}),
           status: { in: [PmsRentDueStatus.UNPAID, PmsRentDueStatus.OVERDUE, PmsRentDueStatus.PARTIALLY_PAID] },
           dueDate: { lt: now },
         },
@@ -7193,6 +7635,7 @@ pmsRouter.get("/communications/reminders", requireAuth(), async (req, res, next)
       const leases = await prisma.pmsLease.findMany({
         where: {
           companyId: access.company.id,
+          ...(propertyId ? { propertyId } : {}),
           status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] },
           endDate: { gte: now, lte: until },
         },
@@ -7219,6 +7662,7 @@ pmsRouter.get("/communications/reminders", requireAuth(), async (req, res, next)
       const workOrders = await prisma.pmsWorkOrder.findMany({
         where: {
           companyId: access.company.id,
+          ...(propertyId ? { propertyId } : {}),
           status: { in: [PmsMaintenanceStatus.OPEN, PmsMaintenanceStatus.IN_PROGRESS, PmsMaintenanceStatus.WAITING_VENDOR, PmsMaintenanceStatus.RESOLVED] },
         },
         include: {
@@ -7311,7 +7755,7 @@ pmsRouter.post("/policies", requireAuth(), async (req, res, next) => {
     const data = pmsPolicyCreateSchema.parse(req.body);
     const userId = req.user.id;
     const access = await resolvePmsAccessOrThrow({ userId, companyId: data.companyId });
-    assertCanManagePmsOperations(access.member.role);
+    assertCanManagePmsOperations(access.member);
 
     const policy = await prisma.pmsPolicy.create({
       data: {
@@ -7365,7 +7809,7 @@ pmsRouter.patch("/policies/:policyId", requireAuth(), async (req, res, next) => 
     }
 
     const access = await resolvePmsAccessOrThrow({ userId, companyId: existing.companyId });
-    assertCanManagePmsOperations(access.member.role);
+    assertCanManagePmsOperations(access.member);
 
     const policy = await prisma.pmsPolicy.update({
       where: { id: policyId },
@@ -7401,6 +7845,7 @@ pmsRouter.get("/inspections", requireAuth(), async (req, res, next) => {
 
     const query = pmsInspectionListQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    assertCanViewPmsMaintenance(access.member);
     await assertPmsFilterLinksBelongToCompany({
       companyId: access.company.id,
       leaseId: query.leaseId,
@@ -7409,9 +7854,10 @@ pmsRouter.get("/inspections", requireAuth(), async (req, res, next) => {
       unitId: query.unitId,
     });
     const search = query.search?.trim();
+    const propertyId = pmsRequestedOrScopedPropertyIdWhere(access, query.propertyId);
     const where: Prisma.PmsInspectionWhereInput = {
       companyId: access.company.id,
-      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(propertyId ? { propertyId } : {}),
       ...(query.unitId ? { unitId: query.unitId } : {}),
       ...(query.tenantId ? { tenantId: query.tenantId } : {}),
       ...(query.leaseId ? { leaseId: query.leaseId } : {}),
@@ -7460,7 +7906,8 @@ pmsRouter.post("/inspections", requireAuth(), async (req, res, next) => {
     const data = pmsInspectionCreateSchema.parse(req.body);
     const userId = req.user.id;
     const access = await resolvePmsAccessOrThrow({ userId, companyId: data.companyId });
-    assertCanManagePmsMaintenance(access.member.role);
+    assertCanManagePmsMaintenance(access.member);
+    assertCanAccessPmsPropertyScope(access, data.propertyId);
     await assertPmsOperationalLinksBelongToCompany({
       companyId: access.company.id,
       propertyId: data.propertyId,
@@ -7531,7 +7978,8 @@ pmsRouter.patch("/inspections/:inspectionId", requireAuth(), async (req, res, ne
     }
 
     const access = await resolvePmsAccessOrThrow({ userId, companyId: existing.companyId });
-    assertCanManagePmsMaintenance(access.member.role);
+    assertCanManagePmsMaintenance(access.member);
+    assertCanAccessPmsPropertyScope(access, existing.propertyId);
     await assertPmsOperationalLinksBelongToCompany({
       companyId: existing.companyId,
       propertyId: existing.propertyId,
@@ -7578,7 +8026,7 @@ pmsRouter.get("/documents", requireAuth(), async (req, res, next) => {
 
     const query = pmsDocumentListQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
-    assertCanViewPmsDocuments(access.member.role);
+    assertCanViewPmsDocuments(access.member);
     await assertPmsDocumentLinksBelongToCompany({
       companyId: access.company.id,
       propertyId: query.propertyId,
@@ -7591,9 +8039,10 @@ pmsRouter.get("/documents", requireAuth(), async (req, res, next) => {
 
     const search = query.search?.trim();
     const maintenanceOnly = access.member.role === PmsMemberRole.PMS_MAINTENANCE;
+    const propertyId = pmsRequestedOrScopedPropertyIdWhere(access, query.propertyId);
     const where: Prisma.PmsDocumentWhereInput = {
       companyId: access.company.id,
-      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(propertyId ? { propertyId } : {}),
       ...(query.unitId ? { unitId: query.unitId } : {}),
       ...(query.tenantId ? { tenantId: query.tenantId } : {}),
       ...(query.leaseId ? { leaseId: query.leaseId } : {}),
@@ -7650,12 +8099,14 @@ pmsRouter.get("/documents/expiry-alerts", requireAuth(), async (req, res, next) 
 
     const query = pmsDocumentExpiryQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
-    assertCanViewPmsDocuments(access.member.role);
+    assertCanViewPmsDocuments(access.member);
 
     const expiryDate = getPmsDocumentExpiryFilter({ expiringWithinDays: query.withinDays });
+    const propertyId = pmsScopedPropertyIdWhere(access);
     const documents = await prisma.pmsDocument.findMany({
       where: {
         companyId: access.company.id,
+        ...(propertyId ? { propertyId } : {}),
         status: { not: PmsDocumentStatus.ARCHIVED },
         expiryDate,
       },
@@ -7682,11 +8133,12 @@ pmsRouter.post("/documents", requireAuth(), async (req, res, next) => {
     const userId = req.user.id;
     const access = await resolvePmsAccessOrThrow({ userId, companyId: data.companyId });
     if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) {
-      assertCanManagePmsMaintenanceDocuments(access.member.role);
+      assertCanManagePmsMaintenanceDocuments(access.member);
     } else {
-      assertCanManagePmsDocuments(access.member.role);
+      assertCanManagePmsDocuments(access.member);
     }
     assertMaintenanceDocumentScope({ role: access.member.role, type: data.type, workOrderId: data.workOrderId, inspectionId: data.inspectionId });
+    assertCanAccessOptionalPmsPropertyScope(access, data.propertyId);
     await assertPmsDocumentLinksBelongToCompany({
       companyId: access.company.id,
       propertyId: data.propertyId,
@@ -7742,7 +8194,8 @@ pmsRouter.get("/documents/:documentId", requireAuth(), async (req, res, next) =>
     if (!document) throw new AppError(404, "PMS document not found");
 
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: document.companyId });
-    assertCanViewPmsDocuments(access.member.role);
+    assertCanViewPmsDocuments(access.member);
+    assertCanAccessOptionalPmsPropertyScope(access, document.propertyId);
     if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) {
       assertMaintenanceDocumentScope({ role: access.member.role, type: document.type, workOrderId: document.workOrderId, inspectionId: document.inspectionId });
     }
@@ -7767,9 +8220,13 @@ pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) 
 
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
     if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) {
-      assertCanManagePmsMaintenanceDocuments(access.member.role);
+      assertCanManagePmsMaintenanceDocuments(access.member);
     } else {
-      assertCanManagePmsDocuments(access.member.role);
+      assertCanManagePmsDocuments(access.member);
+    }
+    assertCanAccessOptionalPmsPropertyScope(access, existing.propertyId);
+    if (data.propertyId !== undefined) {
+      assertCanAccessOptionalPmsPropertyScope(access, data.propertyId);
     }
     assertMaintenanceDocumentScope({
       role: access.member.role,
@@ -7836,7 +8293,7 @@ pmsRouter.get("/staff", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: query.companyId,
     });
-    assertCanManagePmsStaff(access.member.role);
+    assertCanAdministerPmsStaff(access);
 
     const [members, properties, portfolios] = await prisma.$transaction([
       prisma.pmsCompanyMember.findMany({
@@ -7879,7 +8336,7 @@ pmsRouter.post("/staff", requireAuth(), async (req, res, next) => {
 
     const data = pmsStaffInviteSchema.parse(req.body);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
-    assertCanManagePmsStaff(access.member.role);
+    assertCanAdministerPmsStaff(access);
 
     const targetUser = await prisma.user.findFirst({
       where: data.userId ? { id: data.userId } : { email: data.email },
@@ -7893,6 +8350,40 @@ pmsRouter.post("/staff", requireAuth(), async (req, res, next) => {
       throw new AppError(400, "Suspended or deleted users cannot be added to PMS access.");
     }
 
+    const existingMember = await prisma.pmsCompanyMember.findUnique({
+      where: {
+        companyId_userId: {
+          companyId: access.company.id,
+          userId: targetUser.id,
+        },
+      },
+      select: {
+        id: true,
+        role: true,
+        active: true,
+        permissions: {
+          where: { active: true },
+          select: { key: true },
+        },
+      },
+    });
+    assertCanDelegatePmsStaffAccess(access, {
+      role: data.role,
+      permissionKeys: data.permissionKeys ?? [],
+      existingRole: existingMember?.role,
+      existingPermissionKeys: existingMember?.permissions.map(
+        (permission) => permission.key,
+      ),
+    });
+    if (existingMember) {
+      await assertPmsOwnerContinuity({
+        companyId: access.company.id,
+        memberId: existingMember.id,
+        existingRole: existingMember.role,
+        nextRole: data.role,
+        nextActive: data.active,
+      });
+    }
     await assertPmsPropertyIdsBelongToCompany(access.company.id, data.propertyIds ?? []);
 
     const member = await prisma.pmsCompanyMember.upsert({
@@ -7956,7 +8447,13 @@ pmsRouter.patch("/staff/:id", requireAuth(), async (req, res, next) => {
     const data = pmsStaffUpdateSchema.parse(req.body);
     const existing = await prisma.pmsCompanyMember.findUnique({
       where: { id },
-      include: { user: true },
+      include: {
+        user: true,
+        permissions: {
+          where: { active: true },
+          select: { key: true },
+        },
+      },
     });
 
     if (!existing) {
@@ -7964,7 +8461,22 @@ pmsRouter.patch("/staff/:id", requireAuth(), async (req, res, next) => {
     }
 
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
-    assertCanManagePmsStaff(access.member.role);
+    assertCanAdministerPmsStaff(access);
+    assertCanDelegatePmsStaffAccess(access, {
+      role: data.role,
+      permissionKeys: data.permissionKeys,
+      existingRole: existing.role,
+      existingPermissionKeys: existing.permissions.map(
+        (permission) => permission.key,
+      ),
+    });
+    await assertPmsOwnerContinuity({
+      companyId: existing.companyId,
+      memberId: existing.id,
+      existingRole: existing.role,
+      nextRole: data.role,
+      nextActive: data.active,
+    });
     await assertPmsPropertyIdsBelongToCompany(existing.companyId, data.propertyIds ?? []);
 
     const member = await prisma.pmsCompanyMember.update({
@@ -8014,7 +8526,7 @@ pmsRouter.get("/portfolios", requireAuth(), async (req, res, next) => {
 
     const query = pmsPortfolioListQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
-    assertCanManagePmsStaff(access.member.role);
+    assertCanAdministerPmsStaff(access);
 
     const portfolios = await prisma.pmsPortfolio.findMany({
       where: {
@@ -8040,7 +8552,7 @@ pmsRouter.post("/portfolios", requireAuth(), async (req, res, next) => {
 
     const data = pmsPortfolioCreateSchema.parse(req.body);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
-    assertCanManagePmsStaff(access.member.role);
+    assertCanAdministerPmsStaff(access);
     await assertPmsPropertyIdsBelongToCompany(access.company.id, data.propertyIds ?? []);
 
     const portfolio = await prisma.pmsPortfolio.create({
@@ -8088,7 +8600,7 @@ pmsRouter.patch("/portfolios/:id", requireAuth(), async (req, res, next) => {
     }
 
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
-    assertCanManagePmsStaff(access.member.role);
+    assertCanAdministerPmsStaff(access);
     await assertPmsPropertyIdsBelongToCompany(existing.companyId, data.propertyIds ?? []);
 
     const portfolio = await prisma.pmsPortfolio.update({
@@ -8192,7 +8704,7 @@ pmsRouter.post("/properties", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: data.companyId,
     });
-    assertCanManagePmsInventory(access.member.role);
+    assertCanManagePmsInventory(access.member);
     if (isPmsPropertyScopeRestricted(access)) {
       throw new AppError(403, "Property-scoped PMS users cannot create new properties.");
     }
@@ -8299,7 +8811,7 @@ pmsRouter.patch(
         companyId: existing.companyId,
       });
       assertCanAccessPmsPropertyScope(access, existing.id);
-      assertCanManagePmsInventory(access.member.role);
+      assertCanManagePmsInventory(access.member);
       await assertOptionalLinksBelongToCompany({
         companyId: existing.companyId,
         developerProjectId: data.developerProjectId,
@@ -8425,7 +8937,7 @@ pmsRouter.post(
         companyId: property.companyId,
       });
       assertCanAccessPmsPropertyScope(access, property.id);
-      assertCanManagePmsInventory(access.member.role);
+      assertCanManagePmsInventory(access.member);
 
       const developerProjectId =
         data.developerProjectId ?? property.developerProjectId ?? null;
@@ -8605,7 +9117,7 @@ pmsRouter.patch("/units/:unitId", requireAuth(), async (req, res, next) => {
       companyId: existing.companyId,
     });
     assertCanAccessPmsPropertyScope(access, existing.propertyId);
-    assertCanManagePmsInventory(access.member.role);
+    assertCanManagePmsInventory(access.member);
     await assertOptionalLinksBelongToCompany({
       companyId: existing.companyId,
       developerProjectId: data.developerProjectId,
@@ -8646,6 +9158,7 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
     const now = new Date();
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const sixtyDays = new Date(now.getTime() + 60 * 86400000);
+    const canTenancy = access.member.permissionKeys.includes(PmsPermissionKey.TENANCY_VIEW);
     const canRent = access.member.permissionKeys.includes(PmsPermissionKey.RENT_VIEW);
     const canAccounting = access.member.permissionKeys.includes(PmsPermissionKey.ACCOUNTING_VIEW);
     const canMaintenance = access.member.permissionKeys.includes(PmsPermissionKey.MAINTENANCE_VIEW);
@@ -8681,9 +9194,9 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
     const queue = [
       ...(canRent ? overdueRentItems.map((item) => ({ id: `rent-${item.id}`, type: "OVERDUE_RENT", priority: item.dueDate < new Date(now.getTime() - 30 * 86400000) ? "CRITICAL" : "HIGH", title: `Overdue rent · ${item.tenant.fullName}`, detail: `${Math.max(Number(item.amount) - Number(item.paidAmount), 0).toFixed(2)} OMR outstanding`, propertyId: item.propertyId, propertyName: item.property.name, dueAt: item.dueDate, href: `/pms/rentals?companyId=${access.company.id}` })) : []),
       ...(canMaintenance ? overdueMaintenanceItems.map((item) => ({ id: `maintenance-${item.id}`, type: "MAINTENANCE_OVERDUE", priority: item.priority === PmsMaintenancePriority.URGENT ? "CRITICAL" : "HIGH", title: item.title, detail: "Maintenance target date has passed", propertyId: item.propertyId, propertyName: item.property.name, dueAt: item.targetDate, href: `/pms/maintenance?companyId=${access.company.id}` })) : []),
-      ...expiringLeases.map((item) => ({ id: `lease-${item.id}`, type: "LEASE_EXPIRING", priority: item.endDate && item.endDate < new Date(now.getTime() + 30 * 86400000) ? "HIGH" : "MEDIUM", title: `Lease expiry · ${item.tenant.fullName}`, detail: `${item.property.name} · ${item.unit.unitNumber}`, propertyId: item.propertyId, propertyName: item.property.name, dueAt: item.endDate, href: `/pms/rentals/${item.id}?companyId=${access.company.id}` })),
+      ...(canTenancy ? expiringLeases.map((item) => ({ id: `lease-${item.id}`, type: "LEASE_EXPIRING", priority: item.endDate && item.endDate < new Date(now.getTime() + 30 * 86400000) ? "HIGH" : "MEDIUM", title: `Lease expiry · ${item.tenant.fullName}`, detail: `${item.property.name} · ${item.unit.unitNumber}`, propertyId: item.propertyId, propertyName: item.property.name, dueAt: item.endDate, href: `/pms/rentals/${item.id}?companyId=${access.company.id}` })) : []),
       ...(canDocuments ? dueDocuments.map((item) => ({ id: `document-${item.id}`, type: "DOCUMENT_EXPIRING", priority: item.expiryDate && item.expiryDate < new Date(now.getTime() + 14 * 86400000) ? "HIGH" : "MEDIUM", title: item.title, detail: "Document expiry requires review", propertyId: item.propertyId, propertyName: item.property?.name ?? null, dueAt: item.expiryDate, href: `/pms/documents?companyId=${access.company.id}` })) : []),
-      ...dueInspections.map((item) => ({ id: `inspection-${item.id}`, type: "INSPECTION_DUE", priority: item.status === PmsInspectionStatus.NEEDS_ACTION ? "HIGH" : "MEDIUM", title: item.title, detail: item.status === PmsInspectionStatus.NEEDS_ACTION ? "Inspection needs action" : "Inspection is due soon", propertyId: item.propertyId, propertyName: item.property.name, dueAt: item.scheduledFor, href: `/pms/reports?companyId=${access.company.id}` })),
+      ...(canMaintenance ? dueInspections.map((item) => ({ id: `inspection-${item.id}`, type: "INSPECTION_DUE", priority: item.status === PmsInspectionStatus.NEEDS_ACTION ? "HIGH" : "MEDIUM", title: item.title, detail: item.status === PmsInspectionStatus.NEEDS_ACTION ? "Inspection needs action" : "Inspection is due soon", propertyId: item.propertyId, propertyName: item.property.name, dueAt: item.scheduledFor, href: `/pms/reports?companyId=${access.company.id}` })) : []),
       ...statementReviewItems,
     ].sort((a, b) => {
       const rank: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2 };
@@ -8702,7 +9215,7 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
         overdueRentItems: canRent ? overdueRent._count : null,
         overdueRentAmount: canRent ? Math.max(Number(overdueRent._sum.amount ?? 0) - Number(overdueRent._sum.paidAmount ?? 0), 0).toFixed(2) : null,
         rentCollectedThisPeriod: canRent ? decimalToString(rentCollected._sum.amount) : null,
-        leasesExpiringSoon: leasesExpiring,
+        leasesExpiringSoon: canTenancy ? leasesExpiring : null,
         activeMaintenanceRequests: canMaintenance ? activeMaintenance : null,
         overdueMaintenanceRequests: canMaintenance ? overdueMaintenance : null,
         missingLeaseDocuments: canDocuments ? missingLeaseDocuments : null,
@@ -8711,7 +9224,7 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
       },
       automation: {
         rentRemindersDue: canRent ? overdueRent._count : null,
-        leaseExpiryRemindersDue: leasesExpiring,
+        leaseExpiryRemindersDue: canTenancy ? leasesExpiring : null,
         maintenanceRemindersDue: canMaintenance ? overdueMaintenance : null,
         documentExpiryRemindersDue: canDocuments ? expiringDocuments : null,
       },
@@ -8741,6 +9254,11 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
     const companyId = access.company.id;
     const scopedPropertyId = pmsScopedPropertyIdWhere(access);
     const scopedPropertyWhere = pmsScopedPropertyWhere(access);
+    const canInventory = access.member.permissionKeys.includes(PmsPermissionKey.INVENTORY_VIEW);
+    const canTenancy = access.member.permissionKeys.includes(PmsPermissionKey.TENANCY_VIEW);
+    const canRent = access.member.permissionKeys.includes(PmsPermissionKey.RENT_VIEW);
+    const canMaintenance = access.member.permissionKeys.includes(PmsPermissionKey.MAINTENANCE_VIEW);
+    const canSettings = access.member.permissionKeys.includes(PmsPermissionKey.SETTINGS_MANAGE);
     const now = new Date();
     const expiringWindowEnd = new Date(now);
     expiringWindowEnd.setDate(expiringWindowEnd.getDate() + 60);
@@ -9003,6 +9521,7 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
         },
         _sum: {
           amount: true,
+          paidAmount: true,
         },
       }),
       prisma.pmsRentPayment.aggregate({
@@ -9120,50 +9639,71 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
         pendingRentDueItems,
         overdueRentDueItems,
         activeTransactions,
-        totalPmsProperties,
-        totalPmsUnits,
-        vacantPmsUnits,
-        occupiedPmsUnits,
-        maintenancePmsUnits,
-        totalPmsTenants,
-        activePmsLeases,
-        expiringPmsLeases,
-        unpaidPmsRentDueItems,
-        overduePmsRentDueItems,
-        partiallyPaidPmsRentDueItems,
-        paidPmsRentDueItems,
-        pmsRentDueAmount: decimalToString(pmsRentDueAggregate._sum.amount),
-        pmsRentCollectedAmount: decimalToString(
-          pmsRentCollectedAggregate._sum.amount,
-        ),
-        openPmsWorkOrders,
-        inProgressPmsWorkOrders,
-        urgentPmsWorkOrders,
-        pmsMaintenanceCostAmount: decimalToString(
-          pmsMaintenanceCostAggregate._sum.cost,
-        ),
-        scheduledPmsInspections,
-        needsActionPmsInspections,
-        activePmsCommunicationTemplates,
-        activePmsPolicies,
-        pmsOccupancyRate:
-          totalPmsUnits > 0
+        totalPmsProperties: canInventory ? totalPmsProperties : null,
+        totalPmsUnits: canInventory ? totalPmsUnits : null,
+        vacantPmsUnits: canInventory ? vacantPmsUnits : null,
+        occupiedPmsUnits: canInventory ? occupiedPmsUnits : null,
+        maintenancePmsUnits: canInventory ? maintenancePmsUnits : null,
+        totalPmsTenants: canTenancy ? totalPmsTenants : null,
+        activePmsLeases: canTenancy ? activePmsLeases : null,
+        expiringPmsLeases: canTenancy ? expiringPmsLeases : null,
+        unpaidPmsRentDueItems: canRent ? unpaidPmsRentDueItems : null,
+        overduePmsRentDueItems: canRent ? overduePmsRentDueItems : null,
+        partiallyPaidPmsRentDueItems: canRent ? partiallyPaidPmsRentDueItems : null,
+        paidPmsRentDueItems: canRent ? paidPmsRentDueItems : null,
+        pmsRentDueAmount: canRent
+          ? moneyString(
+              Math.max(
+                Number(pmsRentDueAggregate._sum.amount ?? 0) -
+                  Number(pmsRentDueAggregate._sum.paidAmount ?? 0),
+                0,
+              ),
+            )
+          : null,
+        pmsRentCollectedAmount: canRent
+          ? decimalToString(pmsRentCollectedAggregate._sum.amount)
+          : null,
+        openPmsWorkOrders: canMaintenance ? openPmsWorkOrders : null,
+        inProgressPmsWorkOrders: canMaintenance ? inProgressPmsWorkOrders : null,
+        urgentPmsWorkOrders: canMaintenance ? urgentPmsWorkOrders : null,
+        pmsMaintenanceCostAmount: canMaintenance
+          ? decimalToString(pmsMaintenanceCostAggregate._sum.cost)
+          : null,
+        scheduledPmsInspections: canMaintenance ? scheduledPmsInspections : null,
+        needsActionPmsInspections: canMaintenance ? needsActionPmsInspections : null,
+        activePmsCommunicationTemplates: canSettings
+          ? activePmsCommunicationTemplates
+          : null,
+        activePmsPolicies: canSettings ? activePmsPolicies : null,
+        pmsOccupancyRate: canInventory
+          ? totalPmsUnits > 0
             ? Math.round((occupiedPmsUnits / totalPmsUnits) * 1000) / 10
-            : 0,
+            : 0
+          : null,
       },
       alerts: {
-        expiringLeases: expiringPmsLeaseAlerts.map(pmsLeaseResponse),
+        expiringLeases: canTenancy
+          ? expiringPmsLeaseAlerts.map(pmsLeaseResponse)
+          : [],
       },
       emptyStates: {
-        properties: totalPmsProperties === 0,
-        tenants: totalPmsTenants === 0,
+        properties: canInventory ? totalPmsProperties === 0 : null,
+        tenants: canTenancy ? totalPmsTenants === 0 : null,
         marketplaceListings: totalListings === 0,
-        rentals: activePmsLeases === 0,
+        rentals: canTenancy ? activePmsLeases === 0 : null,
         contracts: openContracts === 0,
-        accounting:
-          unpaidPmsRentDueItems + overduePmsRentDueItems + partiallyPaidPmsRentDueItems === 0,
-        maintenance: openPmsWorkOrders + inProgressPmsWorkOrders === 0,
-        settings: activePmsCommunicationTemplates + activePmsPolicies === 0,
+        accounting: canRent
+          ? unpaidPmsRentDueItems +
+              overduePmsRentDueItems +
+              partiallyPaidPmsRentDueItems ===
+            0
+          : null,
+        maintenance: canMaintenance
+          ? openPmsWorkOrders + inProgressPmsWorkOrders === 0
+          : null,
+        settings: canSettings
+          ? activePmsCommunicationTemplates + activePmsPolicies === 0
+          : null,
       },
     });
   } catch (error) {

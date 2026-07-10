@@ -67,6 +67,25 @@ Before production PMS migrations, take a PostgreSQL backup. App rollback can use
 - `workspace.member.permissionKeys` is the effective permission set: default role permissions plus active custom grants.
 - PMS navigation should only expose modules represented in the effective permission set. Backend authorization remains authoritative for direct API requests.
 - During release verification, test one unrestricted owner, one property-scoped staff member, and one user without PMS access.
+- `PMS_MANAGER` does not receive staff administration implicitly. Grant `STAFF_MANAGE` explicitly when a manager must invite, suspend, or rescope members.
+- Property-scoped members cannot run bulk imports. Use an unrestricted owner or explicitly authorized workspace-wide operator for onboarding imports.
+- Verify direct URL access as well as sidebar visibility. A hidden module must still return `403` from its protected API when the effective permission is absent.
+
+## Financial consistency checks
+
+- Outstanding and overdue rent must use the remaining balance: `amount - paidAmount`, never the full scheduled amount for partially paid items.
+- Compare the overview, reports summary, rent roll, and owner statement for the same company/property/date range before release.
+- A selected-property member must receive the same property boundary in the ledger, owner statement, documents, maintenance, reports, and CSV exports.
+- Treat confirmed rent payments and manual ledger entries as separate sources. Do not manually duplicate confirmed rent income in the ledger.
+
+## Permission and scope incident triage
+
+1. Confirm the active PMS company membership and entitlement.
+2. Inspect the member role, active custom grants, and assigned property IDs.
+3. Reproduce with the exact company and record ID, not only the sidebar route.
+4. Check whether the record is linked to an assigned property. Scoped access intentionally rejects unlinked records.
+5. Review the account security event for recent staff or scope changes.
+6. Never work around a `403` by widening a query in the frontend; correct the membership, grant, or property assignment.
 
 
 ## PMS command center checks

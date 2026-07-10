@@ -2884,6 +2884,36 @@ describe("PMS advanced permissions and property scopes", () => {
     expect(response.body.metrics.pmsOccupancyRate).toBe(100);
   });
 
+  it("redacts overview metrics and restricted modules outside effective permissions", async () => {
+    const { staff, staffMember, company } = await setupScopedCompany();
+    await prisma.pmsCompanyMember.update({
+      where: { id: staffMember.id },
+      data: { role: "PMS_MAINTENANCE" },
+    });
+
+    const token = signToken(staff);
+    const overview = await request(app)
+      .get(`/api/pms/overview?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(overview.body.metrics.totalPmsProperties).toBeNull();
+    expect(overview.body.metrics.totalPmsTenants).toBeNull();
+    expect(overview.body.metrics.pmsRentDueAmount).toBeNull();
+    expect(overview.body.metrics.openPmsWorkOrders).toBe(0);
+    expect(overview.body.alerts.expiringLeases).toEqual([]);
+
+    await request(app)
+      .get(`/api/pms/rent-due?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(403);
+
+    await request(app)
+      .get(`/api/pms/reports/summary?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(403);
+  });
+
   it("computes a property-scoped PMS command center and priority queue", async () => {
     const { staff, company, propertyA, propertyB } = await setupScopedCompany();
     const unitA = await prisma.pmsUnit.create({ data: { companyId: company.id, propertyId: propertyA.id, unitNumber: "A-201", status: "OCCUPIED", occupancyStatus: "OCCUPIED" } });
@@ -2912,9 +2942,15 @@ describe("PMS advanced permissions and property scopes", () => {
       .expect(403);
   });
 
-  it("lets PMS owners manage staff property scopes and audits the change", async () => {
-    const { owner, staff, company, propertyA } = await setupScopedCompany();
+  it("lets explicit permission grants authorize staff management and audits the change", async () => {
+    const { owner, staff, company, propertyA, staffMember } = await setupScopedCompany();
     const ownerToken = signToken(owner);
+
+    await request(app)
+      .post("/api/pms/staff")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ companyId: company.id, email: owner.email, role: "PMS_VIEWER" })
+      .expect(400);
 
     const target = await prisma.user.create({
       data: {
@@ -2965,7 +3001,282 @@ describe("PMS advanced permissions and property scopes", () => {
       .post("/api/pms/staff")
       .set("Authorization", `Bearer ${scopedStaffToken}`)
       .send({ companyId: company.id, email: target.email, role: "PMS_VIEWER" })
+      .expect(403);
+
+    await prisma.pmsMemberPermission.create({
+      data: {
+        companyId: company.id,
+        memberId: staffMember.id,
+        key: "STAFF_MANAGE",
+      },
+    });
+
+    await request(app)
+      .post("/api/pms/staff")
+      .set("Authorization", `Bearer ${scopedStaffToken}`)
+      .send({ companyId: company.id, email: target.email, role: "PMS_VIEWER" })
+      .expect(403);
+
+    await prisma.pmsMemberPropertyAccess.deleteMany({
+      where: { memberId: staffMember.id },
+    });
+
+    await request(app)
+      .post("/api/pms/staff")
+      .set("Authorization", `Bearer ${scopedStaffToken}`)
+      .send({ companyId: company.id, email: target.email, role: "PMS_OWNER" })
+      .expect(403);
+
+    await request(app)
+      .post("/api/pms/staff")
+      .set("Authorization", `Bearer ${scopedStaffToken}`)
+      .send({ companyId: company.id, email: target.email, role: "PMS_VIEWER" })
       .expect(201);
+  });
+
+  it("isolates property-linked PMS records, reports, exports, and imports", async () => {
+    const { staff, company, propertyA, propertyB } = await setupScopedCompany();
+    const token = signToken(staff);
+    const [unitA, unitB] = await Promise.all([
+      prisma.pmsUnit.create({
+        data: {
+          companyId: company.id,
+          propertyId: propertyA.id,
+          unitNumber: "A-301",
+          status: "OCCUPIED",
+          occupancyStatus: "OCCUPIED",
+        },
+      }),
+      prisma.pmsUnit.create({
+        data: {
+          companyId: company.id,
+          propertyId: propertyB.id,
+          unitNumber: "B-301",
+          status: "OCCUPIED",
+          occupancyStatus: "OCCUPIED",
+        },
+      }),
+    ]);
+    const [tenantA, tenantB] = await Promise.all([
+      prisma.pmsTenant.create({ data: { companyId: company.id, fullName: "Allowed Tenant" } }),
+      prisma.pmsTenant.create({ data: { companyId: company.id, fullName: "Blocked Tenant" } }),
+    ]);
+    const [leaseA, leaseB] = await Promise.all([
+      prisma.pmsLease.create({
+        data: {
+          companyId: company.id,
+          propertyId: propertyA.id,
+          unitId: unitA.id,
+          tenantId: tenantA.id,
+          startDate: new Date("2026-01-01T00:00:00.000Z"),
+          endDate: new Date("2026-12-31T00:00:00.000Z"),
+          rentAmount: 500,
+          status: "ACTIVE",
+        },
+      }),
+      prisma.pmsLease.create({
+        data: {
+          companyId: company.id,
+          propertyId: propertyB.id,
+          unitId: unitB.id,
+          tenantId: tenantB.id,
+          startDate: new Date("2026-01-01T00:00:00.000Z"),
+          endDate: new Date("2026-12-31T00:00:00.000Z"),
+          rentAmount: 900,
+          status: "ACTIVE",
+        },
+      }),
+    ]);
+    const [dueA, dueB] = await Promise.all([
+      prisma.pmsRentDueItem.create({
+        data: {
+          companyId: company.id,
+          propertyId: propertyA.id,
+          unitId: unitA.id,
+          tenantId: tenantA.id,
+          leaseId: leaseA.id,
+          dueDate: new Date("2026-02-01T00:00:00.000Z"),
+          amount: 500,
+          paidAmount: 100,
+          status: "PARTIALLY_PAID",
+        },
+      }),
+      prisma.pmsRentDueItem.create({
+        data: {
+          companyId: company.id,
+          propertyId: propertyB.id,
+          unitId: unitB.id,
+          tenantId: tenantB.id,
+          leaseId: leaseB.id,
+          dueDate: new Date("2026-02-01T00:00:00.000Z"),
+          amount: 900,
+          paidAmount: 0,
+          status: "UNPAID",
+        },
+      }),
+    ]);
+    const [workOrderA, workOrderB] = await Promise.all([
+      prisma.pmsWorkOrder.create({
+        data: { companyId: company.id, propertyId: propertyA.id, unitId: unitA.id, title: "Allowed repair" },
+      }),
+      prisma.pmsWorkOrder.create({
+        data: { companyId: company.id, propertyId: propertyB.id, unitId: unitB.id, title: "Blocked repair" },
+      }),
+    ]);
+    const [ledgerA, ledgerB] = await Promise.all([
+      prisma.pmsAccountingLedgerEntry.create({
+        data: {
+          companyId: company.id,
+          propertyId: propertyA.id,
+          unitId: unitA.id,
+          tenantId: tenantA.id,
+          leaseId: leaseA.id,
+          rentDueItemId: dueA.id,
+          type: "INCOME",
+          category: "Allowed income",
+          amount: 100,
+          transactionDate: new Date("2026-02-02T00:00:00.000Z"),
+        },
+      }),
+      prisma.pmsAccountingLedgerEntry.create({
+        data: {
+          companyId: company.id,
+          propertyId: propertyB.id,
+          unitId: unitB.id,
+          tenantId: tenantB.id,
+          leaseId: leaseB.id,
+          rentDueItemId: dueB.id,
+          type: "INCOME",
+          category: "Blocked income",
+          amount: 900,
+          transactionDate: new Date("2026-02-02T00:00:00.000Z"),
+        },
+      }),
+    ]);
+    const [documentA, documentB] = await Promise.all([
+      prisma.pmsDocument.create({
+        data: {
+          companyId: company.id,
+          propertyId: propertyA.id,
+          leaseId: leaseA.id,
+          type: "OTHER",
+          title: "Allowed document",
+          fileUrl: "/uploads/allowed.pdf",
+        },
+      }),
+      prisma.pmsDocument.create({
+        data: {
+          companyId: company.id,
+          propertyId: propertyB.id,
+          leaseId: leaseB.id,
+          type: "OTHER",
+          title: "Blocked document",
+          fileUrl: "/uploads/blocked.pdf",
+        },
+      }),
+    ]);
+    const [communicationA, communicationB] = await Promise.all([
+      prisma.pmsCommunicationLog.create({
+        data: {
+          companyId: company.id,
+          tenantId: tenantA.id,
+          leaseId: leaseA.id,
+          channel: "EMAIL",
+          body: "Allowed notice",
+        },
+      }),
+      prisma.pmsCommunicationLog.create({
+        data: {
+          companyId: company.id,
+          tenantId: tenantB.id,
+          leaseId: leaseB.id,
+          channel: "EMAIL",
+          body: "Blocked notice",
+        },
+      }),
+    ]);
+
+    const [
+      tenantsResponse,
+      leasesResponse,
+      rentResponse,
+      maintenanceResponse,
+      ledgerResponse,
+      documentsResponse,
+      communicationsResponse,
+    ] = await Promise.all([
+      request(app).get(`/api/pms/tenants?companyId=${company.id}`).set("Authorization", `Bearer ${token}`).expect(200),
+      request(app).get(`/api/pms/leases?companyId=${company.id}`).set("Authorization", `Bearer ${token}`).expect(200),
+      request(app).get(`/api/pms/rent-due?companyId=${company.id}`).set("Authorization", `Bearer ${token}`).expect(200),
+      request(app).get(`/api/pms/maintenance?companyId=${company.id}`).set("Authorization", `Bearer ${token}`).expect(200),
+      request(app).get(`/api/pms/accounting/ledger?companyId=${company.id}`).set("Authorization", `Bearer ${token}`).expect(200),
+      request(app).get(`/api/pms/documents?companyId=${company.id}`).set("Authorization", `Bearer ${token}`).expect(200),
+      request(app).get(`/api/pms/communication-logs?companyId=${company.id}`).set("Authorization", `Bearer ${token}`).expect(200),
+    ]);
+
+    const tenantIds = tenantsResponse.body.tenants.map((tenant: { id: string }) => tenant.id);
+    const leaseIds = leasesResponse.body.leases.map((lease: { id: string }) => lease.id);
+    const rentDueItemIds = rentResponse.body.rentDueItems.map((item: { id: string }) => item.id);
+    const workOrderIds = maintenanceResponse.body.workOrders.map((item: { id: string }) => item.id);
+    const ledgerEntryIds = ledgerResponse.body.ledgerEntries.map((item: { id: string }) => item.id);
+    const documentIds = documentsResponse.body.documents.map((item: { id: string }) => item.id);
+    const communicationIds = communicationsResponse.body.logs.map((item: { id: string }) => item.id);
+
+    expect(tenantIds).toEqual([tenantA.id]);
+    expect(tenantIds).not.toContain(tenantB.id);
+    expect(leaseIds).toEqual([leaseA.id]);
+    expect(leaseIds).not.toContain(leaseB.id);
+    expect(rentDueItemIds).toEqual([dueA.id]);
+    expect(rentDueItemIds).not.toContain(dueB.id);
+    expect(workOrderIds).toEqual([workOrderA.id]);
+    expect(workOrderIds).not.toContain(workOrderB.id);
+    expect(ledgerEntryIds).toEqual([ledgerA.id]);
+    expect(ledgerEntryIds).not.toContain(ledgerB.id);
+    expect(documentIds).toEqual([documentA.id]);
+    expect(documentIds).not.toContain(documentB.id);
+    expect(communicationIds).toEqual([communicationA.id]);
+    expect(communicationIds).not.toContain(communicationB.id);
+
+    await request(app)
+      .get(`/api/pms/accounting/ledger?companyId=${company.id}&propertyId=${propertyB.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(403);
+
+    await request(app)
+      .get(`/api/pms/accounting/owner-statement?companyId=${company.id}&unitId=${unitB.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(403);
+
+    await request(app)
+      .get(`/api/pms/documents/${documentB.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(403);
+
+    await request(app)
+      .post("/api/pms/communication-templates/preview")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, leaseId: leaseB.id, body: "Blocked preview" })
+      .expect(403);
+
+    const reportResponse = await request(app)
+      .get(`/api/pms/reports/summary?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(reportResponse.body.reports.occupancy.totalUnits).toBe(1);
+    expect(reportResponse.body.accounting.outstandingRent).toBe("400");
+
+    const exportResponse = await request(app)
+      .get(`/api/pms/exports/leases.csv?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(exportResponse.text).toContain("Allowed Tenant");
+    expect(exportResponse.text).not.toContain("Blocked Tenant");
+
+    await request(app)
+      .post("/api/pms/imports/preview")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, type: "PROPERTIES", filename: "properties.csv", csvText: "name\nUnsafe import" })
+      .expect(403);
   });
 
   it("keeps role boundaries compatible while exposing the permission matrix", async () => {

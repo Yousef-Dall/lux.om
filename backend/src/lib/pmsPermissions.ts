@@ -2,241 +2,6 @@ import type { PmsMemberRole } from "@prisma/client";
 
 import { AppError } from "../utils/http";
 
-export function canManagePmsInventory(role: PmsMemberRole) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_AGENT";
-}
-
-export function assertCanManagePmsInventory(role: PmsMemberRole) {
-  if (!canManagePmsInventory(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role can view inventory but cannot change it."
-    );
-  }
-}
-
-export function canManagePmsTenancies(role: PmsMemberRole) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_AGENT";
-}
-
-export function assertCanManagePmsTenancies(role: PmsMemberRole) {
-  if (!canManagePmsTenancies(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role can view tenancy records but cannot change them."
-    );
-  }
-}
-
-export function canCollectPmsRent(role: PmsMemberRole) {
-  return (
-    role === "PMS_OWNER" ||
-    role === "PMS_MANAGER" ||
-    role === "PMS_ACCOUNTANT"
-  );
-}
-
-export function assertCanCollectPmsRent(role: PmsMemberRole) {
-  if (!canCollectPmsRent(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role cannot update rent collection records."
-    );
-  }
-}
-
-export function canViewPmsAccounting(role: PmsMemberRole) {
-  return (
-    role === "PMS_OWNER" ||
-    role === "PMS_MANAGER" ||
-    role === "PMS_ACCOUNTANT" ||
-    role === "PMS_VIEWER"
-  );
-}
-
-export function assertCanViewPmsAccounting(role: PmsMemberRole) {
-  if (!canViewPmsAccounting(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role cannot view accounting records."
-    );
-  }
-}
-
-export function canManagePmsAccounting(role: PmsMemberRole) {
-  return (
-    role === "PMS_OWNER" ||
-    role === "PMS_MANAGER" ||
-    role === "PMS_ACCOUNTANT"
-  );
-}
-
-export function assertCanManagePmsAccounting(role: PmsMemberRole) {
-  if (!canManagePmsAccounting(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role can view accounting records but cannot change them."
-    );
-  }
-}
-
-export function canManagePmsMaintenance(role: PmsMemberRole) {
-  return (
-    role === "PMS_OWNER" ||
-    role === "PMS_MANAGER" ||
-    role === "PMS_MAINTENANCE" ||
-    role === "PMS_AGENT"
-  );
-}
-
-export function assertCanManagePmsMaintenance(role: PmsMemberRole) {
-  if (!canManagePmsMaintenance(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role can view maintenance records but cannot change them."
-    );
-  }
-}
-
-export function canManagePmsOperations(role: PmsMemberRole) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER";
-}
-
-export function assertCanManagePmsOperations(role: PmsMemberRole) {
-  if (!canManagePmsOperations(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role can view operational settings but cannot change them."
-    );
-  }
-}
-
-
-export function canViewPmsDocuments(role: PmsMemberRole) {
-  return (
-    role === "PMS_OWNER" ||
-    role === "PMS_MANAGER" ||
-    role === "PMS_ACCOUNTANT" ||
-    role === "PMS_MAINTENANCE" ||
-    role === "PMS_AGENT" ||
-    role === "PMS_VIEWER"
-  );
-}
-
-export function assertCanViewPmsDocuments(role: PmsMemberRole) {
-  if (!canViewPmsDocuments(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role cannot view document records."
-    );
-  }
-}
-
-export function canManagePmsDocuments(role: PmsMemberRole) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER";
-}
-
-export function assertCanManagePmsDocuments(role: PmsMemberRole) {
-  if (!canManagePmsDocuments(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role can view documents but cannot manage them."
-    );
-  }
-}
-
-export function canManagePmsMaintenanceDocuments(role: PmsMemberRole) {
-  return (
-    role === "PMS_OWNER" ||
-    role === "PMS_MANAGER" ||
-    role === "PMS_MAINTENANCE"
-  );
-}
-
-export function assertCanManagePmsMaintenanceDocuments(role: PmsMemberRole) {
-  if (!canManagePmsMaintenanceDocuments(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role cannot manage maintenance documents."
-    );
-  }
-}
-
-export function canViewPmsCommunications(role: PmsMemberRole) {
-  return (
-    role === "PMS_OWNER" ||
-    role === "PMS_MANAGER" ||
-    role === "PMS_ACCOUNTANT" ||
-    role === "PMS_MAINTENANCE" ||
-    role === "PMS_AGENT" ||
-    role === "PMS_VIEWER"
-  );
-}
-
-export function assertCanViewPmsCommunications(role: PmsMemberRole) {
-  if (!canViewPmsCommunications(role)) {
-    throw new AppError(403, "Your PMS role cannot view communication records.");
-  }
-}
-
-export function canSendPmsCommunication(
-  role: PmsMemberRole,
-  context?: "rent" | "maintenance" | "general",
-) {
-  if (role === "PMS_OWNER" || role === "PMS_MANAGER") return true;
-  if (role === "PMS_ACCOUNTANT") return context === "rent";
-  if (role === "PMS_MAINTENANCE") return context === "maintenance";
-  return false;
-}
-
-export function assertCanSendPmsCommunication(
-  role: PmsMemberRole,
-  context?: "rent" | "maintenance" | "general",
-) {
-  if (!canSendPmsCommunication(role, context)) {
-    throw new AppError(
-      403,
-      "Your PMS role cannot send this communication."
-    );
-  }
-}
-
-export function canManagePmsImports(role: PmsMemberRole) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER";
-}
-
-export function assertCanManagePmsImports(role: PmsMemberRole) {
-  if (!canManagePmsImports(role)) {
-    throw new AppError(
-      403,
-      "Your PMS role cannot import bulk PMS records."
-    );
-  }
-}
-
-export function canExportPmsData(
-  role: PmsMemberRole,
-  type?: "properties" | "units" | "tenants" | "leases" | "rent_roll" | "maintenance" | "accounting",
-) {
-  if (role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_AGENT") return true;
-  if (role === "PMS_VIEWER") return type !== "accounting";
-  if (role === "PMS_ACCOUNTANT") return type === "rent_roll" || type === "accounting" || type === "leases" || type === "tenants";
-  if (role === "PMS_MAINTENANCE") return type === "maintenance";
-  return false;
-}
-
-export function assertCanExportPmsData(
-  role: PmsMemberRole,
-  type?: "properties" | "units" | "tenants" | "leases" | "rent_roll" | "maintenance" | "accounting",
-) {
-  if (!canExportPmsData(role, type)) {
-    throw new AppError(
-      403,
-      "Your PMS role cannot export this data."
-    );
-  }
-}
-
 export type PmsPermissionKeyLike =
   | "INVENTORY_VIEW"
   | "INVENTORY_MANAGE"
@@ -331,16 +96,299 @@ export const DEFAULT_PMS_ROLE_PERMISSIONS: Record<PmsMemberRole, PmsPermissionKe
   ],
 };
 
+export type PmsPermissionSubject =
+  | PmsMemberRole
+  | {
+      role: PmsMemberRole;
+      permissionKeys?: readonly string[];
+    };
+
 export function getDefaultPmsPermissionKeys(role: PmsMemberRole) {
   return DEFAULT_PMS_ROLE_PERMISSIONS[role];
 }
 
-export function canManagePmsStaff(role: PmsMemberRole) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER";
+export function getPmsPermissionKeys(subject: PmsPermissionSubject): readonly string[] {
+  return typeof subject === "string"
+    ? getDefaultPmsPermissionKeys(subject)
+    : subject.permissionKeys ?? getDefaultPmsPermissionKeys(subject.role);
 }
 
-export function assertCanManagePmsStaff(role: PmsMemberRole) {
-  if (!canManagePmsStaff(role)) {
-    throw new AppError(403, "Your PMS role cannot manage staff access.");
+export function hasPmsPermission(
+  subject: PmsPermissionSubject,
+  permission: PmsPermissionKeyLike,
+) {
+  return getPmsPermissionKeys(subject).includes(permission);
+}
+
+export function assertHasPmsPermission(
+  subject: PmsPermissionSubject,
+  permission: PmsPermissionKeyLike,
+  message: string,
+) {
+  if (!hasPmsPermission(subject, permission)) {
+    throw new AppError(403, message);
   }
+}
+
+export function canManagePmsInventory(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "INVENTORY_MANAGE");
+}
+
+export function assertCanManagePmsInventory(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "INVENTORY_MANAGE",
+    "Your PMS access can view inventory but cannot change it.",
+  );
+}
+
+export function canManagePmsTenancies(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "TENANCY_MANAGE");
+}
+
+export function assertCanManagePmsTenancies(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "TENANCY_MANAGE",
+    "Your PMS access can view tenancy records but cannot change them.",
+  );
+}
+
+export function canViewPmsRent(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "RENT_VIEW");
+}
+
+export function assertCanViewPmsRent(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "RENT_VIEW",
+    "Your PMS access cannot view rent collection records.",
+  );
+}
+
+export function canCollectPmsRent(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "RENT_MANAGE");
+}
+
+export function assertCanCollectPmsRent(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "RENT_MANAGE",
+    "Your PMS access cannot update rent collection records.",
+  );
+}
+
+export function canViewPmsAccounting(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "ACCOUNTING_VIEW");
+}
+
+export function assertCanViewPmsAccounting(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "ACCOUNTING_VIEW",
+    "Your PMS access cannot view accounting records.",
+  );
+}
+
+export function canManagePmsAccounting(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "ACCOUNTING_MANAGE");
+}
+
+export function assertCanManagePmsAccounting(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "ACCOUNTING_MANAGE",
+    "Your PMS access can view accounting records but cannot change them.",
+  );
+}
+
+export function canViewPmsMaintenance(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "MAINTENANCE_VIEW");
+}
+
+export function assertCanViewPmsMaintenance(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "MAINTENANCE_VIEW",
+    "Your PMS access cannot view maintenance records.",
+  );
+}
+
+export function canManagePmsMaintenance(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "MAINTENANCE_MANAGE");
+}
+
+export function assertCanManagePmsMaintenance(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "MAINTENANCE_MANAGE",
+    "Your PMS access can view maintenance records but cannot change them.",
+  );
+}
+
+export function canViewPmsReports(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "REPORTS_VIEW");
+}
+
+export function assertCanViewPmsReports(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "REPORTS_VIEW",
+    "Your PMS access cannot view reports.",
+  );
+}
+
+export function canManagePmsOperations(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "SETTINGS_MANAGE");
+}
+
+export function assertCanManagePmsOperations(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "SETTINGS_MANAGE",
+    "Your PMS access can view operational settings but cannot change them.",
+  );
+}
+
+export function canViewPmsDocuments(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "DOCUMENTS_VIEW");
+}
+
+export function assertCanViewPmsDocuments(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "DOCUMENTS_VIEW",
+    "Your PMS access cannot view document records.",
+  );
+}
+
+export function canManagePmsDocuments(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "DOCUMENTS_MANAGE");
+}
+
+export function assertCanManagePmsDocuments(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "DOCUMENTS_MANAGE",
+    "Your PMS access can view documents but cannot manage them.",
+  );
+}
+
+export function canManagePmsMaintenanceDocuments(subject: PmsPermissionSubject) {
+  return (
+    hasPmsPermission(subject, "MAINTENANCE_MANAGE") &&
+    hasPmsPermission(subject, "DOCUMENTS_VIEW")
+  );
+}
+
+export function assertCanManagePmsMaintenanceDocuments(subject: PmsPermissionSubject) {
+  if (!canManagePmsMaintenanceDocuments(subject)) {
+    throw new AppError(
+      403,
+      "Your PMS access cannot manage maintenance documents.",
+    );
+  }
+}
+
+export function canViewPmsCommunications(subject: PmsPermissionSubject) {
+  // Communication history is workspace context, while sending is the
+  // privileged action. Keep read access available to every active PMS role.
+  return getPmsPermissionKeys(subject).length > 0;
+}
+
+export function assertCanViewPmsCommunications(subject: PmsPermissionSubject) {
+  if (!canViewPmsCommunications(subject)) {
+    throw new AppError(403, "Your PMS access cannot view communication records.");
+  }
+}
+
+export function canSendPmsCommunication(
+  subject: PmsPermissionSubject,
+  context?: "rent" | "maintenance" | "general",
+) {
+  if (!hasPmsPermission(subject, "COMMUNICATIONS_SEND")) return false;
+
+  const role = typeof subject === "string" ? subject : subject.role;
+  if (role === "PMS_ACCOUNTANT") return context === "rent";
+  if (role === "PMS_MAINTENANCE") return context === "maintenance";
+  return true;
+}
+
+export function assertCanSendPmsCommunication(
+  subject: PmsPermissionSubject,
+  context?: "rent" | "maintenance" | "general",
+) {
+  if (!canSendPmsCommunication(subject, context)) {
+    throw new AppError(403, "Your PMS access cannot send this communication.");
+  }
+}
+
+export function canManagePmsImports(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "IMPORT_EXPORT");
+}
+
+export function assertCanManagePmsImports(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "IMPORT_EXPORT",
+    "Your PMS access cannot import bulk PMS records.",
+  );
+}
+
+export function canExportPmsData(
+  subject: PmsPermissionSubject,
+  type?:
+    | "properties"
+    | "units"
+    | "tenants"
+    | "leases"
+    | "rent_roll"
+    | "maintenance"
+    | "accounting",
+) {
+  if (!type) return hasPmsPermission(subject, "IMPORT_EXPORT");
+
+  const role = typeof subject === "string" ? subject : subject.role;
+  if (role === "PMS_AGENT") return true;
+  if (role === "PMS_VIEWER" && type === "accounting") return false;
+
+  const requiredPermission: Record<NonNullable<typeof type>, PmsPermissionKeyLike> = {
+    properties: "INVENTORY_VIEW",
+    units: "INVENTORY_VIEW",
+    tenants: "TENANCY_VIEW",
+    leases: "TENANCY_VIEW",
+    rent_roll: "RENT_VIEW",
+    maintenance: "MAINTENANCE_VIEW",
+    accounting: "ACCOUNTING_VIEW",
+  };
+
+  return hasPmsPermission(subject, requiredPermission[type]);
+}
+
+export function assertCanExportPmsData(
+  subject: PmsPermissionSubject,
+  type?:
+    | "properties"
+    | "units"
+    | "tenants"
+    | "leases"
+    | "rent_roll"
+    | "maintenance"
+    | "accounting",
+) {
+  if (!canExportPmsData(subject, type)) {
+    throw new AppError(403, "Your PMS access cannot export this data.");
+  }
+}
+
+export function canManagePmsStaff(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "STAFF_MANAGE");
+}
+
+export function assertCanManagePmsStaff(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "STAFF_MANAGE",
+    "Your PMS access cannot manage staff access.",
+  );
 }

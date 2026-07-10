@@ -141,24 +141,27 @@ import { cn } from "../utils/format";
 import { parseCoordinatesFromMapInput } from "../utils/mapLocation";
 
 const pmsNavigation = [
-  { to: "/pms/overview", key: "overview", icon: Home, permission: null },
-  { to: "/pms/properties", key: "properties", icon: Building2, permission: "INVENTORY_VIEW" },
-  { to: "/pms/units", key: "units", icon: KeyRound, permission: "INVENTORY_VIEW" },
-  { to: "/pms/tenants", key: "tenants", icon: UserRoundCheck, permission: "TENANCY_VIEW" },
-  { to: "/pms/rentals", key: "rentals", icon: ClipboardList, permission: "TENANCY_VIEW" },
-  { to: "/pms/documents", key: "documents", icon: FileText, permission: "DOCUMENTS_VIEW" },
-  { to: "/pms/maintenance", key: "maintenance", icon: Wrench, permission: "MAINTENANCE_VIEW" },
-  { to: "/pms/accounting", key: "accounting", icon: CreditCard, permission: "ACCOUNTING_VIEW" },
-  { to: "/pms/import-export", key: "importExport", icon: FileText, permission: "IMPORT_EXPORT" },
-  { to: "/pms/staff", key: "staff", icon: UserCog, permission: "STAFF_MANAGE" },
-  { to: "/pms/reports", key: "reports", icon: BarChart3, permission: "REPORTS_VIEW" },
-  { to: "/pms/settings", key: "settings", icon: Settings, permission: "SETTINGS_MANAGE" },
+  { to: "/pms/overview", key: "overview", group: "workspace", icon: Home, permission: null },
+  { to: "/pms/properties", key: "properties", group: "workspace", icon: Building2, permission: "INVENTORY_VIEW" },
+  { to: "/pms/units", key: "units", group: "workspace", icon: KeyRound, permission: "INVENTORY_VIEW" },
+  { to: "/pms/tenants", key: "tenants", group: "leasing", icon: UserRoundCheck, permission: "TENANCY_VIEW" },
+  { to: "/pms/rentals", key: "rentals", group: "leasing", icon: ClipboardList, permission: "TENANCY_VIEW" },
+  { to: "/pms/documents", key: "documents", group: "operations", icon: FileText, permission: "DOCUMENTS_VIEW" },
+  { to: "/pms/maintenance", key: "maintenance", group: "operations", icon: Wrench, permission: "MAINTENANCE_VIEW" },
+  { to: "/pms/accounting", key: "accounting", group: "control", icon: CreditCard, permission: "ACCOUNTING_VIEW" },
+  { to: "/pms/reports", key: "reports", group: "control", icon: BarChart3, permission: "REPORTS_VIEW" },
+  { to: "/pms/import-export", key: "importExport", group: "control", icon: FileText, permission: "IMPORT_EXPORT" },
+  { to: "/pms/staff", key: "staff", group: "control", icon: UserCog, permission: "STAFF_MANAGE" },
+  { to: "/pms/settings", key: "settings", group: "control", icon: Settings, permission: "SETTINGS_MANAGE" },
 ] as const satisfies ReadonlyArray<{
   to: string;
   key: "overview" | "properties" | "units" | "tenants" | "rentals" | "documents" | "maintenance" | "accounting" | "importExport" | "staff" | "reports" | "settings";
+  group: "workspace" | "leasing" | "operations" | "control";
   icon: typeof Home;
   permission: PmsPermissionKey | null;
 }>;
+
+const pmsNavigationGroups = ["workspace", "leasing", "operations", "control"] as const;
 
 const pmsRoles: PmsMemberRole[] = [
   "PMS_OWNER",
@@ -437,13 +440,21 @@ const emptyDocumentForm: PmsDocumentPayload = {
   notes: "",
 };
 
-function formatNumber(value: number, language: "en" | "ar") {
+function formatNumber(
+  value: number | null | undefined,
+  language: "en" | "ar",
+) {
+  if (value == null) return "—";
   return new Intl.NumberFormat(language === "ar" ? "ar-OM" : "en-GB").format(
     value,
   );
 }
 
-function formatPercent(value: number, language: "en" | "ar") {
+function formatPercent(
+  value: number | null | undefined,
+  language: "en" | "ar",
+) {
+  if (value == null) return "—";
   return `${new Intl.NumberFormat(language === "ar" ? "ar-OM" : "en-GB", {
     maximumFractionDigits: 1,
   }).format(value)}%`;
@@ -479,50 +490,24 @@ function getCompanyName(
     : company.nameEn || company.nameAr || "";
 }
 
-function canEditInventory(role?: string) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_AGENT";
+function hasPmsPermission(
+  permissionKeys: readonly PmsPermissionKey[] | undefined,
+  permission: PmsPermissionKey,
+) {
+  return permissionKeys?.includes(permission) ?? false;
 }
 
-function canEditTenancies(role?: string) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_AGENT";
-}
-
-function canCollectRent(role?: string) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_ACCOUNTANT";
-}
-
-function canViewAccounting(role?: string) {
-  return (
-    role === "PMS_OWNER" ||
-    role === "PMS_MANAGER" ||
-    role === "PMS_ACCOUNTANT" ||
-    role === "PMS_VIEWER"
-  );
-}
-
-function canEditMaintenance(role?: string) {
-  return (
-    role === "PMS_OWNER" ||
-    role === "PMS_MANAGER" ||
-    role === "PMS_MAINTENANCE" ||
-    role === "PMS_AGENT"
-  );
-}
-
-function canEditOperations(role?: string) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER";
-}
-
-function canManageImports(role?: string) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER";
-}
-
-function canViewDocuments(role?: string) {
-  return Boolean(role);
-}
-
-function canManageDocuments(role?: string) {
-  return role === "PMS_OWNER" || role === "PMS_MANAGER" || role === "PMS_MAINTENANCE";
+function getPmsSectionPermission(section: string): PmsPermissionKey | null {
+  if (section === "properties" || section === "propertyDetail" || section === "units") return "INVENTORY_VIEW";
+  if (section === "tenants" || section === "rentals" || section === "leaseDetail") return "TENANCY_VIEW";
+  if (section === "documents") return "DOCUMENTS_VIEW";
+  if (section === "maintenance") return "MAINTENANCE_VIEW";
+  if (section === "accounting") return "ACCOUNTING_VIEW";
+  if (section === "reports") return "REPORTS_VIEW";
+  if (section === "importExport") return "IMPORT_EXPORT";
+  if (section === "staff") return "STAFF_MANAGE";
+  if (section === "settings") return "SETTINGS_MANAGE";
+  return null;
 }
 
 function getUnitStatusLabel(status: PmsUnitStatus, language: "en" | "ar") {
@@ -1482,16 +1467,30 @@ export default function PmsPortal() {
                       ? "settings"
                       : "overview";
 
-  const canEdit = canEditInventory(overview?.workspace.member.role);
-  const canEditTenantRecords = canEditTenancies(overview?.workspace.member.role);
-  const canCollect = canCollectRent(overview?.workspace.member.role);
-  const canSeeAccounting = canViewAccounting(overview?.workspace.member.role);
-  const canManageMaintenance = canEditMaintenance(overview?.workspace.member.role);
-  const canManageOperations = canEditOperations(overview?.workspace.member.role);
-  const canManageImportRecords = canManageImports(overview?.workspace.member.role);
-  const canManageStaffRecords = canEditOperations(overview?.workspace.member.role);
-  const canSeeDocuments = canViewDocuments(overview?.workspace.member.role);
-  const canManageDocumentRecords = canManageDocuments(overview?.workspace.member.role);
+  const permissionKeys = overview?.workspace.member.permissionKeys;
+  const canViewInventory = hasPmsPermission(permissionKeys, "INVENTORY_VIEW");
+  const canViewTenancy = hasPmsPermission(permissionKeys, "TENANCY_VIEW");
+  const canViewRent = hasPmsPermission(permissionKeys, "RENT_VIEW");
+  const canViewMaintenance = hasPmsPermission(permissionKeys, "MAINTENANCE_VIEW");
+  const canViewSettings = hasPmsPermission(permissionKeys, "SETTINGS_MANAGE");
+  const canEdit = hasPmsPermission(permissionKeys, "INVENTORY_MANAGE");
+  const canEditTenantRecords = hasPmsPermission(permissionKeys, "TENANCY_MANAGE");
+  const canCollect = hasPmsPermission(permissionKeys, "RENT_MANAGE");
+  const canSeeAccounting = hasPmsPermission(permissionKeys, "ACCOUNTING_VIEW");
+  const canManageMaintenance = hasPmsPermission(permissionKeys, "MAINTENANCE_MANAGE");
+  const canManageOperations = hasPmsPermission(permissionKeys, "SETTINGS_MANAGE");
+  const hasWorkspaceWidePropertyAccess =
+    overview?.workspace.member.propertyScope.allProperties ?? false;
+  const canManageImportRecords =
+    hasPmsPermission(permissionKeys, "IMPORT_EXPORT") &&
+    hasWorkspaceWidePropertyAccess;
+  const canManageStaffRecords =
+    hasPmsPermission(permissionKeys, "STAFF_MANAGE") &&
+    hasWorkspaceWidePropertyAccess;
+  const canSeeDocuments = hasPmsPermission(permissionKeys, "DOCUMENTS_VIEW");
+  const canManageDocumentRecords = hasPmsPermission(permissionKeys, "DOCUMENTS_MANAGE") ||
+    (hasPmsPermission(permissionKeys, "MAINTENANCE_MANAGE") &&
+      hasPmsPermission(permissionKeys, "DOCUMENTS_VIEW"));
 
   const sectionMeta = section === "importExport"
     ? { eyebrow: copy.importExport, title: copy.importExportTitle, description: copy.importExportDescription }
@@ -1500,6 +1499,17 @@ export default function PmsPortal() {
       : { eyebrow: copy.eyebrow, title: copy.portal, description: copy.portalText };
 
   const isOperationalSubpage = section === "importExport" || section === "staff";
+  const requiredSectionPermission = getPmsSectionPermission(section);
+  const sectionAccessDenied = Boolean(
+    overview &&
+      ((requiredSectionPermission &&
+        !hasPmsPermission(
+          overview.workspace.member.permissionKeys,
+          requiredSectionPermission,
+        )) ||
+        ((section === "importExport" || section === "staff") &&
+          !overview.workspace.member.propertyScope.allProperties)),
+  );
 
   async function loadPortal() {
     if (!token) return;
@@ -1510,6 +1520,19 @@ export default function PmsPortal() {
       const overviewResponse = await getPmsOverview(token, selectedCompanyId);
       setOverview(overviewResponse);
       const companyId = overviewResponse.workspace.company.id;
+      const workspacePermissions = overviewResponse.workspace.member.permissionKeys;
+      const requiredPermission = getPmsSectionPermission(section);
+
+      if (
+        (requiredPermission &&
+          !overviewResponse.workspace.member.permissionKeys.includes(requiredPermission)) ||
+        ((section === "importExport" || section === "staff") &&
+          !overviewResponse.workspace.member.propertyScope.allProperties)
+      ) {
+        setCommandCenter(null);
+        return;
+      }
+
       const commandCenterResponse = await getPmsCommandCenter(token, companyId);
       setCommandCenter(commandCenterResponse);
 
@@ -1565,29 +1588,53 @@ export default function PmsPortal() {
         setActiveProperty(null);
         setActiveLease(null);
       } else if (section === "leaseDetail" && selectedLeaseId) {
-        const [leaseResponse, rentDueResponse, documentResponse, checklistResponse] = await Promise.all([
-          getPmsLease(token, selectedLeaseId),
-          listPmsLeaseRentDueItems(token, selectedLeaseId, { take: 200 }),
-          listPmsDocuments(token, { companyId, leaseId: selectedLeaseId, take: 50 }),
-          listPmsLeaseChecklists(token, selectedLeaseId),
-        ]);
+        const canViewRent =
+          overviewResponse.workspace.member.permissionKeys.includes("RENT_VIEW");
+        const canViewDocuments =
+          overviewResponse.workspace.member.permissionKeys.includes("DOCUMENTS_VIEW");
+        const [leaseResponse, leaseRentDueItems, leaseDocuments, leaseChecklists] =
+          await Promise.all([
+            getPmsLease(token, selectedLeaseId),
+            canViewRent
+              ? listPmsLeaseRentDueItems(token, selectedLeaseId, { take: 200 }).then(
+                  (response) => response.rentDueItems,
+                )
+              : Promise.resolve([] as PmsRentDueItem[]),
+            canViewDocuments
+              ? listPmsDocuments(token, {
+                  companyId,
+                  leaseId: selectedLeaseId,
+                  take: 50,
+                }).then((response) => response.documents)
+              : Promise.resolve([] as PmsDocument[]),
+            canViewDocuments
+              ? listPmsLeaseChecklists(token, selectedLeaseId).then(
+                  (response) => response.checklistItems,
+                )
+              : Promise.resolve([] as PmsMoveChecklistItem[]),
+          ]);
         setActiveLease(leaseResponse.lease);
-        setRentDueItems(rentDueResponse.rentDueItems);
-        setActiveLeaseDocuments(documentResponse.documents);
-        setActiveLeaseChecklists(checklistResponse.checklistItems);
+        setRentDueItems(leaseRentDueItems);
+        setActiveLeaseDocuments(leaseDocuments);
+        setActiveLeaseChecklists(leaseChecklists);
         setActiveProperty(null);
       } else if (section === "documents") {
-        const [propertiesResponse, unitsResponse, tenantsResponse, leasesResponse, workOrdersResponse, inspectionsResponse, documentsResponse, alertsResponse] =
+        const canViewMaintenance = workspacePermissions.includes("MAINTENANCE_VIEW");
+        const [propertiesResponse, unitsResponse, tenantsResponse, leasesResponse, documentsResponse, alertsResponse] =
           await Promise.all([
             listPmsProperties(token, { companyId, take: 100 }),
             listPmsUnits(token, { companyId, take: 200 }),
             listPmsTenants(token, { companyId, take: 100 }),
             listPmsLeases(token, { companyId, take: 100 }),
-            listPmsWorkOrders(token, { companyId, take: 100 }),
-            listPmsInspections(token, { companyId, take: 100 }),
             listPmsDocuments(token, { companyId, take: 100 }),
             listPmsDocumentExpiryAlerts(token, { companyId, withinDays: 30 }),
           ]);
+        const [workOrdersResponse, inspectionsResponse] = canViewMaintenance
+          ? await Promise.all([
+              listPmsWorkOrders(token, { companyId, take: 100 }),
+              listPmsInspections(token, { companyId, take: 100 }),
+            ])
+          : [{ workOrders: [] as PmsWorkOrder[] }, { inspections: [] as PmsInspection[] }];
         setProperties(propertiesResponse.properties);
         setUnits(unitsResponse.units);
         setTenants(tenantsResponse.tenants);
@@ -1615,19 +1662,27 @@ export default function PmsPortal() {
         setActiveProperty(null);
         setActiveLease(null);
       } else if (section === "accounting") {
-        const [rentDueResponse, summaryResponse, ledgerResponse, statementResponse, propertiesResponse, unitsResponse, tenantsResponse, leasesResponse, workOrdersResponse] = await Promise.all([
-          listPmsRentDueItems(token, {
-            companyId,
-            take: 200,
-          }),
-          getPmsReportsSummary(token, companyId),
+        const canViewRent = workspacePermissions.includes("RENT_VIEW");
+        const canViewReports = workspacePermissions.includes("REPORTS_VIEW");
+        const canViewMaintenance = workspacePermissions.includes("MAINTENANCE_VIEW");
+        const [ledgerResponse, statementResponse, propertiesResponse, unitsResponse, tenantsResponse, leasesResponse] = await Promise.all([
           listPmsAccountingLedger(token, { companyId, take: 100 }),
           getPmsOwnerStatement(token, { companyId }),
           listPmsProperties(token, { companyId, take: 100 }),
           listPmsUnits(token, { companyId, take: 200 }),
           listPmsTenants(token, { companyId, take: 100 }),
           listPmsLeases(token, { companyId, take: 100 }),
-          listPmsWorkOrders(token, { companyId, take: 100 }),
+        ]);
+        const [rentDueResponse, summaryResponse, workOrdersResponse] = await Promise.all([
+          canViewRent
+            ? listPmsRentDueItems(token, { companyId, take: 200 })
+            : Promise.resolve({ rentDueItems: [] as PmsRentDueItem[] }),
+          canViewReports
+            ? getPmsReportsSummary(token, companyId)
+            : Promise.resolve(null),
+          canViewMaintenance
+            ? listPmsWorkOrders(token, { companyId, take: 100 })
+            : Promise.resolve({ workOrders: [] as PmsWorkOrder[] }),
         ]);
         setRentDueItems(rentDueResponse.rentDueItems);
         setReportsSummary(summaryResponse);
@@ -1659,7 +1714,8 @@ export default function PmsPortal() {
         setActiveProperty(null);
         setActiveLease(null);
       } else if (section === "settings") {
-        const [propertiesResponse, unitsResponse, tenantsResponse, leasesResponse, templatesResponse, communicationLogsResponse, remindersResponse, policiesResponse, inspectionsResponse] =
+        const canViewMaintenance = workspacePermissions.includes("MAINTENANCE_VIEW");
+        const [propertiesResponse, unitsResponse, tenantsResponse, leasesResponse, templatesResponse, communicationLogsResponse, remindersResponse, policiesResponse] =
           await Promise.all([
             listPmsProperties(token, { companyId, take: 100 }),
             listPmsUnits(token, { companyId, take: 200 }),
@@ -1669,8 +1725,10 @@ export default function PmsPortal() {
             listPmsCommunicationLogs(token, { companyId, take: 25 }),
             listPmsReminderCandidates(token, { companyId, type: "RENT_DUE_SOON", days: 14, take: 25 }),
             listPmsPolicies(token, { companyId, take: 100 }),
-            listPmsInspections(token, { companyId, take: 100 }),
           ]);
+        const inspectionsResponse = canViewMaintenance
+          ? await listPmsInspections(token, { companyId, take: 100 })
+          : { inspections: [] as PmsInspection[] };
         setProperties(propertiesResponse.properties);
         setUnits(unitsResponse.units);
         setTenants(tenantsResponse.tenants);
@@ -1724,99 +1782,59 @@ export default function PmsPortal() {
   const overviewMetrics = useMemo(() => {
     if (!overview) return [];
 
-    return [
-      {
-        key: "totalPmsProperties",
-        label: copy.totalPmsProperties,
-        value: formatNumber(overview.metrics.totalPmsProperties, language),
-      },
-      {
-        key: "totalPmsUnits",
-        label: copy.totalPmsUnits,
-        value: formatNumber(overview.metrics.totalPmsUnits, language),
-      },
-      {
-        key: "vacantPmsUnits",
-        label: copy.vacantPmsUnits,
-        value: formatNumber(overview.metrics.vacantPmsUnits, language),
-      },
-      {
-        key: "occupiedPmsUnits",
-        label: copy.occupiedPmsUnits,
-        value: formatNumber(overview.metrics.occupiedPmsUnits, language),
-      },
-      {
-        key: "maintenancePmsUnits",
-        label: copy.maintenancePmsUnits,
-        value: formatNumber(overview.metrics.maintenancePmsUnits, language),
-      },
-      {
-        key: "pmsOccupancyRate",
-        label: copy.occupancyRate,
-        value: formatPercent(overview.metrics.pmsOccupancyRate, language),
-      },
-      {
-        key: "totalPmsTenants",
-        label: copy.tenants,
-        value: formatNumber(overview.metrics.totalPmsTenants, language),
-      },
-      {
-        key: "activePmsLeases",
-        label: copy.activeLeases,
-        value: formatNumber(overview.metrics.activePmsLeases, language),
-      },
-      {
-        key: "expiringPmsLeases",
-        label: copy.expiringLeases,
-        value: formatNumber(overview.metrics.expiringPmsLeases, language),
-      },
-      {
-        key: "unpaidPmsRentDueItems",
-        label: copy.unpaidRent,
-        value: formatNumber(overview.metrics.unpaidPmsRentDueItems, language),
-      },
-      {
-        key: "overduePmsRentDueItems",
-        label: copy.overdueRent,
-        value: formatNumber(overview.metrics.overduePmsRentDueItems, language),
-      },
-      {
-        key: "paidPmsRentDueItems",
-        label: copy.paidRent,
-        value: formatNumber(overview.metrics.paidPmsRentDueItems, language),
-      },
-      {
-        key: "openPmsWorkOrders",
-        label: copy.maintenanceRequests,
-        value: formatNumber(overview.metrics.openPmsWorkOrders, language),
-      },
-      {
-        key: "urgentPmsWorkOrders",
-        label: copy.priority,
-        value: formatNumber(overview.metrics.urgentPmsWorkOrders, language),
-      },
-      {
-        key: "scheduledPmsInspections",
-        label: copy.inspections,
-        value: formatNumber(overview.metrics.scheduledPmsInspections, language),
-      },
-      {
-        key: "totalListings",
-        label: copy.totalListings,
-        value: formatNumber(overview.metrics.totalListings, language),
-      },
-      {
-        key: "approvedListings",
-        label: copy.approvedListings,
-        value: formatNumber(overview.metrics.approvedListings, language),
-      },
-      {
-        key: "totalProjects",
-        label: copy.totalProjects,
-        value: formatNumber(overview.metrics.totalProjects, language),
-      },
-    ];
-  }, [copy, language, overview]);
+    const items: Array<{ key: string; label: string; value: string }> = [];
+
+    if (canViewInventory) {
+      items.push(
+        { key: "totalPmsProperties", label: copy.totalPmsProperties, value: formatNumber(overview.metrics.totalPmsProperties, language) },
+        { key: "totalPmsUnits", label: copy.totalPmsUnits, value: formatNumber(overview.metrics.totalPmsUnits, language) },
+        { key: "vacantPmsUnits", label: copy.vacantPmsUnits, value: formatNumber(overview.metrics.vacantPmsUnits, language) },
+        { key: "occupiedPmsUnits", label: copy.occupiedPmsUnits, value: formatNumber(overview.metrics.occupiedPmsUnits, language) },
+        { key: "maintenancePmsUnits", label: copy.maintenancePmsUnits, value: formatNumber(overview.metrics.maintenancePmsUnits, language) },
+        { key: "pmsOccupancyRate", label: copy.occupancyRate, value: formatPercent(overview.metrics.pmsOccupancyRate, language) },
+      );
+    }
+
+    if (canViewTenancy) {
+      items.push(
+        { key: "totalPmsTenants", label: copy.tenants, value: formatNumber(overview.metrics.totalPmsTenants, language) },
+        { key: "activePmsLeases", label: copy.activeLeases, value: formatNumber(overview.metrics.activePmsLeases, language) },
+        { key: "expiringPmsLeases", label: copy.expiringLeases, value: formatNumber(overview.metrics.expiringPmsLeases, language) },
+      );
+    }
+
+    if (canViewRent) {
+      items.push(
+        { key: "unpaidPmsRentDueItems", label: copy.unpaidRent, value: formatNumber(overview.metrics.unpaidPmsRentDueItems, language) },
+        { key: "overduePmsRentDueItems", label: copy.overdueRent, value: formatNumber(overview.metrics.overduePmsRentDueItems, language) },
+        { key: "paidPmsRentDueItems", label: copy.paidRent, value: formatNumber(overview.metrics.paidPmsRentDueItems, language) },
+      );
+    }
+
+    if (canViewMaintenance) {
+      items.push(
+        { key: "openPmsWorkOrders", label: copy.maintenanceRequests, value: formatNumber(overview.metrics.openPmsWorkOrders, language) },
+        { key: "urgentPmsWorkOrders", label: copy.priority, value: formatNumber(overview.metrics.urgentPmsWorkOrders, language) },
+        { key: "scheduledPmsInspections", label: copy.inspections, value: formatNumber(overview.metrics.scheduledPmsInspections, language) },
+      );
+    }
+
+    items.push(
+      { key: "totalListings", label: copy.totalListings, value: formatNumber(overview.metrics.totalListings, language) },
+      { key: "approvedListings", label: copy.approvedListings, value: formatNumber(overview.metrics.approvedListings, language) },
+      { key: "totalProjects", label: copy.totalProjects, value: formatNumber(overview.metrics.totalProjects, language) },
+    );
+
+    return items;
+  }, [
+    canViewInventory,
+    canViewMaintenance,
+    canViewRent,
+    canViewTenancy,
+    copy,
+    language,
+    overview,
+  ]);
 
   const commandCenterPropertyOptions = useMemo(() => {
     if (!commandCenter) return [];
@@ -1838,44 +1856,71 @@ export default function PmsPortal() {
   const launchChecklistItems = useMemo(() => {
     if (!overview) return [];
 
-    return [
+    const items = [
       {
         key: "access",
         label: copy.checklistPmsAccess,
         complete: Boolean(overview.workspace.entitlement.status && overview.workspace.member.role),
       },
-      {
+    ];
+
+    if (canViewInventory) {
+      items.push({
         key: "inventory",
         label: copy.checklistInventory,
-        complete: overview.metrics.totalPmsProperties > 0 && overview.metrics.totalPmsUnits > 0,
-      },
-      {
+        complete:
+          (overview.metrics.totalPmsProperties ?? 0) > 0 &&
+          (overview.metrics.totalPmsUnits ?? 0) > 0,
+      });
+    }
+
+    if (canViewTenancy) {
+      items.push({
         key: "tenancy",
         label: copy.checklistTenancy,
-        complete: overview.metrics.totalPmsTenants > 0 && overview.metrics.activePmsLeases > 0,
-      },
-      {
+        complete:
+          (overview.metrics.totalPmsTenants ?? 0) > 0 &&
+          (overview.metrics.activePmsLeases ?? 0) > 0,
+      });
+    }
+
+    if (canViewRent) {
+      items.push({
         key: "finance",
         label: copy.checklistFinance,
         complete:
           Number(overview.metrics.pmsRentCollectedAmount) > 0 ||
-          overview.metrics.paidPmsRentDueItems > 0,
-      },
-      {
+          (overview.metrics.paidPmsRentDueItems ?? 0) > 0,
+      });
+    }
+
+    if (canViewMaintenance || canViewSettings) {
+      items.push({
         key: "operations",
         label: copy.checklistOperations,
         complete:
-          overview.metrics.openPmsWorkOrders > 0 ||
-          overview.metrics.activePmsCommunicationTemplates > 0 ||
-          overview.metrics.activePmsPolicies > 0,
-      },
-      {
-        key: "permissions",
-        label: copy.checklistPermissions,
-        complete: true,
-      },
-    ];
-  }, [copy, overview]);
+          (overview.metrics.openPmsWorkOrders ?? 0) > 0 ||
+          (overview.metrics.activePmsCommunicationTemplates ?? 0) > 0 ||
+          (overview.metrics.activePmsPolicies ?? 0) > 0,
+      });
+    }
+
+    items.push({
+      key: "permissions",
+      label: copy.checklistPermissions,
+      complete: true,
+    });
+
+    return items;
+  }, [
+    canViewInventory,
+    canViewMaintenance,
+    canViewRent,
+    canViewSettings,
+    canViewTenancy,
+    copy,
+    overview,
+  ]);
 
   const statusLabel =
     overview?.workspace.entitlement.status === "ACTIVE"
@@ -2770,27 +2815,48 @@ export default function PmsPortal() {
         </NavLink>
 
         <nav className="pms-sidebar__nav">
-          {pmsNavigation
-            .filter((item) =>
-              !item.permission || overview?.workspace.member.permissionKeys.includes(item.permission),
-            )
-            .map((item) => {
-              const Icon = item.icon;
-              const label = copy[item.key];
+          {pmsNavigationGroups.map((group) => {
+            const items = pmsNavigation.filter(
+              (item) =>
+                item.group === group &&
+                (!item.permission ||
+                  overview?.workspace.member.permissionKeys.includes(item.permission)) &&
+                ((item.key !== "importExport" && item.key !== "staff") ||
+                  overview?.workspace.member.propertyScope.allProperties),
+            );
 
-              return (
-                <NavLink
-                  key={item.key}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    cn("pms-sidebar__link", isActive && "pms-sidebar__link--active")
-                  }
-                >
-                  <Icon size={18} aria-hidden="true" />
-                  <span>{label}</span>
-                </NavLink>
-              );
-            })}
+            if (items.length === 0) return null;
+
+            const groupLabel = {
+              workspace: language === "ar" ? "مساحة العمل" : "Workspace",
+              leasing: language === "ar" ? "الإيجارات" : "Leasing",
+              operations: language === "ar" ? "العمليات" : "Operations",
+              control: language === "ar" ? "المالية والتحكم" : "Finance & control",
+            }[group];
+
+            return (
+              <div key={group} className="pms-sidebar__group">
+                <span className="pms-sidebar__group-label">{groupLabel}</span>
+                {items.map((item) => {
+                  const Icon = item.icon;
+                  const label = copy[item.key];
+
+                  return (
+                    <NavLink
+                      key={item.key}
+                      to={item.to}
+                      className={({ isActive }) =>
+                        cn("pms-sidebar__link", isActive && "pms-sidebar__link--active")
+                      }
+                    >
+                      <Icon size={18} aria-hidden="true" />
+                      <span>{label}</span>
+                    </NavLink>
+                  );
+                })}
+              </div>
+            );
+          })}
         </nav>
       </aside>
 
@@ -2811,6 +2877,15 @@ export default function PmsPortal() {
               <small>
                 {copy.role}:{" "}
                 {getRoleLabel(overview.workspace.member.role, language)}
+              </small>
+              <small>
+                {overview.workspace.member.propertyScope.allProperties
+                  ? language === "ar"
+                    ? "كل العقارات"
+                    : "All properties"
+                  : language === "ar"
+                    ? `${overview.workspace.member.propertyScope.propertyIds.length} عقارات محددة`
+                    : `${overview.workspace.member.propertyScope.propertyIds.length} assigned properties`}
               </small>
               <em>{statusLabel}</em>
             </div>
@@ -2851,7 +2926,22 @@ export default function PmsPortal() {
 
         {success ? <p className="form-success">{success}</p> : null}
 
-        {overview ? (
+        {overview && sectionAccessDenied ? (
+          <section className="pms-empty-card" role="alert">
+            <ShieldCheck size={24} aria-hidden="true" />
+            <div>
+              <h2>{language === "ar" ? "هذه الوحدة غير متاحة لصلاحيتك" : "This module is outside your access"}</h2>
+              <p>
+                {language === "ar"
+                  ? "ارجع إلى النظرة العامة أو اطلب من مسؤول PMS إضافة الصلاحية المطلوبة."
+                  : "Return to the overview or ask a PMS owner to grant the required permission."}
+              </p>
+              <Link className="button-link" to={`/pms/overview?companyId=${overview.workspace.company.id}`}>
+                {language === "ar" ? "العودة للنظرة العامة" : "Back to overview"}
+              </Link>
+            </div>
+          </section>
+        ) : overview ? (
           <div className="pms-content-grid">
             {section === "overview" ? (
               <>
@@ -2904,12 +2994,12 @@ export default function PmsPortal() {
                       <article><span>{language === "ar" ? "المحصل هذا الشهر" : "Collected this month"}</span><strong>{commandCenter.metrics.rentCollectedThisPeriod == null ? "—" : `${commandCenter.metrics.rentCollectedThisPeriod} OMR`}</strong></article>
                       <article><span>{language === "ar" ? "صيانة متأخرة" : "Maintenance overdue"}</span><strong>{commandCenter.metrics.overdueMaintenanceRequests ?? "—"}</strong><small>{commandCenter.metrics.activeMaintenanceRequests ?? "—"} active</small></article>
                       <article><span>{language === "ar" ? "فجوات المستندات" : "Document gaps"}</span><strong>{commandCenter.metrics.missingLeaseDocuments ?? "—"}</strong><small>{commandCenter.metrics.expiringDocuments ?? "—"} expiring</small></article>
-                      <article><span>{language === "ar" ? "عقود تنتهي قريباً" : "Leases expiring"}</span><strong>{commandCenter.metrics.leasesExpiringSoon}</strong><small>60 days</small></article>
+                      <article><span>{language === "ar" ? "عقود تنتهي قريباً" : "Leases expiring"}</span><strong>{commandCenter.metrics.leasesExpiringSoon ?? "—"}</strong><small>60 days</small></article>
                       <article><span>{language === "ar" ? "كشوف الملاك" : "Owner statements"}</span><strong>{commandCenter.metrics.ownerStatementReadyProperties ?? "—"}</strong><small>ready for review</small></article>
                     </div>
                     <div className="pms-command-center__body">
                       <div className="pms-priority-queue"><h3>{language === "ar" ? "صندوق العمليات" : "Operations inbox"}</h3>{filteredPriorityQueue.length ? filteredPriorityQueue.map((item) => <Link key={item.id} className="pms-priority-item" to={item.href}><span className={`pms-priority-item__badge pms-priority-item__badge--${item.priority.toLowerCase()}`}>{item.priority}</span><span><strong>{item.title}</strong><small>{item.detail}{item.propertyName ? ` · ${item.propertyName}` : ""}{item.dueAt ? ` · ${formatDate(item.dueAt, language)}` : ""}</small></span><ChevronRight size={16} /></Link>) : <p>{language === "ar" ? "لا توجد عناصر مطابقة." : "No matching priority items."}</p>}</div>
-                      <div className="pms-automation-queue"><h3>{language === "ar" ? "قائمة الأتمتة" : "Automation queue"}</h3><div><span>Rent reminders</span><strong>{commandCenter.automation.rentRemindersDue ?? "—"}</strong></div><div><span>Lease expiry</span><strong>{commandCenter.automation.leaseExpiryRemindersDue}</strong></div><div><span>Maintenance</span><strong>{commandCenter.automation.maintenanceRemindersDue ?? "—"}</strong></div><div><span>Documents</span><strong>{commandCenter.automation.documentExpiryRemindersDue ?? "—"}</strong></div></div>
+                      <div className="pms-automation-queue"><h3>{language === "ar" ? "قائمة الأتمتة" : "Automation queue"}</h3><div><span>Rent reminders</span><strong>{commandCenter.automation.rentRemindersDue ?? "—"}</strong></div><div><span>Lease expiry</span><strong>{commandCenter.automation.leaseExpiryRemindersDue ?? "—"}</strong></div><div><span>Maintenance</span><strong>{commandCenter.automation.maintenanceRemindersDue ?? "—"}</strong></div><div><span>Documents</span><strong>{commandCenter.automation.documentExpiryRemindersDue ?? "—"}</strong></div></div>
                     </div>
                   </section>
                 ) : null}
@@ -3492,7 +3582,7 @@ export default function PmsPortal() {
                   workOrders={workOrders}
                   language={language}
                   canManage={canManageMaintenance}
-                  canApprove={canEditOperations(overview?.workspace.member.role)}
+                  canApprove={canManageOperations}
                   saving={saving}
                   onResolve={handleResolveWorkOrder}
                   onAddQuote={handleAddMaintenanceQuote}
