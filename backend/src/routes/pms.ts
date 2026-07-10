@@ -83,6 +83,11 @@ const pmsOverviewQuerySchema = z.object({
   companyId: z.string().trim().min(1).optional(),
 });
 
+const pmsCommandCenterQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+});
+
 const pmsPropertyListQuerySchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   search: z.string().trim().max(120).optional(),
@@ -8615,6 +8620,102 @@ pmsRouter.patch("/units/:unitId", requireAuth(), async (req, res, next) => {
 
     res.json({
       unit: pmsUnitResponse(unit),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+
+    const query = pmsCommandCenterQuerySchema.parse(req.query);
+    const access = await resolvePmsWorkspaceAccess({ userId: req.user.id, companyId: query.companyId });
+    if (!access) throw new AppError(403, "PMS access is not enabled for this account.");
+
+    const scopedPropertyId = pmsScopedPropertyIdWhere(access);
+    if (query.propertyId) {
+      assertCanAccessPmsPropertyScope(access, query.propertyId);
+      const property = await prisma.pmsProperty.findFirst({ where: { id: query.propertyId, companyId: access.company.id }, select: { id: true } });
+      if (!property) throw new AppError(404, "PMS property not found");
+    }
+
+    const propertyId = query.propertyId ?? scopedPropertyId;
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const sixtyDays = new Date(now.getTime() + 60 * 86400000);
+    const canRent = access.member.permissionKeys.includes(PmsPermissionKey.RENT_VIEW);
+    const canAccounting = access.member.permissionKeys.includes(PmsPermissionKey.ACCOUNTING_VIEW);
+    const canMaintenance = access.member.permissionKeys.includes(PmsPermissionKey.MAINTENANCE_VIEW);
+    const canDocuments = access.member.permissionKeys.includes(PmsPermissionKey.DOCUMENTS_VIEW);
+
+    const [properties, units, occupiedUnits, vacantUnits, overdueRent, rentCollected, leasesExpiring, activeMaintenance, overdueMaintenance, missingLeaseDocuments, expiringDocuments, overdueRentItems, overdueMaintenanceItems, expiringLeases, dueDocuments, dueInspections, statementProperties] = await prisma.$transaction([
+      prisma.pmsProperty.count({ where: { companyId: access.company.id, ...(propertyId ? { id: propertyId } : {}) } }),
+      prisma.pmsUnit.count({ where: { companyId: access.company.id, propertyId } }),
+      prisma.pmsUnit.count({ where: { companyId: access.company.id, propertyId, status: PmsUnitStatus.OCCUPIED } }),
+      prisma.pmsUnit.count({ where: { companyId: access.company.id, propertyId, status: PmsUnitStatus.VACANT } }),
+      prisma.pmsRentDueItem.aggregate({ where: { companyId: access.company.id, propertyId, OR: [{ status: PmsRentDueStatus.OVERDUE }, { dueDate: { lt: now }, status: { in: [PmsRentDueStatus.UNPAID, PmsRentDueStatus.DUE_SOON, PmsRentDueStatus.PARTIALLY_PAID] } }] }, _sum: { amount: true, paidAmount: true }, _count: true }),
+      prisma.pmsRentPayment.aggregate({ where: { companyId: access.company.id, propertyId, status: PmsRentPaymentStatus.CONFIRMED, paidAt: { gte: monthStart } }, _sum: { amount: true } }),
+      prisma.pmsLease.count({ where: { companyId: access.company.id, propertyId, status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] }, endDate: { gte: now, lte: sixtyDays } } }),
+      prisma.pmsWorkOrder.count({ where: { companyId: access.company.id, propertyId, status: { notIn: [PmsMaintenanceStatus.RESOLVED, PmsMaintenanceStatus.CANCELLED] } } }),
+      prisma.pmsWorkOrder.count({ where: { companyId: access.company.id, propertyId, targetDate: { lt: now }, status: { notIn: [PmsMaintenanceStatus.RESOLVED, PmsMaintenanceStatus.CANCELLED] } } }),
+      prisma.pmsLease.count({ where: { companyId: access.company.id, propertyId, status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] }, pmsDocuments: { none: { type: PmsDocumentType.LEASE_AGREEMENT, status: { not: PmsDocumentStatus.ARCHIVED } } } } }),
+      prisma.pmsDocument.count({ where: { companyId: access.company.id, propertyId, status: { in: [PmsDocumentStatus.ACTIVE, PmsDocumentStatus.EXPIRING] }, expiryDate: { gte: now, lte: sixtyDays } } }),
+      prisma.pmsRentDueItem.findMany({ where: { companyId: access.company.id, propertyId, OR: [{ status: PmsRentDueStatus.OVERDUE }, { dueDate: { lt: now }, status: { in: [PmsRentDueStatus.UNPAID, PmsRentDueStatus.DUE_SOON, PmsRentDueStatus.PARTIALLY_PAID] } }] }, select: { id: true, dueDate: true, amount: true, paidAmount: true, propertyId: true, property: { select: { name: true } }, tenant: { select: { fullName: true } } }, orderBy: { dueDate: "asc" }, take: 5 }),
+      prisma.pmsWorkOrder.findMany({ where: { companyId: access.company.id, propertyId, targetDate: { lt: now }, status: { notIn: [PmsMaintenanceStatus.RESOLVED, PmsMaintenanceStatus.CANCELLED] } }, select: { id: true, title: true, priority: true, targetDate: true, propertyId: true, property: { select: { name: true } } }, orderBy: { targetDate: "asc" }, take: 5 }),
+      prisma.pmsLease.findMany({ where: { companyId: access.company.id, propertyId, status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] }, endDate: { gte: now, lte: sixtyDays } }, select: { id: true, endDate: true, propertyId: true, property: { select: { name: true } }, unit: { select: { unitNumber: true } }, tenant: { select: { fullName: true } } }, orderBy: { endDate: "asc" }, take: 5 }),
+      prisma.pmsDocument.findMany({ where: { companyId: access.company.id, propertyId, status: { in: [PmsDocumentStatus.ACTIVE, PmsDocumentStatus.EXPIRING] }, expiryDate: { gte: now, lte: sixtyDays } }, select: { id: true, title: true, expiryDate: true, propertyId: true, property: { select: { name: true } } }, orderBy: { expiryDate: "asc" }, take: 5 }),
+      prisma.pmsInspection.findMany({ where: { companyId: access.company.id, propertyId, status: { in: [PmsInspectionStatus.SCHEDULED, PmsInspectionStatus.NEEDS_ACTION] }, OR: [{ scheduledFor: { lte: sixtyDays } }, { status: PmsInspectionStatus.NEEDS_ACTION }] }, select: { id: true, title: true, status: true, scheduledFor: true, propertyId: true, property: { select: { name: true } } }, orderBy: { scheduledFor: "asc" }, take: 5 }),
+      prisma.pmsAccountingLedgerEntry.findMany({ where: { companyId: access.company.id, propertyId, transactionDate: { gte: monthStart } }, select: { propertyId: true, property: { select: { name: true } } }, distinct: ["propertyId"], take: 20 }),
+    ]);
+
+    const statementReviewItems = canAccounting
+      ? statementProperties.flatMap((item) => {
+          if (!item.propertyId || !item.property) return [];
+          return [{ id: `statement-${item.propertyId}`, type: "STATEMENT_REVIEW", priority: "MEDIUM", title: `Owner statement review · ${item.property.name}`, detail: "Current-period activity is ready for review", propertyId: item.propertyId, propertyName: item.property.name, dueAt: null, href: `/pms/accounting?companyId=${access.company.id}` }];
+        })
+      : [];
+
+    const queue = [
+      ...(canRent ? overdueRentItems.map((item) => ({ id: `rent-${item.id}`, type: "OVERDUE_RENT", priority: item.dueDate < new Date(now.getTime() - 30 * 86400000) ? "CRITICAL" : "HIGH", title: `Overdue rent · ${item.tenant.fullName}`, detail: `${Math.max(Number(item.amount) - Number(item.paidAmount), 0).toFixed(2)} OMR outstanding`, propertyId: item.propertyId, propertyName: item.property.name, dueAt: item.dueDate, href: `/pms/rentals?companyId=${access.company.id}` })) : []),
+      ...(canMaintenance ? overdueMaintenanceItems.map((item) => ({ id: `maintenance-${item.id}`, type: "MAINTENANCE_OVERDUE", priority: item.priority === PmsMaintenancePriority.URGENT ? "CRITICAL" : "HIGH", title: item.title, detail: "Maintenance target date has passed", propertyId: item.propertyId, propertyName: item.property.name, dueAt: item.targetDate, href: `/pms/maintenance?companyId=${access.company.id}` })) : []),
+      ...expiringLeases.map((item) => ({ id: `lease-${item.id}`, type: "LEASE_EXPIRING", priority: item.endDate && item.endDate < new Date(now.getTime() + 30 * 86400000) ? "HIGH" : "MEDIUM", title: `Lease expiry · ${item.tenant.fullName}`, detail: `${item.property.name} · ${item.unit.unitNumber}`, propertyId: item.propertyId, propertyName: item.property.name, dueAt: item.endDate, href: `/pms/rentals/${item.id}?companyId=${access.company.id}` })),
+      ...(canDocuments ? dueDocuments.map((item) => ({ id: `document-${item.id}`, type: "DOCUMENT_EXPIRING", priority: item.expiryDate && item.expiryDate < new Date(now.getTime() + 14 * 86400000) ? "HIGH" : "MEDIUM", title: item.title, detail: "Document expiry requires review", propertyId: item.propertyId, propertyName: item.property?.name ?? null, dueAt: item.expiryDate, href: `/pms/documents?companyId=${access.company.id}` })) : []),
+      ...dueInspections.map((item) => ({ id: `inspection-${item.id}`, type: "INSPECTION_DUE", priority: item.status === PmsInspectionStatus.NEEDS_ACTION ? "HIGH" : "MEDIUM", title: item.title, detail: item.status === PmsInspectionStatus.NEEDS_ACTION ? "Inspection needs action" : "Inspection is due soon", propertyId: item.propertyId, propertyName: item.property.name, dueAt: item.scheduledFor, href: `/pms/reports?companyId=${access.company.id}` })),
+      ...statementReviewItems,
+    ].sort((a, b) => {
+      const rank: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2 };
+      return rank[a.priority] - rank[b.priority];
+    }).slice(0, 20);
+
+    res.json({
+      workspace: { company: access.company, member: access.member, entitlement: access.entitlement },
+      generatedAt: now,
+      period: { from: monthStart, to: now },
+      metrics: {
+        totalProperties: properties,
+        totalUnits: units,
+        occupancyRate: units ? Math.round((occupiedUnits / units) * 1000) / 10 : null,
+        vacantUnits,
+        overdueRentItems: canRent ? overdueRent._count : null,
+        overdueRentAmount: canRent ? Math.max(Number(overdueRent._sum.amount ?? 0) - Number(overdueRent._sum.paidAmount ?? 0), 0).toFixed(2) : null,
+        rentCollectedThisPeriod: canRent ? decimalToString(rentCollected._sum.amount) : null,
+        leasesExpiringSoon: leasesExpiring,
+        activeMaintenanceRequests: canMaintenance ? activeMaintenance : null,
+        overdueMaintenanceRequests: canMaintenance ? overdueMaintenance : null,
+        missingLeaseDocuments: canDocuments ? missingLeaseDocuments : null,
+        expiringDocuments: canDocuments ? expiringDocuments : null,
+        ownerStatementReadyProperties: canAccounting ? statementReviewItems.length : null,
+      },
+      automation: {
+        rentRemindersDue: canRent ? overdueRent._count : null,
+        leaseExpiryRemindersDue: leasesExpiring,
+        maintenanceRemindersDue: canMaintenance ? overdueMaintenance : null,
+        documentExpiryRemindersDue: canDocuments ? expiringDocuments : null,
+      },
+      priorityQueue: queue,
     });
   } catch (error) {
     next(error);

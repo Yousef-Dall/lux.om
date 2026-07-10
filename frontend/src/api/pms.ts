@@ -764,6 +764,44 @@ export type PmsWorkspaceOverview = {
   };
 };
 
+
+export type PmsCommandCenter = {
+  workspace: PmsWorkspaceOverview["workspace"];
+  generatedAt: string;
+  period: { from: string; to: string };
+  metrics: {
+    totalProperties: number;
+    totalUnits: number;
+    occupancyRate: number | null;
+    vacantUnits: number;
+    overdueRentItems: number | null;
+    overdueRentAmount: string | null;
+    rentCollectedThisPeriod: string | null;
+    leasesExpiringSoon: number;
+    activeMaintenanceRequests: number | null;
+    overdueMaintenanceRequests: number | null;
+    missingLeaseDocuments: number | null;
+    expiringDocuments: number | null;
+    ownerStatementReadyProperties: number | null;
+  };
+  automation: {
+    rentRemindersDue: number | null;
+    leaseExpiryRemindersDue: number;
+    maintenanceRemindersDue: number | null;
+    documentExpiryRemindersDue: number | null;
+  };
+  priorityQueue: Array<{
+    id: string;
+    type: string;
+    priority: "CRITICAL" | "HIGH" | "MEDIUM";
+    title: string;
+    detail: string;
+    propertyId: string | null;
+    propertyName: string | null;
+    dueAt: string | null;
+    href: string;
+  }>;
+};
 export type AdminPmsMember = {
   id: string;
   role: PmsMemberRole;
@@ -1141,6 +1179,13 @@ export async function getPmsOverview(token: string, companyId?: string) {
     params: {
       companyId,
     },
+  });
+}
+
+export async function getPmsCommandCenter(token: string, companyId?: string, propertyId?: string) {
+  return apiClient.get<PmsCommandCenter>("/api/pms/command-center", {
+    token,
+    params: { companyId, propertyId },
   });
 }
 

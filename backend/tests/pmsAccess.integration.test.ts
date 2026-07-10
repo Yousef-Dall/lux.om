@@ -2884,6 +2884,34 @@ describe("PMS advanced permissions and property scopes", () => {
     expect(response.body.metrics.pmsOccupancyRate).toBe(100);
   });
 
+  it("computes a property-scoped PMS command center and priority queue", async () => {
+    const { staff, company, propertyA, propertyB } = await setupScopedCompany();
+    const unitA = await prisma.pmsUnit.create({ data: { companyId: company.id, propertyId: propertyA.id, unitNumber: "A-201", status: "OCCUPIED", occupancyStatus: "OCCUPIED" } });
+    await prisma.pmsUnit.create({ data: { companyId: company.id, propertyId: propertyB.id, unitNumber: "B-201", status: "VACANT", occupancyStatus: "VACANT" } });
+    const tenant = await prisma.pmsTenant.create({ data: { companyId: company.id, fullName: "Scoped Risk Tenant" } });
+    const lease = await prisma.pmsLease.create({ data: { companyId: company.id, propertyId: propertyA.id, unitId: unitA.id, tenantId: tenant.id, startDate: new Date(Date.now() - 30 * 86400000), endDate: new Date(Date.now() + 20 * 86400000), rentAmount: 500, status: "ACTIVE" } });
+    await prisma.pmsRentDueItem.create({ data: { companyId: company.id, propertyId: propertyA.id, unitId: unitA.id, tenantId: tenant.id, leaseId: lease.id, dueDate: new Date(Date.now() - 40 * 86400000), amount: 500, paidAmount: 100, status: "OVERDUE" } });
+    await prisma.pmsWorkOrder.create({ data: { companyId: company.id, propertyId: propertyA.id, unitId: unitA.id, title: "Urgent scoped repair", priority: "URGENT", status: "OPEN", targetDate: new Date(Date.now() - 2 * 86400000) } });
+
+    const response = await request(app)
+      .get(`/api/pms/command-center?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${signToken(staff)}`)
+      .expect(200);
+
+    expect(response.body.metrics.totalProperties).toBe(1);
+    expect(response.body.metrics.totalUnits).toBe(1);
+    expect(response.body.metrics.occupancyRate).toBe(100);
+    expect(response.body.metrics.overdueRentAmount).toBe("400.00");
+    expect(response.body.metrics.overdueMaintenanceRequests).toBe(1);
+    expect(response.body.priorityQueue.some((item: { type: string }) => item.type === "OVERDUE_RENT")).toBe(true);
+    expect(response.body.priorityQueue.every((item: { propertyId: string | null }) => item.propertyId === propertyA.id)).toBe(true);
+
+    await request(app)
+      .get(`/api/pms/command-center?companyId=${company.id}&propertyId=${propertyB.id}`)
+      .set("Authorization", `Bearer ${signToken(staff)}`)
+      .expect(403);
+  });
+
   it("lets PMS owners manage staff property scopes and audits the change", async () => {
     const { owner, staff, company, propertyA } = await setupScopedCompany();
     const ownerToken = signToken(owner);

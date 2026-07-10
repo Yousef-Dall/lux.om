@@ -67,3 +67,10 @@ Before production PMS migrations, take a PostgreSQL backup. App rollback can use
 - `workspace.member.permissionKeys` is the effective permission set: default role permissions plus active custom grants.
 - PMS navigation should only expose modules represented in the effective permission set. Backend authorization remains authoritative for direct API requests.
 - During release verification, test one unrestricted owner, one property-scoped staff member, and one user without PMS access.
+
+
+## PMS command center checks
+
+The PMS overview loads `/api/pms/command-center` for live operational intelligence. Verify that overdue rent, maintenance SLA risk, lease expiry, document expiry, inspection follow-up, and owner-statement review items match the underlying workspace records. Property-scoped staff must see only assigned-property metrics and queue items. Permission-restricted categories return `null` metrics and are omitted from the queue rather than leaking financial or document data.
+
+The automation queue is a due-candidate foundation. It reports real reminder candidates but does not claim external delivery until a configured email, SMS, or WhatsApp adapter records a communication event.
