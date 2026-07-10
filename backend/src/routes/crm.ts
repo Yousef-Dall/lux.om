@@ -9,6 +9,7 @@ import {
   buildCrmLeadScope,
   getCrmAccess
 } from '../lib/crmAccess';
+import { buildCrmCommunicationTemplates, calculateCrmLeadIntelligence, type CrmLeadIntelligenceInput } from '../lib/crmIntelligence';
 import { prisma } from '../lib/prisma';
 import { getPmsPermissionKeys } from '../lib/pmsPermissions';
 import { requireAuth } from '../middleware/auth';
@@ -46,8 +47,12 @@ const leadSources = [
   'MANUAL',
   'ADMIN_CREATED'
 ] as const;
-const activityTypes = ['NOTE', 'TASK', 'CALL', 'EMAIL', 'MEETING'] as const;
+const activityTypes = ['NOTE', 'TASK', 'CALL', 'EMAIL', 'WHATSAPP', 'MEETING'] as const;
 const activityStatuses = ['OPEN', 'COMPLETED', 'CANCELLED'] as const;
+const activityPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
+const communicationDirections = ['INBOUND', 'OUTBOUND', 'INTERNAL'] as const;
+const communicationOutcomes = ['DRAFT_OPENED', 'SENT_EXTERNALLY', 'NO_ANSWER', 'CONNECTED', 'REPLIED'] as const;
+const pipelineGroupings = ['status', 'assignedTo', 'source', 'company'] as const;
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
 const activityParamsSchema = z.object({ id: z.string().min(1), activityId: z.string().min(1) });
@@ -104,23 +109,54 @@ const createLeadSchema = z
     path: ['contact']
   });
 
+const crmFilterQueryShape = {
+  companyId: z.string().min(1).optional(),
+  workspace: z.enum(['personal', 'all', 'admin']).optional(),
+  source: z.enum(leadSources).optional(),
+  status: z.enum(leadStatuses).optional(),
+  priority: z.enum(leadPriorities).optional(),
+  assignedToId: z.string().min(1).optional(),
+  search: z.string().trim().max(160).optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional()
+};
+
+function validateCrmDateRange(data: { from?: string; to?: string }, context: z.RefinementCtx) {
+  if (data.from && data.to && new Date(data.from) > new Date(data.to)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'The CRM date range is invalid.', path: ['to'] });
+  }
+}
+
+const crmFilterQuerySchema = z.object(crmFilterQueryShape).superRefine(validateCrmDateRange);
 const listQuerySchema = z
   .object({
-    companyId: z.string().min(1).optional(),
-    workspace: z.enum(['personal', 'all', 'admin']).optional(),
-    source: z.enum(leadSources).optional(),
-    status: z.enum(leadStatuses).optional(),
-    priority: z.enum(leadPriorities).optional(),
-    assignedToId: z.string().min(1).optional(),
-    search: z.string().trim().max(160).optional(),
-    from: z.string().datetime().optional(),
-    to: z.string().datetime().optional(),
+    ...crmFilterQueryShape,
     take: z.coerce.number().int().min(1).max(100).default(30),
     skip: z.coerce.number().int().min(0).default(0)
   })
+  .superRefine(validateCrmDateRange);
+const pipelineQuerySchema = z
+  .object({
+    ...crmFilterQueryShape,
+    groupBy: z.enum(pipelineGroupings).default('status'),
+    take: z.coerce.number().int().min(1).max(200).default(120)
+  })
+  .superRefine(validateCrmDateRange);
+const taskQuerySchema = z
+  .object({
+    companyId: z.string().min(1).optional(),
+    workspace: z.enum(['personal', 'all', 'admin']).optional(),
+    assignedToId: z.string().min(1).optional(),
+    taskStatus: z.enum(activityStatuses).optional(),
+    taskPriority: z.enum(activityPriorities).optional(),
+    overdue: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+    dueFrom: z.string().datetime().optional(),
+    dueTo: z.string().datetime().optional(),
+    take: z.coerce.number().int().min(1).max(100).default(50)
+  })
   .superRefine((data, context) => {
-    if (data.from && data.to && new Date(data.from) > new Date(data.to)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: 'The CRM date range is invalid.', path: ['to'] });
+    if (data.dueFrom && data.dueTo && new Date(data.dueFrom) > new Date(data.dueTo)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'The CRM task date range is invalid.', path: ['dueTo'] });
     }
   });
 
@@ -142,24 +178,40 @@ const updateLeadSchema = z
 const createActivitySchema = z
   .object({
     type: z.enum(activityTypes),
-    status: z.enum(activityStatuses).default('OPEN'),
+    status: z.enum(activityStatuses).optional(),
+    priority: z.enum(activityPriorities).default('MEDIUM'),
     subject: z.string().trim().min(2).max(180),
     body: z.string().trim().max(5000).optional(),
     dueAt: nullableDateSchema,
-    assignedToId: nullableIdSchema
+    assignedToId: nullableIdSchema,
+    communicationDirection: z.enum(communicationDirections).optional(),
+    communicationOutcome: z.enum(communicationOutcomes).optional(),
+    templateKey: z.string().trim().min(2).max(80).optional()
   })
   .strict();
 
 const updateActivitySchema = z
   .object({
     status: z.enum(activityStatuses).optional(),
+    priority: z.enum(activityPriorities).optional(),
     subject: z.string().trim().min(2).max(180).optional(),
     body: z.union([z.string().trim().max(5000), z.null()]).optional(),
     dueAt: nullableDateSchema,
-    assignedToId: nullableIdSchema
+    assignedToId: nullableIdSchema,
+    communicationDirection: z.union([z.enum(communicationDirections), z.null()]).optional(),
+    communicationOutcome: z.union([z.enum(communicationOutcomes), z.null()]).optional(),
+    templateKey: z.union([z.string().trim().min(2).max(80), z.null()]).optional()
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field is required.' });
+
+const intelligenceActivitySelect = {
+  type: true,
+  status: true,
+  dueAt: true,
+  completedAt: true,
+  createdAt: true
+} satisfies Prisma.CrmActivitySelect;
 
 const leadListInclude = {
   contact: { select: { id: true, fullName: true, email: true, phone: true } },
@@ -170,6 +222,13 @@ const leadListInclude = {
   activity: { select: { id: true, slug: true, titleEn: true, titleAr: true } },
   developerProject: { select: { id: true, slug: true, nameEn: true, nameAr: true } },
   pmsProperty: { select: { id: true, name: true, code: true } },
+  inquiry: { select: { id: true, createdAt: true } },
+  booking: { select: { id: true, status: true, createdAt: true, payment: { select: { status: true } } } },
+  activities: {
+    select: intelligenceActivitySelect,
+    orderBy: { createdAt: 'desc' as const },
+    take: 50
+  },
   _count: { select: { activities: { where: { status: 'OPEN' } } } }
 } satisfies Prisma.CrmLeadInclude;
 
@@ -187,7 +246,7 @@ const leadDetailInclude = {
     }
   },
   inquiry: { select: { id: true, type: true, message: true, createdAt: true } },
-  booking: { select: { id: true, status: true, scheduledDate: true, preferredTime: true, guests: true } },
+  booking: { select: { id: true, status: true, scheduledDate: true, preferredTime: true, guests: true, createdAt: true, payment: { select: { status: true } } } },
   valuationRequest: { select: { id: true, status: true, location: true, estimateLow: true, estimateHigh: true } },
   savedSearch: { select: { id: true, name: true, category: true } },
   watchlistItem: { select: { id: true, targetPrice: true, notes: true } },
@@ -232,13 +291,79 @@ function assertStatusTransition(current: CrmLeadStatus, next: CrmLeadStatus) {
   }
 }
 
-async function getLeadForAccess(id: string, access: Awaited<ReturnType<typeof getCrmAccess>>, permission: 'view' | 'manage') {
+type CrmFilterQuery = z.infer<typeof crmFilterQuerySchema>;
+type CrmAccessValue = Awaited<ReturnType<typeof getCrmAccess>>;
+type IntelligenceLeadRecord = CrmLeadIntelligenceInput & { contactId: string };
+
+function buildCrmLeadWhere(
+  access: CrmAccessValue,
+  query: CrmFilterQuery,
+  permission: 'view' | 'manage' = 'view'
+): Prisma.CrmLeadWhereInput {
+  if (query.workspace === 'admin' && !access.isAdmin) {
+    throw new AppError(403, 'The lux.om admin CRM workspace is restricted to administrators.');
+  }
+  const search = query.search?.trim();
+  return {
+    AND: [
+      buildCrmLeadScope(access, permission),
+      query.companyId ? { companyId: query.companyId } : {},
+      query.workspace === 'personal' ? { ownerUserId: access.userId } : {},
+      query.workspace === 'admin' ? { companyId: null, ownerUserId: null } : {},
+      query.source ? { source: query.source } : {},
+      query.status ? { status: query.status } : {},
+      query.priority ? { priority: query.priority } : {},
+      query.assignedToId ? { assignedToId: query.assignedToId } : {},
+      query.from || query.to
+        ? { createdAt: { ...(query.from ? { gte: new Date(query.from) } : {}), ...(query.to ? { lte: new Date(query.to) } : {}) } }
+        : {},
+      search
+        ? {
+            OR: [
+              { title: { contains: search, mode: 'insensitive' } },
+              { description: { contains: search, mode: 'insensitive' } },
+              { sourceLabel: { contains: search, mode: 'insensitive' } },
+              { contact: { fullName: { contains: search, mode: 'insensitive' } } },
+              { contact: { email: { contains: search, mode: 'insensitive' } } },
+              { contact: { phone: { contains: search, mode: 'insensitive' } } }
+            ]
+          }
+        : {}
+    ]
+  };
+}
+
+async function enrichCrmLeads<T extends IntelligenceLeadRecord>(
+  leads: T[],
+  scope: Prisma.CrmLeadWhereInput
+): Promise<Array<T & { intelligence: ReturnType<typeof calculateCrmLeadIntelligence> }>> {
+  if (leads.length === 0) return [];
+  const contactIds = [...new Set(leads.map((lead) => lead.contactId))];
+  const repeatCounts = await prisma.crmLead.groupBy({
+    by: ['contactId'],
+    where: { AND: [scope, { contactId: { in: contactIds } }] },
+    _count: { _all: true }
+  });
+  const countByContact = new Map(repeatCounts.map((item) => [item.contactId, item._count._all]));
+
+  return leads.map((lead) => ({
+    ...lead,
+    intelligence: calculateCrmLeadIntelligence({
+      ...lead,
+      repeatEngagementCount: countByContact.get(lead.contactId) ?? 1
+    })
+  }));
+}
+
+async function getLeadForAccess(id: string, access: CrmAccessValue, permission: 'view' | 'manage') {
+  const scope = buildCrmLeadScope(access, permission);
   const lead = await prisma.crmLead.findFirst({
-    where: { AND: [{ id }, buildCrmLeadScope(access, permission)] },
+    where: { AND: [{ id }, scope] },
     include: leadDetailInclude
   });
   if (!lead) throw new AppError(404, 'CRM lead not found.');
-  return lead;
+  const [enriched] = await enrichCrmLeads([lead], scope);
+  return enriched;
 }
 
 async function assertAssignmentAllowed(
@@ -572,44 +697,187 @@ crmRouter.get('/assignees', async (req, res, next) => {
   }
 });
 
+crmRouter.get('/analytics', async (req, res, next) => {
+  try {
+    const query = crmFilterQuerySchema.parse(req.query);
+    const access = await getCrmAccess(req.user!);
+    assertHasAnyCrmAccess(access);
+    const where = buildCrmLeadWhere(access, query);
+    const now = new Date();
+    const closedStatuses: CrmLeadStatus[] = ['WON', 'LOST', 'ARCHIVED'];
+
+    const [statusCounts, sourceCounts, overdueFollowUps, openTasks, overdueTasks] = await prisma.$transaction([
+      prisma.crmLead.groupBy({ by: ['status'], where, _count: { _all: true } }),
+      prisma.crmLead.groupBy({ by: ['source', 'status'], where, _count: { _all: true } }),
+      prisma.crmLead.count({
+        where: {
+          AND: [
+            where,
+            { status: { notIn: closedStatuses } },
+            {
+              OR: [
+                { nextFollowUpAt: { lt: now } },
+                { activities: { some: { type: 'TASK', status: 'OPEN', dueAt: { lt: now } } } }
+              ]
+            }
+          ]
+        }
+      }),
+      prisma.crmActivity.count({
+        where: { type: 'TASK', status: 'OPEN', lead: { is: where } }
+      }),
+      prisma.crmActivity.count({
+        where: { type: 'TASK', status: 'OPEN', dueAt: { lt: now }, lead: { is: where } }
+      })
+    ]);
+
+    const byStatus = Object.fromEntries(statusCounts.map((item) => [item.status, item._count._all])) as Partial<Record<CrmLeadStatus, number>>;
+    const total = statusCounts.reduce((sum, item) => sum + item._count._all, 0);
+    const won = byStatus.WON ?? 0;
+    const lost = byStatus.LOST ?? 0;
+    const decided = won + lost;
+    const sourceMap = new Map<string, { source: string; total: number; won: number; lost: number; open: number }>();
+    for (const item of sourceCounts) {
+      const current = sourceMap.get(item.source) ?? { source: item.source, total: 0, won: 0, lost: 0, open: 0 };
+      current.total += item._count._all;
+      if (item.status === 'WON') current.won += item._count._all;
+      else if (item.status === 'LOST') current.lost += item._count._all;
+      else if (item.status !== 'ARCHIVED') current.open += item._count._all;
+      sourceMap.set(item.source, current);
+    }
+
+    res.json({
+      analytics: {
+        total,
+        newLeads: byStatus.NEW ?? 0,
+        openLeads: statusCounts.filter((item) => !closedStatuses.includes(item.status)).reduce((sum, item) => sum + item._count._all, 0),
+        overdueFollowUps,
+        openTasks,
+        overdueTasks,
+        won,
+        lost,
+        conversionRate: decided > 0 ? Number(((won / decided) * 100).toFixed(1)) : null,
+        byStatus,
+        bySource: [...sourceMap.values()]
+          .map((item) => ({
+            ...item,
+            conversionRate: item.won + item.lost > 0 ? Number(((item.won / (item.won + item.lost)) * 100).toFixed(1)) : null
+          }))
+          .sort((left, right) => right.total - left.total || left.source.localeCompare(right.source))
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+crmRouter.get('/pipeline', async (req, res, next) => {
+  try {
+    const query = pipelineQuerySchema.parse(req.query);
+    const access = await getCrmAccess(req.user!);
+    assertHasAnyCrmAccess(access);
+    const where = buildCrmLeadWhere(access, query);
+    const rawLeads = await prisma.crmLead.findMany({
+      where,
+      include: leadListInclude,
+      orderBy: [{ updatedAt: 'desc' }],
+      take: query.take
+    });
+    const leads = await enrichCrmLeads(rawLeads, buildCrmLeadScope(access, 'view'));
+    const groups = new Map<string, { key: string; label: string; leads: typeof leads; valuesByCurrency: Record<string, number> }>();
+
+    for (const lead of leads) {
+      const group = query.groupBy === 'status'
+        ? { key: lead.status, label: lead.status.replace(/_/g, ' ') }
+        : query.groupBy === 'assignedTo'
+          ? { key: lead.assignedTo?.id ?? 'unassigned', label: lead.assignedTo?.name ?? 'Unassigned' }
+          : query.groupBy === 'source'
+            ? { key: lead.source, label: lead.source.replace(/_/g, ' ') }
+            : lead.company
+              ? { key: `company:${lead.company.id}`, label: lead.company.nameEn }
+              : lead.ownerUser
+                ? { key: `personal:${lead.ownerUser.id}`, label: `${lead.ownerUser.name} · Personal` }
+                : { key: 'admin', label: 'lux.om admin' };
+      const bucket = groups.get(group.key) ?? { ...group, leads: [], valuesByCurrency: {} };
+      bucket.leads.push(lead);
+      if (lead.expectedValue !== null) {
+        const amount = Number(lead.expectedValue);
+        if (Number.isFinite(amount)) bucket.valuesByCurrency[lead.currency] = (bucket.valuesByCurrency[lead.currency] ?? 0) + amount;
+      }
+      groups.set(group.key, bucket);
+    }
+
+    const statusOrder = new Map(leadStatuses.map((status, index) => [status, index]));
+    const result = [...groups.values()]
+      .map((group) => ({ ...group, count: group.leads.length }))
+      .sort((left, right) => query.groupBy === 'status'
+        ? (statusOrder.get(left.key as CrmLeadStatus) ?? 99) - (statusOrder.get(right.key as CrmLeadStatus) ?? 99)
+        : left.label.localeCompare(right.label));
+
+    res.json({ pipeline: { groupBy: query.groupBy, groups: result, total: leads.length, limited: rawLeads.length === query.take } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+crmRouter.get('/tasks', async (req, res, next) => {
+  try {
+    const query = taskQuerySchema.parse(req.query);
+    const access = await getCrmAccess(req.user!);
+    assertHasAnyCrmAccess(access);
+    const leadWhere = buildCrmLeadWhere(access, { companyId: query.companyId, workspace: query.workspace });
+    const now = new Date();
+    const where: Prisma.CrmActivityWhereInput = {
+      type: 'TASK',
+      lead: { is: leadWhere },
+      ...(query.assignedToId ? { assignedToId: query.assignedToId } : {}),
+      ...(query.taskStatus ? { status: query.taskStatus } : {}),
+      ...(query.taskPriority ? { priority: query.taskPriority } : {}),
+      ...(query.overdue ? { status: 'OPEN', dueAt: { lt: now } } : {}),
+      ...(query.dueFrom || query.dueTo
+        ? { dueAt: { ...(query.dueFrom ? { gte: new Date(query.dueFrom) } : {}), ...(query.dueTo ? { lte: new Date(query.dueTo) } : {}) } }
+        : {})
+    };
+    const [tasks, total, overdue] = await prisma.$transaction([
+      prisma.crmActivity.findMany({
+        where,
+        include: {
+          assignedTo: { select: { id: true, name: true, email: true, role: true } },
+          createdBy: { select: { id: true, name: true, email: true } },
+          lead: {
+            select: {
+              id: true,
+              title: true,
+              status: true,
+              priority: true,
+              companyId: true,
+              ownerUserId: true,
+              pmsPropertyId: true,
+              contact: { select: { id: true, fullName: true, email: true, phone: true } },
+              company: { select: { id: true, nameEn: true, nameAr: true } }
+            }
+          }
+        },
+        orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }, { createdAt: 'desc' }],
+        take: query.take
+      }),
+      prisma.crmActivity.count({ where }),
+      prisma.crmActivity.count({ where: { AND: [where, { status: 'OPEN', dueAt: { lt: now } }] } })
+    ]);
+    res.json({ tasks, summary: { total, overdue }, limited: tasks.length === query.take });
+  } catch (error) {
+    next(error);
+  }
+});
+
 crmRouter.get('/leads', async (req, res, next) => {
   try {
     const query = listQuerySchema.parse(req.query);
     const access = await getCrmAccess(req.user!);
     assertHasAnyCrmAccess(access);
-    const search = query.search?.trim();
-    if (query.workspace === 'admin' && !access.isAdmin) {
-      throw new AppError(403, 'The lux.om admin CRM workspace is restricted to administrators.');
-    }
-    const where: Prisma.CrmLeadWhereInput = {
-      AND: [
-        buildCrmLeadScope(access, 'view'),
-        query.companyId ? { companyId: query.companyId } : {},
-        query.workspace === 'personal' ? { ownerUserId: access.userId } : {},
-        query.workspace === 'admin' ? { companyId: null, ownerUserId: null } : {},
-        query.source ? { source: query.source } : {},
-        query.status ? { status: query.status } : {},
-        query.priority ? { priority: query.priority } : {},
-        query.assignedToId ? { assignedToId: query.assignedToId } : {},
-        query.from || query.to
-          ? { createdAt: { ...(query.from ? { gte: new Date(query.from) } : {}), ...(query.to ? { lte: new Date(query.to) } : {}) } }
-          : {},
-        search
-          ? {
-              OR: [
-                { title: { contains: search, mode: 'insensitive' } },
-                { description: { contains: search, mode: 'insensitive' } },
-                { sourceLabel: { contains: search, mode: 'insensitive' } },
-                { contact: { fullName: { contains: search, mode: 'insensitive' } } },
-                { contact: { email: { contains: search, mode: 'insensitive' } } },
-                { contact: { phone: { contains: search, mode: 'insensitive' } } }
-              ]
-            }
-          : {}
-      ]
-    };
+    const where = buildCrmLeadWhere(access, query);
 
-    const [leads, total, statusCounts] = await prisma.$transaction([
+    const [rawLeads, total, statusCounts] = await prisma.$transaction([
       prisma.crmLead.findMany({
         where,
         include: leadListInclude,
@@ -620,6 +888,7 @@ crmRouter.get('/leads', async (req, res, next) => {
       prisma.crmLead.count({ where }),
       prisma.crmLead.groupBy({ by: ['status'], where, _count: { _all: true } })
     ]);
+    const leads = await enrichCrmLeads(rawLeads, buildCrmLeadScope(access, 'view'));
 
     res.json({
       leads,
@@ -662,7 +931,7 @@ crmRouter.post('/leads', async (req, res, next) => {
     await validateSourceReferences(access, workspace, sourceReferences);
     await assertAssignmentAllowed(access, workspace, data.assignedToId ?? ownerUserId);
 
-    const lead = await prisma.$transaction(async (tx) => {
+    const rawLead = await prisma.$transaction(async (tx) => {
       const contact = await findOrCreateContact(tx, req.user!.id, workspace, data.contactId, data.contact);
       return tx.crmLead.create({
         data: {
@@ -707,6 +976,7 @@ crmRouter.post('/leads', async (req, res, next) => {
       });
     });
 
+    const [lead] = await enrichCrmLeads([rawLead], buildCrmLeadScope(access, 'view'));
     res.status(201).json({ lead });
   } catch (error) {
     next(error);
@@ -725,6 +995,25 @@ crmRouter.get('/leads/:id', async (req, res, next) => {
   }
 });
 
+crmRouter.get('/leads/:id/communication-templates', async (req, res, next) => {
+  try {
+    const { id } = idParamsSchema.parse(req.params);
+    const access = await getCrmAccess(req.user!);
+    const lead = await getLeadForAccess(id, access, 'view');
+    const templates = buildCrmCommunicationTemplates(lead);
+    res.json({
+      templates,
+      delivery: {
+        email: 'draft_only',
+        whatsapp: 'draft_only',
+        note: 'lux.om opens a prefilled draft. Delivery is not performed or confirmed by this endpoint.'
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 crmRouter.patch('/leads/:id', async (req, res, next) => {
   try {
     const { id } = idParamsSchema.parse(req.params);
@@ -735,7 +1024,7 @@ crmRouter.patch('/leads/:id', async (req, res, next) => {
     if (data.status) assertStatusTransition(current.status, data.status);
     await assertAssignmentAllowed(access, current, data.assignedToId);
 
-    const lead = await prisma.$transaction(async (tx) => {
+    const rawLead = await prisma.$transaction(async (tx) => {
       const updated = await tx.crmLead.update({
         where: { id },
         data: {
@@ -786,6 +1075,7 @@ crmRouter.patch('/leads/:id', async (req, res, next) => {
       return tx.crmLead.findUniqueOrThrow({ where: { id: updated.id }, include: leadDetailInclude });
     });
 
+    const [lead] = await enrichCrmLeads([rawLead], buildCrmLeadScope(access, 'view'));
     res.json({ lead });
   } catch (error) {
     next(error);
@@ -798,25 +1088,41 @@ crmRouter.post('/leads/:id/activities', async (req, res, next) => {
     const data = createActivitySchema.parse(req.body);
     const access = await getCrmAccess(req.user!);
     const lead = await getLeadForAccess(id, access, 'manage');
-    await assertAssignmentAllowed(access, lead, data.assignedToId);
-    const completedAt = data.status === 'COMPLETED' ? new Date() : null;
-    const activity = await prisma.crmActivity.create({
-      data: {
-        leadId: id,
-        type: data.type,
-        status: data.status,
-        subject: data.subject,
-        body: data.body,
-        dueAt: data.dueAt ? new Date(data.dueAt) : null,
-        completedAt,
-        assignedToId: data.assignedToId ?? null,
-        createdById: req.user!.id,
-        updatedById: req.user!.id
-      },
-      include: {
-        createdBy: { select: { id: true, name: true, email: true } },
-        assignedTo: { select: { id: true, name: true, email: true } }
-      }
+    const communicationTypes = ['CALL', 'EMAIL', 'WHATSAPP', 'MEETING'] as const;
+    const isCommunication = communicationTypes.includes(data.type as (typeof communicationTypes)[number]);
+    if (!isCommunication && (data.communicationDirection || data.communicationOutcome || data.templateKey)) {
+      throw new AppError(400, 'Communication metadata is only valid for call, email, WhatsApp, or meeting activities.');
+    }
+    const status = data.status ?? (data.type === 'TASK' ? 'OPEN' : 'COMPLETED');
+    const assignedToId = data.assignedToId ?? (data.type === 'TASK' ? lead.assignedToId ?? req.user!.id : null);
+    await assertAssignmentAllowed(access, lead, assignedToId);
+    const completedAt = status === 'COMPLETED' ? new Date() : null;
+
+    const activity = await prisma.$transaction(async (tx) => {
+      const created = await tx.crmActivity.create({
+        data: {
+          leadId: id,
+          type: data.type,
+          status,
+          priority: data.priority,
+          subject: data.subject,
+          body: data.body,
+          dueAt: data.dueAt ? new Date(data.dueAt) : null,
+          completedAt,
+          assignedToId,
+          communicationDirection: isCommunication ? data.communicationDirection ?? 'OUTBOUND' : null,
+          communicationOutcome: isCommunication ? data.communicationOutcome ?? null : null,
+          templateKey: isCommunication ? data.templateKey ?? null : null,
+          createdById: req.user!.id,
+          updatedById: req.user!.id
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          assignedTo: { select: { id: true, name: true, email: true } }
+        }
+      });
+      await tx.crmLead.update({ where: { id }, data: { updatedById: req.user!.id } });
+      return created;
     });
     res.status(201).json({ activity });
   } catch (error) {
@@ -830,24 +1136,37 @@ crmRouter.patch('/leads/:id/activities/:activityId', async (req, res, next) => {
     const data = updateActivitySchema.parse(req.body);
     const access = await getCrmAccess(req.user!);
     const lead = await getLeadForAccess(id, access, 'manage');
-    await assertAssignmentAllowed(access, lead, data.assignedToId);
     const existing = await prisma.crmActivity.findFirst({ where: { id: activityId, leadId: id } });
     if (!existing) throw new AppError(404, 'CRM activity not found.');
-    const activity = await prisma.crmActivity.update({
-      where: { id: activityId },
-      data: {
-        status: data.status,
-        subject: data.subject,
-        body: data.body,
-        dueAt: data.dueAt === undefined ? undefined : data.dueAt ? new Date(data.dueAt) : null,
-        completedAt: data.status === 'COMPLETED' ? existing.completedAt ?? new Date() : data.status ? null : undefined,
-        assignedToId: data.assignedToId,
-        updatedById: req.user!.id
-      },
-      include: {
-        createdBy: { select: { id: true, name: true, email: true } },
-        assignedTo: { select: { id: true, name: true, email: true } }
-      }
+    const communicationTypes = ['CALL', 'EMAIL', 'WHATSAPP', 'MEETING'];
+    if (!communicationTypes.includes(existing.type) && (data.communicationDirection !== undefined || data.communicationOutcome !== undefined || data.templateKey !== undefined)) {
+      throw new AppError(400, 'Communication metadata is only valid for call, email, WhatsApp, or meeting activities.');
+    }
+    await assertAssignmentAllowed(access, lead, data.assignedToId);
+
+    const activity = await prisma.$transaction(async (tx) => {
+      const updated = await tx.crmActivity.update({
+        where: { id: activityId },
+        data: {
+          status: data.status,
+          priority: data.priority,
+          subject: data.subject,
+          body: data.body,
+          dueAt: data.dueAt === undefined ? undefined : data.dueAt ? new Date(data.dueAt) : null,
+          completedAt: data.status === 'COMPLETED' ? existing.completedAt ?? new Date() : data.status ? null : undefined,
+          assignedToId: data.assignedToId,
+          communicationDirection: data.communicationDirection,
+          communicationOutcome: data.communicationOutcome,
+          templateKey: data.templateKey,
+          updatedById: req.user!.id
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          assignedTo: { select: { id: true, name: true, email: true } }
+        }
+      });
+      await tx.crmLead.update({ where: { id }, data: { updatedById: req.user!.id } });
+      return updated;
     });
     res.json({ activity });
   } catch (error) {

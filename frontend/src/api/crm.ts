@@ -28,8 +28,11 @@ export type CrmLeadSource =
   | 'PMS_MAINTENANCE_VENDOR'
   | 'MANUAL'
   | 'ADMIN_CREATED';
-export type CrmActivityType = 'NOTE' | 'TASK' | 'CALL' | 'EMAIL' | 'MEETING' | 'STATUS_CHANGE' | 'ASSIGNMENT';
+export type CrmActivityType = 'NOTE' | 'TASK' | 'CALL' | 'EMAIL' | 'WHATSAPP' | 'MEETING' | 'SYSTEM_NOTIFICATION' | 'STATUS_CHANGE' | 'ASSIGNMENT';
 export type CrmActivityStatus = 'OPEN' | 'COMPLETED' | 'CANCELLED';
+export type CrmActivityPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type CrmCommunicationDirection = 'INBOUND' | 'OUTBOUND' | 'INTERNAL';
+export type CrmCommunicationOutcome = 'DRAFT_OPENED' | 'SENT_EXTERNALLY' | 'NO_ANSWER' | 'CONNECTED' | 'REPLIED';
 
 export type CrmWorkspaceAccess = {
   hasAccess: boolean;
@@ -52,14 +55,39 @@ export type CrmActivity = {
   id: string;
   type: CrmActivityType;
   status: CrmActivityStatus;
+  priority: CrmActivityPriority;
   subject: string;
   body?: string | null;
   dueAt?: string | null;
   completedAt?: string | null;
+  communicationDirection?: CrmCommunicationDirection | null;
+  communicationOutcome?: CrmCommunicationOutcome | null;
+  templateKey?: string | null;
   assignedTo?: CrmPerson | null;
   createdBy?: CrmPerson | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type CrmLeadIntelligence = {
+  score: number;
+  scoreBand: 'COLD' | 'WARM' | 'HOT';
+  scoreReasons: Array<{ key: string; label: string; points: number }>;
+  nextBestAction: {
+    key: string;
+    title: string;
+    description: string;
+    priority: CrmLeadPriority;
+    dueAt?: string | null;
+    reason: string;
+  };
+  signals: {
+    repeatEngagementCount: number;
+    completedCommunications: number;
+    openTasks: number;
+    overdueTasks: number;
+    lastCommunicationAt?: string | null;
+  };
 };
 
 export type CrmLead = {
@@ -101,6 +129,7 @@ export type CrmLead = {
   pmsVendor?: { id: string; name: string; email?: string | null; phone?: string | null; trade?: string | null } | null;
   activities?: CrmActivity[];
   _count?: { activities: number };
+  intelligence?: CrmLeadIntelligence;
   createdAt: string;
   updatedAt: string;
 };
@@ -175,16 +204,86 @@ export function listCrmAssignees(token: string, companyId?: string, propertyId?:
 }
 
 export function addCrmActivity(token: string, leadId: string, payload: {
-  type: Exclude<CrmActivityType, 'STATUS_CHANGE' | 'ASSIGNMENT'>;
+  type: Exclude<CrmActivityType, 'STATUS_CHANGE' | 'ASSIGNMENT' | 'SYSTEM_NOTIFICATION'>;
   status?: CrmActivityStatus;
+  priority?: CrmActivityPriority;
   subject: string;
   body?: string;
   dueAt?: string | null;
   assignedToId?: string | null;
+  communicationDirection?: CrmCommunicationDirection;
+  communicationOutcome?: CrmCommunicationOutcome;
+  templateKey?: string;
 }) {
   return apiClient.post<{ activity: CrmActivity }>(`/api/crm/leads/${leadId}/activities`, payload, { token });
 }
 
-export function updateCrmActivity(token: string, leadId: string, activityId: string, payload: Partial<Pick<CrmActivity, 'status' | 'subject' | 'body' | 'dueAt'>> & { assignedToId?: string | null }) {
+export function updateCrmActivity(token: string, leadId: string, activityId: string, payload: Partial<Pick<CrmActivity, 'status' | 'priority' | 'subject' | 'body' | 'dueAt' | 'communicationDirection' | 'communicationOutcome' | 'templateKey'>> & { assignedToId?: string | null }) {
   return apiClient.patch<{ activity: CrmActivity }>(`/api/crm/leads/${leadId}/activities/${activityId}`, payload, { token });
+}
+
+export type CrmAnalytics = {
+  total: number;
+  newLeads: number;
+  openLeads: number;
+  overdueFollowUps: number;
+  openTasks: number;
+  overdueTasks: number;
+  won: number;
+  lost: number;
+  conversionRate: number | null;
+  byStatus: Partial<Record<CrmLeadStatus, number>>;
+  bySource: Array<{ source: CrmLeadSource; total: number; won: number; lost: number; open: number; conversionRate: number | null }>;
+};
+
+export type CrmPipelineGroupBy = 'status' | 'assignedTo' | 'source' | 'company';
+export type CrmPipelineGroup = {
+  key: string;
+  label: string;
+  count: number;
+  valuesByCurrency: Record<string, number>;
+  leads: CrmLead[];
+};
+
+export type CrmCommunicationTemplate = {
+  key: string;
+  label: string;
+  description: string;
+  subject: string;
+  body: string;
+  emailHref?: string | null;
+  whatsappHref?: string | null;
+};
+
+export function getCrmAnalytics(token: string, filters: CrmLeadFilters = {}) {
+  return apiClient.get<{ analytics: CrmAnalytics }>('/api/crm/analytics', { token, params: filters });
+}
+
+export function getCrmPipeline(token: string, filters: CrmLeadFilters & { groupBy?: CrmPipelineGroupBy; take?: number } = {}) {
+  return apiClient.get<{ pipeline: { groupBy: CrmPipelineGroupBy; groups: CrmPipelineGroup[]; total: number; limited: boolean } }>('/api/crm/pipeline', { token, params: filters });
+}
+
+export function listCrmTasks(token: string, filters: {
+  companyId?: string;
+  workspace?: 'personal' | 'all' | 'admin';
+  assignedToId?: string;
+  taskStatus?: CrmActivityStatus;
+  taskPriority?: CrmActivityPriority;
+  overdue?: boolean;
+  dueFrom?: string;
+  dueTo?: string;
+  take?: number;
+} = {}) {
+  return apiClient.get<{
+    tasks: Array<CrmActivity & { lead: Pick<CrmLead, 'id' | 'title' | 'status' | 'priority' | 'companyId' | 'ownerUserId'> & { contact: CrmLead['contact']; company?: CrmLead['company'] } }>;
+    summary: { total: number; overdue: number };
+    limited: boolean;
+  }>('/api/crm/tasks', { token, params: filters });
+}
+
+export function getCrmCommunicationTemplates(token: string, leadId: string) {
+  return apiClient.get<{
+    templates: CrmCommunicationTemplate[];
+    delivery: { email: 'draft_only'; whatsapp: 'draft_only'; note: string };
+  }>(`/api/crm/leads/${leadId}/communication-templates`, { token });
 }

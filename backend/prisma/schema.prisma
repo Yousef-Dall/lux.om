@@ -125,9 +125,32 @@ enum CrmActivityType {
   TASK
   CALL
   EMAIL
+  WHATSAPP
   MEETING
+  SYSTEM_NOTIFICATION
   STATUS_CHANGE
   ASSIGNMENT
+}
+
+enum CrmActivityPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CrmCommunicationDirection {
+  INBOUND
+  OUTBOUND
+  INTERNAL
+}
+
+enum CrmCommunicationOutcome {
+  DRAFT_OPENED
+  SENT_EXTERNALLY
+  NO_ANSWER
+  CONNECTED
+  REPLIED
 }
 
 enum CrmActivityStatus {
@@ -3189,13 +3212,18 @@ model CrmLead {
 }
 
 model CrmActivity {
-  id          String            @id @default(cuid())
+  id          String              @id @default(cuid())
   type        CrmActivityType
-  status      CrmActivityStatus @default(OPEN)
+  status      CrmActivityStatus   @default(OPEN)
+  priority    CrmActivityPriority @default(MEDIUM)
   subject     String
   body        String?
   dueAt       DateTime?
   completedAt DateTime?
+
+  communicationDirection CrmCommunicationDirection?
+  communicationOutcome   CrmCommunicationOutcome?
+  templateKey             String?
 
   leadId String
   lead   CrmLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -3215,6 +3243,8 @@ model CrmActivity {
   @@index([leadId, createdAt])
   @@index([leadId, status, dueAt])
   @@index([assignedToId, status, dueAt])
+  @@index([leadId, type, createdAt])
+  @@index([priority, status, dueAt])
   @@index([type])
 }
 

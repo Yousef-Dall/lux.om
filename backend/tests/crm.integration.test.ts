@@ -312,4 +312,125 @@ describe('CRM foundation access and lifecycle', () => {
       expect.objectContaining({ type: 'TASK', status: 'COMPLETED', subject: 'Arrange viewing' })
     ]));
   });
+  it('provides deterministic scoring, pipeline analytics, tasks, and draft-only communications', async () => {
+    const owner = await createUser('crm-workflow-owner@lux.test', 'OWNER');
+    const token = signToken(owner);
+
+    const created = await request(app)
+      .post('/api/crm/leads')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'High-intent sales opportunity',
+        source: 'LISTING_INQUIRY',
+        priority: 'HIGH',
+        ownerUserId: owner.id,
+        assignedToId: owner.id,
+        expectedValue: 125000,
+        nextFollowUpAt: '2000-01-02T08:00:00.000Z',
+        contact: { fullName: 'Pipeline Contact', email: 'pipeline-contact@lux.test', phone: '+96890001111' },
+        sourceReferences: {}
+      })
+      .expect(201);
+    const leadId = created.body.lead.id as string;
+
+    await request(app).patch(`/api/crm/leads/${leadId}`).set('Authorization', `Bearer ${token}`).send({ status: 'CONTACTED' }).expect(200);
+    await request(app).patch(`/api/crm/leads/${leadId}`).set('Authorization', `Bearer ${token}`).send({ status: 'QUALIFIED' }).expect(200);
+
+    const task = await request(app)
+      .post(`/api/crm/leads/${leadId}/activities`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ type: 'TASK', subject: 'Schedule property viewing', assignedToId: owner.id, priority: 'URGENT', dueAt: '2000-01-01T08:00:00.000Z' })
+      .expect(201);
+    expect(task.body.activity).toMatchObject({ type: 'TASK', status: 'OPEN', priority: 'URGENT' });
+
+    await request(app)
+      .post(`/api/crm/leads/${leadId}/activities`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        type: 'EMAIL',
+        subject: 'Initial property follow-up',
+        body: 'Draft opened and the external outcome was recorded by the operator.',
+        priority: 'HIGH',
+        communicationDirection: 'OUTBOUND',
+        communicationOutcome: 'DRAFT_OPENED',
+        templateKey: 'INITIAL_CONTACT'
+      })
+      .expect(201);
+
+    const detail = await request(app).get(`/api/crm/leads/${leadId}`).set('Authorization', `Bearer ${token}`).expect(200);
+    expect(detail.body.lead.intelligence.score).toBeGreaterThan(0);
+    expect(detail.body.lead.intelligence.scoreReasons.length).toBeGreaterThan(0);
+    expect(detail.body.lead.intelligence.nextBestAction).toMatchObject({ key: 'COMPLETE_OVERDUE_TASK', priority: 'URGENT' });
+    expect(detail.body.lead.activities).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'EMAIL', communicationOutcome: 'DRAFT_OPENED', templateKey: 'INITIAL_CONTACT' }),
+      expect.objectContaining({ type: 'TASK', priority: 'URGENT', status: 'OPEN' })
+    ]));
+
+    const tasks = await request(app).get('/api/crm/tasks?workspace=personal&overdue=true').set('Authorization', `Bearer ${token}`).expect(200);
+    expect(tasks.body.summary).toMatchObject({ total: 1, overdue: 1 });
+    expect(tasks.body.tasks[0]).toMatchObject({ leadId, id: task.body.activity.id, priority: 'URGENT' });
+
+    const analytics = await request(app).get('/api/crm/analytics?workspace=personal').set('Authorization', `Bearer ${token}`).expect(200);
+    expect(analytics.body.analytics).toMatchObject({ total: 1, openLeads: 1, overdueFollowUps: 1, openTasks: 1, overdueTasks: 1 });
+    expect(analytics.body.analytics.bySource).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'LISTING_INQUIRY', total: 1, open: 1 })
+    ]));
+
+    const pipeline = await request(app).get('/api/crm/pipeline?workspace=personal&groupBy=status').set('Authorization', `Bearer ${token}`).expect(200);
+    expect(pipeline.body.pipeline).toMatchObject({ groupBy: 'status', total: 1 });
+    expect(pipeline.body.pipeline.groups).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'QUALIFIED', count: 1 })]));
+
+    const templates = await request(app).get(`/api/crm/leads/${leadId}/communication-templates`).set('Authorization', `Bearer ${token}`).expect(200);
+    expect(templates.body.delivery).toMatchObject({ email: 'draft_only', whatsapp: 'draft_only' });
+    expect(templates.body.templates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'INITIAL_CONTACT', emailHref: expect.stringContaining('mailto:') }),
+      expect.objectContaining({ whatsappHref: expect.stringContaining('https://wa.me/') })
+    ]));
+
+    await request(app).patch(`/api/crm/leads/${leadId}/activities/${task.body.activity.id}`).set('Authorization', `Bearer ${token}`).send({ status: 'COMPLETED' }).expect(200);
+  });
+
+  it('keeps CRM task queues and communication history inside company property scope', async () => {
+    const [propertyAManager, propertyBManager, outsider] = await Promise.all([
+      createUser('crm-task-property-a@lux.test'),
+      createUser('crm-task-property-b@lux.test'),
+      createUser('crm-task-outsider@lux.test')
+    ]);
+    const workspace = await createPmsWorkspace('crm-task-scope', [propertyAManager.id, propertyBManager.id]);
+    const tokenA = signToken(propertyAManager);
+    const tokenB = signToken(propertyBManager);
+
+    const created = await request(app)
+      .post('/api/crm/leads')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        title: 'Scoped owner sales follow-up', source: 'PMS_OWNER', companyId: workspace.company.id,
+        assignedToId: propertyAManager.id, contact: { fullName: 'Scoped Owner', email: 'scoped-owner@lux.test' },
+        sourceReferences: { pmsPropertyId: workspace.properties[0].id }
+      })
+      .expect(201);
+    const leadId = created.body.lead.id as string;
+
+    const task = await request(app)
+      .post(`/api/crm/leads/${leadId}/activities`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ type: 'TASK', subject: 'Collect ownership documents', priority: 'HIGH', dueAt: '2000-01-01T00:00:00.000Z' })
+      .expect(201);
+
+    await request(app)
+      .post(`/api/crm/leads/${leadId}/activities`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ type: 'WHATSAPP', subject: 'Owner onboarding draft', communicationDirection: 'OUTBOUND', communicationOutcome: 'DRAFT_OPENED', templateKey: 'DOCUMENT_REQUEST' })
+      .expect(201);
+
+    const ownTasks = await request(app).get(`/api/crm/tasks?companyId=${workspace.company.id}`).set('Authorization', `Bearer ${tokenA}`).expect(200);
+    expect(ownTasks.body.summary.total).toBe(1);
+
+    const otherPropertyTasks = await request(app).get(`/api/crm/tasks?companyId=${workspace.company.id}`).set('Authorization', `Bearer ${tokenB}`).expect(200);
+    expect(otherPropertyTasks.body.summary.total).toBe(0);
+
+    await request(app).get(`/api/crm/leads/${leadId}`).set('Authorization', `Bearer ${tokenB}`).expect(404);
+    await request(app).patch(`/api/crm/leads/${leadId}/activities/${task.body.activity.id}`).set('Authorization', `Bearer ${signToken(outsider)}`).send({ status: 'COMPLETED' }).expect(404);
+  });
+
 });

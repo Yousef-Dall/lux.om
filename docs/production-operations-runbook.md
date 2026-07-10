@@ -149,3 +149,11 @@ Before release, verify one marketplace-owner workspace, one global admin, one un
 Marketplace listing and activity inquiries create their CRM lead inside the same transaction. After deployment, submit one test inquiry and confirm the inquiry, contact, lead, source link, assignment, and initial timeline note are present exactly once.
 
 See `docs/crm-stage21c-foundation.md` for data ownership, API routes, transition rules, and the complete verification checklist.
+
+## CRM Stage 21D operations
+
+The Stage 21D migration adds CRM task priority and communication metadata plus WhatsApp/system timeline types. Deploy it with the normal production `prisma migrate deploy` process before starting the updated backend.
+
+CRM email and WhatsApp actions are draft-only links. They do not send through lux.om and must not be monitored as delivery events. Operators log the actual external outcome in the CRM timeline. Lead scoring and next-best actions are deterministic operational aids, not AI decisions.
+
+When investigating CRM totals, always reproduce the same workspace, company, assignment, source, status, priority, and date filters. Pipeline, analytics, task queues, and lead lists all apply the same company and PMS property access scope.
