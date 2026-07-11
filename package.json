@@ -34,7 +34,11 @@
     "test:marketplace-smoke": "npm run test:marketplace-smoke -w backend",
     "verify:deployment-checklist": "node scripts/verifyDeploymentChecklist.mjs",
     "verify:release-candidate": "node scripts/verifyReleaseCandidate.mjs",
-    "test:pms-smoke": "npm run test:pms-smoke -w backend"
+    "test:pms-smoke": "npm run test:pms-smoke -w backend",
+    "test:e2e": "npm run test:e2e -w frontend",
+    "test:e2e:install": "npm run test:e2e:install -w frontend",
+    "contracts:crm:generate": "npm run contracts:crm:generate -w backend",
+    "contracts:crm:check": "npm run contracts:crm:check -w backend"
   },
   "workspaces": [
     "backend",

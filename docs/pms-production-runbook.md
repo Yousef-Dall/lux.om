@@ -194,3 +194,10 @@ The report identifies occupied units without active leases, active leases on vac
 PMS and CRM operational actions use `DomainAuditEvent`, not account-security events. Audit metadata is allow-limited and strips password, token, authorization, cookie, passport, national ID, and document-content keys. Limit audit inspection to scoped operators and administrators.
 
 Recommended baseline retention is seven years for published owner-statement and financial audit history, subject to Oman legal and contractual review. Document retention should follow the applicable lease, tax, dispute, and privacy schedule. Backups containing private documents must be encrypted, access logged, tested for restore, and deleted according to the same retention policy. Do not use database deletion alone as proof that an object or backup copy has expired.
+
+
+## Shared workspace boundary
+
+PMS company membership is synchronized into the shared company workspace for CRM compatibility, but PMS entitlement and PMS-specific permissions remain independent controls. Suspending PMS must not remove unrelated CRM workspace membership. Property restrictions are copied only when an existing PMS member is property-scoped and remain enforced for PMS-linked CRM leads.
+
+Use the shared helpers under `backend/src/modules/workspaces` and the PMS compatibility adapters under `backend/src/modules/pms/access`. Do not reintroduce CRM authorization checks directly against PMS entitlement. See `docs/crm-pms-relationship.md` and `docs/workspace-permission-matrix.md`.

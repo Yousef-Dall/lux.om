@@ -57,6 +57,7 @@ import {
   type CrmPipelineGroupBy,
   type CrmWorkspaceAccess
 } from '../api/crm';
+import { WorkspaceSelector, type CrmWorkspaceChoice } from '../features/crm/WorkspaceSelector';
 import { useAuth } from '../auth/AuthContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -95,13 +96,7 @@ const sources: CrmLeadSource[] = [
 const communicationOutcomes: CrmCommunicationOutcome[] = ['CONNECTED', 'REPLIED', 'NO_ANSWER', 'SENT_EXTERNALLY', 'DRAFT_OPENED'];
 
 type ManualActivityType = Exclude<CrmActivityType, 'STATUS_CHANGE' | 'ASSIGNMENT' | 'SYSTEM_NOTIFICATION'>;
-type WorkspaceChoice = {
-  key: string;
-  label: string;
-  companyId?: string;
-  canManage: boolean;
-  propertyScope?: { allProperties: boolean; propertyIds: string[] };
-};
+type WorkspaceChoice = CrmWorkspaceChoice;
 type CrmTask = CrmActivity & { lead: Pick<CrmLead, 'id' | 'title' | 'status' | 'priority' | 'companyId' | 'ownerUserId'> & { contact: CrmLead['contact']; company?: CrmLead['company'] } };
 
 const emptyAnalytics: CrmAnalytics = {
@@ -209,7 +204,7 @@ export default function Crm() {
     if (access.isAdmin) choices.push({ key: 'all', label: copy.all, canManage: true }, { key: 'admin', label: 'lux.om admin CRM', canManage: true });
     if (access.personalWorkspace.canView) choices.push({ key: 'personal', label: copy.personal, canManage: access.personalWorkspace.canManage });
     for (const workspace of access.companyWorkspaces.filter((item) => item.canView)) {
-      choices.push({ key: `company:${workspace.companyId}`, companyId: workspace.companyId, label: language === 'ar' ? workspace.nameAr || workspace.nameEn : workspace.nameEn, canManage: workspace.canManage, propertyScope: workspace.propertyScope });
+      choices.push({ key: `company:${workspace.companyId}`, workspaceId: workspace.workspaceId, companyId: workspace.companyId, label: language === 'ar' ? workspace.nameAr || workspace.nameEn : workspace.nameEn, canManage: workspace.canManage, propertyScope: workspace.propertyScope });
     }
     return choices;
   }, [access, copy.all, copy.personal, language]);
@@ -484,7 +479,7 @@ export default function Crm() {
 
       <div className="crm-shell container">
         <aside className="crm-sidebar">
-          <label><span>{copy.workspace}</span><select value={workspaceKey} onChange={(event) => { setWorkspaceKey(event.target.value); setSelectedLead(null); navigate('/crm'); }}>{workspaceChoices.map((choice) => <option key={choice.key} value={choice.key}>{choice.label}</option>)}</select></label>
+          <WorkspaceSelector label={copy.workspace} value={workspaceKey} choices={workspaceChoices} onChange={(value) => { setWorkspaceKey(value); setSelectedLead(null); navigate('/crm'); }} />
           <div className="crm-filter-title"><Filter size={16} /><strong>{copy.allValues}</strong></div>
           <label><span>{copy.search}</span><div className="crm-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} /></div></label>
           <label><span>{copy.status}</span><select value={status} onChange={(event) => setStatus(event.target.value as CrmLeadStatus | '')}><option value="">{copy.allValues}</option>{statuses.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}</select></label>

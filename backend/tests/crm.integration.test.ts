@@ -435,4 +435,64 @@ describe('CRM foundation access and lifecycle', () => {
     await request(app).patch(`/api/crm/leads/${leadId}/activities/${task.body.activity.id}`).set('Authorization', `Bearer ${signToken(outsider)}`).send({ status: 'COMPLETED' }).expect(404);
   });
 
+  it('supports company CRM without PMS entitlement and retains access when PMS is suspended', async () => {
+    const [admin, member, outsider] = await Promise.all([
+      createUser('crm-workspace-admin@lux.test', 'ADMIN'),
+      createUser('crm-workspace-member@lux.test'),
+      createUser('crm-workspace-outsider@lux.test')
+    ]);
+    const company = await prisma.developerCompany.create({
+      data: { slug: 'crm-independent-company', nameEn: 'Independent CRM Company', verified: true }
+    });
+
+    await request(app)
+      .post(`/api/crm/workspaces/company/${company.id}/members`)
+      .set('Authorization', `Bearer ${signToken(admin)}`)
+      .send({
+        userId: member.id,
+        role: 'MANAGER',
+        permissions: ['CRM_VIEW', 'CRM_MANAGE', 'CRM_ASSIGN', 'WORKSPACE_MANAGE']
+      })
+      .expect(201);
+
+    const access = await request(app)
+      .get('/api/crm/access')
+      .set('Authorization', `Bearer ${signToken(member)}`)
+      .expect(200);
+    expect(access.body.access.companyWorkspaces).toEqual(expect.arrayContaining([
+      expect.objectContaining({ companyId: company.id, canView: true, canManage: true })
+    ]));
+
+    const created = await request(app)
+      .post('/api/crm/leads')
+      .set('Authorization', `Bearer ${signToken(member)}`)
+      .send({
+        title: 'CRM-only company opportunity',
+        source: 'MANUAL',
+        companyId: company.id,
+        contact: { fullName: 'CRM-only Contact', email: 'crm-only-contact@lux.test' },
+        sourceReferences: {}
+      })
+      .expect(201);
+    expect(created.body.lead.workspaceId).toEqual(expect.any(String));
+    expect(created.body.lead.companyId).toBe(company.id);
+    expect(created.body.lead.contact.workspaceId).toBe(created.body.lead.workspaceId);
+    expect(created.body.lead.activities[0].workspaceId).toBe(created.body.lead.workspaceId);
+
+    await request(app)
+      .get(`/api/crm/leads?companyId=${company.id}`)
+      .set('Authorization', `Bearer ${signToken(outsider)}`)
+      .expect(403);
+
+    await prisma.pmsCompanyEntitlement.create({
+      data: { companyId: company.id, status: 'SUSPENDED', disabledAt: new Date() }
+    });
+
+    const retained = await request(app)
+      .get(`/api/crm/leads?companyId=${company.id}`)
+      .set('Authorization', `Bearer ${signToken(member)}`)
+      .expect(200);
+    expect(retained.body.summary.total).toBe(1);
+  });
+
 });

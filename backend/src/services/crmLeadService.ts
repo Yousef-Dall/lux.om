@@ -1,5 +1,7 @@
 import type { InquiryType, Prisma } from '@prisma/client';
 
+import { ensureCompanyWorkspace, ensurePersonalWorkspace } from '../modules/workspaces/provisioning';
+
 function normalizeEmail(value?: string | null) {
   return value?.trim().toLowerCase() || null;
 }
@@ -42,11 +44,21 @@ export async function createCrmLeadForInquiry(
   const sourceLabel = input.listing?.title ?? input.activity?.title ?? input.type.replace(/_/g, ' ');
   const normalizedEmail = normalizeEmail(input.email);
   const normalizedPhone = normalizePhone(input.phone);
+  const workspace = companyId
+    ? await (async () => {
+        const company = await tx.developerCompany.findUniqueOrThrow({ where: { id: companyId }, select: { id: true, nameEn: true } });
+        return ensureCompanyWorkspace(tx, company);
+      })()
+    : ownerUserId
+      ? await (async () => {
+          const owner = await tx.user.findUniqueOrThrow({ where: { id: ownerUserId }, select: { id: true, name: true } });
+          return ensurePersonalWorkspace(tx, owner);
+        })()
+      : await tx.workspace.findUniqueOrThrow({ where: { platformKey: 'CRM' } });
 
   const existingContact = await tx.crmContact.findFirst({
     where: {
-      companyId,
-      ownerUserId,
+      workspaceId: workspace.id,
       OR: [
         ...(normalizedEmail ? [{ normalizedEmail }] : []),
         ...(normalizedPhone ? [{ normalizedPhone }] : [])
@@ -74,6 +86,7 @@ export async function createCrmLeadForInquiry(
           phone: input.phone ?? null,
           normalizedEmail,
           normalizedPhone,
+          workspaceId: workspace.id,
           companyId,
           ownerUserId,
           userId: input.userId ?? null,
@@ -83,6 +96,7 @@ export async function createCrmLeadForInquiry(
 
   return tx.crmLead.create({
     data: {
+      workspaceId: workspace.id,
       title: `${input.name} · ${sourceLabel}`,
       description: input.message,
       source,
@@ -98,6 +112,7 @@ export async function createCrmLeadForInquiry(
       activityId: input.activity?.id ?? null,
       activities: {
         create: {
+          workspaceId: workspace.id,
           type: 'NOTE',
           status: 'COMPLETED',
           subject: 'Inquiry received',

@@ -1,20 +1,13 @@
 import {
-  BarChart3,
   Building2,
   ChevronRight,
-  ClipboardList,
   CreditCard,
   FileText,
-  Home,
-  KeyRound,
   Loader2,
   Plus,
   Save,
-  Settings,
   ShieldCheck,
-  UserCog,
   UserRoundCheck,
-  Wrench,
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
@@ -146,36 +139,13 @@ import {
   type PmsWorkOrder,
   type PmsWorkOrderPayload,
 } from "../api/pms";
+import { pmsNavigation, pmsNavigationGroups } from "../features/pms/navigation";
 import { useAuth } from "../auth/AuthContext";
 import MapLocationPanel from "../components/MapLocationPanel";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useLanguage } from "../i18n/LanguageContext";
 import { cn } from "../utils/format";
 import { parseCoordinatesFromMapInput } from "../utils/mapLocation";
-
-const pmsNavigation = [
-  { to: "/pms/overview", key: "overview", group: "workspace", icon: Home, permission: null },
-  { to: "/crm", key: "crm", group: "workspace", icon: UserRoundCheck, permission: "CRM_VIEW" },
-  { to: "/pms/properties", key: "properties", group: "workspace", icon: Building2, permission: "INVENTORY_VIEW" },
-  { to: "/pms/units", key: "units", group: "workspace", icon: KeyRound, permission: "INVENTORY_VIEW" },
-  { to: "/pms/tenants", key: "tenants", group: "leasing", icon: UserRoundCheck, permission: "TENANCY_VIEW" },
-  { to: "/pms/rentals", key: "rentals", group: "leasing", icon: ClipboardList, permission: "TENANCY_VIEW" },
-  { to: "/pms/documents", key: "documents", group: "operations", icon: FileText, permission: "DOCUMENTS_VIEW" },
-  { to: "/pms/maintenance", key: "maintenance", group: "operations", icon: Wrench, permission: "MAINTENANCE_VIEW" },
-  { to: "/pms/accounting", key: "accounting", group: "control", icon: CreditCard, permission: "ACCOUNTING_VIEW" },
-  { to: "/pms/reports", key: "reports", group: "control", icon: BarChart3, permission: "REPORTS_VIEW" },
-  { to: "/pms/import-export", key: "importExport", group: "control", icon: FileText, permission: "IMPORT_EXPORT" },
-  { to: "/pms/staff", key: "staff", group: "control", icon: UserCog, permission: "STAFF_MANAGE" },
-  { to: "/pms/settings", key: "settings", group: "control", icon: Settings, permission: "SETTINGS_MANAGE" },
-] as const satisfies ReadonlyArray<{
-  to: string;
-  key: "overview" | "crm" | "properties" | "units" | "tenants" | "rentals" | "documents" | "maintenance" | "accounting" | "importExport" | "staff" | "reports" | "settings";
-  group: "workspace" | "leasing" | "operations" | "control";
-  icon: typeof Home;
-  permission: PmsPermissionKey | null;
-}>;
-
-const pmsNavigationGroups = ["workspace", "leasing", "operations", "control"] as const;
 
 const pmsRoles: PmsMemberRole[] = [
   "PMS_OWNER",

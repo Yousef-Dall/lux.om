@@ -82,6 +82,27 @@ enum InquiryType {
   GENERAL
 }
 
+
+enum WorkspaceType {
+  PERSONAL
+  COMPANY
+  PLATFORM
+}
+
+enum WorkspaceMemberRole {
+  OWNER
+  MANAGER
+  MEMBER
+  VIEWER
+}
+
+enum WorkspacePermissionKey {
+  CRM_VIEW
+  CRM_MANAGE
+  CRM_ASSIGN
+  WORKSPACE_MANAGE
+}
+
 enum CrmLeadStatus {
   NEW
   CONTACTED
@@ -744,6 +765,9 @@ model User {
   accountSecurityEvents AccountSecurityEvent[] @relation("AccountSecurityEventUser")
   accountSecurityEventsActed AccountSecurityEvent[] @relation("AccountSecurityEventActor")
   domainAuditEventsActed DomainAuditEvent[] @relation("DomainAuditEventActor")
+  ownedWorkspaces Workspace[] @relation("WorkspacePersonalOwner")
+  workspaceMemberships WorkspaceMember[] @relation("WorkspaceMemberUser")
+  workspaceMembershipsCreated WorkspaceMember[] @relation("WorkspaceMemberCreatedBy")
   bookingEvents BookingEvent[] @relation("BookingEventActor")
   oauthLoginCodes OauthLoginCode[]
 
@@ -941,6 +965,7 @@ model DeveloperCompany {
   pmsMoveChecklistItems PmsMoveChecklistItem[]
   crmContacts CrmContact[]
   crmLeads    CrmLead[]
+  workspace Workspace?
 
   @@index([verified])
   @@index([featured])
@@ -1997,6 +2022,87 @@ model DocumentChecklistItem {
   @@index([reviewedById])
 }
 
+model Workspace {
+  id          String        @id @default(cuid())
+  type        WorkspaceType
+  name        String
+  active      Boolean       @default(true)
+  platformKey String?       @unique
+
+  companyId String? @unique
+  company   DeveloperCompany? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  personalOwnerUserId String? @unique
+  personalOwnerUser   User? @relation("WorkspacePersonalOwner", fields: [personalOwnerUserId], references: [id], onDelete: Cascade)
+
+  members        WorkspaceMember[]
+  contacts       CrmContact[]
+  leads          CrmLead[]
+  activities     CrmActivity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, active])
+}
+
+model WorkspaceMember {
+  id     String              @id @default(cuid())
+  role   WorkspaceMemberRole @default(MEMBER)
+  active Boolean             @default(true)
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation("WorkspaceMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User? @relation("WorkspaceMemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  permissions    WorkspacePermission[]
+  propertyScopes WorkspacePropertyScope[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, userId])
+  @@index([userId, active])
+  @@index([workspaceId, active])
+}
+
+model WorkspacePermission {
+  id     String                 @id @default(cuid())
+  key    WorkspacePermissionKey
+  active Boolean                @default(true)
+
+  memberId String
+  member   WorkspaceMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([memberId, key])
+  @@index([key, active])
+}
+
+model WorkspacePropertyScope {
+  id     String  @id @default(cuid())
+  active Boolean @default(true)
+
+  memberId String
+  member   WorkspaceMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  propertyId String
+  property   PmsProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([memberId, propertyId])
+  @@index([propertyId, active])
+}
+
 model PmsCompanyEntitlement {
   id        String               @id @default(cuid())
   status    PmsEntitlementStatus @default(TRIAL)
@@ -2208,6 +2314,7 @@ model PmsProperty {
   pmsMoveChecklistItems PmsMoveChecklistItem[]
   pmsPortfolioProperties PmsPortfolioProperty[]
   pmsMemberPropertyAccesses PmsMemberPropertyAccess[]
+  workspaceScopes WorkspacePropertyScope[]
   crmLeads CrmLead[]
 
   createdAt DateTime @default(now())
@@ -3237,6 +3344,9 @@ model InvestorWatchlistItem {
 
 model CrmContact {
   id              String  @id @default(cuid())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   fullName        String
   email           String?
   phone           String?
@@ -3264,6 +3374,9 @@ model CrmContact {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([workspaceId, normalizedEmail])
+  @@unique([workspaceId, normalizedPhone])
+  @@index([workspaceId, createdAt])
   @@index([companyId, normalizedEmail])
   @@index([companyId, normalizedPhone])
   @@index([ownerUserId, normalizedEmail])
@@ -3274,7 +3387,10 @@ model CrmContact {
 }
 
 model CrmLead {
-  id           String          @id @default(cuid())
+  id           String @id @default(cuid())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   title        String
   description  String?
   status       CrmLeadStatus   @default(NEW)
@@ -3343,6 +3459,7 @@ model CrmLead {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([workspaceId, status, updatedAt])
   @@index([companyId, status, updatedAt])
   @@index([ownerUserId, status, updatedAt])
   @@index([assignedToId, status, nextFollowUpAt])
@@ -3361,7 +3478,10 @@ model CrmLead {
 }
 
 model CrmActivity {
-  id          String              @id @default(cuid())
+  id          String @id @default(cuid())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   type        CrmActivityType
   status      CrmActivityStatus   @default(OPEN)
   priority    CrmActivityPriority @default(MEDIUM)
@@ -3389,6 +3509,7 @@ model CrmActivity {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([workspaceId, createdAt])
   @@index([leadId, createdAt])
   @@index([leadId, status, dueAt])
   @@index([assignedToId, status, dueAt])

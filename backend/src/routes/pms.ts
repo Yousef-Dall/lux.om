@@ -47,7 +47,7 @@ import {
   ACTIVE_PMS_ENTITLEMENT_STATUSES,
   resolvePmsWorkspaceAccess,
   type PmsWorkspaceAccess,
-} from "../lib/pmsAccess";
+} from "../modules/pms/access";
 import {
   assertCanCollectPmsRent,
   assertCanViewPmsRent,
@@ -72,7 +72,7 @@ import {
   canViewPmsSensitiveData,
   assertCanViewPmsSensitiveData,
   assertCanExportPmsSensitiveData,
-} from "../lib/pmsPermissions";
+} from "../modules/pms/access";
 import {
   assertCanApplyRentPayment,
   createPmsRentReceiptNumber,

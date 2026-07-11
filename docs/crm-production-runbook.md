@@ -2,7 +2,7 @@
 
 ## Scope and access
 
-CRM records must remain inside their personal, PMS company, property, or admin workspace. Reproduce access incidents with the exact company, property, lead, actor, and effective `CRM_VIEW`/`CRM_MANAGE` permissions. Never widen frontend queries to work around a backend `403`.
+CRM records must remain inside their explicit personal, company, property-scoped, or platform workspace. General company CRM access is controlled by shared workspace membership and does not require PMS entitlement. Reproduce access incidents with the exact company, property, lead, actor, and effective `CRM_VIEW`/`CRM_MANAGE` permissions. Never widen frontend queries to work around a backend `403`.
 
 ## Stage and assignment auditing
 
@@ -32,3 +32,26 @@ git status --short
 ```
 
 Also exercise one stage transition and one assignment transition, then confirm the CRM audit event is scoped to the expected company/lead and contains no contact identity document values or authentication data.
+
+
+## Shared workspace operations
+
+Stage 21F makes `Workspace` the authoritative CRM ownership boundary. Existing `companyId` and `ownerUserId` fields remain compatibility fields during the deprecation window; new access decisions must use `workspaceId`, `WorkspaceMember`, and `WorkspacePermission`.
+
+Before deployment, review `docs/workspace-migration-backfill.md` and take a verified PostgreSQL backup. After migration, confirm that every CRM contact, lead, and activity has a workspace and that company workspaces remain available when PMS entitlement is disabled or suspended.
+
+Generate and verify the shared CRM contract before release:
+
+```bash
+npm run contracts:crm:generate
+npm run contracts:crm:check
+```
+
+Run the browser access-control suite after installing Chromium once:
+
+```bash
+npm run test:e2e:install
+npm run test:e2e
+```
+
+The browser suite supplements backend integration tests; it does not replace them.

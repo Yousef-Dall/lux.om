@@ -1,49 +1,49 @@
 import { apiClient } from './client';
+import type {
+  CrmActivityPriority,
+  CrmActivityStatus,
+  CrmActivityType,
+  CrmCommunicationDirection,
+  CrmCommunicationOutcome,
+  CrmLeadPriority,
+  CrmLeadSource,
+  CrmLeadStatus
+} from '../generated/crmContract';
 
-export type CrmLeadStatus =
-  | 'NEW'
-  | 'CONTACTED'
-  | 'QUALIFIED'
-  | 'VIEWING_SCHEDULED'
-  | 'PROPOSAL_SENT'
-  | 'NEGOTIATION'
-  | 'WON'
-  | 'LOST'
-  | 'ARCHIVED';
-export type CrmLeadPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-export type CrmLeadSource =
-  | 'LISTING_INQUIRY'
-  | 'PROJECT_INQUIRY'
-  | 'DEVELOPER_PROFILE'
-  | 'TRAVEL_AGENCY_PROFILE'
-  | 'ACTIVITY_INQUIRY'
-  | 'ACTIVITY_BOOKING'
-  | 'MAP_DISCOVERY'
-  | 'CONTACT_FORM'
-  | 'INVESTOR_WATCHLIST'
-  | 'VALUATION_REQUEST'
-  | 'SAVED_SEARCH'
-  | 'PMS_OWNER'
-  | 'PMS_TENANT'
-  | 'PMS_MAINTENANCE_VENDOR'
-  | 'MANUAL'
-  | 'ADMIN_CREATED';
-export type CrmActivityType = 'NOTE' | 'TASK' | 'CALL' | 'EMAIL' | 'WHATSAPP' | 'MEETING' | 'SYSTEM_NOTIFICATION' | 'STATUS_CHANGE' | 'ASSIGNMENT';
-export type CrmActivityStatus = 'OPEN' | 'COMPLETED' | 'CANCELLED';
-export type CrmActivityPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-export type CrmCommunicationDirection = 'INBOUND' | 'OUTBOUND' | 'INTERNAL';
-export type CrmCommunicationOutcome = 'DRAFT_OPENED' | 'SENT_EXTERNALLY' | 'NO_ANSWER' | 'CONNECTED' | 'REPLIED';
+export type {
+  CrmActivityPriority,
+  CrmActivityStatus,
+  CrmActivityType,
+  CrmCommunicationDirection,
+  CrmCommunicationOutcome,
+  CrmLeadPriority,
+  CrmLeadSource,
+  CrmLeadStatus
+} from '../generated/crmContract';
 
 export type CrmWorkspaceAccess = {
   hasAccess: boolean;
   isAdmin: boolean;
   personalWorkspace: { enabled: boolean; canView: boolean; canManage: boolean };
   companyWorkspaces: Array<{
+    workspaceId: string;
+    type: 'COMPANY';
     companyId: string;
     memberId: string;
     role: string;
     nameEn: string;
     nameAr?: string | null;
+    canView: boolean;
+    canManage: boolean;
+    canAssign?: boolean;
+    canManageWorkspace?: boolean;
+    propertyScope: { allProperties: boolean; propertyIds: string[] };
+  }>;
+  workspaces?: Array<{
+    workspaceId: string;
+    type: 'PERSONAL' | 'COMPANY' | 'PLATFORM';
+    companyId?: string | null;
+    personalOwnerUserId?: string | null;
     canView: boolean;
     canManage: boolean;
     propertyScope: { allProperties: boolean; propertyIds: string[] };
@@ -103,6 +103,7 @@ export type CrmLead = {
   nextFollowUpAt?: string | null;
   lostReason?: string | null;
   archivedAt?: string | null;
+  workspaceId: string;
   companyId?: string | null;
   ownerUserId?: string | null;
   assignedToId?: string | null;

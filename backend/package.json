@@ -28,7 +28,9 @@
     "verify:production-env": "tsx scripts/verifyProductionEnv.ts",
     "jobs:email-deliveries:prune": "tsx scripts/pruneEmailDeliveryEvents.ts",
     "test:marketplace-smoke": "node scripts/run-with-test-env.mjs npx prisma migrate deploy && node scripts/run-with-test-env.mjs npx vitest run --config vitest.integration.config.mts --testNamePattern=critical-marketplace-smoke",
-    "test:pms-smoke": "node scripts/run-with-test-env.mjs npx prisma migrate deploy && node scripts/run-with-test-env.mjs npx vitest run --config vitest.integration.config.mts tests/pmsLaunchSmoke.integration.test.ts"
+    "test:pms-smoke": "node scripts/run-with-test-env.mjs npx prisma migrate deploy && node scripts/run-with-test-env.mjs npx vitest run --config vitest.integration.config.mts tests/pmsLaunchSmoke.integration.test.ts",
+    "contracts:crm:generate": "tsx scripts/generateCrmContractTypes.ts",
+    "contracts:crm:check": "tsx scripts/generateCrmContractTypes.ts --check"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

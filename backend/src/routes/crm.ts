@@ -8,51 +8,26 @@ import {
   assertHasAnyCrmAccess,
   buildCrmLeadScope,
   getCrmAccess
-} from '../lib/crmAccess';
+} from '../modules/workspaces/access';
 import { buildCrmCommunicationTemplates, calculateCrmLeadIntelligence, type CrmLeadIntelligenceInput } from '../lib/crmIntelligence';
 import { recordDomainAuditEvent, requestAuditContext } from '../lib/domainAudit';
 import { prisma } from '../lib/prisma';
-import { getPmsPermissionKeys } from '../lib/pmsPermissions';
+import { ensureCompanyWorkspace } from '../modules/workspaces/provisioning';
+import {
+  crmActivityPriorities as activityPriorities,
+  crmActivityStatuses as activityStatuses,
+  crmCommunicationDirections as communicationDirections,
+  crmCommunicationOutcomes as communicationOutcomes,
+  crmLeadPriorities as leadPriorities,
+  crmLeadSources as leadSources,
+  crmLeadStatuses as leadStatuses
+} from '../modules/crm/contracts';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../utils/http';
 
 export const crmRouter = Router();
 
-const leadStatuses = [
-  'NEW',
-  'CONTACTED',
-  'QUALIFIED',
-  'VIEWING_SCHEDULED',
-  'PROPOSAL_SENT',
-  'NEGOTIATION',
-  'WON',
-  'LOST',
-  'ARCHIVED'
-] as const;
-const leadPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
-const leadSources = [
-  'LISTING_INQUIRY',
-  'PROJECT_INQUIRY',
-  'DEVELOPER_PROFILE',
-  'TRAVEL_AGENCY_PROFILE',
-  'ACTIVITY_INQUIRY',
-  'ACTIVITY_BOOKING',
-  'MAP_DISCOVERY',
-  'CONTACT_FORM',
-  'INVESTOR_WATCHLIST',
-  'VALUATION_REQUEST',
-  'SAVED_SEARCH',
-  'PMS_OWNER',
-  'PMS_TENANT',
-  'PMS_MAINTENANCE_VENDOR',
-  'MANUAL',
-  'ADMIN_CREATED'
-] as const;
 const activityTypes = ['NOTE', 'TASK', 'CALL', 'EMAIL', 'WHATSAPP', 'MEETING'] as const;
-const activityStatuses = ['OPEN', 'COMPLETED', 'CANCELLED'] as const;
-const activityPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
-const communicationDirections = ['INBOUND', 'OUTBOUND', 'INTERNAL'] as const;
-const communicationOutcomes = ['DRAFT_OPENED', 'SENT_EXTERNALLY', 'NO_ANSWER', 'CONNECTED', 'REPLIED'] as const;
 const pipelineGroupings = ['status', 'assignedTo', 'source', 'company'] as const;
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
@@ -238,6 +213,7 @@ const leadDetailInclude = {
   contact: {
     select: {
       id: true,
+      workspaceId: true,
       fullName: true,
       email: true,
       phone: true,
@@ -387,37 +363,28 @@ async function assertAssignmentAllowed(
   }
 
   if (lead.companyId) {
-    const member = await prisma.pmsCompanyMember.findFirst({
-      where: {
-        companyId: lead.companyId,
-        userId: assignedToId,
-        active: true,
-        company: {
-          pmsEntitlement: {
-            is: { status: { in: ['ACTIVE', 'TRIAL'] }, disabledAt: null }
+    const companyWorkspace = access.companyWorkspaces.find((workspace) => workspace.companyId === lead.companyId);
+    const member = companyWorkspace
+      ? await prisma.workspaceMember.findFirst({
+          where: { workspaceId: companyWorkspace.workspaceId, userId: assignedToId, active: true },
+          select: {
+            role: true,
+            permissions: { where: { active: true }, select: { key: true } },
+            propertyScopes: { where: { active: true }, select: { propertyId: true } }
           }
-        }
-      },
-      select: {
-        role: true,
-        permissions: { where: { active: true }, select: { key: true } },
-        propertyAccesses: { where: { active: true }, select: { propertyId: true } }
-      }
-    });
+        })
+      : null;
 
     if (member) {
-      const permissions = new Set([
-        ...getPmsPermissionKeys(member.role),
-        ...member.permissions.map((permission) => permission.key)
-      ]);
-      if (permissions.has('CRM_VIEW')) {
-        const scopedPropertyIds = member.propertyAccesses.map((scope) => scope.propertyId);
+      const permissions = new Set(member.permissions.map((permission) => permission.key));
+      if (permissions.has('CRM_VIEW') || ['OWNER', 'MANAGER', 'MEMBER', 'VIEWER'].includes(member.role)) {
+        const scopedPropertyIds = member.propertyScopes.map((scope) => scope.propertyId);
         if (scopedPropertyIds.length === 0) return;
         if (lead.pmsPropertyId && scopedPropertyIds.includes(lead.pmsPropertyId)) return;
       }
     }
 
-    throw new AppError(403, 'Company leads can only be assigned to CRM-enabled members inside the property scope.');
+    throw new AppError(403, 'Company leads can only be assigned to CRM-enabled workspace members inside the property scope.');
   }
 
   if (lead.ownerUserId) {
@@ -534,13 +501,13 @@ async function validateSourceReferences(
 async function findOrCreateContact(
   tx: Prisma.TransactionClient,
   actorId: string,
-  workspace: { companyId?: string | null; ownerUserId?: string | null },
+  workspace: { workspaceId: string; companyId?: string | null; ownerUserId?: string | null },
   contactId: string | undefined,
   input: z.infer<typeof contactInputSchema> | undefined
 ) {
   if (contactId) {
     const contact = await tx.crmContact.findFirst({
-      where: { id: contactId, companyId: workspace.companyId ?? null, ownerUserId: workspace.ownerUserId ?? null }
+      where: { id: contactId, workspaceId: workspace.workspaceId }
     });
     if (!contact) throw new AppError(404, 'CRM contact not found in this workspace.');
     return contact;
@@ -556,8 +523,7 @@ async function findOrCreateContact(
   const existing = matchTerms.length
     ? await tx.crmContact.findFirst({
         where: {
-          companyId: workspace.companyId ?? null,
-          ownerUserId: workspace.ownerUserId ?? null,
+          workspaceId: workspace.workspaceId,
           OR: matchTerms
         },
         orderBy: { updatedAt: 'desc' }
@@ -588,6 +554,7 @@ async function findOrCreateContact(
       normalizedEmail,
       normalizedPhone,
       notes: input.notes,
+      workspaceId: workspace.workspaceId,
       companyId: workspace.companyId ?? null,
       ownerUserId: workspace.ownerUserId ?? null,
       userId: input.userId ?? null,
@@ -607,9 +574,56 @@ crmRouter.get('/access', async (req, res, next) => {
         hasAccess: access.isAdmin || access.personalWorkspace.canView || access.companyWorkspaces.some((workspace) => workspace.canView),
         isAdmin: access.isAdmin,
         personalWorkspace: access.personalWorkspace,
-        companyWorkspaces: access.companyWorkspaces
+        companyWorkspaces: access.companyWorkspaces,
+        workspaces: access.workspaces
       }
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+crmRouter.post('/workspaces/company/:companyId/members', async (req, res, next) => {
+  try {
+    const companyId = z.string().min(1).parse(req.params.companyId);
+    const data = z.object({
+      userId: z.string().min(1),
+      role: z.enum(['OWNER', 'MANAGER', 'MEMBER', 'VIEWER']).default('MEMBER'),
+      permissions: z.array(z.enum(['CRM_VIEW', 'CRM_MANAGE', 'CRM_ASSIGN', 'WORKSPACE_MANAGE'])).default(['CRM_VIEW']),
+      propertyIds: z.array(z.string().min(1)).default([]),
+      active: z.boolean().default(true)
+    }).strict().parse(req.body);
+    const access = await getCrmAccess(req.user!);
+    const existingWorkspace = access.companyWorkspaces.find((item) => item.companyId === companyId);
+    if (!access.isAdmin && !existingWorkspace?.canManageWorkspace) {
+      throw new AppError(403, 'Workspace management permission is required.');
+    }
+    const company = await prisma.developerCompany.findUnique({ where: { id: companyId }, select: { id: true, nameEn: true } });
+    if (!company) throw new AppError(404, 'Company not found.');
+    const targetUser = await prisma.user.findFirst({ where: { id: data.userId, suspendedAt: null, deactivatedAt: null }, select: { id: true, name: true, email: true } });
+    if (!targetUser) throw new AppError(400, 'Workspace member user is not active.');
+    const result = await prisma.$transaction(async (tx) => {
+      const workspace = await ensureCompanyWorkspace(tx, company);
+      const member = await tx.workspaceMember.upsert({
+        where: { workspaceId_userId: { workspaceId: workspace.id, userId: data.userId } },
+        update: { role: data.role, active: data.active },
+        create: { workspaceId: workspace.id, userId: data.userId, role: data.role, active: data.active, createdById: req.user!.id }
+      });
+      await tx.workspacePermission.updateMany({ where: { memberId: member.id }, data: { active: false } });
+      await Promise.all(data.permissions.map((key) => tx.workspacePermission.upsert({
+        where: { memberId_key: { memberId: member.id, key } },
+        update: { active: true },
+        create: { memberId: member.id, key }
+      })));
+      await tx.workspacePropertyScope.deleteMany({ where: { memberId: member.id } });
+      if (data.propertyIds.length) {
+        const properties = await tx.pmsProperty.findMany({ where: { id: { in: data.propertyIds }, companyId }, select: { id: true } });
+        if (properties.length !== data.propertyIds.length) throw new AppError(400, 'One or more properties are outside the company workspace.');
+        await tx.workspacePropertyScope.createMany({ data: properties.map((property) => ({ memberId: member.id, propertyId: property.id })) });
+      }
+      return { workspace, member };
+    });
+    res.status(201).json({ workspace: { id: result.workspace.id, companyId }, member: { id: result.member.id, user: targetUser, role: result.member.role, active: result.member.active } });
   } catch (error) {
     next(error);
   }
@@ -669,24 +683,26 @@ crmRouter.get('/assignees', async (req, res, next) => {
       }
     }
 
-    const members = await prisma.pmsCompanyMember.findMany({
-      where: { companyId: query.companyId, active: true, user: { suspendedAt: null, deactivatedAt: null } },
+    const companyWorkspace = await prisma.workspace.findUnique({ where: { companyId: query.companyId }, select: { id: true } });
+    if (!companyWorkspace) {
+      res.json({ assignees: [] });
+      return;
+    }
+    const members = await prisma.workspaceMember.findMany({
+      where: { workspaceId: companyWorkspace.id, active: true, user: { suspendedAt: null, deactivatedAt: null } },
       select: {
         role: true,
         permissions: { where: { active: true }, select: { key: true } },
-        propertyAccesses: { where: { active: true }, select: { propertyId: true } },
+        propertyScopes: { where: { active: true }, select: { propertyId: true } },
         user: { select: { id: true, name: true, email: true, role: true } }
       },
       orderBy: { createdAt: 'asc' }
     });
     const assignees = members
       .filter((member) => {
-        const permissions = new Set([
-          ...getPmsPermissionKeys(member.role),
-          ...member.permissions.map((permission) => permission.key)
-        ]);
-        if (!permissions.has('CRM_VIEW')) return false;
-        const scopedPropertyIds = member.propertyAccesses.map((scope) => scope.propertyId);
+        const canView = member.permissions.some((permission) => permission.key === 'CRM_VIEW') || ['OWNER', 'MANAGER', 'MEMBER', 'VIEWER'].includes(member.role);
+        if (!canView) return false;
+        const scopedPropertyIds = member.propertyScopes.map((scope) => scope.propertyId);
         return query.propertyId
           ? scopedPropertyIds.length === 0 || scopedPropertyIds.includes(query.propertyId)
           : scopedPropertyIds.length === 0;
@@ -923,7 +939,12 @@ crmRouter.post('/leads', async (req, res, next) => {
       ...data.sourceReferences,
       pmsTenantId: data.sourceReferences.pmsTenantId ?? data.contact?.pmsTenantId
     };
+    const selectedWorkspace = data.companyId
+      ? access.companyWorkspaces.find((item) => item.companyId === data.companyId)
+      : access.workspaces.find((item) => item.type === 'PERSONAL' && item.personalOwnerUserId === ownerUserId) ?? access.platformWorkspace;
+    if (!selectedWorkspace) throw new AppError(403, 'CRM workspace is not available.');
     const workspace = {
+      workspaceId: selectedWorkspace.workspaceId,
       companyId: data.companyId ?? null,
       ownerUserId,
       pmsPropertyId: sourceReferences.pmsPropertyId ?? null
@@ -936,6 +957,7 @@ crmRouter.post('/leads', async (req, res, next) => {
       const contact = await findOrCreateContact(tx, req.user!.id, workspace, data.contactId, data.contact);
       return tx.crmLead.create({
         data: {
+          workspaceId: workspace.workspaceId,
           title: data.title,
           description: data.description,
           priority: data.priority,
@@ -963,6 +985,7 @@ crmRouter.post('/leads', async (req, res, next) => {
           pmsVendorId: sourceReferences.pmsVendorId ?? null,
           activities: {
             create: {
+              workspaceId: workspace.workspaceId,
               type: 'STATUS_CHANGE',
               status: 'COMPLETED',
               subject: 'Lead created',
@@ -1046,6 +1069,7 @@ crmRouter.patch('/leads/:id', async (req, res, next) => {
       if (data.status && data.status !== current.status) {
         await tx.crmActivity.create({
           data: {
+            workspaceId: current.workspaceId,
             leadId: id,
             type: 'STATUS_CHANGE',
             status: 'COMPLETED',
@@ -1061,6 +1085,7 @@ crmRouter.patch('/leads/:id', async (req, res, next) => {
       if (data.assignedToId !== undefined && data.assignedToId !== current.assignedToId) {
         await tx.crmActivity.create({
           data: {
+            workspaceId: current.workspaceId,
             leadId: id,
             type: 'ASSIGNMENT',
             status: 'COMPLETED',
@@ -1121,6 +1146,7 @@ crmRouter.post('/leads/:id/activities', async (req, res, next) => {
     const activity = await prisma.$transaction(async (tx) => {
       const created = await tx.crmActivity.create({
         data: {
+          workspaceId: lead.workspaceId,
           leadId: id,
           type: data.type,
           status,
