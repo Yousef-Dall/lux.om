@@ -1,15 +1,9 @@
 import type { InquiryType, Prisma } from '@prisma/client';
 
-import { ensureCompanyWorkspace, ensurePersonalWorkspace } from '../modules/workspaces/provisioning';
-
-function normalizeEmail(value?: string | null) {
-  return value?.trim().toLowerCase() || null;
-}
-
-function normalizePhone(value?: string | null) {
-  const normalized = value?.replace(/[^+\d]/g, '').trim();
-  return normalized || null;
-}
+import {
+  ingestCrmRelationshipSignal,
+  resolveIngestionWorkspace
+} from '../modules/crm/stage21h/ingestion';
 
 export async function createCrmLeadForInquiry(
   tx: Prisma.TransactionClient,
@@ -36,92 +30,45 @@ export async function createCrmLeadForInquiry(
 ) {
   const ownerUserId = input.listing?.ownerId ?? input.activity?.ownerId ?? null;
   const companyId = input.listing?.developerId ?? null;
-  const source = input.listing
+  const workspace = await resolveIngestionWorkspace(tx, {
+    companyId,
+    ownerUserId: companyId ? null : ownerUserId
+  });
+  const sourceType = input.listing
     ? 'LISTING_INQUIRY'
     : input.activity
       ? 'ACTIVITY_INQUIRY'
-      : 'CONTACT_FORM';
+      : 'MANUAL';
   const sourceLabel = input.listing?.title ?? input.activity?.title ?? input.type.replace(/_/g, ' ');
-  const normalizedEmail = normalizeEmail(input.email);
-  const normalizedPhone = normalizePhone(input.phone);
-  const workspace = companyId
-    ? await (async () => {
-        const company = await tx.developerCompany.findUniqueOrThrow({ where: { id: companyId }, select: { id: true, nameEn: true } });
-        return ensureCompanyWorkspace(tx, company);
-      })()
-    : ownerUserId
-      ? await (async () => {
-          const owner = await tx.user.findUniqueOrThrow({ where: { id: ownerUserId }, select: { id: true, name: true } });
-          return ensurePersonalWorkspace(tx, owner);
-        })()
-      : await tx.workspace.findUniqueOrThrow({ where: { platformKey: 'CRM' } });
-
-  const existingContact = await tx.crmContact.findFirst({
-    where: {
-      workspaceId: workspace.id,
-      OR: [
-        ...(normalizedEmail ? [{ normalizedEmail }] : []),
-        ...(normalizedPhone ? [{ normalizedPhone }] : [])
-      ]
+  const result = await ingestCrmRelationshipSignal(tx, {
+    workspaceId: workspace.id,
+    sourceType,
+    leadSource: input.listing
+      ? 'LISTING_INQUIRY'
+      : input.activity
+        ? 'ACTIVITY_INQUIRY'
+        : 'CONTACT_FORM',
+    sourceRecordId: input.inquiryId,
+    ruleKey: `inquiry:${input.type.toLowerCase()}`,
+    contact: {
+      fullName: input.name,
+      email: input.email,
+      phone: input.phone ?? null,
+      userId: input.userId ?? null
     },
-    orderBy: { updatedAt: 'desc' }
+    companyId,
+    ownerUserId: companyId ? null : ownerUserId,
+    title: `${input.name} · ${sourceLabel}`,
+    description: input.message,
+    sourceLabel,
+    consentStatus: 'LEGITIMATE_INTEREST',
+    createLead: true,
+    inquiryId: input.inquiryId,
+    listingId: input.listing?.id ?? null,
+    activityId: input.activity?.id ?? null,
+    metadata: { inquiryType: input.type },
+    actorId: input.userId ?? null
   });
-
-  const contact = existingContact
-    ? await tx.crmContact.update({
-        where: { id: existingContact.id },
-        data: {
-          fullName: input.name,
-          email: input.email,
-          phone: input.phone ?? null,
-          normalizedEmail,
-          normalizedPhone,
-          userId: input.userId ?? existingContact.userId
-        }
-      })
-    : await tx.crmContact.create({
-        data: {
-          fullName: input.name,
-          email: input.email,
-          phone: input.phone ?? null,
-          normalizedEmail,
-          normalizedPhone,
-          workspaceId: workspace.id,
-          companyId,
-          ownerUserId,
-          userId: input.userId ?? null,
-          createdById: input.userId ?? null
-        }
-      });
-
-  return tx.crmLead.create({
-    data: {
-      workspaceId: workspace.id,
-      title: `${input.name} · ${sourceLabel}`,
-      description: input.message,
-      source,
-      sourceLabel,
-      contactId: contact.id,
-      companyId,
-      ownerUserId,
-      assignedToId: ownerUserId,
-      createdById: input.userId ?? null,
-      updatedById: input.userId ?? null,
-      inquiryId: input.inquiryId,
-      listingId: input.listing?.id ?? null,
-      activityId: input.activity?.id ?? null,
-      activities: {
-        create: {
-          workspaceId: workspace.id,
-          type: 'NOTE',
-          status: 'COMPLETED',
-          subject: 'Inquiry received',
-          body: input.message,
-          completedAt: new Date(),
-          createdById: input.userId ?? null,
-          updatedById: input.userId ?? null
-        }
-      }
-    }
-  });
+  if (!result.lead) throw new Error('CRM inquiry ingestion did not create a lead.');
+  return result.lead;
 }

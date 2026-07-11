@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
+import { ingestCrmRelationshipSignal, resolveIngestionWorkspace } from '../modules/crm/stage21h/ingestion';
 import { createValuationFromAvailableData, normalizeValuationRequestInput } from '../services/valuation';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { AppError } from '../utils/http';
@@ -41,26 +42,46 @@ valuationsRouter.post('/', requireAuth(), async (req, res, next) => {
 
     const result = await createValuationFromAvailableData(prisma, data);
 
-    const valuation = await prisma.valuationRequest.create({
-      data: {
-        status: result.estimateLow && result.estimateHigh ? 'ESTIMATE_READY' : 'LOW_DATA_READY',
-        confidence: result.confidence,
-        propertyType: data.propertyType,
-        location: data.location,
-        sqm: data.sqm,
-        beds: data.beds,
-        baths: data.baths,
-        askingPrice: data.askingPrice === null ? null : data.askingPrice.toString(),
-        rentEstimate: data.rentEstimate === null ? null : data.rentEstimate.toString(),
-        currency: data.currency,
-        estimateLow: result.estimateLow === null ? null : result.estimateLow.toString(),
-        estimateHigh: result.estimateHigh === null ? null : result.estimateHigh.toString(),
-        comparableSnapshots: result.comparableSnapshots,
-        generatedNotes: result.notes,
-        disclaimer: result.disclaimer,
-        listingId: data.listingId,
-        requestedById: req.user!.id
-      }
+    const valuation = await prisma.$transaction(async (tx) => {
+      const created = await tx.valuationRequest.create({
+        data: {
+          status: result.estimateLow && result.estimateHigh ? 'ESTIMATE_READY' : 'LOW_DATA_READY',
+          confidence: result.confidence,
+          propertyType: data.propertyType,
+          location: data.location,
+          sqm: data.sqm,
+          beds: data.beds,
+          baths: data.baths,
+          askingPrice: data.askingPrice === null ? null : data.askingPrice.toString(),
+          rentEstimate: data.rentEstimate === null ? null : data.rentEstimate.toString(),
+          currency: data.currency,
+          estimateLow: result.estimateLow === null ? null : result.estimateLow.toString(),
+          estimateHigh: result.estimateHigh === null ? null : result.estimateHigh.toString(),
+          comparableSnapshots: result.comparableSnapshots,
+          generatedNotes: result.notes,
+          disclaimer: result.disclaimer,
+          listingId: data.listingId,
+          requestedById: req.user!.id
+        }
+      });
+      const workspace = await resolveIngestionWorkspace(tx, {});
+      await ingestCrmRelationshipSignal(tx, {
+        workspaceId: workspace.id,
+        sourceType: 'VALUATION_REQUEST',
+        sourceRecordId: created.id,
+        ruleKey: 'valuation-request-created',
+        contact: { fullName: req.user!.name, email: req.user!.email, phone: req.user!.phone, userId: req.user!.id },
+        title: `${req.user!.name} · ${data.location} valuation`,
+        sourceLabel: data.location,
+        status: 'QUALIFIED',
+        consentStatus: 'LEGITIMATE_INTEREST',
+        createLead: true,
+        valuationRequestId: created.id,
+        listingId: data.listingId ?? null,
+        metadata: { confidence: result.confidence, currency: data.currency },
+        actorId: req.user!.id
+      });
+      return created;
     });
 
     res.status(201).json({ valuation });

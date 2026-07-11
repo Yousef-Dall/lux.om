@@ -40,7 +40,10 @@
     "contracts:crm:generate": "npm run contracts:crm:generate -w backend",
     "contracts:crm:check": "npm run contracts:crm:check -w backend",
     "jobs:pms-preventive:once": "npm run jobs:pms-preventive:once -w backend",
-    "ops:pms-stage21g:verify-backfill": "npm run ops:pms-stage21g:verify-backfill -w backend"
+    "ops:pms-stage21g:verify-backfill": "npm run ops:pms-stage21g:verify-backfill -w backend",
+    "jobs:crm-scores:once": "npm run jobs:crm-scores:once -w backend",
+    "jobs:crm-communications:once": "npm run jobs:crm-communications:once -w backend",
+    "ops:crm-stage21h:verify-backfill": "npm run ops:crm-stage21h:verify-backfill -w backend"
   },
   "workspaces": [
     "backend",

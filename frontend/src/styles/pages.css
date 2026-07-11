@@ -20615,3 +20615,52 @@ transition: none;
     flex-basis: 88vw;
   }
 }
+
+/* Stage 21H CRM revenue operations */
+.crm-operations__workspace { display: flex; justify-content: flex-end; padding-top: 1rem; }
+.crm-operations__workspace label { min-width: min(100%, 24rem); }
+.crm-operations__workspace label span { display: block; margin-bottom: .4rem; font-weight: 700; }
+.crm-operations__workspace select { width: 100%; }
+.crm-operations__tabs { display: flex; gap: .55rem; overflow-x: auto; padding-block: 1rem; }
+.crm-operations__tabs button { border: 1px solid var(--border-color); background: var(--surface-color); border-radius: 999px; padding: .65rem 1rem; text-transform: capitalize; cursor: pointer; white-space: nowrap; }
+.crm-operations__tabs button.is-active { background: var(--text-color); color: var(--surface-color); border-color: var(--text-color); }
+.crm-operations__main { display: grid; gap: 1rem; padding-bottom: 4rem; }
+.crm-operations__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(20rem, .8fr); gap: 1rem; }
+.crm-operations__panel { position: relative; background: var(--surface-color); border: 1px solid var(--border-color); border-radius: 1.25rem; padding: 1.15rem; box-shadow: var(--shadow-sm); overflow: hidden; }
+.crm-operations__panel > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.crm-operations__panel h2, .crm-operations__panel h3 { margin-block: .15rem .75rem; }
+.crm-operations__list { display: grid; gap: .55rem; }
+.crm-operations__list > button, .crm-contact-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: .8rem; text-align: start; border: 1px solid var(--border-color); border-radius: .9rem; background: transparent; padding: .8rem; cursor: pointer; }
+.crm-operations__list button span:first-child, .crm-contact-row span { display: grid; gap: .15rem; }
+.crm-operations__list small, .crm-contact-row small, .crm-duplicate-row small { color: var(--muted-text-color); }
+.crm-deal-board { margin-top: 1rem; }
+.crm-deal-board > div { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(15rem, 1fr); gap: .8rem; overflow-x: auto; padding-bottom: .5rem; }
+.crm-deal-column { background: var(--background-subtle); border-radius: 1rem; padding: .75rem; min-height: 12rem; }
+.crm-deal-column > header { display: flex; justify-content: space-between; margin-bottom: .7rem; }
+.crm-deal-column article { display: grid; gap: .4rem; background: var(--surface-color); border: 1px solid var(--border-color); border-radius: .8rem; padding: .65rem; margin-bottom: .55rem; }
+.crm-deal-column article > button { display: grid; gap: .25rem; border: 0; background: transparent; text-align: start; cursor: pointer; }
+.crm-deal-column select { width: 100%; }
+.crm-deal-detail { position: fixed; inset-block: 0; inset-inline-end: 0; width: min(30rem, 95vw); z-index: 40; overflow-y: auto; background: var(--surface-color); border-inline-start: 1px solid var(--border-color); box-shadow: var(--shadow-lg); padding: 1.25rem; }
+.crm-deal-detail > header { display: flex; justify-content: space-between; }
+.crm-deal-detail > header button { border: 0; background: transparent; font-size: 1.6rem; cursor: pointer; }
+.crm-stage-row { display: grid; grid-template-columns: 2.5rem minmax(8rem, 1fr) auto; align-items: center; gap: .7rem; border-top: 1px solid var(--border-color); padding: .7rem 0; }
+.crm-stage-row small { color: var(--muted-text-color); text-align: end; }
+.crm-forecast-currencies { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .8rem; margin-top: 1rem; }
+.crm-forecast-currencies article { border: 1px solid var(--border-color); border-radius: 1rem; padding: 1rem; }
+.crm-governance-note { margin-top: 1rem; color: var(--muted-text-color); }
+.crm-governance-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.crm-governance-actions button, .crm-duplicate-row button { border: 1px solid var(--border-color); border-radius: .65rem; padding: .55rem .7rem; background: transparent; cursor: pointer; }
+.crm-duplicate-row { display: flex; justify-content: space-between; gap: .75rem; align-items: center; border-top: 1px solid var(--border-color); padding: .75rem 0; }
+.crm-duplicate-row div { display: grid; gap: .2rem; }
+.crm-score-history { display: grid; gap: .5rem; margin-top: 1rem; }
+.crm-score-history article { display: grid; grid-template-columns: auto 1fr auto; gap: .75rem; align-items: center; border-top: 1px solid var(--border-color); padding-top: .5rem; }
+@media (max-width: 860px) { .crm-operations__grid { grid-template-columns: 1fr; } .crm-stage-row { grid-template-columns: 2rem 1fr; } .crm-stage-row small { grid-column: 2; text-align: start; } }
+.crm-section-actions { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.crm-stage-editor { display: grid; grid-template-columns: 2rem minmax(8rem, 1.4fr) 6rem 6rem 7rem auto; align-items: center; gap: .55rem; border-top: 1px solid var(--border-color); padding: .7rem 0; }
+.crm-stage-editor input, .crm-stage-editor select { min-width: 0; width: 100%; }
+.crm-stage-editor button, .crm-inline-form button { border: 1px solid var(--border-color); border-radius: .65rem; padding: .55rem .7rem; background: transparent; cursor: pointer; }
+.crm-inline-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: .55rem; margin-bottom: .75rem; }
+.crm-analytics-dimensions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; margin-top: 1rem; }
+.crm-analytics-dimensions article { border: 1px solid var(--border-color); border-radius: 1rem; padding: 1rem; }
+.crm-analytics-dimensions p { margin: .3rem 0; color: var(--muted-text-color); }
+@media (max-width: 980px) { .crm-stage-editor { grid-template-columns: 2rem 1fr 5rem; } .crm-stage-editor select, .crm-stage-editor input[name='slaHours'], .crm-stage-editor button { grid-column: 2 / -1; } .crm-inline-form, .crm-analytics-dimensions { grid-template-columns: 1fr; } }

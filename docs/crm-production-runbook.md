@@ -55,3 +55,24 @@ npm run test:e2e
 ```
 
 The browser suite supplements backend integration tests; it does not replace them.
+
+## Stage 21H revenue operations
+
+After deploying migration `20260711233000_crm_stage21h_revenue_operations`, generate Prisma Client, recalculate durable scores, and run the backfill verifier:
+
+```bash
+npm run db:generate
+npm run jobs:crm-scores:once
+npm run ops:crm-stage21h:verify-backfill
+```
+
+Schedule these durable jobs with one active scheduler instance or a distributed job runner:
+
+```bash
+npm run jobs:crm-scores:once
+npm run jobs:crm-communications:once -- --limit=100
+```
+
+Real CRM email submission additionally requires `CRM_EMAIL_DELIVERY_ENABLED=true`, verified SMTP variables, and authenticated provider webhooks via `CRM_PROVIDER_WEBHOOK_SECRET`. A queued or submitted attempt is not delivered. Only a provider confirmation may produce `DELIVERED`.
+
+Review the ingestion thresholds in `docs/crm-source-ingestion-thresholds.md` before enabling new event producers. Passive marketplace behavior must not create leads without a documented high-intent rule.

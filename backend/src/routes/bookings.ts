@@ -11,6 +11,7 @@ import {
   recordPaymentSync
 } from '../lib/bookingNotifications';
 import { prisma } from '../lib/prisma';
+import { ingestBookingCrmSignal } from '../modules/crm/stage21h/ingestion';
 import { requireAdmin, requireAuth } from '../middleware/auth';
 import { AppError } from '../utils/http';
 
@@ -1214,14 +1215,16 @@ bookingsRouter.patch('/:id/owner-status', requireAuth(), async (req, res, next) 
     assertBookingOwnerAccess(booking, req.user!);
     assertOwnerBookingTransition(booking, status);
 
-    const updatedBooking = await prisma.booking.update({
-      where: {
-        id
-      },
-      data: {
-        status
-      },
-      include: bookingInclude
+    const updatedBooking = await prisma.$transaction(async (tx) => {
+      const updated = await tx.booking.update({
+        where: { id },
+        data: { status },
+        include: bookingInclude
+      });
+      if (status === 'OWNER_APPROVED') {
+        await ingestBookingCrmSignal(tx, { booking: updated, signal: 'BOOKING_APPROVED', actorId: req.user!.id });
+      }
+      return updated;
     });
 
     await recordOwnerBookingDecision(
@@ -1457,22 +1460,20 @@ bookingsRouter.post('/:id/payments/sync', requireAuth(), async (req, res, next) 
     );
     const status = mapThawaniPaymentStatus(thawaniSession.payment_status);
 
-    const payment = await prisma.payment.update({
-      where: {
-        id: booking.payment.id
-      },
-      data: {
-        provider: CHECKOUT_PROVIDER,
-        status,
-        paidAt: status === 'PAID' ? (booking.payment.paidAt ?? new Date()) : null
+    const { payment, updatedBooking } = await prisma.$transaction(async (tx) => {
+      const updatedPayment = await tx.payment.update({
+        where: { id: booking.payment!.id },
+        data: {
+          provider: CHECKOUT_PROVIDER,
+          status,
+          paidAt: status === 'PAID' ? (booking.payment!.paidAt ?? new Date()) : null
+        }
+      });
+      const updated = await tx.booking.findUniqueOrThrow({ where: { id: booking.id }, include: bookingInclude });
+      if (status === 'PAID') {
+        await ingestBookingCrmSignal(tx, { booking: updated, signal: 'BOOKING_PAID', actorId: req.user!.id });
       }
-    });
-
-    const updatedBooking = await prisma.booking.findUniqueOrThrow({
-      where: {
-        id: booking.id
-      },
-      include: bookingInclude
+      return { payment: updatedPayment, updatedBooking: updated };
     });
 
     if (
@@ -1674,14 +1675,12 @@ bookingsRouter.patch('/admin/:id/status', requireAuth(), requireAdmin(), async (
 
     assertAdminBookingTransition(existingBooking, status);
 
-    const booking = await prisma.booking.update({
-      where: {
-        id
-      },
-      data: {
-        status
-      },
-      include: bookingInclude
+    const booking = await prisma.$transaction(async (tx) => {
+      const updated = await tx.booking.update({ where: { id }, data: { status }, include: bookingInclude });
+      if (status === 'ADMIN_CONFIRMED') {
+        await ingestBookingCrmSignal(tx, { booking: updated, signal: 'BOOKING_CONFIRMED', actorId: req.user!.id });
+      }
+      return updated;
     });
 
     await recordAdminBookingDecision(
@@ -1705,14 +1704,16 @@ bookingsRouter.patch('/admin/payments/:id', requireAuth(), requireAdmin(), async
     const { id } = paramsSchema.parse(req.params);
     const { status } = paymentStatusSchema.parse(req.body);
 
-    const payment = await prisma.payment.update({
-      where: {
-        id
-      },
-      data: {
-        status,
-        paidAt: status === 'PAID' ? new Date() : null
+    const payment = await prisma.$transaction(async (tx) => {
+      const updatedPayment = await tx.payment.update({
+        where: { id },
+        data: { status, paidAt: status === 'PAID' ? new Date() : null }
+      });
+      if (status === 'PAID') {
+        const booking = await tx.booking.findUniqueOrThrow({ where: { id: updatedPayment.bookingId }, include: bookingInclude });
+        await ingestBookingCrmSignal(tx, { booking, signal: 'BOOKING_PAID', actorId: req.user!.id });
       }
+      return updatedPayment;
     });
 
     res.json({

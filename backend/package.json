@@ -32,7 +32,10 @@
     "contracts:crm:generate": "tsx scripts/generateCrmContractTypes.ts",
     "contracts:crm:check": "tsx scripts/generateCrmContractTypes.ts --check",
     "jobs:pms-preventive:once": "tsx src/jobs/runPreventiveMaintenance.ts",
-    "ops:pms-stage21g:verify-backfill": "tsx scripts/verifyPmsStage21gBackfill.ts"
+    "ops:pms-stage21g:verify-backfill": "tsx scripts/verifyPmsStage21gBackfill.ts",
+    "jobs:crm-scores:once": "tsx src/jobs/recalculateCrmScores.ts",
+    "jobs:crm-communications:once": "tsx src/jobs/runCrmCommunicationJobs.ts",
+    "ops:crm-stage21h:verify-backfill": "tsx scripts/verifyCrmStage21hBackfill.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

@@ -179,6 +179,123 @@ enum CrmActivityStatus {
   CANCELLED
 }
 
+enum CrmAccountType {
+  INDIVIDUAL
+  COMPANY
+  DEVELOPER
+  TRAVEL_AGENCY
+  ACTIVITY_PROVIDER
+  PROPERTY_OWNER
+  INVESTOR
+  VENDOR
+  TENANT_ORGANIZATION
+  GOVERNMENT
+  INSTITUTIONAL_PARTNER
+  OTHER
+}
+
+enum CrmDealOutcome {
+  OPEN
+  WON
+  LOST
+}
+
+enum CrmForecastCategory {
+  PIPELINE
+  BEST_CASE
+  COMMIT
+  CLOSED
+  OMITTED
+}
+
+enum CrmPipelineStageType {
+  OPEN
+  WON
+  LOST
+}
+
+enum CrmScoreBand {
+  COLD
+  WARM
+  HOT
+}
+
+enum CrmScoreTrend {
+  RISING
+  STABLE
+  FALLING
+}
+
+enum CrmContactIdentityType {
+  EMAIL
+  PHONE
+}
+
+enum CrmContactMergeStatus {
+  PREVIEWED
+  COMPLETED
+  CANCELLED
+}
+
+enum CrmSourceEventType {
+  LISTING_INQUIRY
+  PROJECT_INQUIRY
+  DEVELOPER_PROFILE_INQUIRY
+  TRAVEL_AGENCY_INQUIRY
+  ACTIVITY_INQUIRY
+  BOOKING_APPROVED
+  BOOKING_CONFIRMED
+  BOOKING_PAID
+  VALUATION_REQUEST
+  INVESTOR_WATCHLIST
+  HIGH_INTENT_SAVED_SEARCH
+  PMS_OWNER_ONBOARDING
+  PMS_TENANT_ONBOARDING
+  PMS_VENDOR_ONBOARDING
+  MANUAL
+}
+
+enum CrmContactConsentStatus {
+  UNKNOWN
+  CONSENTED
+  LEGITIMATE_INTEREST
+  OPTED_OUT
+  BLOCKED
+}
+
+enum CrmCommunicationChannel {
+  EMAIL
+  WHATSAPP
+  PHONE
+}
+
+enum CrmSuppressionReason {
+  OPT_OUT
+  BOUNCE
+  COMPLAINT
+  INVALID_DESTINATION
+  MANUAL
+  LEGAL
+}
+
+enum CrmDeliveryProvider {
+  DRAFT_ONLY
+  VERIFIED_EMAIL
+  WHATSAPP_BUSINESS
+}
+
+enum CrmDeliveryStatus {
+  DRAFT
+  QUEUED
+  PROCESSING
+  SUBMITTED
+  DELIVERED
+  FAILED
+  BOUNCED
+  BLOCKED
+  CANCELLED
+}
+
 enum NotificationType {
   ACCOUNT_SECURITY
   BOOKING_CREATED
@@ -873,10 +990,10 @@ enum DocumentChecklistStatus {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String
+  id                         String    @id @default(cuid())
+  name                       String
+  email                      String    @unique
+  password                   String
   passwordLoginEnabled       Boolean   @default(true)
   authTokenVersion           Int       @default(0)
   suspendedAt                DateTime?
@@ -886,87 +1003,87 @@ model User {
   deactivationReason         String?
   suspendedBy                User?     @relation("UserSuspensionsIssued", fields: [suspendedById], references: [id], onDelete: SetNull)
   suspensionsIssued          User[]    @relation("UserSuspensionsIssued")
-  role      Role     @default(USER)
-  googleId                    String?   @unique
-  phone                       String?
-  companyName                 String?
-  emailVerified               Boolean   @default(false)
-  emailVerifiedAt             DateTime?
-  emailVerificationTokenHash  String?   @unique
-  emailVerificationExpiresAt  DateTime?
-  pendingEmail                String?   @unique
-  emailBookingUpdates          Boolean   @default(true)
-  emailSavedSearchUpdates      Boolean   @default(true)
-  emailMarketingUpdates        Boolean   @default(false)
-  emailChangeTokenHash        String?   @unique
-  emailChangeExpiresAt        DateTime?
-  passwordResetTokenHash      String?   @unique
-  passwordResetExpiresAt      DateTime?
-  passwordResetUsedAt         DateTime?
-  createdAt                   DateTime  @default(now())
-  updatedAt                   DateTime  @updatedAt
+  role                       Role      @default(USER)
+  googleId                   String?   @unique
+  phone                      String?
+  companyName                String?
+  emailVerified              Boolean   @default(false)
+  emailVerifiedAt            DateTime?
+  emailVerificationTokenHash String?   @unique
+  emailVerificationExpiresAt DateTime?
+  pendingEmail               String?   @unique
+  emailBookingUpdates        Boolean   @default(true)
+  emailSavedSearchUpdates    Boolean   @default(true)
+  emailMarketingUpdates      Boolean   @default(false)
+  emailChangeTokenHash       String?   @unique
+  emailChangeExpiresAt       DateTime?
+  passwordResetTokenHash     String?   @unique
+  passwordResetExpiresAt     DateTime?
+  passwordResetUsedAt        DateTime?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
 
-  listings      Listing[]
-  developerProjects DeveloperProject[]
-  activities    Activity[]
-  bookings      Booking[]
-  inquiries     Inquiry[]
-  notifications Notification[] @relation("UserNotifications")
-  accountSecurityEvents AccountSecurityEvent[] @relation("AccountSecurityEventUser")
-  accountSecurityEventsActed AccountSecurityEvent[] @relation("AccountSecurityEventActor")
-  domainAuditEventsActed DomainAuditEvent[] @relation("DomainAuditEventActor")
-  ownedWorkspaces Workspace[] @relation("WorkspacePersonalOwner")
-  workspaceMemberships WorkspaceMember[] @relation("WorkspaceMemberUser")
-  workspaceMembershipsCreated WorkspaceMember[] @relation("WorkspaceMemberCreatedBy")
-  bookingEvents BookingEvent[] @relation("BookingEventActor")
-  oauthLoginCodes OauthLoginCode[]
+  listings                    Listing[]
+  developerProjects           DeveloperProject[]
+  activities                  Activity[]
+  bookings                    Booking[]
+  inquiries                   Inquiry[]
+  notifications               Notification[]         @relation("UserNotifications")
+  accountSecurityEvents       AccountSecurityEvent[] @relation("AccountSecurityEventUser")
+  accountSecurityEventsActed  AccountSecurityEvent[] @relation("AccountSecurityEventActor")
+  domainAuditEventsActed      DomainAuditEvent[]     @relation("DomainAuditEventActor")
+  ownedWorkspaces             Workspace[]            @relation("WorkspacePersonalOwner")
+  workspaceMemberships        WorkspaceMember[]      @relation("WorkspaceMemberUser")
+  workspaceMembershipsCreated WorkspaceMember[]      @relation("WorkspaceMemberCreatedBy")
+  bookingEvents               BookingEvent[]         @relation("BookingEventActor")
+  oauthLoginCodes             OauthLoginCode[]
 
-  pmsMembershipsCreated PmsCompanyMember[] @relation("PmsMemberCreatedBy")
-  pmsMemberships        PmsCompanyMember[] @relation("PmsMemberUser")
-  pmsPortfoliosCreated  PmsPortfolio[] @relation("PmsPortfolioCreatedBy")
-  pmsPortfoliosUpdated  PmsPortfolio[] @relation("PmsPortfolioUpdatedBy")
-  pmsTenantPortalAccesses PmsTenantPortalAccess[] @relation("PmsTenantPortalAccessUser")
-  pmsTenantPortalAccessesCreated PmsTenantPortalAccess[] @relation("PmsTenantPortalAccessCreatedBy")
-  pmsEntitlementsCreated PmsCompanyEntitlement[] @relation("PmsEntitlementCreatedBy")
-  pmsEntitlementsUpdated PmsCompanyEntitlement[] @relation("PmsEntitlementUpdatedBy")
-  pmsPropertiesCreated   PmsProperty[] @relation("PmsPropertyCreatedBy")
-  pmsPropertiesUpdated   PmsProperty[] @relation("PmsPropertyUpdatedBy")
-  pmsUnitsCreated        PmsUnit[] @relation("PmsUnitCreatedBy")
-  pmsUnitsUpdated        PmsUnit[] @relation("PmsUnitUpdatedBy")
-  pmsTenantsCreated      PmsTenant[] @relation("PmsTenantCreatedBy")
-  pmsTenantsUpdated      PmsTenant[] @relation("PmsTenantUpdatedBy")
-  pmsLeasesCreated       PmsLease[] @relation("PmsLeaseCreatedBy")
-  pmsLeasesUpdated       PmsLease[] @relation("PmsLeaseUpdatedBy")
-  pmsRentDueItemsCreated PmsRentDueItem[] @relation("PmsRentDueItemCreatedBy")
-  pmsRentDueItemsUpdated PmsRentDueItem[] @relation("PmsRentDueItemUpdatedBy")
-  pmsRentPaymentsRecorded PmsRentPayment[] @relation("PmsRentPaymentRecordedBy")
+  pmsMembershipsCreated             PmsCompanyMember[]         @relation("PmsMemberCreatedBy")
+  pmsMemberships                    PmsCompanyMember[]         @relation("PmsMemberUser")
+  pmsPortfoliosCreated              PmsPortfolio[]             @relation("PmsPortfolioCreatedBy")
+  pmsPortfoliosUpdated              PmsPortfolio[]             @relation("PmsPortfolioUpdatedBy")
+  pmsTenantPortalAccesses           PmsTenantPortalAccess[]    @relation("PmsTenantPortalAccessUser")
+  pmsTenantPortalAccessesCreated    PmsTenantPortalAccess[]    @relation("PmsTenantPortalAccessCreatedBy")
+  pmsEntitlementsCreated            PmsCompanyEntitlement[]    @relation("PmsEntitlementCreatedBy")
+  pmsEntitlementsUpdated            PmsCompanyEntitlement[]    @relation("PmsEntitlementUpdatedBy")
+  pmsPropertiesCreated              PmsProperty[]              @relation("PmsPropertyCreatedBy")
+  pmsPropertiesUpdated              PmsProperty[]              @relation("PmsPropertyUpdatedBy")
+  pmsUnitsCreated                   PmsUnit[]                  @relation("PmsUnitCreatedBy")
+  pmsUnitsUpdated                   PmsUnit[]                  @relation("PmsUnitUpdatedBy")
+  pmsTenantsCreated                 PmsTenant[]                @relation("PmsTenantCreatedBy")
+  pmsTenantsUpdated                 PmsTenant[]                @relation("PmsTenantUpdatedBy")
+  pmsLeasesCreated                  PmsLease[]                 @relation("PmsLeaseCreatedBy")
+  pmsLeasesUpdated                  PmsLease[]                 @relation("PmsLeaseUpdatedBy")
+  pmsRentDueItemsCreated            PmsRentDueItem[]           @relation("PmsRentDueItemCreatedBy")
+  pmsRentDueItemsUpdated            PmsRentDueItem[]           @relation("PmsRentDueItemUpdatedBy")
+  pmsRentPaymentsRecorded           PmsRentPayment[]           @relation("PmsRentPaymentRecordedBy")
   pmsAccountingLedgerEntriesCreated PmsAccountingLedgerEntry[] @relation("PmsAccountingLedgerEntryCreatedBy")
   pmsAccountingLedgerEntriesUpdated PmsAccountingLedgerEntry[] @relation("PmsAccountingLedgerEntryUpdatedBy")
-  pmsWorkOrdersCreated   PmsWorkOrder[] @relation("PmsWorkOrderCreatedBy")
-  pmsWorkOrdersUpdated   PmsWorkOrder[] @relation("PmsWorkOrderUpdatedBy")
-  pmsVendorsCreated      PmsVendor[] @relation("PmsVendorCreatedBy")
-  pmsVendorsUpdated      PmsVendor[] @relation("PmsVendorUpdatedBy")
-  pmsMaintenanceQuotesCreated PmsMaintenanceQuote[] @relation("PmsMaintenanceQuoteCreatedBy")
-  pmsMaintenanceQuotesUpdated PmsMaintenanceQuote[] @relation("PmsMaintenanceQuoteUpdatedBy")
-  pmsMaintenanceQuotesApproved PmsMaintenanceQuote[] @relation("PmsMaintenanceQuoteApprovedBy")
-  pmsCommunicationTemplatesCreated PmsCommunicationTemplate[] @relation("PmsCommunicationTemplateCreatedBy")
-  pmsCommunicationTemplatesUpdated PmsCommunicationTemplate[] @relation("PmsCommunicationTemplateUpdatedBy")
-  pmsCommunicationLogsCreated PmsCommunicationLog[] @relation("PmsCommunicationLogCreatedBy")
-  pmsCommunicationLogsSent PmsCommunicationLog[] @relation("PmsCommunicationLogSentBy")
-  pmsImportBatchesCreated PmsImportBatch[] @relation("PmsImportBatchCreatedBy")
-  pmsPoliciesCreated     PmsPolicy[] @relation("PmsPolicyCreatedBy")
-  pmsPoliciesUpdated     PmsPolicy[] @relation("PmsPolicyUpdatedBy")
-  pmsInspectionsCreated  PmsInspection[] @relation("PmsInspectionCreatedBy")
-  pmsInspectionsUpdated  PmsInspection[] @relation("PmsInspectionUpdatedBy")
-  pmsDocumentsUploaded   PmsDocument[] @relation("PmsDocumentUploadedBy")
-  pmsDocumentsUpdated    PmsDocument[] @relation("PmsDocumentUpdatedBy")
-  pmsOwnerStatementsGenerated PmsOwnerStatement[] @relation("PmsOwnerStatementGeneratedBy")
-  pmsOwnerStatementsReviewed PmsOwnerStatement[] @relation("PmsOwnerStatementReviewedBy")
-  pmsOwnerStatementsApproved PmsOwnerStatement[] @relation("PmsOwnerStatementApprovedBy")
-  pmsOwnerStatementsPublished PmsOwnerStatement[] @relation("PmsOwnerStatementPublishedBy")
-  pmsOwnerStatementsVoided PmsOwnerStatement[] @relation("PmsOwnerStatementVoidedBy")
-  pmsMoveChecklistItemsCreated PmsMoveChecklistItem[] @relation("PmsMoveChecklistItemCreatedBy")
-  pmsMoveChecklistItemsUpdated PmsMoveChecklistItem[] @relation("PmsMoveChecklistItemUpdatedBy")
+  pmsWorkOrdersCreated              PmsWorkOrder[]             @relation("PmsWorkOrderCreatedBy")
+  pmsWorkOrdersUpdated              PmsWorkOrder[]             @relation("PmsWorkOrderUpdatedBy")
+  pmsVendorsCreated                 PmsVendor[]                @relation("PmsVendorCreatedBy")
+  pmsVendorsUpdated                 PmsVendor[]                @relation("PmsVendorUpdatedBy")
+  pmsMaintenanceQuotesCreated       PmsMaintenanceQuote[]      @relation("PmsMaintenanceQuoteCreatedBy")
+  pmsMaintenanceQuotesUpdated       PmsMaintenanceQuote[]      @relation("PmsMaintenanceQuoteUpdatedBy")
+  pmsMaintenanceQuotesApproved      PmsMaintenanceQuote[]      @relation("PmsMaintenanceQuoteApprovedBy")
+  pmsCommunicationTemplatesCreated  PmsCommunicationTemplate[] @relation("PmsCommunicationTemplateCreatedBy")
+  pmsCommunicationTemplatesUpdated  PmsCommunicationTemplate[] @relation("PmsCommunicationTemplateUpdatedBy")
+  pmsCommunicationLogsCreated       PmsCommunicationLog[]      @relation("PmsCommunicationLogCreatedBy")
+  pmsCommunicationLogsSent          PmsCommunicationLog[]      @relation("PmsCommunicationLogSentBy")
+  pmsImportBatchesCreated           PmsImportBatch[]           @relation("PmsImportBatchCreatedBy")
+  pmsPoliciesCreated                PmsPolicy[]                @relation("PmsPolicyCreatedBy")
+  pmsPoliciesUpdated                PmsPolicy[]                @relation("PmsPolicyUpdatedBy")
+  pmsInspectionsCreated             PmsInspection[]            @relation("PmsInspectionCreatedBy")
+  pmsInspectionsUpdated             PmsInspection[]            @relation("PmsInspectionUpdatedBy")
+  pmsDocumentsUploaded              PmsDocument[]              @relation("PmsDocumentUploadedBy")
+  pmsDocumentsUpdated               PmsDocument[]              @relation("PmsDocumentUpdatedBy")
+  pmsOwnerStatementsGenerated       PmsOwnerStatement[]        @relation("PmsOwnerStatementGeneratedBy")
+  pmsOwnerStatementsReviewed        PmsOwnerStatement[]        @relation("PmsOwnerStatementReviewedBy")
+  pmsOwnerStatementsApproved        PmsOwnerStatement[]        @relation("PmsOwnerStatementApprovedBy")
+  pmsOwnerStatementsPublished       PmsOwnerStatement[]        @relation("PmsOwnerStatementPublishedBy")
+  pmsOwnerStatementsVoided          PmsOwnerStatement[]        @relation("PmsOwnerStatementVoidedBy")
+  pmsMoveChecklistItemsCreated      PmsMoveChecklistItem[]     @relation("PmsMoveChecklistItemCreatedBy")
+  pmsMoveChecklistItemsUpdated      PmsMoveChecklistItem[]     @relation("PmsMoveChecklistItemUpdatedBy")
 
   pmsOwnerPortalAccesses                 PmsOwnerPortalAccess[]          @relation("PmsOwnerPortalAccessUser")
   pmsOwnerPortalAccessesCreated          PmsOwnerPortalAccess[]          @relation("PmsOwnerPortalAccessCreatedBy")
@@ -1049,16 +1166,21 @@ model User {
   savedSearches          SavedSearch[]
   investorWatchlistItems InvestorWatchlistItem[]
 
-  crmContactsOwned      CrmContact[]  @relation("CrmContactOwner")
-  crmContactsLinked     CrmContact[]  @relation("CrmContactUser")
-  crmContactsCreated    CrmContact[]  @relation("CrmContactCreatedBy")
-  crmLeadsOwned         CrmLead[]     @relation("CrmLeadOwner")
-  crmLeadsAssigned      CrmLead[]     @relation("CrmLeadAssignedTo")
-  crmLeadsCreated       CrmLead[]     @relation("CrmLeadCreatedBy")
-  crmLeadsUpdated       CrmLead[]     @relation("CrmLeadUpdatedBy")
-  crmActivitiesCreated  CrmActivity[] @relation("CrmActivityCreatedBy")
-  crmActivitiesAssigned CrmActivity[] @relation("CrmActivityAssignedTo")
-  crmActivitiesUpdated  CrmActivity[] @relation("CrmActivityUpdatedBy")
+  crmContactsOwned          CrmContact[]           @relation("CrmContactOwner")
+  crmContactsLinked         CrmContact[]           @relation("CrmContactUser")
+  crmContactsCreated        CrmContact[]           @relation("CrmContactCreatedBy")
+  crmLeadsOwned             CrmLead[]              @relation("CrmLeadOwner")
+  crmLeadsAssigned          CrmLead[]              @relation("CrmLeadAssignedTo")
+  crmLeadsCreated           CrmLead[]              @relation("CrmLeadCreatedBy")
+  crmLeadsUpdated           CrmLead[]              @relation("CrmLeadUpdatedBy")
+  crmActivitiesCreated      CrmActivity[]          @relation("CrmActivityCreatedBy")
+  crmActivitiesAssigned     CrmActivity[]          @relation("CrmActivityAssignedTo")
+  crmActivitiesUpdated      CrmActivity[]          @relation("CrmActivityUpdatedBy")
+  crmAccountsOwned          CrmAccount[]           @relation("CrmAccountOwner")
+  crmAccountTeamMemberships CrmAccountTeamMember[] @relation("CrmAccountTeamUser")
+  crmDealsOwned             CrmDeal[]              @relation("CrmDealOwner")
+  crmDealTeamMemberships    CrmDealTeamMember[]    @relation("CrmDealTeamUser")
+  crmStageChanges           CrmStageHistory[]      @relation("CrmStageHistoryChangedBy")
 
   @@index([role])
   @@index([suspendedAt])
@@ -1084,8 +1206,8 @@ model Landmark {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  listings   Listing[]
-  activities Activity[]
+  listings          Listing[]
+  activities        Activity[]
   developerProjects DeveloperProject[]
 
   @@index([cityEn])
@@ -1120,33 +1242,33 @@ model DeveloperCompany {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  listings Listing[]
-  projects DeveloperProject[]
-  reviews  Review[]
-  pmsEntitlement PmsCompanyEntitlement?
-  pmsMembers     PmsCompanyMember[]
-  pmsPortfolios  PmsPortfolio[]
-  pmsPortfolioProperties PmsPortfolioProperty[]
-  pmsMemberPropertyAccesses PmsMemberPropertyAccess[]
-  pmsMemberPermissions PmsMemberPermission[]
-  pmsTenantPortalAccesses PmsTenantPortalAccess[]
-  pmsProperties  PmsProperty[]
-  pmsUnits       PmsUnit[]
-  pmsTenants     PmsTenant[]
-  pmsLeases      PmsLease[]
-  pmsRentDueItems PmsRentDueItem[]
-  pmsRentPayments PmsRentPayment[]
-  pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
-  pmsWorkOrders PmsWorkOrder[]
-  pmsVendors PmsVendor[]
-  pmsMaintenanceQuotes PmsMaintenanceQuote[]
-  pmsCommunicationTemplates PmsCommunicationTemplate[]
-  pmsCommunicationLogs PmsCommunicationLog[]
-  pmsImportBatches PmsImportBatch[]
-  pmsPolicies PmsPolicy[]
-  pmsInspections PmsInspection[]
-  pmsDocuments PmsDocument[]
-  pmsOwnerStatements PmsOwnerStatement[]
+  listings                       Listing[]
+  projects                       DeveloperProject[]
+  reviews                        Review[]
+  pmsEntitlement                 PmsCompanyEntitlement?
+  pmsMembers                     PmsCompanyMember[]
+  pmsPortfolios                  PmsPortfolio[]
+  pmsPortfolioProperties         PmsPortfolioProperty[]
+  pmsMemberPropertyAccesses      PmsMemberPropertyAccess[]
+  pmsMemberPermissions           PmsMemberPermission[]
+  pmsTenantPortalAccesses        PmsTenantPortalAccess[]
+  pmsProperties                  PmsProperty[]
+  pmsUnits                       PmsUnit[]
+  pmsTenants                     PmsTenant[]
+  pmsLeases                      PmsLease[]
+  pmsRentDueItems                PmsRentDueItem[]
+  pmsRentPayments                PmsRentPayment[]
+  pmsAccountingLedgerEntries     PmsAccountingLedgerEntry[]
+  pmsWorkOrders                  PmsWorkOrder[]
+  pmsVendors                     PmsVendor[]
+  pmsMaintenanceQuotes           PmsMaintenanceQuote[]
+  pmsCommunicationTemplates      PmsCommunicationTemplate[]
+  pmsCommunicationLogs           PmsCommunicationLog[]
+  pmsImportBatches               PmsImportBatch[]
+  pmsPolicies                    PmsPolicy[]
+  pmsInspections                 PmsInspection[]
+  pmsDocuments                   PmsDocument[]
+  pmsOwnerStatements             PmsOwnerStatement[]
   pmsCharges                     PmsCharge[]
   pmsChargeLines                 PmsChargeLine[]
   pmsChargeAdjustments           PmsChargeAdjustment[]
@@ -1170,11 +1292,11 @@ model DeveloperCompany {
   pmsInspectionTemplateItems     PmsInspectionTemplateItem[]
   pmsInspectionResults           PmsInspectionResult[]
   pmsInspectionDefects           PmsInspectionDefect[]
-  domainAuditEvents DomainAuditEvent[]
-  pmsMoveChecklistItems PmsMoveChecklistItem[]
-  crmContacts CrmContact[]
-  crmLeads    CrmLead[]
-  workspace Workspace?
+  domainAuditEvents              DomainAuditEvent[]
+  pmsMoveChecklistItems          PmsMoveChecklistItem[]
+  crmContacts                    CrmContact[]
+  crmLeads                       CrmLead[]
+  workspace                      Workspace?
 
   @@index([verified])
   @@index([featured])
@@ -1236,17 +1358,17 @@ model DeveloperProject {
   latitude      Decimal? @db.Decimal(10, 7)
   longitude     Decimal? @db.Decimal(10, 7)
 
-  completionStatus String?
-  handoverDate     DateTime?
-  totalUnits       Int?
-  availableUnits   Int?
-  bedroomsSummary  String?
-  amenities        String[] @default([])
-  paymentPlan      String?
-  brochureUrl      String?
-  masterplanUrl    String?
+  completionStatus    String?
+  handoverDate        DateTime?
+  totalUnits          Int?
+  availableUnits      Int?
+  bedroomsSummary     String?
+  amenities           String[]  @default([])
+  paymentPlan         String?
+  brochureUrl         String?
+  masterplanUrl       String?
   videoWalkthroughUrl String?
-  image            String?
+  image               String?
 
   mediaQualityStatus  MediaQualityStatus @default(NOT_CHECKED)
   mediaQualityNotes   String?
@@ -1266,7 +1388,7 @@ model DeveloperProject {
   developer   DeveloperCompany @relation(fields: [developerId], references: [id], onDelete: Cascade)
 
   ownerId String
-  owner   User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   nearestLandmarkId String?
   nearestLandmark   Landmark? @relation(fields: [nearestLandmarkId], references: [id], onDelete: SetNull)
@@ -1289,11 +1411,11 @@ model DeveloperProject {
 }
 
 model DeveloperProjectImage {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   url       String
   altEn     String?
   altAr     String?
-  sortOrder Int    @default(0)
+  sortOrder Int     @default(0)
 
   projectId String
   project   DeveloperProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -1394,20 +1516,20 @@ model Listing {
   distanceFromLandmarkEn String?
   distanceFromLandmarkAr String?
 
-  amenities         Amenity[]
-  images            ListingImage[]
-  premiumMedia      PremiumMediaAsset[]
-  bookings          Booking[]
-  inquiries         Inquiry[]
-  contractDrafts    RentalContractDraft[]
-  rentSchedules     RentPaymentSchedule[]
-  transactions      MarketplaceTransaction[]
-  valuationRequests ValuationRequest[]
+  amenities           Amenity[]
+  images              ListingImage[]
+  premiumMedia        PremiumMediaAsset[]
+  bookings            Booking[]
+  inquiries           Inquiry[]
+  contractDrafts      RentalContractDraft[]
+  rentSchedules       RentPaymentSchedule[]
+  transactions        MarketplaceTransaction[]
+  valuationRequests   ValuationRequest[]
   reviews             Review[]
   savedBy             SavedListing[]
   watchlistItems      InvestorWatchlistItem[]
-  linkedPmsProperties PmsProperty[] @relation("PmsPropertyPublicListing")
-  linkedPmsUnits      PmsUnit[] @relation("PmsUnitPublicListing")
+  linkedPmsProperties PmsProperty[]            @relation("PmsPropertyPublicListing")
+  linkedPmsUnits      PmsUnit[]                @relation("PmsUnitPublicListing")
   crmLeads            CrmLead[]
 
   createdAt DateTime @default(now())
@@ -2237,16 +2359,29 @@ model Workspace {
   active      Boolean       @default(true)
   platformKey String?       @unique
 
-  companyId String? @unique
+  companyId String?           @unique
   company   DeveloperCompany? @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   personalOwnerUserId String? @unique
-  personalOwnerUser   User? @relation("WorkspacePersonalOwner", fields: [personalOwnerUserId], references: [id], onDelete: Cascade)
+  personalOwnerUser   User?   @relation("WorkspacePersonalOwner", fields: [personalOwnerUserId], references: [id], onDelete: Cascade)
 
-  members        WorkspaceMember[]
-  contacts       CrmContact[]
-  leads          CrmLead[]
-  activities     CrmActivity[]
+  members                   WorkspaceMember[]
+  contacts                  CrmContact[]
+  leads                     CrmLead[]
+  activities                CrmActivity[]
+  crmAccounts               CrmAccount[]
+  crmPipelines              CrmPipeline[]
+  crmDeals                  CrmDeal[]
+  crmStageHistory           CrmStageHistory[]
+  crmScoreSnapshots         CrmScoreSnapshot[]
+  crmContactIdentities      CrmContactIdentity[]
+  crmContactMerges          CrmContactMerge[]
+  crmSourceEvents           CrmSourceEvent[]
+  crmChannelPreferences     CrmContactChannelPreference[]
+  crmSuppressions           CrmSuppressionEntry[]
+  crmCommunicationTemplates CrmCommunicationTemplate[]
+  crmDeliveryAttempts       CrmDeliveryAttempt[]
+  crmCommunicationPolicy    CrmWorkspaceCommunicationPolicy?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2263,10 +2398,10 @@ model WorkspaceMember {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   userId String
-  user   User @relation("WorkspaceMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation("WorkspaceMemberUser", fields: [userId], references: [id], onDelete: Cascade)
 
   createdById String?
-  createdBy   User? @relation("WorkspaceMemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("WorkspaceMemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   permissions    WorkspacePermission[]
   propertyScopes WorkspacePropertyScope[]
@@ -2312,9 +2447,9 @@ model WorkspacePropertyScope {
 }
 
 model PmsCompanyEntitlement {
-  id        String               @id @default(cuid())
-  status    PmsEntitlementStatus @default(TRIAL)
-  notes     String?
+  id     String               @id @default(cuid())
+  status PmsEntitlementStatus @default(TRIAL)
+  notes  String?
 
   enabledAt   DateTime?
   disabledAt  DateTime?
@@ -2376,10 +2511,10 @@ model PmsPortfolio {
   company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   createdById String?
-  createdBy   User? @relation("PmsPortfolioCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsPortfolioCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsPortfolioUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsPortfolioUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   properties PmsPortfolioProperty[]
 
@@ -2462,10 +2597,10 @@ model PmsTenantPortalAccess {
   tenant   PmsTenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   userId String
-  user   User @relation("PmsTenantPortalAccessUser", fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation("PmsTenantPortalAccessUser", fields: [userId], references: [id], onDelete: Cascade)
 
   createdById String?
-  createdBy   User? @relation("PmsTenantPortalAccessCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsTenantPortalAccessCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2478,16 +2613,16 @@ model PmsTenantPortalAccess {
 }
 
 model PmsProperty {
-  id          String  @id @default(cuid())
-  name        String
-  code        String?
+  id           String  @id @default(cuid())
+  name         String
+  code         String?
   propertyType String?
-  description String?
-  addressLine String?
-  city        String?
-  area        String?
-  notes       String?
-  active      Boolean @default(true)
+  description  String?
+  addressLine  String?
+  city         String?
+  area         String?
+  notes        String?
+  active       Boolean @default(true)
 
   mapPlaceLabel String?
   mapAddress    String?
@@ -2505,20 +2640,20 @@ model PmsProperty {
   publicListing   Listing? @relation("PmsPropertyPublicListing", fields: [publicListingId], references: [id], onDelete: SetNull)
 
   createdById String?
-  createdBy   User? @relation("PmsPropertyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsPropertyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsPropertyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsPropertyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  units PmsUnit[]
-  pmsLeases PmsLease[]
-  pmsRentDueItems PmsRentDueItem[]
-  pmsRentPayments PmsRentPayment[]
+  units                      PmsUnit[]
+  pmsLeases                  PmsLease[]
+  pmsRentDueItems            PmsRentDueItem[]
+  pmsRentPayments            PmsRentPayment[]
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
-  pmsWorkOrders PmsWorkOrder[]
-  pmsInspections PmsInspection[]
-  pmsDocuments PmsDocument[]
-  pmsOwnerStatements PmsOwnerStatement[]
+  pmsWorkOrders              PmsWorkOrder[]
+  pmsInspections             PmsInspection[]
+  pmsDocuments               PmsDocument[]
+  pmsOwnerStatements         PmsOwnerStatement[]
   pmsCharges                 PmsCharge[]
   pmsCreditNotes             PmsCreditNote[]
   pmsSecurityDepositAccounts PmsSecurityDepositAccount[]
@@ -2530,11 +2665,11 @@ model PmsProperty {
   pmsMaintenancePlans        PmsMaintenancePlan[]
   pmsInspectionTemplates     PmsInspectionTemplate[]
   pmsInspectionDefects       PmsInspectionDefect[]
-  pmsMoveChecklistItems PmsMoveChecklistItem[]
-  pmsPortfolioProperties PmsPortfolioProperty[]
-  pmsMemberPropertyAccesses PmsMemberPropertyAccess[]
-  workspaceScopes WorkspacePropertyScope[]
-  crmLeads CrmLead[]
+  pmsMoveChecklistItems      PmsMoveChecklistItem[]
+  pmsPortfolioProperties     PmsPortfolioProperty[]
+  pmsMemberPropertyAccesses  PmsMemberPropertyAccess[]
+  workspaceScopes            WorkspacePropertyScope[]
+  crmLeads                   CrmLead[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2550,19 +2685,19 @@ model PmsProperty {
 }
 
 model PmsUnit {
-  id          String             @id @default(cuid())
-  unitNumber  String
-  unitName    String?
-  floor       String?
-  bedrooms    Int?
-  bathrooms   Int?
-  areaSqm     Int?
-  status      PmsUnitStatus      @default(VACANT)
-  occupancyStatus PmsOccupancyStatus @default(VACANT)
+  id                String                   @id @default(cuid())
+  unitNumber        String
+  unitName          String?
+  floor             String?
+  bedrooms          Int?
+  bathrooms         Int?
+  areaSqm           Int?
+  status            PmsUnitStatus            @default(VACANT)
+  occupancyStatus   PmsOccupancyStatus       @default(VACANT)
   operationalStatus PmsUnitOperationalStatus @default(AVAILABLE)
-  rentAmount  Decimal?           @db.Decimal(12, 3)
-  currency    String             @default("OMR") @db.VarChar(3)
-  notes       String?
+  rentAmount        Decimal?                 @db.Decimal(12, 3)
+  currency          String                   @default("OMR") @db.VarChar(3)
+  notes             String?
 
   propertyId String
   property   PmsProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
@@ -2577,25 +2712,25 @@ model PmsUnit {
   publicListing   Listing? @relation("PmsUnitPublicListing", fields: [publicListingId], references: [id], onDelete: SetNull)
 
   createdById String?
-  createdBy   User? @relation("PmsUnitCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsUnitCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsUnitUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsUnitUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  pmsLeases PmsLease[]
-  pmsRentDueItems PmsRentDueItem[]
-  pmsRentPayments PmsRentPayment[]
+  pmsLeases                  PmsLease[]
+  pmsRentDueItems            PmsRentDueItem[]
+  pmsRentPayments            PmsRentPayment[]
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
-  pmsWorkOrders PmsWorkOrder[]
-  pmsInspections PmsInspection[]
-  pmsDocuments PmsDocument[]
+  pmsWorkOrders              PmsWorkOrder[]
+  pmsInspections             PmsInspection[]
+  pmsDocuments               PmsDocument[]
   pmsCharges                 PmsCharge[]
   pmsCreditNotes             PmsCreditNote[]
   pmsSecurityDepositAccounts PmsSecurityDepositAccount[]
   pmsAssets                  PmsAsset[]
   pmsMaintenancePlans        PmsMaintenancePlan[]
   pmsInspectionDefects       PmsInspectionDefect[]
-  pmsMoveChecklistItems PmsMoveChecklistItem[]
+  pmsMoveChecklistItems      PmsMoveChecklistItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2632,27 +2767,27 @@ model PmsTenant {
   company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   createdById String?
-  createdBy   User? @relation("PmsTenantCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsTenantCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsTenantUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsTenantUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  leases       PmsLease[]
-  rentDueItems PmsRentDueItem[]
-  rentPayments PmsRentPayment[]
+  leases                     PmsLease[]
+  rentDueItems               PmsRentDueItem[]
+  rentPayments               PmsRentPayment[]
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
-  pmsCommunicationLogs PmsCommunicationLog[]
-  pmsWorkOrders PmsWorkOrder[]
-  pmsInspections PmsInspection[]
-  pmsTenantPortalAccesses PmsTenantPortalAccess[]
-  pmsDocuments PmsDocument[]
+  pmsCommunicationLogs       PmsCommunicationLog[]
+  pmsWorkOrders              PmsWorkOrder[]
+  pmsInspections             PmsInspection[]
+  pmsTenantPortalAccesses    PmsTenantPortalAccess[]
+  pmsDocuments               PmsDocument[]
   pmsCharges                 PmsCharge[]
   pmsCreditNotes             PmsCreditNote[]
   pmsSecurityDepositAccounts PmsSecurityDepositAccount[]
   pmsInspectionDefects       PmsInspectionDefect[]
-  pmsMoveChecklistItems PmsMoveChecklistItem[]
-  crmContacts CrmContact[]
-  crmLeads    CrmLead[]
+  pmsMoveChecklistItems      PmsMoveChecklistItem[]
+  crmContacts                CrmContact[]
+  crmLeads                   CrmLead[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2666,18 +2801,18 @@ model PmsTenant {
 }
 
 model PmsLease {
-  id       String         @id @default(cuid())
-  status   PmsLeaseStatus @default(ACTIVE)
-  title    String?
+  id     String         @id @default(cuid())
+  status PmsLeaseStatus @default(ACTIVE)
+  title  String?
 
   startDate DateTime
   endDate   DateTime?
 
-  rentFrequency PaymentScheduleFrequency @default(MONTHLY)
-  rentAmount    Decimal                  @db.Decimal(12, 3)
-  currency      String                   @default("OMR") @db.VarChar(3)
-  securityDeposit Decimal?               @db.Decimal(12, 3)
-  dueDayOfMonth  Int?
+  rentFrequency   PaymentScheduleFrequency @default(MONTHLY)
+  rentAmount      Decimal                  @db.Decimal(12, 3)
+  currency        String                   @default("OMR") @db.VarChar(3)
+  securityDeposit Decimal?                 @db.Decimal(12, 3)
+  dueDayOfMonth   Int?
 
   notes String?
 
@@ -2697,26 +2832,26 @@ model PmsLease {
   contractDraft   RentalContractDraft? @relation(fields: [contractDraftId], references: [id], onDelete: SetNull)
 
   previousLeaseId String?
-  previousLease   PmsLease? @relation("PmsLeaseRenewalChain", fields: [previousLeaseId], references: [id], onDelete: SetNull)
+  previousLease   PmsLease?  @relation("PmsLeaseRenewalChain", fields: [previousLeaseId], references: [id], onDelete: SetNull)
   renewalLeases   PmsLease[] @relation("PmsLeaseRenewalChain")
 
   createdById String?
-  createdBy   User? @relation("PmsLeaseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsLeaseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsLeaseUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsLeaseUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  rentDueItems PmsRentDueItem[]
-  rentPayments PmsRentPayment[]
+  rentDueItems               PmsRentDueItem[]
+  rentPayments               PmsRentPayment[]
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
-  pmsCommunicationLogs PmsCommunicationLog[]
-  pmsInspections PmsInspection[]
-  pmsDocuments PmsDocument[]
+  pmsCommunicationLogs       PmsCommunicationLog[]
+  pmsInspections             PmsInspection[]
+  pmsDocuments               PmsDocument[]
   pmsCharges                 PmsCharge[]
   pmsCreditNotes             PmsCreditNote[]
   pmsSecurityDepositAccount  PmsSecurityDepositAccount?
   pmsInspectionDefects       PmsInspectionDefect[]
-  pmsMoveChecklistItems PmsMoveChecklistItem[]
+  pmsMoveChecklistItems      PmsMoveChecklistItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2763,15 +2898,15 @@ model PmsRentDueItem {
   unit   PmsUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
   createdById String?
-  createdBy   User? @relation("PmsRentDueItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsRentDueItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsRentDueItemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsRentDueItemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  rentPayments PmsRentPayment[]
+  rentPayments               PmsRentPayment[]
   structuredCharge           PmsCharge?
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
-  pmsCommunicationLogs PmsCommunicationLog[]
+  pmsCommunicationLogs       PmsCommunicationLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2789,19 +2924,19 @@ model PmsRentDueItem {
 }
 
 model PmsRentPayment {
-  id              String                 @id @default(cuid())
-  amount          Decimal                @db.Decimal(12, 3)
-  currency        String                 @default("OMR") @db.VarChar(3)
+  id              String               @id @default(cuid())
+  amount          Decimal              @db.Decimal(12, 3)
+  currency        String               @default("OMR") @db.VarChar(3)
   method          PmsRentPaymentMethod
-  status          PmsRentPaymentStatus   @default(CONFIRMED)
+  status          PmsRentPaymentStatus @default(CONFIRMED)
   referenceNumber String?
   notes           String?
   paidAt          DateTime?
-  receiptNumber   String?                @unique
+  receiptNumber   String?              @unique
 
   provider          String?
-  providerReference String?               @unique
-  providerSessionId String?               @unique
+  providerReference String?   @unique
+  providerSessionId String?   @unique
   checkoutUrl       String?
   confirmedAt       DateTime?
   cancelledAt       DateTime?
@@ -2825,9 +2960,9 @@ model PmsRentPayment {
   unit   PmsUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
   recordedById String?
-  recordedBy   User? @relation("PmsRentPaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  recordedBy   User?   @relation("PmsRentPaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
 
-  pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
+  pmsAccountingLedgerEntries  PmsAccountingLedgerEntry[]
   allocations                 PmsPaymentAllocation[]
   adjustments                 PmsPaymentAdjustment[]
   securityDepositTransactions PmsSecurityDepositTransaction[]
@@ -2892,10 +3027,10 @@ model PmsAccountingLedgerEntry {
   ownerPayoutBatch   PmsOwnerPayoutBatch? @relation(fields: [ownerPayoutBatchId], references: [id], onDelete: SetNull)
 
   createdById String?
-  createdBy   User? @relation("PmsAccountingLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsAccountingLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsAccountingLedgerEntryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsAccountingLedgerEntryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2925,28 +3060,28 @@ model PmsWorkOrder {
   priority    PmsMaintenancePriority @default(MEDIUM)
   status      PmsMaintenanceStatus   @default(OPEN)
 
-  assignedToText String?
-  vendorText     String?
-  cost           Decimal? @db.Decimal(12, 3)
-  currency       String   @default("OMR") @db.VarChar(3)
-  scheduledFor   DateTime?
-  resolvedAt     DateTime?
-  targetDate     DateTime?
-  imageUrls      String[] @default([])
-  documentUrls   String[] @default([])
-  beforeImageUrls    String[] @default([])
-  afterImageUrls     String[] @default([])
-  beforeDocumentUrls String[] @default([])
-  afterDocumentUrls  String[] @default([])
-  recurrenceType     PmsMaintenanceRecurrenceType @default(NONE)
-  nextScheduledDate  DateTime?
+  assignedToText           String?
+  vendorText               String?
+  cost                     Decimal?                     @db.Decimal(12, 3)
+  currency                 String                       @default("OMR") @db.VarChar(3)
+  scheduledFor             DateTime?
+  resolvedAt               DateTime?
+  targetDate               DateTime?
+  imageUrls                String[]                     @default([])
+  documentUrls             String[]                     @default([])
+  beforeImageUrls          String[]                     @default([])
+  afterImageUrls           String[]                     @default([])
+  beforeDocumentUrls       String[]                     @default([])
+  afterDocumentUrls        String[]                     @default([])
+  recurrenceType           PmsMaintenanceRecurrenceType @default(NONE)
+  nextScheduledDate        DateTime?
   generatedFromWorkOrderId String?
-  approvedQuoteId    String?
+  approvedQuoteId          String?
   preventiveGenerationKey  String?                      @unique
-  tenantConfirmedAt  DateTime?
-  tenantReopenedAt   DateTime?
-  tenantConfirmationNotes String?
-  notes          String?
+  tenantConfirmedAt        DateTime?
+  tenantReopenedAt         DateTime?
+  tenantConfirmationNotes  String?
+  notes                    String?
 
   companyId String
   company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -2971,19 +3106,19 @@ model PmsWorkOrder {
 
   inspectionDefect PmsInspectionDefect?
 
-  generatedFromWorkOrder PmsWorkOrder? @relation("PmsRecurringGeneratedWorkOrders", fields: [generatedFromWorkOrderId], references: [id], onDelete: SetNull)
+  generatedFromWorkOrder PmsWorkOrder?  @relation("PmsRecurringGeneratedWorkOrders", fields: [generatedFromWorkOrderId], references: [id], onDelete: SetNull)
   generatedWorkOrders    PmsWorkOrder[] @relation("PmsRecurringGeneratedWorkOrders")
 
   createdById String?
-  createdBy   User? @relation("PmsWorkOrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsWorkOrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsWorkOrderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsWorkOrderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
-  pmsDocuments PmsDocument[]
-  pmsCommunicationLogs PmsCommunicationLog[]
-  quotes PmsMaintenanceQuote[]
+  pmsDocuments               PmsDocument[]
+  pmsCommunicationLogs       PmsCommunicationLog[]
+  quotes                     PmsMaintenanceQuote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3006,29 +3141,29 @@ model PmsWorkOrder {
 }
 
 model PmsVendor {
-  id       String  @id @default(cuid())
-  name     String
-  phone    String?
-  email    String?
-  trade    String?
-  notes    String?
-  active   Boolean @default(true)
+  id     String  @id @default(cuid())
+  name   String
+  phone  String?
+  email  String?
+  trade  String?
+  notes  String?
+  active Boolean @default(true)
 
   companyId String
   company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   createdById String?
-  createdBy   User? @relation("PmsVendorCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsVendorCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsVendorUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsVendorUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  workOrders PmsWorkOrder[]
-  quotes     PmsMaintenanceQuote[]
+  workOrders       PmsWorkOrder[]
+  quotes           PmsMaintenanceQuote[]
   portalAccesses   PmsVendorPortalAccess[]
   assets           PmsAsset[]
   maintenancePlans PmsMaintenancePlan[]
-  crmLeads   CrmLead[]
+  crmLeads         CrmLead[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3061,13 +3196,13 @@ model PmsMaintenanceQuote {
   vendor   PmsVendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
 
   createdById String?
-  createdBy   User? @relation("PmsMaintenanceQuoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsMaintenanceQuoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsMaintenanceQuoteUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsMaintenanceQuoteUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   approvedById String?
-  approvedBy   User? @relation("PmsMaintenanceQuoteApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedBy   User?   @relation("PmsMaintenanceQuoteApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3094,10 +3229,10 @@ model PmsCommunicationTemplate {
   company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   createdById String?
-  createdBy   User? @relation("PmsCommunicationTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsCommunicationTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsCommunicationTemplateUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsCommunicationTemplateUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   communicationLogs PmsCommunicationLog[]
 
@@ -3111,14 +3246,14 @@ model PmsCommunicationTemplate {
 }
 
 model PmsCommunicationLog {
-  id      String                    @id @default(cuid())
-  channel PmsCommunicationChannel
-  subject String?
-  body    String
-  status  PmsCommunicationLogStatus @default(LOGGED)
+  id               String                    @id @default(cuid())
+  channel          PmsCommunicationChannel
+  subject          String?
+  body             String
+  status           PmsCommunicationLogStatus @default(LOGGED)
   deliveryMetadata Json?
-  sentAt  DateTime?
-  notes   String?
+  sentAt           DateTime?
+  notes            String?
 
   companyId String
   company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -3139,10 +3274,10 @@ model PmsCommunicationLog {
   workOrder   PmsWorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
 
   createdById String?
-  createdBy   User? @relation("PmsCommunicationLogCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsCommunicationLogCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   sentById String?
-  sentBy   User? @relation("PmsCommunicationLogSentBy", fields: [sentById], references: [id], onDelete: SetNull)
+  sentBy   User?   @relation("PmsCommunicationLogSentBy", fields: [sentById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3174,7 +3309,7 @@ model PmsImportBatch {
   company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   createdById String?
-  createdBy   User? @relation("PmsImportBatchCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsImportBatchCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3198,10 +3333,10 @@ model PmsPolicy {
   company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   createdById String?
-  createdBy   User? @relation("PmsPolicyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsPolicyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsPolicyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsPolicyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3213,14 +3348,14 @@ model PmsPolicy {
 }
 
 model PmsInspection {
-  id           String              @id @default(cuid())
-  title        String
-  status       PmsInspectionStatus @default(SCHEDULED)
-  scheduledFor DateTime?
-  completedAt  DateTime?
-  notes        String?
-  feedback     String?
-  rating       Int?
+  id              String              @id @default(cuid())
+  title           String
+  status          PmsInspectionStatus @default(SCHEDULED)
+  scheduledFor    DateTime?
+  completedAt     DateTime?
+  notes           String?
+  feedback        String?
+  rating          Int?
   type            PmsInspectionType   @default(GENERAL)
   acknowledgement Json?
   acknowledgedAt  DateTime?
@@ -3244,10 +3379,10 @@ model PmsInspection {
   lease   PmsLease? @relation(fields: [leaseId], references: [id], onDelete: SetNull)
 
   createdById String?
-  createdBy   User? @relation("PmsInspectionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsInspectionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsInspectionUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsInspectionUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   pmsDocuments PmsDocument[]
   results      PmsInspectionResult[]
@@ -3267,24 +3402,24 @@ model PmsInspection {
 }
 
 model PmsDocument {
-  id       String            @id @default(cuid())
-  type     PmsDocumentType
-  title    String
-  fileUrl  String
-  storageDriver PmsDocumentStorageDriver @default(LEGACY_REFERENCE)
-  storageKey String?
+  id               String                   @id @default(cuid())
+  type             PmsDocumentType
+  title            String
+  fileUrl          String
+  storageDriver    PmsDocumentStorageDriver @default(LEGACY_REFERENCE)
+  storageKey       String?
   originalFilename String?
-  mimeType String?
-  sizeBytes Int?
-  checksumSha256 String?
-  scanStatus PmsDocumentScanStatus @default(NOT_CONFIGURED)
+  mimeType         String?
+  sizeBytes        Int?
+  checksumSha256   String?
+  scanStatus       PmsDocumentScanStatus    @default(NOT_CONFIGURED)
   quarantineReason String?
-  fileVersion Int @default(1)
-  fileUploadedAt DateTime?
-  fileReplacedAt DateTime?
-  status   PmsDocumentStatus @default(ACTIVE)
-  expiryDate DateTime?
-  notes    String?
+  fileVersion      Int                      @default(1)
+  fileUploadedAt   DateTime?
+  fileReplacedAt   DateTime?
+  status           PmsDocumentStatus        @default(ACTIVE)
+  expiryDate       DateTime?
+  notes            String?
 
   companyId String
   company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -3326,10 +3461,10 @@ model PmsDocument {
   inspectionDefect   PmsInspectionDefect? @relation(fields: [inspectionDefectId], references: [id], onDelete: SetNull)
 
   uploadedById String?
-  uploadedBy   User? @relation("PmsDocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedBy   User?   @relation("PmsDocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsDocumentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsDocumentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3358,50 +3493,50 @@ model PmsDocument {
 }
 
 model PmsOwnerStatement {
-  id String @id @default(cuid())
-  status PmsOwnerStatementStatus @default(GENERATED)
-  revision Int @default(1)
-  ownerReference String?
-  periodStart DateTime
-  periodEnd DateTime
-  currency String @db.VarChar(3)
-  includedRentPaymentIds String[] @default([])
-  includedAccountingEntryIds String[] @default([])
-  includedMaintenanceWorkOrderIds String[] @default([])
-  openingBalance Decimal @default(0) @db.Decimal(14, 3)
-  income Decimal @default(0) @db.Decimal(14, 3)
-  expenses Decimal @default(0) @db.Decimal(14, 3)
-  adjustments Decimal @default(0) @db.Decimal(14, 3)
-  closingBalance Decimal @default(0) @db.Decimal(14, 3)
-  snapshot Json
-  snapshotVersion Int @default(1)
-  generatedAt DateTime @default(now())
-  reviewedAt DateTime?
-  approvedAt DateTime?
-  publishedAt DateTime?
-  voidedAt DateTime?
+  id                              String                  @id @default(cuid())
+  status                          PmsOwnerStatementStatus @default(GENERATED)
+  revision                        Int                     @default(1)
+  ownerReference                  String?
+  periodStart                     DateTime
+  periodEnd                       DateTime
+  currency                        String                  @db.VarChar(3)
+  includedRentPaymentIds          String[]                @default([])
+  includedAccountingEntryIds      String[]                @default([])
+  includedMaintenanceWorkOrderIds String[]                @default([])
+  openingBalance                  Decimal                 @default(0) @db.Decimal(14, 3)
+  income                          Decimal                 @default(0) @db.Decimal(14, 3)
+  expenses                        Decimal                 @default(0) @db.Decimal(14, 3)
+  adjustments                     Decimal                 @default(0) @db.Decimal(14, 3)
+  closingBalance                  Decimal                 @default(0) @db.Decimal(14, 3)
+  snapshot                        Json
+  snapshotVersion                 Int                     @default(1)
+  generatedAt                     DateTime                @default(now())
+  reviewedAt                      DateTime?
+  approvedAt                      DateTime?
+  publishedAt                     DateTime?
+  voidedAt                        DateTime?
 
-  companyId String
-  company DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId  String
+  company    DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
   propertyId String
-  property PmsProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property   PmsProperty      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   revisionOfId String?
-  revisionOf PmsOwnerStatement? @relation("PmsOwnerStatementRevisions", fields: [revisionOfId], references: [id], onDelete: SetNull)
-  revisions PmsOwnerStatement[] @relation("PmsOwnerStatementRevisions")
+  revisionOf   PmsOwnerStatement?   @relation("PmsOwnerStatementRevisions", fields: [revisionOfId], references: [id], onDelete: SetNull)
+  revisions    PmsOwnerStatement[]  @relation("PmsOwnerStatementRevisions")
   payoutLines  PmsOwnerPayoutLine[]
   documents    PmsDocument[]
 
   generatedById String?
-  generatedBy User? @relation("PmsOwnerStatementGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
-  reviewedById String?
-  reviewedBy User? @relation("PmsOwnerStatementReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-  approvedById String?
-  approvedBy User? @relation("PmsOwnerStatementApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  generatedBy   User?   @relation("PmsOwnerStatementGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
+  reviewedById  String?
+  reviewedBy    User?   @relation("PmsOwnerStatementReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  approvedById  String?
+  approvedBy    User?   @relation("PmsOwnerStatementApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   publishedById String?
-  publishedBy User? @relation("PmsOwnerStatementPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
-  voidedById String?
-  voidedBy User? @relation("PmsOwnerStatementVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+  publishedBy   User?   @relation("PmsOwnerStatementPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  voidedById    String?
+  voidedBy      User?   @relation("PmsOwnerStatementVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -4064,24 +4199,24 @@ model PmsInspectionDefect {
 }
 
 model DomainAuditEvent {
-  id String @id @default(cuid())
-  domain DomainAuditDomain
-  entityType String
-  entityId String?
-  action String
-  origin DomainAuditOrigin @default(MANUAL)
-  changedFields String[] @default([])
+  id             String            @id @default(cuid())
+  domain         DomainAuditDomain
+  entityType     String
+  entityId       String?
+  action         String
+  origin         DomainAuditOrigin @default(MANUAL)
+  changedFields  String[]          @default([])
   beforeMetadata Json?
-  afterMetadata Json?
-  metadata Json?
-  requestId String?
-  sourceIp String?
-  userAgent String?
+  afterMetadata  Json?
+  metadata       Json?
+  requestId      String?
+  sourceIp       String?
+  userAgent      String?
 
   companyId String?
-  company DeveloperCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  actorId String?
-  actor User? @relation("DomainAuditEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  company   DeveloperCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  actorId   String?
+  actor     User?             @relation("DomainAuditEventActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
 
@@ -4116,10 +4251,10 @@ model PmsMoveChecklistItem {
   tenant   PmsTenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   createdById String?
-  createdBy   User? @relation("PmsMoveChecklistItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PmsMoveChecklistItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("PmsMoveChecklistItemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("PmsMoveChecklistItemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -4293,62 +4428,80 @@ model InvestorWatchlistItem {
 }
 
 model CrmContact {
-  id              String  @id @default(cuid())
+  id String @id @default(cuid())
 
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId     String
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   fullName        String
   email           String?
   phone           String?
   normalizedEmail String?
   normalizedPhone String?
   notes           String?
+  archivedAt      DateTime?
+
+  accountId String?
+  account   CrmAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  mergedIntoContactId String?
+  mergedIntoContact   CrmContact?  @relation("CrmContactMergedInto", fields: [mergedIntoContactId], references: [id], onDelete: SetNull)
+  mergedContacts      CrmContact[] @relation("CrmContactMergedInto")
 
   companyId String?
   company   DeveloperCompany? @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   ownerUserId String?
-  ownerUser   User? @relation("CrmContactOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  ownerUser   User?   @relation("CrmContactOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
 
   userId String?
-  user   User? @relation("CrmContactUser", fields: [userId], references: [id], onDelete: SetNull)
+  user   User?   @relation("CrmContactUser", fields: [userId], references: [id], onDelete: SetNull)
 
   pmsTenantId String?
   pmsTenant   PmsTenant? @relation(fields: [pmsTenantId], references: [id], onDelete: SetNull)
 
   createdById String?
-  createdBy   User? @relation("CrmContactCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("CrmContactCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
-  leads CrmLead[]
+  leads                 CrmLead[]
+  primaryDeals          CrmDeal[]                     @relation("CrmDealPrimaryContact")
+  identities            CrmContactIdentity[]
+  channelPreferences    CrmContactChannelPreference[]
+  sourceEvents          CrmSourceEvent[]
+  activities            CrmActivity[]
+  deliveryAttempts      CrmDeliveryAttempt[]
+  primaryMergeRecords   CrmContactMerge[]             @relation("CrmContactMergePrimary")
+  duplicateMergeRecords CrmContactMerge[]             @relation("CrmContactMergeDuplicate")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([workspaceId, normalizedEmail])
   @@unique([workspaceId, normalizedPhone])
-  @@index([workspaceId, createdAt])
+  @@index([workspaceId, accountId, createdAt])
+  @@index([workspaceId, archivedAt])
   @@index([companyId, normalizedEmail])
   @@index([companyId, normalizedPhone])
   @@index([ownerUserId, normalizedEmail])
   @@index([ownerUserId, normalizedPhone])
   @@index([userId])
   @@index([pmsTenantId])
+  @@index([mergedIntoContactId])
   @@index([createdAt])
 }
 
 model CrmLead {
-  id           String @id @default(cuid())
+  id String @id @default(cuid())
 
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  title        String
-  description  String?
-  status       CrmLeadStatus   @default(NEW)
-  priority     CrmLeadPriority @default(MEDIUM)
-  source       CrmLeadSource   @default(MANUAL)
-  sourceLabel  String?
-  expectedValue Decimal?       @db.Decimal(14, 3)
-  currency      String         @default("OMR") @db.VarChar(3)
+  workspaceId    String
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?
+  status         CrmLeadStatus   @default(NEW)
+  priority       CrmLeadPriority @default(MEDIUM)
+  source         CrmLeadSource   @default(MANUAL)
+  sourceLabel    String?
+  expectedValue  Decimal?        @db.Decimal(14, 3)
+  currency       String          @default("OMR") @db.VarChar(3)
   nextFollowUpAt DateTime?
   lostReason     String?
   archivedAt     DateTime?
@@ -4360,21 +4513,21 @@ model CrmLead {
   company   DeveloperCompany? @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   ownerUserId String?
-  ownerUser   User? @relation("CrmLeadOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  ownerUser   User?   @relation("CrmLeadOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
 
   assignedToId String?
-  assignedTo   User? @relation("CrmLeadAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedTo   User?   @relation("CrmLeadAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   createdById String?
-  createdBy   User? @relation("CrmLeadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("CrmLeadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("CrmLeadUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("CrmLeadUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  inquiryId String? @unique
+  inquiryId String?  @unique
   inquiry   Inquiry? @relation(fields: [inquiryId], references: [id], onDelete: SetNull)
 
-  bookingId String? @unique
+  bookingId String?  @unique
   booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
 
   listingId String?
@@ -4386,7 +4539,7 @@ model CrmLead {
   developerProjectId String?
   developerProject   DeveloperProject? @relation(fields: [developerProjectId], references: [id], onDelete: SetNull)
 
-  valuationRequestId String? @unique
+  valuationRequestId String?           @unique
   valuationRequest   ValuationRequest? @relation(fields: [valuationRequestId], references: [id], onDelete: SetNull)
 
   savedSearchId String?
@@ -4404,12 +4557,43 @@ model CrmLead {
   pmsVendorId String?
   pmsVendor   PmsVendor? @relation(fields: [pmsVendorId], references: [id], onDelete: SetNull)
 
-  activities CrmActivity[]
+  pipelineId String?
+  pipeline   CrmPipeline? @relation(fields: [pipelineId], references: [id], onDelete: SetNull)
+
+  stageId String?
+  stage   CrmPipelineStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+
+  outcome       CrmDealOutcome @default(OPEN)
+  wonAt         DateTime?
+  lostAt        DateTime?
+  closedAt      DateTime?
+  reopenedCount Int            @default(0)
+
+  convertedAccountId String?
+  convertedAccount   CrmAccount? @relation(fields: [convertedAccountId], references: [id], onDelete: SetNull)
+
+  convertedDealId String?   @unique
+  convertedDeal   CrmDeal?  @relation("CrmLeadConvertedDeal", fields: [convertedDealId], references: [id], onDelete: SetNull)
+  convertedAt     DateTime?
+
+  score             Int          @default(0)
+  scoreBand         CrmScoreBand @default(COLD)
+  scoringVersion    String       @default("crm-deterministic-v1")
+  scoreCalculatedAt DateTime?
+
+  activities       CrmActivity[]
+  scoreSnapshots   CrmScoreSnapshot[]
+  sourceEvents     CrmSourceEvent[]
+  sourceDeal       CrmDeal?             @relation("CrmDealSourceLead")
+  deliveryAttempts CrmDeliveryAttempt[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([workspaceId, status, updatedAt])
+  @@index([workspaceId, pipelineId, stageId, outcome])
+  @@index([workspaceId, scoreBand, score])
+  @@index([convertedAccountId])
   @@index([companyId, status, updatedAt])
   @@index([ownerUserId, status, updatedAt])
   @@index([assignedToId, status, nextFollowUpAt])
@@ -4428,10 +4612,10 @@ model CrmLead {
 }
 
 model CrmActivity {
-  id          String @id @default(cuid())
+  id String @id @default(cuid())
 
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   type        CrmActivityType
   status      CrmActivityStatus   @default(OPEN)
   priority    CrmActivityPriority @default(MEDIUM)
@@ -4442,19 +4626,30 @@ model CrmActivity {
 
   communicationDirection CrmCommunicationDirection?
   communicationOutcome   CrmCommunicationOutcome?
-  templateKey             String?
+  templateKey            String?
 
-  leadId String
-  lead   CrmLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  leadId String?
+  lead   CrmLead? @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  accountId String?
+  account   CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  dealId String?
+  deal   CrmDeal? @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  contactId String?
+  contact   CrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
 
   createdById String?
-  createdBy   User? @relation("CrmActivityCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("CrmActivityCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   assignedToId String?
-  assignedTo   User? @relation("CrmActivityAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedTo   User?   @relation("CrmActivityAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   updatedById String?
-  updatedBy   User? @relation("CrmActivityUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("CrmActivityUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  deliveryAttempts CrmDeliveryAttempt[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -4462,10 +4657,443 @@ model CrmActivity {
   @@index([workspaceId, createdAt])
   @@index([leadId, createdAt])
   @@index([leadId, status, dueAt])
+  @@index([accountId, createdAt])
+  @@index([dealId, createdAt])
+  @@index([contactId, createdAt])
   @@index([assignedToId, status, dueAt])
   @@index([leadId, type, createdAt])
   @@index([priority, status, dueAt])
   @@index([type])
+}
+
+model CrmAccount {
+  id                 String         @id @default(cuid())
+  workspaceId        String
+  workspace          Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type               CrmAccountType @default(INDIVIDUAL)
+  name               String
+  legalName          String?
+  registrationNumber String?
+  taxNumber          String?
+  website            String?
+  email              String?
+  phone              String?
+  industry           String?
+  notes              String?
+  archivedAt         DateTime?
+  pmsPropertyId      String?
+
+  parentAccountId String?
+  parentAccount   CrmAccount?  @relation("CrmAccountHierarchy", fields: [parentAccountId], references: [id], onDelete: SetNull)
+  childAccounts   CrmAccount[] @relation("CrmAccountHierarchy")
+
+  ownerUserId String?
+  ownerUser   User?   @relation("CrmAccountOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  updatedById String?
+
+  contacts       CrmContact[]
+  deals          CrmDeal[]
+  convertedLeads CrmLead[]
+  teamMembers    CrmAccountTeamMember[]
+  activities     CrmActivity[]
+  sourceEvents   CrmSourceEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId, name])
+  @@index([workspaceId, type, archivedAt])
+  @@index([ownerUserId])
+  @@index([parentAccountId])
+  @@index([pmsPropertyId])
+}
+
+model CrmAccountTeamMember {
+  id        String     @id @default(cuid())
+  accountId String
+  account   CrmAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User       @relation("CrmAccountTeamUser", fields: [userId], references: [id], onDelete: Cascade)
+  role      String     @default("MEMBER")
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([accountId, userId])
+  @@index([userId, active])
+}
+
+model CrmPipeline {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  isDefault   Boolean   @default(false)
+  active      Boolean   @default(true)
+  archivedAt  DateTime?
+  createdById String?
+  updatedById String?
+
+  stages CrmPipelineStage[]
+  deals  CrmDeal[]
+  leads  CrmLead[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, isDefault, active])
+}
+
+model CrmPipelineStage {
+  id                 String               @id @default(cuid())
+  pipelineId         String
+  pipeline           CrmPipeline          @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  key                String
+  name               String
+  position           Int
+  type               CrmPipelineStageType @default(OPEN)
+  defaultProbability Int                  @default(10)
+  requiredFields     Json?
+  slaHours           Int?
+  active             Boolean              @default(true)
+  archivedAt         DateTime?
+
+  leads       CrmLead[]
+  deals       CrmDeal[]
+  fromHistory CrmStageHistory[] @relation("CrmStageHistoryFrom")
+  toHistory   CrmStageHistory[] @relation("CrmStageHistoryTo")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([pipelineId, key])
+  @@unique([pipelineId, position])
+  @@index([pipelineId, type, active])
+}
+
+model CrmDeal {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+
+  accountId String
+  account   CrmAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  primaryContactId String?
+  primaryContact   CrmContact? @relation("CrmDealPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
+
+  sourceLeadId      String?  @unique
+  sourceLead        CrmLead? @relation("CrmDealSourceLead", fields: [sourceLeadId], references: [id], onDelete: SetNull)
+  convertedFromLead CrmLead? @relation("CrmLeadConvertedDeal")
+
+  pipelineId String
+  pipeline   CrmPipeline      @relation(fields: [pipelineId], references: [id], onDelete: Restrict)
+  stageId    String
+  stage      CrmPipelineStage @relation(fields: [stageId], references: [id], onDelete: Restrict)
+
+  ownerUserId String?
+  ownerUser   User?   @relation("CrmDealOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  expectedValue     Decimal?            @db.Decimal(14, 3)
+  currency          String              @default("OMR") @db.VarChar(3)
+  probability       Int                 @default(10)
+  forecastCategory  CrmForecastCategory @default(PIPELINE)
+  expectedCloseDate DateTime?
+  outcome           CrmDealOutcome      @default(OPEN)
+  wonAt             DateTime?
+  lostAt            DateTime?
+  closedAt          DateTime?
+  archivedAt        DateTime?
+  lostReason        String?
+  wonReason         String?
+  reopenedCount     Int                 @default(0)
+  pmsPropertyId     String?
+  sourceType        CrmSourceEventType?
+  sourceRecordId    String?
+  createdById       String?
+  updatedById       String?
+
+  teamMembers      CrmDealTeamMember[]
+  stageHistory     CrmStageHistory[]
+  activities       CrmActivity[]
+  scoreSnapshots   CrmScoreSnapshot[]
+  sourceEvents     CrmSourceEvent[]
+  deliveryAttempts CrmDeliveryAttempt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId, pipelineId, stageId, outcome])
+  @@index([workspaceId, ownerUserId, expectedCloseDate])
+  @@index([workspaceId, currency, outcome])
+  @@index([accountId])
+  @@index([primaryContactId])
+  @@index([pmsPropertyId])
+}
+
+model CrmDealTeamMember {
+  id        String   @id @default(cuid())
+  dealId    String
+  deal      CrmDeal  @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation("CrmDealTeamUser", fields: [userId], references: [id], onDelete: Cascade)
+  role      String   @default("MEMBER")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dealId, userId])
+  @@index([userId, active])
+}
+
+model CrmStageHistory {
+  id          String            @id @default(cuid())
+  workspaceId String
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dealId      String
+  deal        CrmDeal           @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  pipelineId  String
+  fromStageId String?
+  fromStage   CrmPipelineStage? @relation("CrmStageHistoryFrom", fields: [fromStageId], references: [id], onDelete: SetNull)
+  toStageId   String
+  toStage     CrmPipelineStage  @relation("CrmStageHistoryTo", fields: [toStageId], references: [id], onDelete: Restrict)
+  fromOutcome CrmDealOutcome
+  toOutcome   CrmDealOutcome
+  reason      String?
+  reopened    Boolean           @default(false)
+  changedById String?
+  changedBy   User?             @relation("CrmStageHistoryChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+  changedAt   DateTime          @default(now())
+
+  @@index([dealId, changedAt])
+  @@index([workspaceId, changedAt])
+}
+
+model CrmScoreSnapshot {
+  id            String        @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  leadId        String?
+  lead          CrmLead?      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  dealId        String?
+  deal          CrmDeal?      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  score         Int
+  band          CrmScoreBand
+  version       String
+  reasons       Json
+  signals       Json
+  previousScore Int?
+  trend         CrmScoreTrend @default(STABLE)
+  calculatedAt  DateTime      @default(now())
+  jobKey        String?
+
+  @@unique([leadId, jobKey])
+  @@index([workspaceId, band, score])
+  @@index([leadId, calculatedAt])
+  @@index([dealId, calculatedAt])
+  @@index([version, calculatedAt])
+}
+
+model CrmContactIdentity {
+  id              String                 @id @default(cuid())
+  workspaceId     String
+  workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contactId       String
+  contact         CrmContact             @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  type            CrmContactIdentityType
+  normalizedValue String
+  rawValue        String
+  primary         Boolean                @default(false)
+  active          Boolean                @default(true)
+  verifiedAt      DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@unique([workspaceId, type, normalizedValue])
+  @@index([contactId, active])
+}
+
+model CrmContactMerge {
+  id                 String                @id @default(cuid())
+  workspaceId        String
+  workspace          Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  primaryContactId   String
+  primaryContact     CrmContact            @relation("CrmContactMergePrimary", fields: [primaryContactId], references: [id], onDelete: Restrict)
+  duplicateContactId String
+  duplicateContact   CrmContact            @relation("CrmContactMergeDuplicate", fields: [duplicateContactId], references: [id], onDelete: Restrict)
+  status             CrmContactMergeStatus @default(PREVIEWED)
+  preview            Json
+  conflicts          Json
+  mergedAt           DateTime?
+  actorId            String?
+  createdAt          DateTime              @default(now())
+
+  @@index([workspaceId, status, createdAt])
+  @@index([primaryContactId])
+  @@index([duplicateContactId])
+}
+
+model CrmSourceEvent {
+  id             String                  @id @default(cuid())
+  workspaceId    String
+  workspace      Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type           CrmSourceEventType
+  sourceRecordId String
+  ruleKey        String
+  occurredAt     DateTime
+  consentStatus  CrmContactConsentStatus @default(UNKNOWN)
+  contactId      String?
+  contact        CrmContact?             @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  leadId         String?
+  lead           CrmLead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  accountId      String?
+  account        CrmAccount?             @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  dealId         String?
+  deal           CrmDeal?                @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  metadata       Json?
+  createdAt      DateTime                @default(now())
+
+  @@unique([workspaceId, type, sourceRecordId, ruleKey])
+  @@index([workspaceId, type, occurredAt])
+  @@index([contactId])
+  @@index([leadId])
+}
+
+model CrmContactChannelPreference {
+  id              String                  @id @default(cuid())
+  workspaceId     String
+  workspace       Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contactId       String
+  contact         CrmContact              @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel         CrmCommunicationChannel
+  status          CrmContactConsentStatus @default(UNKNOWN)
+  lawfulBasis     String?
+  preferred       Boolean                 @default(false)
+  quietHoursStart Int?
+  quietHoursEnd   Int?
+  timezone        String?
+  optedOutAt      DateTime?
+  updatedById     String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@unique([contactId, channel])
+  @@index([workspaceId, status, channel])
+}
+
+model CrmSuppressionEntry {
+  id                    String                  @id @default(cuid())
+  workspaceId           String
+  workspace             Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel               CrmCommunicationChannel
+  normalizedDestination String
+  reason                CrmSuppressionReason
+  active                Boolean                 @default(true)
+  source                String?
+  notes                 String?
+  expiresAt             DateTime?
+  createdById           String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  @@unique([workspaceId, channel, normalizedDestination])
+  @@index([workspaceId, active, channel])
+  @@index([expiresAt])
+}
+
+model CrmCommunicationTemplate {
+  id          String                            @id @default(cuid())
+  workspaceId String
+  workspace   Workspace                         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  key         String
+  name        String
+  channel     CrmCommunicationChannel
+  active      Boolean                           @default(true)
+  createdById String?
+  updatedById String?
+  versions    CrmCommunicationTemplateVersion[]
+  createdAt   DateTime                          @default(now())
+  updatedAt   DateTime                          @updatedAt
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId, channel, active])
+}
+
+model CrmCommunicationTemplateVersion {
+  id               String                   @id @default(cuid())
+  templateId       String
+  template         CrmCommunicationTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  version          Int
+  subject          String?
+  body             String
+  active           Boolean                  @default(true)
+  createdById      String?
+  createdAt        DateTime                 @default(now())
+  deliveryAttempts CrmDeliveryAttempt[]
+
+  @@unique([templateId, version])
+  @@index([templateId, active, version])
+}
+
+model CrmWorkspaceCommunicationPolicy {
+  id              String    @id @default(cuid())
+  workspaceId     String    @unique
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  timezone        String    @default("Asia/Muscat")
+  quietHoursStart Int       @default(1200)
+  quietHoursEnd   Int       @default(480)
+  hourlyRateLimit Int       @default(50)
+  retentionDays   Int       @default(365)
+  updatedById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model CrmDeliveryAttempt {
+  id                    String                           @id @default(cuid())
+  workspaceId           String
+  workspace             Workspace                        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contactId             String
+  contact               CrmContact                       @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  leadId                String?
+  lead                  CrmLead?                         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  dealId                String?
+  deal                  CrmDeal?                         @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  activityId            String?
+  activity              CrmActivity?                     @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  templateVersionId     String?
+  templateVersion       CrmCommunicationTemplateVersion? @relation(fields: [templateVersionId], references: [id], onDelete: SetNull)
+  channel               CrmCommunicationChannel
+  provider              CrmDeliveryProvider
+  status                CrmDeliveryStatus                @default(DRAFT)
+  destination           String
+  normalizedDestination String
+  idempotencyKey        String
+  providerMessageId     String?
+  errorCode             String?
+  errorMessage          String?
+  metadata              Json?
+  attemptedAt           DateTime                         @default(now())
+  claimedAt             DateTime?
+  claimToken            String?
+  submittedAt           DateTime?
+  providerConfirmedAt   DateTime?
+  deliveredAt           DateTime?
+  failedAt              DateTime?
+  bouncedAt             DateTime?
+  blockedAt             DateTime?
+  createdById           String?
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, status, attemptedAt])
+  @@index([contactId, attemptedAt])
+  @@index([provider, providerMessageId])
 }
 
 model OauthLoginCode {

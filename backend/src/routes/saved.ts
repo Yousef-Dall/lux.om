@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
+import { ingestCrmRelationshipSignal, resolveIngestionWorkspace } from '../modules/crm/stage21h/ingestion';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../utils/http';
 
@@ -192,16 +193,36 @@ savedRouter.delete('/activities/:id', requireAuth(), async (req, res, next) => {
 savedRouter.post('/searches', requireAuth(), async (req, res, next) => {
   try {
     const data = savedSearchSchema.parse(req.body);
-    const savedSearch = await prisma.savedSearch.create({
-      data: {
-        name: data.name,
-        category: data.category,
-        query: data.query,
-        filters: data.filters as Prisma.InputJsonValue,
-        alertFrequency: data.alertFrequency,
-        alertsEnabled: data.alertsEnabled,
-        userId: req.user!.id
-      }
+    const savedSearch = await prisma.$transaction(async (tx) => {
+      const created = await tx.savedSearch.create({
+        data: {
+          name: data.name,
+          category: data.category,
+          query: data.query,
+          filters: data.filters as Prisma.InputJsonValue,
+          alertFrequency: data.alertFrequency,
+          alertsEnabled: data.alertsEnabled,
+          userId: req.user!.id
+        }
+      });
+      const workspace = await resolveIngestionWorkspace(tx, {});
+      const highIntent = data.alertsEnabled && ['DAILY', 'WEEKLY'].includes(data.alertFrequency);
+      await ingestCrmRelationshipSignal(tx, {
+        workspaceId: workspace.id,
+        sourceType: 'HIGH_INTENT_SAVED_SEARCH',
+        sourceRecordId: created.id,
+        ruleKey: highIntent ? 'alerts-enabled-recurring' : 'passive-search-recorded',
+        contact: { fullName: req.user!.name, email: req.user!.email, phone: req.user!.phone, userId: req.user!.id },
+        title: `${req.user!.name} · ${data.name}`,
+        sourceLabel: data.category ?? data.query ?? 'Saved search',
+        status: 'NEW',
+        consentStatus: 'LEGITIMATE_INTEREST',
+        createLead: highIntent,
+        savedSearchId: created.id,
+        metadata: { alertFrequency: data.alertFrequency, alertsEnabled: data.alertsEnabled, threshold: highIntent ? 'high-intent' : 'passive' },
+        actorId: req.user!.id
+      });
+      return created;
     });
 
     res.status(201).json({ savedSearch });
@@ -216,16 +237,46 @@ savedRouter.post('/watchlist', requireAuth(), async (req, res, next) => {
 
     await assertWatchlistTargetsAreAllowed(data, req.user!.id);
 
-    const item = await prisma.investorWatchlistItem.create({
-      data: {
-        listingId: data.listingId,
-        valuationRequestId: data.valuationRequestId,
-        notes: data.notes,
-        targetPrice: data.targetPrice === undefined ? undefined : data.targetPrice.toString(),
-        alertOnPriceChange: data.alertOnPriceChange,
-        alertOnNewComparables: data.alertOnNewComparables,
-        userId: req.user!.id
-      }
+    const item = await prisma.$transaction(async (tx) => {
+      const created = await tx.investorWatchlistItem.create({
+        data: {
+          listingId: data.listingId,
+          valuationRequestId: data.valuationRequestId,
+          notes: data.notes,
+          targetPrice: data.targetPrice === undefined ? undefined : data.targetPrice.toString(),
+          alertOnPriceChange: data.alertOnPriceChange,
+          alertOnNewComparables: data.alertOnNewComparables,
+          userId: req.user!.id
+        }
+      });
+      const listing = data.listingId
+        ? await tx.listing.findUnique({ where: { id: data.listingId }, select: { id: true, title: true, titleEn: true, titleAr: true, ownerId: true, developerId: true } })
+        : null;
+      const workspace = await resolveIngestionWorkspace(tx, {
+        companyId: listing?.developerId ?? null,
+        ownerUserId: listing?.developerId ? null : listing?.ownerId ?? null
+      });
+      const highIntent = data.targetPrice !== undefined || Boolean(data.notes?.trim());
+      await ingestCrmRelationshipSignal(tx, {
+        workspaceId: workspace.id,
+        sourceType: 'INVESTOR_WATCHLIST',
+        sourceRecordId: created.id,
+        ruleKey: highIntent ? 'target-or-notes-provided' : 'passive-watchlist-recorded',
+        contact: { fullName: req.user!.name, email: req.user!.email, phone: req.user!.phone, userId: req.user!.id },
+        companyId: listing?.developerId ?? null,
+        ownerUserId: listing?.developerId ? null : listing?.ownerId ?? null,
+        title: `${req.user!.name} · ${listing?.titleEn || listing?.titleAr || listing?.title || 'Investor watchlist'}`,
+        sourceLabel: listing?.titleEn || listing?.titleAr || listing?.title || 'Investor watchlist',
+        status: 'NEW',
+        consentStatus: 'LEGITIMATE_INTEREST',
+        createLead: highIntent,
+        listingId: listing?.id ?? null,
+        valuationRequestId: data.valuationRequestId ?? null,
+        watchlistItemId: created.id,
+        metadata: { targetPrice: data.targetPrice ?? null, alertOnPriceChange: data.alertOnPriceChange, threshold: highIntent ? 'high-intent' : 'passive' },
+        actorId: req.user!.id
+      });
+      return created;
     });
 
     res.status(201).json({ item });

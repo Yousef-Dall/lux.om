@@ -51,6 +51,7 @@ const PmsFinancialOperations = lazy(() => import('./pages/PmsFinancialOperations
 const PmsAssetsInspections = lazy(() => import('./pages/PmsAssetsInspections'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Crm = lazy(() => import('./pages/Crm'));
+const CrmOperations = lazy(() => import('./pages/CrmOperations'));
 const DeveloperProjectDetails = lazy(() => import('./pages/DeveloperProjectDetails'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Notifications = lazy(() => import('./pages/Notifications'));
@@ -875,6 +876,15 @@ export default function App() {
               </RequireAuth>
             }
           />
+          <Route
+            path="/crm/operations"
+            element={
+              <RequireAuth>
+                <CrmOperations />
+              </RequireAuth>
+            }
+          />
+
           <Route
             path="/crm/:leadId"
             element={

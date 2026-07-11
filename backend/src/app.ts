@@ -18,6 +18,7 @@ import { authRouter } from './routes/auth';
 import { bookingsRouter } from './routes/bookings';
 import { contractsRouter } from './routes/contracts';
 import { crmRouter } from './routes/crm';
+import { crmProviderWebhookRouter } from './modules/crm/stage21h/router';
 import { marketInsightsRouter } from './routes/marketInsights';
 import { mediaQualityRouter } from './routes/mediaQuality';
 import { mapRouter } from './routes/map';
@@ -527,6 +528,7 @@ export function createApp() {
   app.use('/api/notifications', notificationsRouter);
   app.use('/api/uploads', uploadRateLimiter, uploadsRouter);
   app.use('/api/contracts', contractsRouter);
+  app.use('/api/crm-provider-webhooks', crmProviderWebhookRouter);
   app.use('/api/crm', crmRouter);
   app.use('/api/rent-payments', rentPaymentsRouter);
   app.use('/api/transactions', transactionsRouter);

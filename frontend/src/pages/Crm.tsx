@@ -472,6 +472,7 @@ export default function Crm() {
         </div>
         <div className="crm-hero__actions">
           <Link className="button-link button-link--ghost" to={activeWorkspace?.companyId ? '/pms/overview' : '/dashboard'}><ArrowLeft size={16} /> {copy.back}</Link>
+          <Link className="button-link button-link--secondary" to={`/crm/operations${activeWorkspace?.workspaceId ? `?workspaceId=${activeWorkspace.workspaceId}` : ''}`}><Building2 size={16} /> Revenue operations</Link>
           <button className="button-link button-link--secondary" type="button" onClick={() => void loadWorkspaceData()} disabled={refreshing}><RefreshCw size={16} className={refreshing ? 'spin' : ''} /> {copy.refresh}</button>
           {canCreate ? <button className="button-link button-link--primary" type="button" onClick={() => setShowCreate(true)}><Plus size={16} /> {copy.newLead}</button> : null}
         </div>
@@ -604,6 +605,7 @@ export default function Crm() {
             ) : null}
 
             <div className="crm-detail__controls">
+              {!selectedLead.convertedAt && selectedLead.status !== 'ARCHIVED' ? <Link className="button-link button-link--secondary" to={`/crm/operations?workspaceId=${selectedLead.workspaceId}&convertLeadId=${selectedLead.id}`}>Convert to deal</Link> : null}
               <label><span>{copy.status}</span><select value={selectedLead.status} disabled={!canManageLead || saving} onChange={(event) => void patchLead({ status: event.target.value as CrmLeadStatus })}>{statuses.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}</select></label>
               <label><span>{copy.priority}</span><select value={selectedLead.priority} disabled={!canManageLead || saving} onChange={(event) => void patchLead({ priority: event.target.value as CrmLeadPriority })}>{priorities.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}</select></label>
               <label><span>{copy.assigned}</span><select value={selectedLead.assignedToId || ''} disabled={!canManageLead || saving} onChange={(event) => void patchLead({ assignedToId: event.target.value || null })}><option value="">{copy.allValues}</option>{assignees.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>

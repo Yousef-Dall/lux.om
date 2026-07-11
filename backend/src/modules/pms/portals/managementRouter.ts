@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { recordDomainAuditEvent, requestAuditContext } from '../../../lib/domainAudit';
 import { prisma } from '../../../lib/prisma';
 import { requireAuth } from '../../../middleware/auth';
+import { ingestCrmRelationshipSignal, resolveIngestionWorkspace } from '../../crm/stage21h/ingestion';
 import { AppError } from '../../../utils/http';
 import { assertCanManagePmsStaff } from '../access';
 import { assertPmsPropertyScope, requirePmsRouteAccess } from '../shared/routeAccess';
@@ -49,14 +50,36 @@ pmsPortalAccessRouter.post('/owners', requireAuth(), async (req, res, next) => {
     assertPmsPropertyScope(access, data.propertyId);
     const [property, user] = await Promise.all([
       prisma.pmsProperty.findFirst({ where: { id: data.propertyId, companyId: access.company.id } }),
-      prisma.user.findUnique({ where: { id: data.userId }, select: { id: true, role: true, deactivatedAt: true, suspendedAt: true } }),
+      prisma.user.findUnique({ where: { id: data.userId }, select: { id: true, name: true, email: true, phone: true, role: true, deactivatedAt: true, suspendedAt: true } }),
     ]);
     if (!property) throw new AppError(404, 'Property not found.');
     if (!user || user.deactivatedAt || user.suspendedAt) throw new AppError(400, 'Owner portal user is unavailable.');
-    const portalAccess = await prisma.pmsOwnerPortalAccess.upsert({
-      where: { propertyId_userId: { propertyId: data.propertyId, userId: data.userId } },
-      update: { active: data.active, canApproveQuotes: data.canApproveQuotes, canViewMaintenanceCosts: data.canViewMaintenanceCosts, notes: data.notes ?? null },
-      create: { companyId: access.company.id, propertyId: data.propertyId, userId: data.userId, active: data.active, canApproveQuotes: data.canApproveQuotes, canViewMaintenanceCosts: data.canViewMaintenanceCosts, notes: data.notes ?? null, createdById: req.user!.id },
+    const portalAccess = await prisma.$transaction(async (tx) => {
+      const created = await tx.pmsOwnerPortalAccess.upsert({
+        where: { propertyId_userId: { propertyId: data.propertyId, userId: data.userId } },
+        update: { active: data.active, canApproveQuotes: data.canApproveQuotes, canViewMaintenanceCosts: data.canViewMaintenanceCosts, notes: data.notes ?? null },
+        create: { companyId: access.company.id, propertyId: data.propertyId, userId: data.userId, active: data.active, canApproveQuotes: data.canApproveQuotes, canViewMaintenanceCosts: data.canViewMaintenanceCosts, notes: data.notes ?? null, createdById: req.user!.id },
+      });
+      if (data.active) {
+        const workspace = await resolveIngestionWorkspace(tx, { companyId: access.company.id });
+        await ingestCrmRelationshipSignal(tx, {
+          workspaceId: workspace.id,
+          sourceType: 'PMS_OWNER_ONBOARDING',
+          sourceRecordId: `${data.propertyId}:${data.userId}`,
+          ruleKey: 'owner-portal-access-active',
+          contact: { fullName: user.name, email: user.email, phone: user.phone, userId: user.id },
+          companyId: access.company.id,
+          pmsPropertyId: data.propertyId,
+          title: `${user.name} · PMS owner onboarding`,
+          sourceLabel: property.name,
+          status: 'QUALIFIED',
+          consentStatus: 'LEGITIMATE_INTEREST',
+          createLead: true,
+          actorId: req.user!.id,
+          metadata: { propertyId: data.propertyId, portalAccessId: created.id },
+        });
+      }
+      return created;
     });
     await recordDomainAuditEvent(prisma, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsOwnerPortalAccess', entityId: portalAccess.id, action: 'PMS_OWNER_PORTAL_ACCESS_UPSERTED', actorId: req.user!.id, afterMetadata: { propertyId: data.propertyId, userId: data.userId, active: data.active, canApproveQuotes: data.canApproveQuotes }, ...requestAuditContext(req) });
     res.status(201).json({ access: portalAccess });

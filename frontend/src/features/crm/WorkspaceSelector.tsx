@@ -4,6 +4,7 @@ export type CrmWorkspaceChoice = {
   workspaceId?: string;
   companyId?: string;
   canManage: boolean;
+  canManageWorkspace?: boolean;
   propertyScope?: { allProperties: boolean; propertyIds: string[] };
 };
 

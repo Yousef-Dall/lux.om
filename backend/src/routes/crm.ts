@@ -22,6 +22,11 @@ import {
   crmLeadSources as leadSources,
   crmLeadStatuses as leadStatuses
 } from '../modules/crm/contracts';
+import { crmStage21hRouter } from '../modules/crm/stage21h/router';
+import { upsertCrmContact } from '../modules/crm/stage21h/identity';
+import { resolveLeadPipelineStage } from '../modules/crm/stage21h/provisioning';
+import { persistCrmLeadScore } from '../modules/crm/stage21h/scoring';
+import { leadStatusToOutcome } from '../modules/crm/stage21h/constants';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../utils/http';
 
@@ -507,64 +512,28 @@ async function findOrCreateContact(
 ) {
   if (contactId) {
     const contact = await tx.crmContact.findFirst({
-      where: { id: contactId, workspaceId: workspace.workspaceId }
+      where: { id: contactId, workspaceId: workspace.workspaceId, mergedIntoContactId: null }
     });
     if (!contact) throw new AppError(404, 'CRM contact not found in this workspace.');
     return contact;
   }
-
   if (!input) throw new AppError(400, 'Contact details are required.');
-  const normalizedEmail = normalizeEmail(input.email);
-  const normalizedPhone = normalizePhone(input.phone);
-  const matchTerms = [
-    ...(normalizedEmail ? [{ normalizedEmail }] : []),
-    ...(normalizedPhone ? [{ normalizedPhone }] : [])
-  ];
-  const existing = matchTerms.length
-    ? await tx.crmContact.findFirst({
-        where: {
-          workspaceId: workspace.workspaceId,
-          OR: matchTerms
-        },
-        orderBy: { updatedAt: 'desc' }
-      })
-    : null;
-
-  if (existing) {
-    return tx.crmContact.update({
-      where: { id: existing.id },
-      data: {
-        fullName: input.fullName,
-        email: input.email || null,
-        phone: input.phone || null,
-        normalizedEmail,
-        normalizedPhone,
-        notes: input.notes,
-        userId: input.userId,
-        pmsTenantId: input.pmsTenantId
-      }
-    });
-  }
-
-  return tx.crmContact.create({
-    data: {
-      fullName: input.fullName,
-      email: input.email || null,
-      phone: input.phone || null,
-      normalizedEmail,
-      normalizedPhone,
-      notes: input.notes,
-      workspaceId: workspace.workspaceId,
-      companyId: workspace.companyId ?? null,
-      ownerUserId: workspace.ownerUserId ?? null,
-      userId: input.userId ?? null,
-      pmsTenantId: input.pmsTenantId ?? null,
-      createdById: actorId
-    }
+  return upsertCrmContact(tx, {
+    workspaceId: workspace.workspaceId,
+    fullName: input.fullName,
+    email: input.email || null,
+    phone: input.phone || null,
+    notes: input.notes ?? null,
+    companyId: workspace.companyId ?? null,
+    ownerUserId: workspace.ownerUserId ?? null,
+    userId: input.userId ?? null,
+    pmsTenantId: input.pmsTenantId ?? null,
+    createdById: actorId
   });
 }
 
 crmRouter.use(requireAuth());
+crmRouter.use(crmStage21hRouter);
 
 crmRouter.get('/access', async (req, res, next) => {
   try {
@@ -955,7 +924,8 @@ crmRouter.post('/leads', async (req, res, next) => {
 
     const rawLead = await prisma.$transaction(async (tx) => {
       const contact = await findOrCreateContact(tx, req.user!.id, workspace, data.contactId, data.contact);
-      return tx.crmLead.create({
+      const { pipeline, stage } = await resolveLeadPipelineStage(tx, workspace.workspaceId, 'NEW');
+      const created = await tx.crmLead.create({
         data: {
           workspaceId: workspace.workspaceId,
           title: data.title,
@@ -972,6 +942,9 @@ crmRouter.post('/leads', async (req, res, next) => {
           assignedToId: data.assignedToId ?? ownerUserId,
           createdById: req.user!.id,
           updatedById: req.user!.id,
+          pipelineId: pipeline.id,
+          stageId: stage.id,
+          outcome: 'OPEN',
           inquiryId: sourceReferences.inquiryId ?? null,
           bookingId: sourceReferences.bookingId ?? null,
           listingId: sourceReferences.listingId ?? null,
@@ -992,12 +965,14 @@ crmRouter.post('/leads', async (req, res, next) => {
               body: 'Lead entered the NEW stage.',
               completedAt: new Date(),
               createdById: req.user!.id,
-              updatedById: req.user!.id
+              updatedById: req.user!.id,
+              contactId: contact.id
             }
           }
-        },
-        include: leadDetailInclude
+        }
       });
+      await persistCrmLeadScore(tx, created.id, { forceSnapshot: true, jobKey: `lead-create:${created.id}` });
+      return tx.crmLead.findUniqueOrThrow({ where: { id: created.id }, include: leadDetailInclude });
     });
 
     const [lead] = await enrichCrmLeads([rawLead], buildCrmLeadScope(access, 'view'));
@@ -1049,6 +1024,33 @@ crmRouter.patch('/leads/:id', async (req, res, next) => {
     await assertAssignmentAllowed(access, current, data.assignedToId);
 
     const rawLead = await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      let pipelineId: string | undefined;
+      let stageId: string | undefined;
+      let outcome = current.outcome;
+      let wonAt: Date | null | undefined;
+      let lostAt: Date | null | undefined;
+      let closedAt: Date | null | undefined;
+      let archivedAt: Date | null | undefined;
+      let reopenedCount: number | undefined;
+
+      if (data.status) {
+        if (data.status === 'ARCHIVED') {
+          archivedAt = current.archivedAt ?? now;
+        } else {
+          const resolved = await resolveLeadPipelineStage(tx, current.workspaceId, data.status);
+          pipelineId = resolved.pipeline.id;
+          stageId = resolved.stage.id;
+          outcome = leadStatusToOutcome(data.status);
+          archivedAt = null;
+          const reopened = current.outcome !== 'OPEN' && outcome === 'OPEN';
+          reopenedCount = reopened ? current.reopenedCount + 1 : current.reopenedCount;
+          wonAt = outcome === 'WON' ? current.wonAt ?? now : null;
+          lostAt = outcome === 'LOST' ? current.lostAt ?? now : null;
+          closedAt = outcome === 'OPEN' ? null : current.closedAt ?? now;
+        }
+      }
+
       const updated = await tx.crmLead.update({
         where: { id },
         data: {
@@ -1061,7 +1063,14 @@ crmRouter.patch('/leads/:id', async (req, res, next) => {
           currency: data.currency,
           nextFollowUpAt: data.nextFollowUpAt === undefined ? undefined : data.nextFollowUpAt ? new Date(data.nextFollowUpAt) : null,
           lostReason: data.lostReason,
-          archivedAt: data.status === 'ARCHIVED' ? new Date() : data.status ? null : undefined,
+          pipelineId,
+          stageId,
+          outcome,
+          wonAt,
+          lostAt,
+          closedAt,
+          reopenedCount,
+          archivedAt,
           updatedById: req.user!.id
         }
       });
@@ -1071,11 +1080,12 @@ crmRouter.patch('/leads/:id', async (req, res, next) => {
           data: {
             workspaceId: current.workspaceId,
             leadId: id,
+            contactId: current.contactId,
             type: 'STATUS_CHANGE',
             status: 'COMPLETED',
-            subject: `Status changed to ${data.status.replace(/_/g, ' ')}`,
+            subject: data.status === 'ARCHIVED' ? 'Lead archived' : `Status changed to ${data.status.replace(/_/g, ' ')}`,
             body: `${current.status} → ${data.status}`,
-            completedAt: new Date(),
+            completedAt: now,
             createdById: req.user!.id,
             updatedById: req.user!.id
           }
@@ -1087,10 +1097,11 @@ crmRouter.patch('/leads/:id', async (req, res, next) => {
           data: {
             workspaceId: current.workspaceId,
             leadId: id,
+            contactId: current.contactId,
             type: 'ASSIGNMENT',
             status: 'COMPLETED',
             subject: data.assignedToId ? 'Lead reassigned' : 'Lead unassigned',
-            completedAt: new Date(),
+            completedAt: now,
             createdById: req.user!.id,
             assignedToId: data.assignedToId,
             updatedById: req.user!.id
@@ -1111,12 +1122,13 @@ crmRouter.patch('/leads/:id', async (req, res, next) => {
           action: changedFields.length === 2 ? 'stage_and_assignment_change' : changedFields[0] === 'status' ? 'stage_change' : 'assignment_change',
           actorId: req.user!.id,
           changedFields,
-          beforeMetadata: { status: current.status, assignedToId: current.assignedToId },
-          afterMetadata: { status: data.status ?? current.status, assignedToId: data.assignedToId === undefined ? current.assignedToId : data.assignedToId },
+          beforeMetadata: { status: current.status, outcome: current.outcome, assignedToId: current.assignedToId },
+          afterMetadata: { status: data.status ?? current.status, outcome, assignedToId: data.assignedToId === undefined ? current.assignedToId : data.assignedToId },
           ...requestAuditContext(req)
         });
       }
 
+      await persistCrmLeadScore(tx, updated.id, { jobKey: `lead-update:${updated.id}:${now.toISOString()}` });
       return tx.crmLead.findUniqueOrThrow({ where: { id: updated.id }, include: leadDetailInclude });
     });
 
@@ -1168,6 +1180,7 @@ crmRouter.post('/leads/:id/activities', async (req, res, next) => {
         }
       });
       await tx.crmLead.update({ where: { id }, data: { updatedById: req.user!.id } });
+      await persistCrmLeadScore(tx, id, { jobKey: `activity:create:${created.id}` });
       return created;
     });
     res.status(201).json({ activity });
@@ -1212,6 +1225,7 @@ crmRouter.patch('/leads/:id/activities/:activityId', async (req, res, next) => {
         }
       });
       await tx.crmLead.update({ where: { id }, data: { updatedById: req.user!.id } });
+      await persistCrmLeadScore(tx, id, { jobKey: `activity:update:${updated.id}:${Date.now()}` });
       return updated;
     });
     res.json({ activity });

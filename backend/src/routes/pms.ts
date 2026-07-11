@@ -43,6 +43,7 @@ import { z } from "zod";
 
 import { recordAccountSecurityEvent } from "../lib/accountSecurityEvents";
 import { prisma } from "../lib/prisma";
+import { ingestPmsTenantOnboarding, ingestPmsVendorOnboarding } from "../modules/crm/stage21h/ingestion";
 import {
   ACTIVE_PMS_ENTITLEMENT_STATUSES,
   resolvePmsWorkspaceAccess,
@@ -4330,24 +4331,32 @@ pmsRouter.post("/tenants", requireAuth(), async (req, res, next) => {
       assertCanViewPmsSensitiveData(access.member);
     }
 
-    const tenant = await prisma.pmsTenant.create({
-      data: {
+    const tenant = await prisma.$transaction(async (tx) => {
+      const created = await tx.pmsTenant.create({
+        data: {
+          companyId: access.company.id,
+          fullName: data.fullName,
+          phone: normalizeNullableText(data.phone),
+          email: normalizeNullableText(data.email),
+          nationality: normalizeNullableText(data.nationality),
+          nationalId: normalizeNullableText(data.nationalId),
+          passportNumber: normalizeNullableText(data.passportNumber),
+          emergencyContactName: normalizeNullableText(data.emergencyContactName),
+          emergencyContactPhone: normalizeNullableText(data.emergencyContactPhone),
+          emergencyContactEmail: normalizeNullableText(data.emergencyContactEmail),
+          notes: normalizeNullableText(data.notes),
+          active: data.active,
+          createdById: req.user!.id,
+          updatedById: req.user!.id,
+        },
+        include: pmsTenantInclude,
+      });
+      await ingestPmsTenantOnboarding(tx, {
         companyId: access.company.id,
-        fullName: data.fullName,
-        phone: normalizeNullableText(data.phone),
-        email: normalizeNullableText(data.email),
-        nationality: normalizeNullableText(data.nationality),
-        nationalId: normalizeNullableText(data.nationalId),
-        passportNumber: normalizeNullableText(data.passportNumber),
-        emergencyContactName: normalizeNullableText(data.emergencyContactName),
-        emergencyContactPhone: normalizeNullableText(data.emergencyContactPhone),
-        emergencyContactEmail: normalizeNullableText(data.emergencyContactEmail),
-        notes: normalizeNullableText(data.notes),
-        active: data.active,
-        createdById: req.user.id,
-        updatedById: req.user.id,
-      },
-      include: pmsTenantInclude,
+        tenant: { id: created.id, fullName: created.fullName, email: created.email, phone: created.phone },
+        actorId: req.user!.id,
+      });
+      return created;
     });
 
     await recordPmsWorkspaceAudit({
@@ -5877,19 +5886,27 @@ pmsRouter.post("/vendors", requireAuth(), async (req, res, next) => {
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
     assertCanManagePmsMaintenance(access.member);
 
-    const vendor = await prisma.pmsVendor.create({
-      data: {
+    const vendor = await prisma.$transaction(async (tx) => {
+      const created = await tx.pmsVendor.create({
+        data: {
+          companyId: access.company.id,
+          name: data.name,
+          phone: normalizeNullableText(data.phone),
+          email: normalizeNullableText(data.email),
+          trade: normalizeNullableText(data.trade),
+          notes: normalizeNullableText(data.notes),
+          active: data.active,
+          createdById: req.user!.id,
+          updatedById: req.user!.id,
+        },
+        include: pmsVendorInclude,
+      });
+      await ingestPmsVendorOnboarding(tx, {
         companyId: access.company.id,
-        name: data.name,
-        phone: normalizeNullableText(data.phone),
-        email: normalizeNullableText(data.email),
-        trade: normalizeNullableText(data.trade),
-        notes: normalizeNullableText(data.notes),
-        active: data.active,
-        createdById: req.user.id,
-        updatedById: req.user.id,
-      },
-      include: pmsVendorInclude,
+        vendor: { id: created.id, name: created.name, email: created.email, phone: created.phone, trade: created.trade },
+        actorId: req.user!.id,
+      });
+      return created;
     });
 
     await recordPmsWorkspaceAudit({
