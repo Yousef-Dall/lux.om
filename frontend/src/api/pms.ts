@@ -29,12 +29,15 @@ export type PmsPermissionKey =
   | "DOCUMENTS_MANAGE"
   | "STAFF_MANAGE"
   | "IMPORT_EXPORT"
+  | "SENSITIVE_DATA_VIEW"
+  | "SENSITIVE_DATA_EXPORT"
   | "CRM_VIEW"
   | "CRM_MANAGE";
 
 export type PmsUnitStatus =
   "VACANT" | "OCCUPIED" | "RESERVED" | "MAINTENANCE" | "UNAVAILABLE";
 export type PmsOccupancyStatus = "VACANT" | "OCCUPIED" | "RESERVED" | "UNKNOWN";
+export type PmsUnitOperationalStatus = "AVAILABLE" | "RESERVED" | "MAINTENANCE" | "UNAVAILABLE";
 
 export type PmsLeaseStatus = "DRAFT" | "ACTIVE" | "EXPIRING" | "RENEWED" | "ENDED" | "TERMINATED";
 
@@ -241,6 +244,7 @@ export type PmsUnit = {
   areaSqm?: number | null;
   status: PmsUnitStatus;
   occupancyStatus: PmsOccupancyStatus;
+  operationalStatus: PmsUnitOperationalStatus;
   rentAmount?: string | null;
   currency: string;
   notes?: string | null;
@@ -437,6 +441,30 @@ export type PmsAccountingLedgerPayload = {
   notes?: string | null;
 };
 
+export type PmsCurrencyState = {
+  status: "EMPTY" | "SINGLE" | "MIXED";
+  currencies: string[];
+  canCombine: boolean;
+  displayCurrency: string | null;
+  message: string | null;
+};
+
+export type PmsStatementCurrencyTotal = {
+  currency: string;
+  rentCollected: string;
+  manualIncome: string;
+  adjustments: string;
+  income: string;
+  outstandingRent: string;
+  expenses: string;
+  maintenanceCosts: string;
+  netAmount: string;
+  depositCollected: string;
+  depositHeld: string;
+  depositRefunded: string;
+  depositDeductions: string;
+};
+
 export type PmsOwnerStatement = {
   period: { month?: string | null; from?: string | null; to?: string | null };
   scope: {
@@ -446,23 +474,82 @@ export type PmsOwnerStatement = {
     property?: Pick<PmsProperty, "id" | "name" | "code"> | null;
     unit?: Pick<PmsUnit, "id" | "unitNumber" | "unitName"> | null;
   };
-  totals: {
-    rentCollected: string;
-    manualIncome: string;
-    income: string;
-    outstandingRent: string;
-    expenses: string;
-    maintenanceCosts: string;
-    netAmount: string;
-    depositCollected: string;
-    depositHeld: string;
-    depositRefunded: string;
-    depositDeductions: string;
-  };
+  currencyState: PmsCurrencyState;
+  totalsByCurrency: PmsStatementCurrencyTotal[];
+  totals: PmsStatementCurrencyTotal | null;
   income: Array<Record<string, unknown>>;
   expenses: Array<Record<string, unknown>>;
   outstanding: PmsRentDueItem[];
   deposits: Array<Record<string, unknown>>;
+};
+
+export type PmsOwnerStatementStatus =
+  | "DRAFT"
+  | "GENERATED"
+  | "NEEDS_REVIEW"
+  | "APPROVED"
+  | "PUBLISHED"
+  | "VOID";
+
+export type PmsPersistedOwnerStatement = {
+  id: string;
+  companyId: string;
+  propertyId: string;
+  property: Pick<PmsProperty, "id" | "name" | "code">;
+  status: PmsOwnerStatementStatus;
+  revision: number;
+  revisionOfId?: string | null;
+  ownerReference?: string | null;
+  periodStart: string;
+  periodEnd: string;
+  currency: string;
+  includedRentPaymentIds: string[];
+  includedAccountingEntryIds: string[];
+  includedMaintenanceWorkOrderIds: string[];
+  openingBalance: string;
+  income: string;
+  expenses: string;
+  adjustments: string;
+  closingBalance: string;
+  snapshotVersion: number;
+  immutableSnapshot: unknown;
+  generatedAt: string;
+  reviewedAt?: string | null;
+  approvedAt?: string | null;
+  publishedAt?: string | null;
+  voidedAt?: string | null;
+  generatedBy?: { id: string; name: string; email: string } | null;
+  reviewedBy?: { id: string; name: string; email: string } | null;
+  approvedBy?: { id: string; name: string; email: string } | null;
+  publishedBy?: { id: string; name: string; email: string } | null;
+  voidedBy?: { id: string; name: string; email: string } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PmsOccupancyReconciliationIssue = {
+  type:
+    | "OCCUPIED_WITHOUT_ACTIVE_LEASE"
+    | "ACTIVE_LEASE_ON_VACANT_UNIT"
+    | "EXPIRED_LEASE_STILL_ACTIVE"
+    | "OVERLAPPING_LEASES";
+  unitId: string;
+  propertyId: string;
+  unitNumber: string;
+  leaseId?: string;
+  leaseIds?: string[];
+  endDate?: string;
+};
+
+export type PmsOccupancyReconciliation = {
+  checkedUnits?: number;
+  issueCount?: number;
+  detectedIssues?: number;
+  correctedUnits?: number;
+  dryRun?: boolean;
+  sourceOfTruth?: "ACTIVE_OR_EXPIRING_LEASE";
+  operationalAvailabilityField?: "operationalStatus";
+  issues: PmsOccupancyReconciliationIssue[];
 };
 
 export type PmsVendor = {
@@ -660,6 +747,12 @@ export type PmsDocument = {
   type: PmsDocumentType;
   title: string;
   fileUrl: string;
+  downloadPath?: string;
+  originalFilename?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  fileVersion?: number;
+  scanStatus?: "NOT_CONFIGURED" | "PENDING" | "CLEAN" | "QUARANTINED" | "FAILED";
   status: PmsDocumentStatus;
   expiryDate?: string | null;
   notes?: string | null;
@@ -816,6 +909,16 @@ export type PmsCommandCenter = {
     vacantUnits: number | null;
     incompleteProperties: number | null;
     incompleteUnits: number | null;
+    currencyState: PmsCurrencyState | null;
+    financialsByCurrency: Array<{
+      currency: string;
+      scheduledRent: string;
+      paidAgainstScheduled: string;
+      outstandingRent: string;
+      overdueRent: string;
+      rentCollected: string;
+      collectionRate: number | null;
+    }>;
     overdueRentItems: number | null;
     overdueRentAmount: string | null;
     outstandingRentItems: number | null;
@@ -845,6 +948,7 @@ export type PmsCommandCenter = {
       leaseId: string;
       oldestDueDate: string;
       outstandingAmount: string;
+      currency: string;
       overdueItems: number;
       riskScore: number;
       priority: PmsCommandPriority;
@@ -1154,7 +1258,7 @@ export type PmsDocumentPayload = {
   inspectionId?: string | null;
   type: PmsDocumentType;
   title: string;
-  fileUrl: string;
+  fileUrl?: string;
   status?: PmsDocumentStatus;
   expiryDate?: string | null;
   notes?: string | null;
@@ -1183,6 +1287,16 @@ export type PmsMoveChecklistPayload = {
 export type PmsReportsSummary = {
   workspace: PmsWorkspaceOverview["workspace"];
   accounting: {
+    currencyState: PmsCurrencyState;
+    totalsByCurrency: Array<{
+      currency: string;
+      incomeCollected: string;
+      outstandingRent: string;
+      overdueRent: string;
+      expenses: string;
+      maintenanceCosts: string;
+    }>;
+    currency?: string | null;
     incomeCollected?: string | null;
     outstandingRent?: string | null;
     overdueRent?: string | null;
@@ -1199,6 +1313,9 @@ export type PmsReportsSummary = {
       occupancyRate: number;
     };
     revenue: {
+      currencyState: PmsCurrencyState;
+      byCurrency: Array<{ currency: string; collected: string; outstanding: string; overdue: string }>;
+      currency?: string | null;
       collected?: string | null;
       outstanding?: string | null;
       overdue?: string | null;
@@ -1209,6 +1326,9 @@ export type PmsReportsSummary = {
       inProgress: number;
       resolved: number;
       urgent: number;
+      currencyState: PmsCurrencyState;
+      costsByCurrency: Array<{ currency: string; amount: string }>;
+      currency?: string | null;
       costs?: string | null;
     };
     leaseRenewals: PmsLease[];
@@ -1838,6 +1958,77 @@ export async function getPmsOwnerStatement(
   }>("/api/pms/accounting/owner-statement", { token, params });
 }
 
+export async function listPmsOwnerStatements(
+  token: string,
+  params: {
+    companyId?: string;
+    propertyId?: string;
+    status?: "ALL" | PmsOwnerStatementStatus;
+    currency?: string;
+    take?: number;
+    skip?: number;
+  } = {},
+) {
+  return apiClient.get<{
+    workspace: PmsWorkspaceOverview["workspace"];
+    statements: PmsPersistedOwnerStatement[];
+    pagination: { take: number; skip: number; count: number; total: number };
+  }>("/api/pms/accounting/owner-statements", { token, params });
+}
+
+export async function createPmsOwnerStatement(
+  token: string,
+  payload: {
+    companyId: string;
+    propertyId: string;
+    month?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    currency: string;
+    ownerReference?: string | null;
+    revisionOfId?: string | null;
+  },
+) {
+  return apiClient.post<{ statement: PmsPersistedOwnerStatement }>(
+    "/api/pms/accounting/owner-statements",
+    payload,
+    { token },
+  );
+}
+
+export async function transitionPmsOwnerStatement(
+  token: string,
+  statementId: string,
+  status: PmsOwnerStatementStatus,
+) {
+  return apiClient.post<{ statement: PmsPersistedOwnerStatement }>(
+    `/api/pms/accounting/owner-statements/${statementId}/transition`,
+    { status },
+    { token },
+  );
+}
+
+export async function getPmsOccupancyReconciliation(
+  token: string,
+  params: { companyId?: string; propertyId?: string } = {},
+) {
+  return apiClient.get<PmsOccupancyReconciliation>("/api/pms/occupancy/reconciliation", {
+    token,
+    params,
+  });
+}
+
+export async function applyPmsOccupancyReconciliation(
+  token: string,
+  payload: { companyId?: string; propertyId?: string; apply: true },
+) {
+  return apiClient.post<PmsOccupancyReconciliation>(
+    "/api/pms/occupancy/reconciliation",
+    payload,
+    { token },
+  );
+}
+
 export async function listPmsCommunicationTemplates(
   token: string,
   params: {
@@ -2043,6 +2234,21 @@ export async function createPmsDocument(
   return apiClient.post<{ document: PmsDocument }>("/api/pms/documents", payload, { token });
 }
 
+export async function uploadPmsDocument(
+  token: string,
+  payload: Omit<PmsDocumentPayload, "fileUrl"> & { companyId: string },
+  file: File,
+) {
+  const formData = new FormData();
+  formData.append("metadata", JSON.stringify(payload));
+  formData.append("file", file);
+  return apiClient.upload<{ document: PmsDocument }>("/api/pms/documents/upload", formData, { token });
+}
+
+export async function downloadPmsDocument(token: string, documentId: string) {
+  return apiClient.download(`/api/pms/documents/${documentId}/download`, { token });
+}
+
 export async function updatePmsDocument(
   token: string,
   documentId: string,
@@ -2158,10 +2364,14 @@ export async function getPmsImportTemplateCsv(token: string, type: PmsImportType
 
 export type PmsExportType = "properties" | "units" | "tenants" | "leases" | "rent-roll" | "maintenance" | "accounting-summary";
 
-export async function getPmsExportCsv(token: string, type: PmsExportType, companyId?: string) {
+export async function getPmsExportCsv(
+  token: string,
+  type: PmsExportType,
+  options: { companyId?: string; propertyId?: string; includeSensitive?: boolean; sensitiveExportConfirmation?: string } = {},
+) {
   return apiClient.get<string>(`/api/pms/exports/${type}.csv`, {
     token,
-    params: { companyId },
+    params: options,
   });
 }
 

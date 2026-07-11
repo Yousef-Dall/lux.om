@@ -7,13 +7,16 @@ import {
   PmsAccountingSource,
   PmsCommunicationChannel,
   PmsCommunicationLogStatus,
+  PmsDocumentScanStatus,
   PmsDocumentStatus,
+  PmsDocumentStorageDriver,
   PmsDocumentType,
   PmsEntitlementStatus,
   PmsImportStatus,
   PmsImportType,
   PmsInspectionStatus,
   PmsLeaseStatus,
+  PmsOwnerStatementStatus,
   PmsMoveChecklistStatus,
   PmsMoveChecklistType,
   PmsMaintenancePriority,
@@ -27,10 +30,15 @@ import {
   PmsRentDueStatus,
   PmsRentPaymentMethod,
   PmsRentPaymentStatus,
+  PmsUnitOperationalStatus,
   PmsUnitStatus,
-  type Prisma,
+  DomainAuditDomain,
+  DomainAuditOrigin,
+  Prisma,
 } from "@prisma/client";
-import { Router } from "express";
+import path from "node:path";
+import { Router, type NextFunction, type Request, type Response } from "express";
+import multer from "multer";
 import { z } from "zod";
 
 import { recordAccountSecurityEvent } from "../lib/accountSecurityEvents";
@@ -61,6 +69,9 @@ import {
   assertCanViewPmsCommunications,
   assertCanManagePmsTenancies,
   assertCanViewPmsDocuments,
+  canViewPmsSensitiveData,
+  assertCanViewPmsSensitiveData,
+  assertCanExportPmsSensitiveData,
 } from "../lib/pmsPermissions";
 import {
   assertCanApplyRentPayment,
@@ -71,6 +82,17 @@ import {
 } from "../lib/pmsRentPayments";
 import { requireAdmin, requireAuth } from "../middleware/auth";
 import { AppError } from "../utils/http";
+import { env, maxPmsDocumentBytes } from "../config/env";
+import { recordDomainAuditEvent, requestAuditContext } from "../lib/domainAudit";
+import { getLocalUploadDirectory } from "../storage/imageStorage";
+import {
+  importLegacyLocalPmsDocument,
+  readPrivatePmsDocument,
+  removePrivatePmsDocument,
+  restoreLegacyLocalPmsDocument,
+  storePrivatePmsDocument,
+  supportedPrivateDocumentMimeTypes,
+} from "../storage/privatePmsDocumentStorage";
 import {
   averageHealthScore,
   buildHealthSignal,
@@ -85,6 +107,58 @@ import {
 
 export const pmsRouter = Router();
 
+function isPrismaErrorCode(error: unknown, code: string) {
+  return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === code);
+}
+
+const PMS_ACCOUNTING_INCOME_ENTRY_TYPES = new Set<PmsAccountingEntryType>([
+  PmsAccountingEntryType.INCOME,
+  PmsAccountingEntryType.LATE_FEE,
+  PmsAccountingEntryType.DEPOSIT,
+  PmsAccountingEntryType.ADJUSTMENT,
+]);
+
+const PMS_ACCOUNTING_EXPENSE_ENTRY_TYPES = new Set<PmsAccountingEntryType>([
+  PmsAccountingEntryType.EXPENSE,
+  PmsAccountingEntryType.REFUND,
+]);
+
+const PMS_OWNER_STATEMENT_REVIEW_STATUSES = new Set<PmsOwnerStatementStatus>([
+  PmsOwnerStatementStatus.DRAFT,
+  PmsOwnerStatementStatus.GENERATED,
+  PmsOwnerStatementStatus.NEEDS_REVIEW,
+]);
+
+const privatePmsDocumentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: maxPmsDocumentBytes, files: 1, fields: 30 },
+  fileFilter: (_req, file, callback) => {
+    if (!supportedPrivateDocumentMimeTypes.has(file.mimetype)) {
+      callback(new AppError(400, "Private PMS documents must be PDF, JPG, PNG, or WEBP."));
+      return;
+    }
+    callback(null, true);
+  },
+});
+
+function privatePmsDocumentUploadMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  privatePmsDocumentUpload.single("file")(req, res, (error) => {
+    if (error instanceof multer.MulterError) {
+      if (error.code === "LIMIT_FILE_SIZE") {
+        next(new AppError(400, `Private PMS document exceeds the ${env.MAX_PMS_DOCUMENT_MB}MB limit.`));
+        return;
+      }
+      next(new AppError(400, error.message));
+      return;
+    }
+    next(error);
+  });
+}
+
 const idParamsSchema = z.object({
   id: z.string().trim().min(1),
 });
@@ -95,6 +169,18 @@ const companyParamsSchema = z.object({
 
 const pmsOverviewQuerySchema = z.object({
   companyId: z.string().trim().min(1).optional(),
+});
+
+const pmsDomainAuditQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  domain: z.enum(["ALL", ...Object.values(DomainAuditDomain)] as ["ALL", ...DomainAuditDomain[]]).default(DomainAuditDomain.PMS),
+  entityType: z.string().trim().max(120).optional(),
+  entityId: z.string().trim().max(200).optional(),
+  action: z.string().trim().max(160).optional(),
+  dateFrom: z.coerce.date().optional(),
+  dateTo: z.coerce.date().optional(),
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  skip: z.coerce.number().int().min(0).default(0),
 });
 
 const pmsCommandPrioritySchema = z.enum(["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW"]);
@@ -160,6 +246,21 @@ const pmsUnitListQuerySchema = z.object({
   skip: z.coerce.number().int().min(0).default(0),
 });
 
+const queryBoolean = z.preprocess((value) => {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1') return true;
+    if (normalized === 'false' || normalized === '0') return false;
+  }
+  return value;
+}, z.boolean());
+
+const pmsOccupancyReconciliationQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+  apply: queryBoolean.default(false),
+});
+
 const pmsPropertyParamsSchema = z.object({
   propertyId: z.string().trim().min(1),
 });
@@ -223,6 +324,7 @@ const pmsUnitCreateSchema = z
     areaSqm: z.coerce.number().int().min(0).max(200000).optional().nullable(),
     status: z.nativeEnum(PmsUnitStatus).default(PmsUnitStatus.VACANT),
     occupancyStatus: z.nativeEnum(PmsOccupancyStatus).optional().nullable(),
+    operationalStatus: z.nativeEnum(PmsUnitOperationalStatus).optional(),
     rentAmount: z.coerce.number().min(0).max(100000000).optional().nullable(),
     currency: z.string().trim().length(3).toUpperCase().default("OMR"),
     notes: nullableTrimmedString(2000),
@@ -330,7 +432,41 @@ const pmsAccountingStatementQuerySchema = pmsAccountingQuerySchema
   .pick({ companyId: true, propertyId: true, unitId: true, dateFrom: true, dateTo: true })
   .extend({
     month: z.string().trim().regex(/^\d{4}-\d{2}$/).optional(),
+    currency: z.string().trim().length(3).toUpperCase().optional(),
   });
+
+const pmsOwnerStatementParamsSchema = z.object({
+  statementId: z.string().trim().min(1),
+});
+
+const pmsOwnerStatementListQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+  status: z.enum(["ALL", ...Object.values(PmsOwnerStatementStatus)] as ["ALL", ...PmsOwnerStatementStatus[]]).default("ALL"),
+  currency: z.string().trim().length(3).toUpperCase().optional(),
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  skip: z.coerce.number().int().min(0).default(0),
+});
+
+const pmsOwnerStatementCreateSchema = z.object({
+  companyId: z.string().trim().min(1),
+  propertyId: z.string().trim().min(1),
+  month: z.string().trim().regex(/^\d{4}-\d{2}$/).optional(),
+  dateFrom: z.coerce.date().optional(),
+  dateTo: z.coerce.date().optional(),
+  currency: z.string().trim().length(3).toUpperCase(),
+  ownerReference: nullableTrimmedString(180),
+  revisionOfId: nullableId,
+}).strict().refine((data) => Boolean(data.month || (data.dateFrom && data.dateTo)), {
+  message: "Provide a month or both dateFrom and dateTo.",
+}).refine((data) => !data.dateFrom || !data.dateTo || data.dateFrom <= data.dateTo, {
+  message: "dateFrom must be before dateTo.",
+  path: ["dateTo"],
+});
+
+const pmsOwnerStatementTransitionSchema = z.object({
+  status: z.nativeEnum(PmsOwnerStatementStatus),
+}).strict();
 
 const pmsAccountingLedgerEntrySchema = z
   .object({
@@ -527,8 +663,8 @@ const pmsDocumentFileSchema = z
   .trim()
   .min(1)
   .max(1000)
-  .refine((value) => value.startsWith('/uploads/') || /^https?:\/\//i.test(value), {
-    message: 'Document file must be an uploaded file path or a HTTPS URL.',
+  .refine((value) => value.startsWith('/uploads/'), {
+    message: 'Legacy document creation only accepts a local /uploads path; use the private document upload endpoint for new files.',
   });
 
 const pmsDocumentListQuerySchema = z.object({
@@ -573,6 +709,8 @@ const pmsDocumentUpdateSchema = pmsDocumentCreateSchema
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one PMS document field is required.',
   });
+
+const pmsDocumentUploadMetadataSchema = pmsDocumentCreateSchema.omit({ fileUrl: true });
 
 const pmsDocumentExpiryQuerySchema = z.object({
   companyId: z.string().trim().min(1).optional(),
@@ -619,6 +757,8 @@ const pmsExportQuerySchema = z.object({
   tenantId: z.string().trim().min(1).optional(),
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),
+  includeSensitive: queryBoolean.default(false),
+  sensitiveExportConfirmation: z.string().trim().max(80).optional(),
 });
 
 const pmsLeaseRenewalDraftSchema = z
@@ -2097,20 +2237,26 @@ async function recordPmsWorkspaceAudit(
     message: string;
     metadata: Prisma.InputJsonObject;
     targetUserId?: string;
+    request?: Parameters<typeof requestAuditContext>[0];
+    origin?: DomainAuditOrigin;
   },
 ) {
-  await recordAccountSecurityEvent(prisma, {
-    userId: input.targetUserId ?? input.actorId,
+  const action = typeof input.metadata.action === "string" ? input.metadata.action : "change";
+  const entityType = typeof input.metadata.resourceType === "string" ? input.metadata.resourceType : "pmsWorkspace";
+  const idEntry = Object.entries(input.metadata).find(([key, value]) => key.endsWith("Id") && typeof value === "string");
+  await recordDomainAuditEvent(prisma, {
+    companyId: input.companyId,
+    domain: DomainAuditDomain.PMS,
+    entityType,
+    entityId: idEntry?.[1] as string | undefined,
+    action,
     actorId: input.actorId,
-    type: AccountSecurityEventType.ADMIN_PMS_ACCESS_UPDATED,
-    title: input.title,
-    message: input.message,
-    metadata: {
-      actorId: input.actorId,
-      actorEmail: input.actorEmail,
-      companyId: input.companyId,
-      ...input.metadata,
-    },
+    origin: input.origin ?? DomainAuditOrigin.MANUAL,
+    changedFields: Array.isArray(input.metadata.changedFields)
+      ? input.metadata.changedFields.filter((field): field is string => typeof field === "string")
+      : [],
+    metadata: { title: input.title, message: input.message, ...input.metadata },
+    ...(input.request ? requestAuditContext(input.request) : {}),
   });
 }
 
@@ -2524,11 +2670,41 @@ async function notifyPmsMaintenanceRecipients(input: {
   });
 }
 
-function defaultOccupancyForUnitStatus(status: PmsUnitStatus) {
-  if (status === PmsUnitStatus.OCCUPIED) return PmsOccupancyStatus.OCCUPIED;
-  if (status === PmsUnitStatus.RESERVED) return PmsOccupancyStatus.RESERVED;
-  if (status === PmsUnitStatus.VACANT) return PmsOccupancyStatus.VACANT;
-  return PmsOccupancyStatus.UNKNOWN;
+function operationalStatusFromLegacyUnitStatus(status: PmsUnitStatus) {
+  if (status === PmsUnitStatus.RESERVED) return PmsUnitOperationalStatus.RESERVED;
+  if (status === PmsUnitStatus.MAINTENANCE) return PmsUnitOperationalStatus.MAINTENANCE;
+  if (status === PmsUnitStatus.UNAVAILABLE) return PmsUnitOperationalStatus.UNAVAILABLE;
+  return PmsUnitOperationalStatus.AVAILABLE;
+}
+
+function compatibilityUnitStatus(
+  operationalStatus: PmsUnitOperationalStatus,
+  occupancyStatus: PmsOccupancyStatus,
+) {
+  if (operationalStatus === PmsUnitOperationalStatus.MAINTENANCE) return PmsUnitStatus.MAINTENANCE;
+  if (operationalStatus === PmsUnitOperationalStatus.UNAVAILABLE) return PmsUnitStatus.UNAVAILABLE;
+  if (occupancyStatus === PmsOccupancyStatus.OCCUPIED) return PmsUnitStatus.OCCUPIED;
+  if (operationalStatus === PmsUnitOperationalStatus.RESERVED) return PmsUnitStatus.RESERVED;
+  return PmsUnitStatus.VACANT;
+}
+
+async function syncPmsUnitOccupancy(
+  tx: Prisma.TransactionClient,
+  input: { unitId: string; occupied: boolean; userId: string },
+) {
+  const unit = await tx.pmsUnit.findUniqueOrThrow({
+    where: { id: input.unitId },
+    select: { operationalStatus: true },
+  });
+  const occupancyStatus = input.occupied ? PmsOccupancyStatus.OCCUPIED : PmsOccupancyStatus.VACANT;
+  return tx.pmsUnit.update({
+    where: { id: input.unitId },
+    data: {
+      occupancyStatus,
+      status: compatibilityUnitStatus(unit.operationalStatus, occupancyStatus),
+      updatedById: input.userId,
+    },
+  });
 }
 
 async function resolvePmsAccessOrThrow(input: {
@@ -2632,6 +2808,7 @@ function pmsUnitResponse(unit: PmsUnitWithRelations) {
     areaSqm: unit.areaSqm,
     status: unit.status,
     occupancyStatus: unit.occupancyStatus,
+    operationalStatus: unit.operationalStatus,
     rentAmount: decimalToString(unit.rentAmount),
     currency: unit.currency,
     notes: unit.notes,
@@ -2823,10 +3000,18 @@ type PmsRentPaymentWithRelations = Prisma.PmsRentPaymentGetPayload<{
   include: typeof pmsRentPaymentInclude;
 }>;
 
+function maskSensitiveIdentifier(value: string | null) {
+  if (!value) return null;
+  const visible = value.slice(-4);
+  return `${"•".repeat(Math.max(4, value.length - 4))}${visible}`;
+}
+
 function pmsTenantResponse(
   tenant: PmsTenantWithRelations,
   scopedLeaseCount?: number,
+  includeSensitive = false,
 ) {
+  const hasSensitiveIdentity = Boolean(tenant.nationalId || tenant.passportNumber);
   return {
     id: tenant.id,
     companyId: tenant.companyId,
@@ -2834,25 +3019,27 @@ function pmsTenantResponse(
     phone: tenant.phone,
     email: tenant.email,
     nationality: tenant.nationality,
-    nationalId: tenant.nationalId,
-    passportNumber: tenant.passportNumber,
+    nationalId: includeSensitive ? tenant.nationalId : null,
+    passportNumber: includeSensitive ? tenant.passportNumber : null,
+    nationalIdMasked: maskSensitiveIdentifier(tenant.nationalId),
+    passportNumberMasked: maskSensitiveIdentifier(tenant.passportNumber),
+    sensitiveIdentityAvailable: hasSensitiveIdentity,
+    sensitiveIdentityAuthorized: includeSensitive,
     emergencyContactName: tenant.emergencyContactName,
     emergencyContactPhone: tenant.emergencyContactPhone,
     emergencyContactEmail: tenant.emergencyContactEmail,
     notes: tenant.notes,
     active: tenant.active,
-    counts: {
-      leases: scopedLeaseCount ?? tenant._count.leases,
-    },
-    portalAccesses: tenant.pmsTenantPortalAccesses.map((access) => ({
-      id: access.id,
-      companyId: access.companyId,
-      tenantId: access.tenantId,
-      userId: access.userId,
-      active: access.active,
-      user: access.user,
-      createdAt: access.createdAt,
-      updatedAt: access.updatedAt,
+    counts: { leases: scopedLeaseCount ?? tenant._count.leases },
+    portalAccesses: tenant.pmsTenantPortalAccesses.map((portalAccess) => ({
+      id: portalAccess.id,
+      companyId: portalAccess.companyId,
+      tenantId: portalAccess.tenantId,
+      userId: portalAccess.userId,
+      active: portalAccess.active,
+      user: portalAccess.user,
+      createdAt: portalAccess.createdAt,
+      updatedAt: portalAccess.updatedAt,
     })),
     createdAt: tenant.createdAt,
     updatedAt: tenant.updatedAt,
@@ -3246,7 +3433,18 @@ function pmsDocumentResponse(document: PmsDocumentWithRelations) {
     inspection: document.inspection,
     type: document.type,
     title: document.title,
-    fileUrl: document.fileUrl,
+    fileUrl: `/api/pms/documents/${document.id}/download`,
+    downloadUrl: `/api/pms/documents/${document.id}/download`,
+    storageDriver: document.storageDriver,
+    originalFilename: document.originalFilename,
+    mimeType: document.mimeType,
+    sizeBytes: document.sizeBytes,
+    checksumSha256: document.checksumSha256,
+    scanStatus: document.scanStatus,
+    fileVersion: document.fileVersion,
+    fileUploadedAt: document.fileUploadedAt,
+    fileReplacedAt: document.fileReplacedAt,
+    legacyMigrationRequired: document.storageDriver === PmsDocumentStorageDriver.LEGACY_REFERENCE,
     status: document.status,
     expiryDate: document.expiryDate,
     notes: document.notes,
@@ -3775,12 +3973,8 @@ function buildPmsUnitWriteData(
     ...(data.bedrooms !== undefined ? { bedrooms: data.bedrooms } : {}),
     ...(data.bathrooms !== undefined ? { bathrooms: data.bathrooms } : {}),
     ...(data.areaSqm !== undefined ? { areaSqm: data.areaSqm } : {}),
-    ...(nextStatus !== undefined ? { status: nextStatus } : {}),
-    ...(data.occupancyStatus !== undefined
-      ? { occupancyStatus: data.occupancyStatus ?? PmsOccupancyStatus.UNKNOWN }
-      : nextStatus !== undefined
-        ? { occupancyStatus: defaultOccupancyForUnitStatus(nextStatus) }
-        : {}),
+    ...(data.operationalStatus !== undefined ? { operationalStatus: data.operationalStatus } : {}),
+    ...(nextStatus !== undefined ? { operationalStatus: operationalStatusFromLegacyUnitStatus(nextStatus) } : {}),
     ...(data.rentAmount !== undefined ? { rentAmount: data.rentAmount } : {}),
     ...(data.currency !== undefined ? { currency: data.currency } : {}),
     ...(data.notes !== undefined
@@ -3968,7 +4162,21 @@ pmsRouter.get("/tenants", requireAuth(), async (req, res, next) => {
       userId: req.user.id,
       companyId: query.companyId,
     });
+    const canViewSensitiveTenants = canViewPmsSensitiveData(access.member);
     const search = query.search?.trim();
+    const tenantSearchFilters: Prisma.PmsTenantWhereInput[] = search
+      ? [
+          { fullName: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
+          { phone: { contains: search, mode: "insensitive" } },
+        ]
+      : [];
+    if (search && canViewSensitiveTenants) {
+      tenantSearchFilters.push(
+        { nationalId: { contains: search, mode: "insensitive" } },
+        { passportNumber: { contains: search, mode: "insensitive" } },
+      );
+    }
     const scopedPropertyId = pmsScopedPropertyIdWhere(access);
     const where: Prisma.PmsTenantWhereInput = {
       companyId: access.company.id,
@@ -3979,13 +4187,7 @@ pmsRouter.get("/tenants", requireAuth(), async (req, res, next) => {
       ...(query.active === "INACTIVE" ? { active: false } : {}),
       ...(search
         ? {
-            OR: [
-              { fullName: { contains: search, mode: "insensitive" } },
-              { email: { contains: search, mode: "insensitive" } },
-              { phone: { contains: search, mode: "insensitive" } },
-              { nationalId: { contains: search, mode: "insensitive" } },
-              { passportNumber: { contains: search, mode: "insensitive" } },
-            ],
+            OR: tenantSearchFilters,
           }
         : {}),
     };
@@ -4025,6 +4227,7 @@ pmsRouter.get("/tenants", requireAuth(), async (req, res, next) => {
         pmsTenantResponse(
           tenant,
           scopedPropertyId ? scopedLeaseCounts.get(tenant.id) ?? 0 : undefined,
+          canViewSensitiveTenants,
         ),
       ),
       pagination: {
@@ -4051,6 +4254,9 @@ pmsRouter.post("/tenants", requireAuth(), async (req, res, next) => {
       companyId: data.companyId,
     });
     assertCanManagePmsTenancies(access.member);
+    if (data.nationalId !== undefined || data.passportNumber !== undefined) {
+      assertCanViewPmsSensitiveData(access.member);
+    }
 
     const tenant = await prisma.pmsTenant.create({
       data: {
@@ -4081,7 +4287,7 @@ pmsRouter.post("/tenants", requireAuth(), async (req, res, next) => {
       metadata: { action: "create", resourceType: "pmsTenant", tenantId: tenant.id },
     });
 
-    res.status(201).json({ tenant: pmsTenantResponse(tenant) });
+    res.status(201).json({ tenant: pmsTenantResponse(tenant, undefined, canViewPmsSensitiveData(access.member)) });
   } catch (error) {
     next(error);
   }
@@ -4124,7 +4330,7 @@ pmsRouter.get("/tenants/:tenantId", requireAuth(), async (req, res, next) => {
         member: access.member,
         entitlement: access.entitlement,
       },
-      tenant: pmsTenantResponse(tenant, scopedLeaseCount),
+      tenant: pmsTenantResponse(tenant, scopedLeaseCount, canViewPmsSensitiveData(access.member)),
     });
   } catch (error) {
     next(error);
@@ -4154,6 +4360,9 @@ pmsRouter.patch("/tenants/:tenantId", requireAuth(), async (req, res, next) => {
     });
     assertCanManagePmsTenancies(access.member);
     await assertCanAccessPmsTenantScope(access, existing.id);
+    if (data.nationalId !== undefined || data.passportNumber !== undefined) {
+      assertCanViewPmsSensitiveData(access.member);
+    }
 
     const tenant = await prisma.pmsTenant.update({
       where: { id: tenantId },
@@ -4184,7 +4393,7 @@ pmsRouter.patch("/tenants/:tenantId", requireAuth(), async (req, res, next) => {
       },
     });
 
-    res.json({ tenant: pmsTenantResponse(tenant, scopedLeaseCount) });
+    res.json({ tenant: pmsTenantResponse(tenant, scopedLeaseCount, canViewPmsSensitiveData(access.member)) });
   } catch (error) {
     next(error);
   }
@@ -4420,19 +4629,15 @@ pmsRouter.post("/leases", requireAuth(), async (req, res, next) => {
       }
     }
 
-    const existingActiveLease = await prisma.pmsLease.findFirst({
-      where: {
-        unitId: data.unitId,
-        status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] },
-      },
-      select: { id: true },
-    });
-
-    if (existingActiveLease && getLeaseOccupancyStatus(data.status)) {
-      throw new AppError(409, "This unit already has an active PMS lease.");
-    }
-
     const lease = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "PmsUnit" WHERE "id" = ${data.unitId} FOR UPDATE`);
+      if (getLeaseOccupancyStatus(data.status)) {
+        const existingActiveLease = await tx.pmsLease.findFirst({
+          where: { unitId: data.unitId, status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] } },
+          select: { id: true },
+        });
+        if (existingActiveLease) throw new AppError(409, "This unit already has an active PMS lease.");
+      }
       const createdLease = await tx.pmsLease.create({
         data: {
           companyId: access.company.id,
@@ -4477,14 +4682,7 @@ pmsRouter.post("/leases", requireAuth(), async (req, res, next) => {
       }
 
       if (getLeaseOccupancyStatus(data.status)) {
-        await tx.pmsUnit.update({
-          where: { id: data.unitId },
-          data: {
-            status: PmsUnitStatus.OCCUPIED,
-            occupancyStatus: PmsOccupancyStatus.OCCUPIED,
-            updatedById: userId,
-          },
-        });
+        await syncPmsUnitOccupancy(tx, { unitId: data.unitId, occupied: true, userId });
       }
 
       return tx.pmsLease.findUniqueOrThrow({
@@ -4508,11 +4706,12 @@ pmsRouter.post("/leases", requireAuth(), async (req, res, next) => {
         unitId: lease.unitId,
         status: lease.status,
       },
+      request: req,
     });
 
     res.status(201).json({ lease: pmsLeaseResponse(lease) });
   } catch (error) {
-    next(error);
+    next(isPrismaErrorCode(error, "P2002") ? new AppError(409, "This unit already has an active PMS lease.") : error);
   }
 });
 
@@ -4562,7 +4761,7 @@ pmsRouter.patch("/leases/:leaseId", requireAuth(), async (req, res, next) => {
     const userId = req.user.id;
     const existing = await prisma.pmsLease.findUnique({
       where: { id: leaseId },
-      select: { id: true, companyId: true, propertyId: true, unitId: true, startDate: true, endDate: true },
+      select: { id: true, companyId: true, propertyId: true, unitId: true, startDate: true, endDate: true, status: true },
     });
 
     if (!existing) {
@@ -4587,6 +4786,15 @@ pmsRouter.patch("/leases/:leaseId", requireAuth(), async (req, res, next) => {
     }
 
     const lease = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "PmsUnit" WHERE "id" = ${existing.unitId} FOR UPDATE`);
+      const nextStatus = data.status ?? existing.status;
+      if (getLeaseOccupancyStatus(nextStatus)) {
+        const conflictingLease = await tx.pmsLease.findFirst({
+          where: { id: { not: leaseId }, unitId: existing.unitId, status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] } },
+          select: { id: true },
+        });
+        if (conflictingLease) throw new AppError(409, "This unit already has an active PMS lease.");
+      }
       const updated = await tx.pmsLease.update({
         where: { id: leaseId },
         data: buildPmsLeaseWriteData(data, userId),
@@ -4595,14 +4803,7 @@ pmsRouter.patch("/leases/:leaseId", requireAuth(), async (req, res, next) => {
 
       if (data.status) {
         if (getLeaseOccupancyStatus(data.status)) {
-          await tx.pmsUnit.update({
-            where: { id: existing.unitId },
-            data: {
-              status: PmsUnitStatus.OCCUPIED,
-              occupancyStatus: PmsOccupancyStatus.OCCUPIED,
-              updatedById: userId,
-            },
-          });
+          await syncPmsUnitOccupancy(tx, { unitId: existing.unitId, occupied: true, userId });
         } else if (
           data.status === PmsLeaseStatus.ENDED ||
           data.status === PmsLeaseStatus.TERMINATED
@@ -4617,14 +4818,7 @@ pmsRouter.patch("/leases/:leaseId", requireAuth(), async (req, res, next) => {
           });
 
           if (!otherActiveLease) {
-            await tx.pmsUnit.update({
-              where: { id: existing.unitId },
-              data: {
-                status: PmsUnitStatus.VACANT,
-                occupancyStatus: PmsOccupancyStatus.VACANT,
-                updatedById: userId,
-              },
-            });
+            await syncPmsUnitOccupancy(tx, { unitId: existing.unitId, occupied: false, userId });
           }
         }
       }
@@ -4645,11 +4839,12 @@ pmsRouter.patch("/leases/:leaseId", requireAuth(), async (req, res, next) => {
         status: lease.status,
         changedFields: Object.keys(data),
       },
+      request: req,
     });
 
     res.json({ lease: pmsLeaseResponse(lease) });
   } catch (error) {
-    next(error);
+    next(isPrismaErrorCode(error, "P2002") ? new AppError(409, "This unit already has an active PMS lease.") : error);
   }
 });
 
@@ -5326,6 +5521,41 @@ function buildPmsInspectionUpdateData(
   };
 }
 
+type PmsCurrencyTotals = {
+  currency: string;
+  incomeCollected: number;
+  outstandingRent: number;
+  overdueRent: number;
+  expenses: number;
+  maintenanceCosts: number;
+};
+
+function currencyState(currencies: Iterable<string>) {
+  const values = [...new Set([...currencies].filter(Boolean).map((value) => value.toUpperCase()))].sort();
+  return {
+    status: values.length === 0 ? "EMPTY" : values.length === 1 ? "SINGLE" : "MIXED",
+    currencies: values,
+    canCombine: values.length <= 1,
+    displayCurrency: values.length === 1 ? values[0] : null,
+    message: values.length > 1 ? "Amounts are grouped by currency and are not converted or combined." : null,
+  };
+}
+
+function emptyCurrencyTotals(currency: string): PmsCurrencyTotals {
+  return { currency, incomeCollected: 0, outstandingRent: 0, overdueRent: 0, expenses: 0, maintenanceCosts: 0 };
+}
+
+function serializeCurrencyTotals(value: PmsCurrencyTotals) {
+  return {
+    currency: value.currency,
+    incomeCollected: moneyString(value.incomeCollected),
+    outstandingRent: moneyString(value.outstandingRent),
+    overdueRent: moneyString(value.overdueRent),
+    expenses: moneyString(value.expenses),
+    maintenanceCosts: moneyString(value.maintenanceCosts),
+  };
+}
+
 async function buildPmsReportsSummary(
   companyId: string,
   propertyId?: Prisma.StringFilter,
@@ -5334,17 +5564,26 @@ async function buildPmsReportsSummary(
   const renewalWindowEnd = new Date(now);
   renewalWindowEnd.setDate(renewalWindowEnd.getDate() + 60);
   const propertyWhere = propertyId ? { propertyId } : {};
+  const overdueWhere: Prisma.PmsRentDueItemWhereInput = {
+    companyId,
+    ...propertyWhere,
+    OR: [
+      { status: PmsRentDueStatus.OVERDUE },
+      {
+        dueDate: { lt: now },
+        status: { in: [PmsRentDueStatus.UNPAID, PmsRentDueStatus.DUE_SOON, PmsRentDueStatus.PARTIALLY_PAID] },
+      },
+    ],
+  };
 
   const [
     totalUnits,
     occupiedUnits,
     vacantUnits,
-    rentCollected,
-    outstandingRent,
-    overdueRent,
-    maintenanceCosts,
-    manualIncomeEntries,
-    manualExpenseEntries,
+    rentPayments,
+    outstandingItems,
+    maintenanceRows,
+    manualEntries,
     openMaintenance,
     inProgressMaintenance,
     resolvedMaintenance,
@@ -5358,198 +5597,108 @@ async function buildPmsReportsSummary(
     expiringLeases,
   ] = await prisma.$transaction([
     prisma.pmsUnit.count({ where: { companyId, ...propertyWhere } }),
-    prisma.pmsUnit.count({
-      where: { companyId, ...propertyWhere, status: PmsUnitStatus.OCCUPIED },
+    prisma.pmsUnit.count({ where: { companyId, ...propertyWhere, occupancyStatus: PmsOccupancyStatus.OCCUPIED } }),
+    prisma.pmsUnit.count({ where: { companyId, ...propertyWhere, occupancyStatus: PmsOccupancyStatus.VACANT } }),
+    prisma.pmsRentPayment.findMany({
+      where: { companyId, ...propertyWhere, status: PmsRentPaymentStatus.CONFIRMED },
+      select: { amount: true, currency: true },
     }),
-    prisma.pmsUnit.count({
-      where: { companyId, ...propertyWhere, status: PmsUnitStatus.VACANT },
+    prisma.pmsRentDueItem.findMany({
+      where: { companyId, ...propertyWhere, status: { notIn: [PmsRentDueStatus.PAID, PmsRentDueStatus.CANCELLED] } },
+      select: { amount: true, paidAmount: true, currency: true, dueDate: true, status: true },
     }),
-    prisma.pmsRentPayment.aggregate({
-      where: {
-        companyId,
-        ...propertyWhere,
-        status: PmsRentPaymentStatus.CONFIRMED,
-      },
-      _sum: { amount: true },
+    prisma.pmsWorkOrder.findMany({
+      where: { companyId, ...propertyWhere, status: { not: PmsMaintenanceStatus.CANCELLED }, cost: { not: null } },
+      select: { cost: true, currency: true },
     }),
-    prisma.pmsRentDueItem.aggregate({
-      where: {
-        companyId,
-        ...propertyWhere,
-        status: { notIn: [PmsRentDueStatus.PAID, PmsRentDueStatus.CANCELLED] },
-      },
-      _sum: { amount: true, paidAmount: true },
+    prisma.pmsAccountingLedgerEntry.findMany({
+      where: { companyId, ...propertyWhere, source: PmsAccountingSource.MANUAL },
+      select: { amount: true, currency: true, type: true },
     }),
-    prisma.pmsRentDueItem.aggregate({
-      where: {
-        companyId,
-        ...propertyWhere,
-        OR: [
-          { status: PmsRentDueStatus.OVERDUE },
-          {
-            dueDate: { lt: now },
-            status: {
-              in: [
-                PmsRentDueStatus.UNPAID,
-                PmsRentDueStatus.DUE_SOON,
-                PmsRentDueStatus.PARTIALLY_PAID,
-              ],
-            },
-          },
-        ],
-      },
-      _sum: { amount: true, paidAmount: true },
-    }),
-    prisma.pmsWorkOrder.aggregate({
-      where: {
-        companyId,
-        ...propertyWhere,
-        status: { not: PmsMaintenanceStatus.CANCELLED },
-      },
-      _sum: { cost: true },
-    }),
-    prisma.pmsAccountingLedgerEntry.aggregate({
-      where: {
-        companyId,
-        ...propertyWhere,
-        source: PmsAccountingSource.MANUAL,
-        type: {
-          in: [
-            PmsAccountingEntryType.INCOME,
-            PmsAccountingEntryType.LATE_FEE,
-            PmsAccountingEntryType.DEPOSIT,
-            PmsAccountingEntryType.ADJUSTMENT,
-          ],
-        },
-      },
-      _sum: { amount: true },
-    }),
-    prisma.pmsAccountingLedgerEntry.aggregate({
-      where: {
-        companyId,
-        ...propertyWhere,
-        source: PmsAccountingSource.MANUAL,
-        type: {
-          in: [PmsAccountingEntryType.EXPENSE, PmsAccountingEntryType.REFUND],
-        },
-      },
-      _sum: { amount: true },
-    }),
-    prisma.pmsWorkOrder.count({
-      where: { companyId, ...propertyWhere, status: PmsMaintenanceStatus.OPEN },
-    }),
-    prisma.pmsWorkOrder.count({
-      where: {
-        companyId,
-        ...propertyWhere,
-        status: PmsMaintenanceStatus.IN_PROGRESS,
-      },
-    }),
-    prisma.pmsWorkOrder.count({
-      where: {
-        companyId,
-        ...propertyWhere,
-        status: PmsMaintenanceStatus.RESOLVED,
-      },
-    }),
-    prisma.pmsWorkOrder.count({
-      where: {
-        companyId,
-        ...propertyWhere,
-        priority: PmsMaintenancePriority.URGENT,
-      },
-    }),
-    prisma.pmsInspection.count({
-      where: { companyId, ...propertyWhere, status: PmsInspectionStatus.SCHEDULED },
-    }),
-    prisma.pmsInspection.count({
-      where: { companyId, ...propertyWhere, status: PmsInspectionStatus.COMPLETED },
-    }),
-    prisma.pmsInspection.count({
-      where: {
-        companyId,
-        ...propertyWhere,
-        status: PmsInspectionStatus.NEEDS_ACTION,
-      },
-    }),
+    prisma.pmsWorkOrder.count({ where: { companyId, ...propertyWhere, status: PmsMaintenanceStatus.OPEN } }),
+    prisma.pmsWorkOrder.count({ where: { companyId, ...propertyWhere, status: PmsMaintenanceStatus.IN_PROGRESS } }),
+    prisma.pmsWorkOrder.count({ where: { companyId, ...propertyWhere, status: PmsMaintenanceStatus.RESOLVED } }),
+    prisma.pmsWorkOrder.count({ where: { companyId, ...propertyWhere, priority: PmsMaintenancePriority.URGENT } }),
+    prisma.pmsInspection.count({ where: { companyId, ...propertyWhere, status: PmsInspectionStatus.SCHEDULED } }),
+    prisma.pmsInspection.count({ where: { companyId, ...propertyWhere, status: PmsInspectionStatus.COMPLETED } }),
+    prisma.pmsInspection.count({ where: { companyId, ...propertyWhere, status: PmsInspectionStatus.NEEDS_ACTION } }),
     prisma.pmsCommunicationTemplate.count({ where: { companyId, active: true } }),
     prisma.pmsPolicy.count({ where: { companyId, active: true } }),
-    prisma.pmsRentDueItem.findMany({
-      where: {
-        companyId,
-        ...propertyWhere,
-        OR: [
-          { status: PmsRentDueStatus.OVERDUE },
-          {
-            dueDate: { lt: now },
-            status: {
-              in: [
-                PmsRentDueStatus.UNPAID,
-                PmsRentDueStatus.DUE_SOON,
-                PmsRentDueStatus.PARTIALLY_PAID,
-              ],
-            },
-          },
-        ],
-      },
-      include: pmsRentDueItemInclude,
-      orderBy: [{ dueDate: "asc" }],
-      take: 5,
-    }),
+    prisma.pmsRentDueItem.findMany({ where: overdueWhere, include: pmsRentDueItemInclude, orderBy: { dueDate: "asc" }, take: 5 }),
     prisma.pmsLease.findMany({
-      where: {
-        companyId,
-        ...propertyWhere,
-        status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] },
-        endDate: { gte: now, lte: renewalWindowEnd },
-      },
+      where: { companyId, ...propertyWhere, status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] }, endDate: { gte: now, lte: renewalWindowEnd } },
       include: pmsLeaseInclude,
-      orderBy: [{ endDate: "asc" }],
+      orderBy: { endDate: "asc" },
       take: 5,
     }),
   ]);
 
-  const maintenanceCost = maintenanceCosts._sum.cost;
-  const incomeCollectedAmount =
-    Number(rentCollected._sum.amount ?? 0) +
-    Number(manualIncomeEntries._sum.amount ?? 0);
-  const expenseAmount =
-    Number(maintenanceCost ?? 0) +
-    Number(manualExpenseEntries._sum.amount ?? 0);
-  const outstandingRentAmount = Math.max(
-    Number(outstandingRent._sum.amount ?? 0) -
-      Number(outstandingRent._sum.paidAmount ?? 0),
-    0,
-  );
-  const overdueRentAmount = Math.max(
-    Number(overdueRent._sum.amount ?? 0) -
-      Number(overdueRent._sum.paidAmount ?? 0),
-    0,
-  );
+  const totals = new Map<string, PmsCurrencyTotals>();
+  const get = (currency: string) => {
+    const key = currency.toUpperCase();
+    const current = totals.get(key) ?? emptyCurrencyTotals(key);
+    totals.set(key, current);
+    return current;
+  };
+  for (const row of rentPayments) get(row.currency).incomeCollected += Number(row.amount);
+  for (const row of outstandingItems) {
+    const amount = Math.max(Number(row.amount) - Number(row.paidAmount), 0);
+    get(row.currency).outstandingRent += amount;
+    const isOverdue = row.status === PmsRentDueStatus.OVERDUE || row.dueDate < now;
+    if (isOverdue) get(row.currency).overdueRent += amount;
+  }
+  for (const row of maintenanceRows) {
+    const amount = Number(row.cost ?? 0);
+    get(row.currency).maintenanceCosts += amount;
+    get(row.currency).expenses += amount;
+  }
+
+  for (const row of manualEntries) {
+    const amount = Number(row.amount);
+    const target = get(row.currency);
+    if (PMS_ACCOUNTING_INCOME_ENTRY_TYPES.has(row.type)) {
+      target.incomeCollected += amount;
+    } else if (PMS_ACCOUNTING_EXPENSE_ENTRY_TYPES.has(row.type)) {
+      target.expenses += amount;
+    }
+  }
+  const totalsByCurrency = [...totals.values()].sort((a, b) => a.currency.localeCompare(b.currency)).map(serializeCurrencyTotals);
+  const state = currencyState(totals.keys());
+  const single = state.status === "SINGLE" ? totalsByCurrency[0] : null;
 
   return {
     accounting: {
-      incomeCollected: moneyString(incomeCollectedAmount),
-      outstandingRent: moneyString(outstandingRentAmount),
-      overdueRent: moneyString(overdueRentAmount),
-      expenses: moneyString(expenseAmount),
-      maintenanceCosts: decimalToString(maintenanceCost),
+      currencyState: state,
+      totalsByCurrency,
+      incomeCollected: single?.incomeCollected ?? null,
+      outstandingRent: single?.outstandingRent ?? null,
+      overdueRent: single?.overdueRent ?? null,
+      expenses: single?.expenses ?? null,
+      maintenanceCosts: single?.maintenanceCosts ?? null,
+      currency: single?.currency ?? null,
       lateFeeFoundationEnabled: false,
-      lateFeeNote:
-        "Late fee policy records are available, but automatic fee posting is not enabled yet.",
+      lateFeeNote: "Late fee policy records are available, but automatic fee posting is not enabled yet.",
     },
     reports: {
       occupancy: {
         totalUnits,
         occupiedUnits,
         vacantUnits,
-        occupancyRate:
-          totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 1000) / 10 : 0,
+        occupancyRate: totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 1000) / 10 : 0,
+        sourceOfTruth: "ACTIVE_OR_EXPIRING_LEASE",
       },
       revenue: {
-        collected: moneyString(incomeCollectedAmount),
-        outstanding: moneyString(outstandingRentAmount),
-        overdue: moneyString(overdueRentAmount),
+        currencyState: state,
+        byCurrency: totalsByCurrency.map((value) => ({
+          currency: value.currency,
+          collected: value.incomeCollected,
+          outstanding: value.outstandingRent,
+          overdue: value.overdueRent,
+        })),
+        collected: single?.incomeCollected ?? null,
+        outstanding: single?.outstandingRent ?? null,
+        overdue: single?.overdueRent ?? null,
+        currency: single?.currency ?? null,
       },
       overdueTopList: overdueTopList.map(pmsRentDueItemResponse),
       maintenance: {
@@ -5557,20 +5706,15 @@ async function buildPmsReportsSummary(
         inProgress: inProgressMaintenance,
         resolved: resolvedMaintenance,
         urgent: urgentMaintenance,
-        costs: decimalToString(maintenanceCost),
+        currencyState: state,
+        costsByCurrency: totalsByCurrency.map((value) => ({ currency: value.currency, amount: value.maintenanceCosts })),
+        costs: single?.maintenanceCosts ?? null,
+        currency: single?.currency ?? null,
       },
       leaseRenewals: expiringLeases.map(pmsLeaseResponse),
-      inspections: {
-        scheduled: scheduledInspections,
-        completed: completedInspections,
-        needsAction: needsActionInspections,
-      },
-      communications: {
-        activeTemplates: communicationTemplateCount,
-      },
-      policies: {
-        activePolicies: activePolicyCount,
-      },
+      inspections: { scheduled: scheduledInspections, completed: completedInspections, needsAction: needsActionInspections },
+      communications: { activeTemplates: communicationTemplateCount },
+      policies: { activePolicies: activePolicyCount },
     },
   };
 }
@@ -6196,6 +6340,46 @@ function buildPmsAccountingLedgerUpdateData(
   };
 }
 
+type PmsStatementCurrencyTotal = {
+  currency: string;
+  rentCollected: number;
+  manualIncome: number;
+  adjustments: number;
+  income: number;
+  outstandingRent: number;
+  expenses: number;
+  maintenanceCosts: number;
+  netAmount: number;
+  depositCollected: number;
+  depositHeld: number;
+  depositRefunded: number;
+  depositDeductions: number;
+};
+
+function emptyStatementCurrencyTotal(currency: string): PmsStatementCurrencyTotal {
+  return {
+    currency,
+    rentCollected: 0,
+    manualIncome: 0,
+    adjustments: 0,
+    income: 0,
+    outstandingRent: 0,
+    expenses: 0,
+    maintenanceCosts: 0,
+    netAmount: 0,
+    depositCollected: 0,
+    depositHeld: 0,
+    depositRefunded: 0,
+    depositDeductions: 0,
+  };
+}
+
+function serializeStatementCurrencyTotal(total: PmsStatementCurrencyTotal) {
+  return Object.fromEntries(
+    Object.entries(total).map(([key, value]) => [key, key === "currency" ? value : moneyString(value as number)]),
+  ) as Record<keyof PmsStatementCurrencyTotal, string>;
+}
+
 async function buildPmsOwnerStatement(input: {
   companyId: string;
   propertyId?: string;
@@ -6204,13 +6388,16 @@ async function buildPmsOwnerStatement(input: {
   dateFrom?: Date;
   dateTo?: Date;
   month?: string;
+  currency?: string;
 }) {
   const range = getPmsStatementRange(input);
   const closedDateFilter = buildPmsAccountingDateFilter({ dateFrom: range.start, dateTo: range.end });
   const propertyId = input.propertyId ?? input.propertyScope;
+  const currencyWhere = input.currency ? { currency: input.currency } : {};
   const paymentWhere: Prisma.PmsRentPaymentWhereInput = {
     companyId: input.companyId,
     status: PmsRentPaymentStatus.CONFIRMED,
+    ...currencyWhere,
     ...(propertyId ? { propertyId } : {}),
     ...(input.unitId ? { unitId: input.unitId } : {}),
     ...(closedDateFilter ? { paidAt: closedDateFilter } : {}),
@@ -6218,6 +6405,7 @@ async function buildPmsOwnerStatement(input: {
   const ledgerWhere: Prisma.PmsAccountingLedgerEntryWhereInput = {
     companyId: input.companyId,
     source: PmsAccountingSource.MANUAL,
+    ...currencyWhere,
     ...(propertyId ? { propertyId } : {}),
     ...(input.unitId ? { unitId: input.unitId } : {}),
     ...(closedDateFilter ? { transactionDate: closedDateFilter } : {}),
@@ -6226,20 +6414,15 @@ async function buildPmsOwnerStatement(input: {
     companyId: input.companyId,
     status: { not: PmsMaintenanceStatus.CANCELLED },
     cost: { not: null },
+    ...currencyWhere,
     ...(propertyId ? { propertyId } : {}),
     ...(input.unitId ? { unitId: input.unitId } : {}),
-    ...(closedDateFilter
-      ? {
-          OR: [
-            { resolvedAt: closedDateFilter },
-            { resolvedAt: null, updatedAt: closedDateFilter },
-          ],
-        }
-      : {}),
+    ...(closedDateFilter ? { OR: [{ resolvedAt: closedDateFilter }, { resolvedAt: null, updatedAt: closedDateFilter }] } : {}),
   };
   const rentDueWhere: Prisma.PmsRentDueItemWhereInput = {
     companyId: input.companyId,
     status: { notIn: [PmsRentDueStatus.PAID, PmsRentDueStatus.CANCELLED] },
+    ...currencyWhere,
     ...(propertyId ? { propertyId } : {}),
     ...(input.unitId ? { unitId: input.unitId } : {}),
     ...(closedDateFilter ? { dueDate: closedDateFilter } : {}),
@@ -6248,37 +6431,16 @@ async function buildPmsOwnerStatement(input: {
     companyId: input.companyId,
     status: { in: [PmsLeaseStatus.ACTIVE, PmsLeaseStatus.EXPIRING] },
     securityDeposit: { not: null },
+    ...currencyWhere,
     ...(propertyId ? { propertyId } : {}),
     ...(input.unitId ? { unitId: input.unitId } : {}),
   };
 
-  const [
-    rentPayments,
-    manualEntries,
-    maintenanceCosts,
-    outstandingItems,
-    securityDeposits,
-  ] = await prisma.$transaction([
-    prisma.pmsRentPayment.findMany({
-      where: paymentWhere,
-      include: pmsRentPaymentInclude,
-      orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }],
-    }),
-    prisma.pmsAccountingLedgerEntry.findMany({
-      where: ledgerWhere,
-      include: pmsAccountingLedgerEntryInclude,
-      orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }],
-    }),
-    prisma.pmsWorkOrder.findMany({
-      where: workOrderWhere,
-      include: pmsWorkOrderInclude,
-      orderBy: [{ resolvedAt: "asc" }, { updatedAt: "asc" }],
-    }),
-    prisma.pmsRentDueItem.findMany({
-      where: rentDueWhere,
-      include: pmsRentDueItemInclude,
-      orderBy: [{ dueDate: "asc" }],
-    }),
+  const [rentPayments, manualEntries, maintenanceCosts, outstandingItems, securityDeposits] = await prisma.$transaction([
+    prisma.pmsRentPayment.findMany({ where: paymentWhere, include: pmsRentPaymentInclude, orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }] }),
+    prisma.pmsAccountingLedgerEntry.findMany({ where: ledgerWhere, include: pmsAccountingLedgerEntryInclude, orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }] }),
+    prisma.pmsWorkOrder.findMany({ where: workOrderWhere, include: pmsWorkOrderInclude, orderBy: [{ resolvedAt: "asc" }, { updatedAt: "asc" }] }),
+    prisma.pmsRentDueItem.findMany({ where: rentDueWhere, include: pmsRentDueItemInclude, orderBy: { dueDate: "asc" } }),
     prisma.pmsLease.findMany({
       where: activeLeaseWhere,
       select: { id: true, title: true, securityDeposit: true, currency: true, tenant: { select: { id: true, fullName: true } }, unit: { select: { id: true, unitNumber: true } } },
@@ -6286,55 +6448,67 @@ async function buildPmsOwnerStatement(input: {
   ]);
 
   const [property, unit] = await Promise.all([
-    input.propertyId
-      ? prisma.pmsProperty.findUnique({ where: { id: input.propertyId }, select: { id: true, name: true, code: true } })
-      : Promise.resolve(null),
-    input.unitId
-      ? prisma.pmsUnit.findUnique({ where: { id: input.unitId }, select: { id: true, unitNumber: true, unitName: true } })
-      : Promise.resolve(null),
+    input.propertyId ? prisma.pmsProperty.findUnique({ where: { id: input.propertyId }, select: { id: true, name: true, code: true } }) : Promise.resolve(null),
+    input.unitId ? prisma.pmsUnit.findUnique({ where: { id: input.unitId }, select: { id: true, unitNumber: true, unitName: true } }) : Promise.resolve(null),
   ]);
 
-  const rentCollected = sumDecimal(rentPayments.map((payment) => payment.amount));
-  const manualIncome = sumDecimal(manualEntries.filter((entry) => entry.type === PmsAccountingEntryType.INCOME || entry.type === PmsAccountingEntryType.LATE_FEE).map((entry) => entry.amount));
-  const manualExpenses = sumDecimal(manualEntries.filter((entry) => isPmsAccountingExpenseType(entry.type)).map((entry) => entry.amount));
-  const manualAdjustments = sumDecimal(manualEntries.filter((entry) => entry.type === PmsAccountingEntryType.ADJUSTMENT).map((entry) => entry.amount));
-  const depositCollected = sumDecimal(manualEntries.filter((entry) => entry.type === PmsAccountingEntryType.DEPOSIT && !entry.category.toLowerCase().includes("refund")).map((entry) => entry.amount));
-  const depositRefunded = sumDecimal(manualEntries.filter((entry) => entry.type === PmsAccountingEntryType.REFUND || (entry.type === PmsAccountingEntryType.DEPOSIT && entry.category.toLowerCase().includes("refund"))).map((entry) => entry.amount));
-  const maintenanceTotal = sumDecimal(maintenanceCosts.map((workOrder) => workOrder.cost));
-  const outstandingRent = outstandingItems.reduce((total, item) => {
-    return total + Math.max(Number(item.amount) - Number(item.paidAmount), 0);
-  }, 0);
-  const depositHeldFoundation = sumDecimal(securityDeposits.map((lease) => lease.securityDeposit)) + depositCollected - depositRefunded;
-  const income = rentCollected + manualIncome + manualAdjustments;
-  const expenses = manualExpenses + maintenanceTotal;
-  const netAmount = income - expenses;
+  const totals = new Map<string, PmsStatementCurrencyTotal>();
+  const get = (currency: string) => {
+    const key = currency.toUpperCase();
+    const current = totals.get(key) ?? emptyStatementCurrencyTotal(key);
+    totals.set(key, current);
+    return current;
+  };
+  for (const payment of rentPayments) {
+    const target = get(payment.currency);
+    target.rentCollected += Number(payment.amount);
+    target.income += Number(payment.amount);
+  }
+  for (const entry of manualEntries) {
+    const target = get(entry.currency);
+    const amount = Number(entry.amount);
+    if (entry.type === PmsAccountingEntryType.INCOME || entry.type === PmsAccountingEntryType.LATE_FEE) {
+      target.manualIncome += amount;
+      target.income += amount;
+    } else if (entry.type === PmsAccountingEntryType.ADJUSTMENT) {
+      target.adjustments += amount;
+      target.income += amount;
+    } else if (entry.type === PmsAccountingEntryType.DEPOSIT && !entry.category.toLowerCase().includes("refund")) {
+      target.depositCollected += amount;
+      target.depositHeld += amount;
+    } else if (entry.type === PmsAccountingEntryType.REFUND || (entry.type === PmsAccountingEntryType.DEPOSIT && entry.category.toLowerCase().includes("refund"))) {
+      target.depositRefunded += amount;
+      target.depositHeld -= amount;
+      if (entry.type === PmsAccountingEntryType.REFUND) target.expenses += amount;
+    } else if (entry.type === PmsAccountingEntryType.EXPENSE) {
+      target.expenses += amount;
+    }
+  }
+  for (const workOrder of maintenanceCosts) {
+    const target = get(workOrder.currency);
+    const amount = Number(workOrder.cost ?? 0);
+    target.maintenanceCosts += amount;
+    target.expenses += amount;
+  }
+  for (const item of outstandingItems) {
+    get(item.currency).outstandingRent += Math.max(Number(item.amount) - Number(item.paidAmount), 0);
+  }
+  for (const lease of securityDeposits) {
+    get(lease.currency).depositHeld += Number(lease.securityDeposit ?? 0);
+  }
+  for (const target of totals.values()) {
+    target.depositHeld = Math.max(target.depositHeld, 0);
+    target.netAmount = target.income - target.expenses;
+  }
+  const totalsByCurrency = [...totals.values()].sort((a, b) => a.currency.localeCompare(b.currency)).map(serializeStatementCurrencyTotal);
+  const state = currencyState(totals.keys());
 
   return {
-    period: {
-      month: input.month ?? null,
-      from: range.start ?? null,
-      to: range.end ?? null,
-    },
-    scope: {
-      companyId: input.companyId,
-      propertyId: input.propertyId ?? null,
-      unitId: input.unitId ?? null,
-      property,
-      unit,
-    },
-    totals: {
-      rentCollected: moneyString(rentCollected),
-      manualIncome: moneyString(manualIncome),
-      income: moneyString(income),
-      outstandingRent: moneyString(outstandingRent),
-      expenses: moneyString(expenses),
-      maintenanceCosts: moneyString(maintenanceTotal),
-      netAmount: moneyString(netAmount),
-      depositCollected: moneyString(depositCollected),
-      depositHeld: moneyString(Math.max(depositHeldFoundation, 0)),
-      depositRefunded: moneyString(depositRefunded),
-      depositDeductions: moneyString(0),
-    },
+    period: { month: input.month ?? null, from: range.start ?? null, to: range.end ?? null },
+    scope: { companyId: input.companyId, propertyId: input.propertyId ?? null, unitId: input.unitId ?? null, property, unit },
+    currencyState: state,
+    totalsByCurrency,
+    totals: state.status === "SINGLE" ? totalsByCurrency[0] : null,
     income: [
       ...rentPayments.map((payment) => ({
         source: PmsAccountingSource.RENT_PAYMENT,
@@ -6348,9 +6522,7 @@ async function buildPmsOwnerStatement(input: {
         property: payment.property,
         unit: payment.unit,
       })),
-      ...manualEntries
-        .filter((entry) => isPmsAccountingIncomeType(entry.type))
-        .map(pmsAccountingLedgerEntryResponse),
+      ...manualEntries.filter((entry) => isPmsAccountingIncomeType(entry.type)).map(pmsAccountingLedgerEntryResponse),
     ],
     expenses: [
       ...maintenanceCosts.map((workOrder) => ({
@@ -6365,9 +6537,7 @@ async function buildPmsOwnerStatement(input: {
         unit: workOrder.unit,
         tenant: workOrder.tenant,
       })),
-      ...manualEntries
-        .filter((entry) => isPmsAccountingExpenseType(entry.type))
-        .map(pmsAccountingLedgerEntryResponse),
+      ...manualEntries.filter((entry) => isPmsAccountingExpenseType(entry.type)).map(pmsAccountingLedgerEntryResponse),
     ],
     outstanding: outstandingItems.map(pmsRentDueItemResponse),
     deposits: securityDeposits.map((lease) => ({
@@ -6378,6 +6548,11 @@ async function buildPmsOwnerStatement(input: {
       securityDeposit: decimalToString(lease.securityDeposit),
       currency: lease.currency,
     })),
+    includedRecordIds: {
+      rentPaymentIds: rentPayments.map((item) => item.id),
+      accountingEntryIds: manualEntries.map((item) => item.id),
+      maintenanceWorkOrderIds: maintenanceCosts.map((item) => item.id),
+    },
   };
 }
 
@@ -6435,6 +6610,7 @@ pmsRouter.get("/accounting/ledger.csv", requireAuth(), async (req, res, next) =>
     const query = pmsAccountingQuerySchema.parse({ ...req.query, take: 200, skip: 0 });
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
     assertCanViewPmsAccounting(access.member);
+    assertCanExportPmsData(access.member, "accounting");
     await assertPmsFilterLinksBelongToCompany({
       companyId: access.company.id,
       propertyId: query.propertyId,
@@ -6585,6 +6761,263 @@ pmsRouter.patch("/accounting/ledger/:ledgerEntryId", requireAuth(), async (req, 
   }
 });
 
+const pmsOwnerStatementInclude = {
+  property: { select: { id: true, name: true, code: true } },
+  generatedBy: { select: { id: true, name: true, email: true } },
+  reviewedBy: { select: { id: true, name: true, email: true } },
+  approvedBy: { select: { id: true, name: true, email: true } },
+  publishedBy: { select: { id: true, name: true, email: true } },
+  voidedBy: { select: { id: true, name: true, email: true } },
+} satisfies Prisma.PmsOwnerStatementInclude;
+
+type PmsOwnerStatementWithRelations = Prisma.PmsOwnerStatementGetPayload<{
+  include: typeof pmsOwnerStatementInclude;
+}>;
+
+function pmsOwnerStatementResponse(statement: PmsOwnerStatementWithRelations) {
+  return {
+    ...statement,
+    openingBalance: decimalToString(statement.openingBalance),
+    income: decimalToString(statement.income),
+    expenses: decimalToString(statement.expenses),
+    adjustments: decimalToString(statement.adjustments),
+    closingBalance: decimalToString(statement.closingBalance),
+    immutableSnapshot: statement.snapshot,
+  };
+}
+
+function statementPeriod(input: z.infer<typeof pmsOwnerStatementCreateSchema>) {
+  const range = getPmsStatementRange(input);
+  if (!range.start || !range.end) throw new AppError(400, "A complete statement period is required.");
+  const periodEnd = input.month ? new Date(range.end.getTime() - 1) : range.end;
+  return { periodStart: range.start, periodEnd };
+}
+
+async function buildPersistentOwnerStatementData(input: {
+  companyId: string;
+  propertyId: string;
+  periodStart: Date;
+  periodEnd: Date;
+  currency: string;
+}) {
+  const current = await buildPmsOwnerStatement({
+    companyId: input.companyId,
+    propertyId: input.propertyId,
+    dateFrom: input.periodStart,
+    dateTo: input.periodEnd,
+    currency: input.currency,
+  });
+  const history = await buildPmsOwnerStatement({
+    companyId: input.companyId,
+    propertyId: input.propertyId,
+    dateTo: new Date(input.periodStart.getTime() - 1),
+    currency: input.currency,
+  });
+  const currentTotals = current.totals as Record<string, string> | null;
+  const historyTotals = history.totals as Record<string, string> | null;
+  const openingBalance = Number(historyTotals?.netAmount ?? 0);
+  const income = Number(currentTotals?.rentCollected ?? 0) + Number(currentTotals?.manualIncome ?? 0);
+  const expenses = Number(currentTotals?.expenses ?? 0);
+  const adjustments = Number(currentTotals?.adjustments ?? 0);
+  const closingBalance = openingBalance + income - expenses + adjustments;
+  const snapshot = JSON.parse(JSON.stringify({
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    currencyArchitecture: "GROUPED_NO_CONVERSION",
+    period: { from: input.periodStart, to: input.periodEnd },
+    financials: {
+      openingBalance: moneyString(openingBalance),
+      income: moneyString(income),
+      expenses: moneyString(expenses),
+      adjustments: moneyString(adjustments),
+      closingBalance: moneyString(closingBalance),
+    },
+    statement: current,
+  })) as Prisma.InputJsonValue;
+  return {
+    current,
+    openingBalance,
+    income,
+    expenses,
+    adjustments,
+    closingBalance,
+    snapshot,
+  };
+}
+
+pmsRouter.get("/accounting/owner-statements", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+    const query = pmsOwnerStatementListQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    assertCanViewPmsAccounting(access.member);
+    const propertyId = pmsRequestedOrScopedPropertyIdWhere(access, query.propertyId);
+    const where: Prisma.PmsOwnerStatementWhereInput = {
+      companyId: access.company.id,
+      ...(propertyId ? { propertyId } : {}),
+      ...(query.status !== "ALL" ? { status: query.status } : {}),
+      ...(query.currency ? { currency: query.currency } : {}),
+    };
+    const [statements, total] = await prisma.$transaction([
+      prisma.pmsOwnerStatement.findMany({ where, include: pmsOwnerStatementInclude, orderBy: [{ periodStart: "desc" }, { revision: "desc" }], take: query.take, skip: query.skip }),
+      prisma.pmsOwnerStatement.count({ where }),
+    ]);
+    res.json({ workspace: pmsWorkspacePayload(access), statements: statements.map(pmsOwnerStatementResponse), pagination: { take: query.take, skip: query.skip, count: statements.length, total } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.get("/accounting/owner-statements/:statementId", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+    const { statementId } = pmsOwnerStatementParamsSchema.parse(req.params);
+    const statement = await prisma.pmsOwnerStatement.findUnique({ where: { id: statementId }, include: pmsOwnerStatementInclude });
+    if (!statement) throw new AppError(404, "Owner statement not found.");
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: statement.companyId });
+    assertCanViewPmsAccounting(access.member);
+    assertCanAccessPmsPropertyScope(access, statement.propertyId);
+    res.json({ workspace: pmsWorkspacePayload(access), statement: pmsOwnerStatementResponse(statement) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/accounting/owner-statements", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+    const data = pmsOwnerStatementCreateSchema.parse(req.body);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
+    assertCanManagePmsAccounting(access.member);
+    assertCanAccessPmsPropertyScope(access, data.propertyId);
+    await assertPmsFilterLinksBelongToCompany({ companyId: access.company.id, propertyId: data.propertyId });
+    const { periodStart, periodEnd } = statementPeriod(data);
+    let revision = 1;
+    if (data.revisionOfId) {
+      const prior = await prisma.pmsOwnerStatement.findFirst({
+        where: { id: data.revisionOfId, companyId: access.company.id, propertyId: data.propertyId, currency: data.currency, status: PmsOwnerStatementStatus.VOID },
+      });
+      if (!prior) throw new AppError(409, "A statement revision requires a matching void statement.");
+      if (prior.periodStart.getTime() !== periodStart.getTime() || prior.periodEnd.getTime() !== periodEnd.getTime()) {
+        throw new AppError(409, "A statement revision must preserve the original reporting period.");
+      }
+      revision = prior.revision + 1;
+    }
+    const activeDuplicate = await prisma.pmsOwnerStatement.findFirst({
+      where: { companyId: access.company.id, propertyId: data.propertyId, periodStart, periodEnd, currency: data.currency, status: { not: PmsOwnerStatementStatus.VOID } },
+      select: { id: true },
+    });
+    if (activeDuplicate) throw new AppError(409, "An active statement already exists for this property, period, and currency. Void it before creating a revision.");
+    const generated = await buildPersistentOwnerStatementData({ companyId: access.company.id, propertyId: data.propertyId, periodStart, periodEnd, currency: data.currency });
+    const statement = await prisma.$transaction(async (tx) => {
+      const created = await tx.pmsOwnerStatement.create({
+        data: {
+          companyId: access.company.id,
+          propertyId: data.propertyId,
+          status: PmsOwnerStatementStatus.GENERATED,
+          revision,
+          revisionOfId: data.revisionOfId ?? null,
+          ownerReference: normalizeNullableText(data.ownerReference),
+          periodStart,
+          periodEnd,
+          currency: data.currency,
+          includedRentPaymentIds: generated.current.includedRecordIds.rentPaymentIds,
+          includedAccountingEntryIds: generated.current.includedRecordIds.accountingEntryIds,
+          includedMaintenanceWorkOrderIds: generated.current.includedRecordIds.maintenanceWorkOrderIds,
+          openingBalance: generated.openingBalance,
+          income: generated.income,
+          expenses: generated.expenses,
+          adjustments: generated.adjustments,
+          closingBalance: generated.closingBalance,
+          snapshot: generated.snapshot,
+          snapshotVersion: 1,
+          generatedAt: new Date(),
+          generatedById: req.user!.id,
+        },
+        include: pmsOwnerStatementInclude,
+      });
+      await recordDomainAuditEvent(tx, {
+        companyId: access.company.id,
+        domain: DomainAuditDomain.PMS,
+        entityType: "pmsOwnerStatement",
+        entityId: created.id,
+        action: "generate",
+        actorId: req.user!.id,
+        changedFields: ["status", "snapshot"],
+        metadata: { propertyId: created.propertyId, periodStart, periodEnd, currency: created.currency, revision: created.revision },
+        ...requestAuditContext(req),
+      });
+      return created;
+    });
+    res.status(201).json({ statement: pmsOwnerStatementResponse(statement) });
+  } catch (error) {
+    next(isPrismaErrorCode(error, "P2002")
+      ? new AppError(409, "An active statement already exists for this property, period, and currency. Void it before creating a revision.")
+      : error);
+  }
+});
+
+const ownerStatementTransitions: Partial<Record<PmsOwnerStatementStatus, PmsOwnerStatementStatus[]>> = {
+  [PmsOwnerStatementStatus.DRAFT]: [PmsOwnerStatementStatus.GENERATED, PmsOwnerStatementStatus.VOID],
+  [PmsOwnerStatementStatus.GENERATED]: [PmsOwnerStatementStatus.NEEDS_REVIEW, PmsOwnerStatementStatus.VOID],
+  [PmsOwnerStatementStatus.NEEDS_REVIEW]: [PmsOwnerStatementStatus.APPROVED, PmsOwnerStatementStatus.VOID],
+  [PmsOwnerStatementStatus.APPROVED]: [PmsOwnerStatementStatus.PUBLISHED, PmsOwnerStatementStatus.VOID],
+  [PmsOwnerStatementStatus.PUBLISHED]: [PmsOwnerStatementStatus.VOID],
+};
+
+pmsRouter.post("/accounting/owner-statements/:statementId/transition", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+    const { statementId } = pmsOwnerStatementParamsSchema.parse(req.params);
+    const data = pmsOwnerStatementTransitionSchema.parse(req.body);
+    const existing = await prisma.pmsOwnerStatement.findUnique({ where: { id: statementId } });
+    if (!existing) throw new AppError(404, "Owner statement not found.");
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
+    assertCanManagePmsAccounting(access.member);
+    assertCanAccessPmsPropertyScope(access, existing.propertyId);
+    if (!(ownerStatementTransitions[existing.status] ?? []).includes(data.status)) {
+      throw new AppError(409, `Owner statement cannot transition from ${existing.status} to ${data.status}.`);
+    }
+    const now = new Date();
+    const statement = await prisma.$transaction(async (tx) => {
+      const updated = await tx.pmsOwnerStatement.update({
+        where: { id: existing.id },
+        data: {
+          status: data.status,
+          ...(data.status === PmsOwnerStatementStatus.APPROVED
+            ? {
+                reviewedAt: now,
+                reviewedById: req.user!.id,
+                approvedAt: now,
+                approvedById: req.user!.id,
+              }
+            : {}),
+          ...(data.status === PmsOwnerStatementStatus.PUBLISHED ? { publishedAt: now, publishedById: req.user!.id } : {}),
+          ...(data.status === PmsOwnerStatementStatus.VOID ? { voidedAt: now, voidedById: req.user!.id } : {}),
+        },
+        include: pmsOwnerStatementInclude,
+      });
+      await recordDomainAuditEvent(tx, {
+        companyId: existing.companyId,
+        domain: DomainAuditDomain.PMS,
+        entityType: "pmsOwnerStatement",
+        entityId: existing.id,
+        action: "status_transition",
+        actorId: req.user!.id,
+        changedFields: ["status"],
+        beforeMetadata: { status: existing.status },
+        afterMetadata: { status: updated.status },
+        metadata: { propertyId: existing.propertyId, currency: existing.currency, revision: existing.revision },
+        ...requestAuditContext(req),
+      });
+      return updated;
+    });
+    res.json({ statement: pmsOwnerStatementResponse(statement) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 pmsRouter.get("/accounting/property-summary", requireAuth(), async (req, res, next) => {
   try {
     if (!req.user) throw new AppError(401, "Unauthorized");
@@ -6603,6 +7036,7 @@ pmsRouter.get("/accounting/property-summary", requireAuth(), async (req, res, ne
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
       month: query.month,
+      currency: query.currency,
     });
 
     res.json({ workspace: { company: access.company, member: access.member, entitlement: access.entitlement }, summary: statement.totals, statement });
@@ -6629,6 +7063,7 @@ pmsRouter.get("/accounting/owner-statement", requireAuth(), async (req, res, nex
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
       month: query.month,
+      currency: query.currency,
     });
 
     res.json({ workspace: { company: access.company, member: access.member, entitlement: access.entitlement }, statement });
@@ -6804,6 +7239,7 @@ async function buildPmsImportPreview(input: {
   companyId: string;
   type: PmsImportType;
   csvText: string;
+  allowSensitiveTenantData: boolean;
 }): Promise<PmsImportPreview> {
   const parsed = parseCsvText(input.csvText);
   const companyId = input.companyId;
@@ -6877,6 +7313,13 @@ async function buildPmsImportPreview(input: {
       const bedrooms = parseOptionalNumber(csvValue(row, ["bedrooms", "beds"]));
       const bathrooms = parseOptionalNumber(csvValue(row, ["bathrooms", "baths"]));
       const areaSqm = parseOptionalNumber(csvValue(row, ["areaSqm", "area"]));
+      const importedStatus = Object.values(PmsUnitStatus).includes(csvValue(row, ["status"]).toUpperCase() as PmsUnitStatus)
+        ? csvValue(row, ["status"]).toUpperCase() as PmsUnitStatus
+        : PmsUnitStatus.VACANT;
+      if (importedStatus === PmsUnitStatus.OCCUPIED) {
+        errors.push("Occupied status cannot be imported directly. Occupancy is derived from active leases.");
+      }
+      const operationalStatus = operationalStatusFromLegacyUnitStatus(importedStatus);
       return importRow(rowNumber, {
         companyId,
         propertyId: property?.id,
@@ -6886,10 +7329,9 @@ async function buildPmsImportPreview(input: {
         bedrooms: bedrooms ?? null,
         bathrooms: bathrooms ?? null,
         areaSqm: areaSqm ?? null,
-        status: Object.values(PmsUnitStatus).includes(csvValue(row, ["status"]).toUpperCase() as PmsUnitStatus)
-          ? csvValue(row, ["status"]).toUpperCase()
-          : PmsUnitStatus.VACANT,
-        occupancyStatus: null,
+        status: compatibilityUnitStatus(operationalStatus, PmsOccupancyStatus.VACANT),
+        occupancyStatus: PmsOccupancyStatus.VACANT,
+        operationalStatus,
         rentAmount: rentAmount ?? null,
         currency: (csvValue(row, ["currency"]) || "OMR").toUpperCase(),
         notes: csvValue(row, ["notes"]) || null,
@@ -6909,8 +7351,13 @@ async function buildPmsImportPreview(input: {
     const rows = parsed.rows.map(({ rowNumber, row }) => {
       const fullName = csvValue(row, ["fullName", "tenantName", "name"]);
       const email = csvValue(row, ["email", "tenantEmail"]);
+      const nationalId = csvValue(row, ["nationalId", "idNumber"]);
+      const passportNumber = csvValue(row, ["passportNumber", "passport"]);
       const errors: string[] = [];
       if (!fullName) errors.push("Tenant full name is required.");
+      if (!input.allowSensitiveTenantData && (nationalId || passportNumber)) {
+        errors.push("Sensitive tenant identity import requires sensitive-data access.");
+      }
       if (email) {
         const key = email.toLowerCase();
         if (existingEmails.has(key)) errors.push("Tenant email already exists in this company.");
@@ -6923,8 +7370,8 @@ async function buildPmsImportPreview(input: {
         phone: csvValue(row, ["phone", "tenantPhone"]) || null,
         email: email || null,
         nationality: csvValue(row, ["nationality"]) || null,
-        nationalId: csvValue(row, ["nationalId", "idNumber"]) || null,
-        passportNumber: csvValue(row, ["passportNumber", "passport"]) || null,
+        nationalId: input.allowSensitiveTenantData ? nationalId || null : null,
+        passportNumber: input.allowSensitiveTenantData ? passportNumber || null : null,
         emergencyContactName: csvValue(row, ["emergencyContactName"]) || null,
         emergencyContactPhone: csvValue(row, ["emergencyContactPhone"]) || null,
         emergencyContactEmail: csvValue(row, ["emergencyContactEmail"]) || null,
@@ -7056,12 +7503,6 @@ async function commitPmsImportRows(input: {
         await tx.pmsTenant.create({ data: { ...data, createdById: input.userId, updatedById: input.userId } });
       } else if (input.type === PmsImportType.LEASES) {
         await tx.pmsLease.create({ data: { ...data, startDate: new Date(data.startDate), endDate: data.endDate ? new Date(data.endDate) : null, createdById: input.userId, updatedById: input.userId } });
-        if (data.unitId) {
-          await tx.pmsUnit.updateMany({
-            where: { id: data.unitId, companyId: input.companyId },
-            data: { status: PmsUnitStatus.OCCUPIED, occupancyStatus: PmsOccupancyStatus.OCCUPIED, updatedById: input.userId },
-          });
-        }
       }
     }
 
@@ -7123,7 +7564,12 @@ pmsRouter.post("/imports/preview", requireAuth(), async (req, res, next) => {
     const access = await resolvePmsAccessOrThrow({ userId: req.user!.id, companyId: data.companyId });
     assertCanManagePmsImports(access.member);
     assertCanRunPmsBulkImport(access);
-    const preview = await buildPmsImportPreview({ companyId: access.company.id, type: data.type, csvText: data.csvText });
+    const preview = await buildPmsImportPreview({
+      companyId: access.company.id,
+      type: data.type,
+      csvText: data.csvText,
+      allowSensitiveTenantData: canViewPmsSensitiveData(access.member),
+    });
     res.json({ preview });
   } catch (error) {
     next(error);
@@ -7136,7 +7582,12 @@ pmsRouter.post("/imports/commit", requireAuth(), async (req, res, next) => {
     const access = await resolvePmsAccessOrThrow({ userId: req.user!.id, companyId: data.companyId });
     assertCanManagePmsImports(access.member);
     assertCanRunPmsBulkImport(access);
-    const preview = await buildPmsImportPreview({ companyId: access.company.id, type: data.type, csvText: data.csvText });
+    const preview = await buildPmsImportPreview({
+      companyId: access.company.id,
+      type: data.type,
+      csvText: data.csvText,
+      allowSensitiveTenantData: canViewPmsSensitiveData(access.member),
+    });
     if (preview.validRows.length === 0) {
       const batch = await prisma.pmsImportBatch.create({
         data: {
@@ -7177,6 +7628,13 @@ pmsRouter.get("/exports/:type.csv", requireAuth(), async (req, res, next) => {
     const access = await resolvePmsAccessOrThrow({ userId: req.user!.id, companyId: query.companyId });
     const exportKey = pmsExportKey(type);
     assertCanExportPmsData(access.member, exportKey);
+    if (query.includeSensitive) {
+      if (type !== "tenants") throw new AppError(400, "Sensitive export is only available for tenant exports.");
+      assertCanExportPmsSensitiveData(access.member);
+      if (query.sensitiveExportConfirmation !== "EXPORT_SENSITIVE_TENANT_DATA") {
+        throw new AppError(400, "Confirm the sensitive tenant export explicitly.");
+      }
+    }
     await assertPmsFilterLinksBelongToCompany({
       companyId: access.company.id,
       propertyId: query.propertyId,
@@ -7210,7 +7668,20 @@ pmsRouter.get("/exports/:type.csv", requireAuth(), async (req, res, next) => {
         },
         orderBy: { fullName: "asc" },
       });
-      sendPmsCsv(res, "pms-tenants.csv", toCsv(["id", "fullName", "phone", "email", "nationality", "nationalId", "passportNumber", "active"], rows.map((row) => [row.id, row.fullName, row.phone, row.email, row.nationality, row.nationalId, row.passportNumber, row.active])));
+      const headers = ["id", "fullName", "phone", "email", "nationality", ...(query.includeSensitive ? ["nationalId", "passportNumber"] : []), "active"];
+      const values = rows.map((row) => [row.id, row.fullName, row.phone, row.email, row.nationality, ...(query.includeSensitive ? [row.nationalId, row.passportNumber] : []), row.active]);
+      if (query.includeSensitive) {
+        await recordDomainAuditEvent(prisma, {
+          companyId,
+          domain: DomainAuditDomain.PMS,
+          entityType: "pmsTenantExport",
+          action: "sensitive_export",
+          actorId: req.user!.id,
+          metadata: { exportType: type, propertyFilter: query.propertyId ?? null, tenantFilter: query.tenantId ?? null, workspaceId: companyId, rowCount: rows.length },
+          ...requestAuditContext(req),
+        });
+      }
+      sendPmsCsv(res, "pms-tenants.csv", toCsv(headers, values));
       return;
     }
     if (type === "leases") {
@@ -8257,7 +8728,11 @@ pmsRouter.patch("/inspections/:inspectionId", requireAuth(), async (req, res, ne
     const userId = req.user.id;
     const existing = await prisma.pmsInspection.findUnique({
       where: { id: inspectionId },
-      select: { id: true, companyId: true, propertyId: true },
+      select: {
+        id: true,
+        companyId: true,
+        propertyId: true,
+      },
     });
 
     if (!existing) {
@@ -8307,6 +8782,238 @@ pmsRouter.patch("/inspections/:inspectionId", requireAuth(), async (req, res, ne
   }
 });
 
+function isSensitivePmsDocumentType(type: PmsDocumentType) {
+  return type === PmsDocumentType.TENANT_ID || type === PmsDocumentType.PASSPORT_RESIDENCY;
+}
+
+function assertSensitiveDocumentAccess(access: PmsWorkspaceAccess, type: PmsDocumentType) {
+  if (isSensitivePmsDocumentType(type)) assertCanViewPmsSensitiveData(access.member);
+}
+
+pmsRouter.post(
+  "/documents/upload",
+  requireAuth(),
+  privatePmsDocumentUploadMiddleware,
+  async (req, res, next) => {
+    let storedKey: string | null = null;
+    try {
+      if (!req.user) throw new AppError(401, "Unauthorized");
+      if (!req.file) throw new AppError(400, "A document file is required.");
+      let rawMetadata: unknown = req.body;
+      if (typeof req.body.metadata === "string") {
+        try {
+          rawMetadata = JSON.parse(req.body.metadata);
+        } catch {
+          throw new AppError(400, "Document metadata must be valid JSON.");
+        }
+      }
+      const data = pmsDocumentUploadMetadataSchema.parse(rawMetadata);
+      const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
+      if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) assertCanManagePmsMaintenanceDocuments(access.member);
+      else assertCanManagePmsDocuments(access.member);
+      assertSensitiveDocumentAccess(access, data.type);
+      assertMaintenanceDocumentScope({ role: access.member.role, type: data.type, workOrderId: data.workOrderId, inspectionId: data.inspectionId });
+      assertCanAccessOptionalPmsPropertyScope(access, data.propertyId);
+      await assertPmsDocumentLinksBelongToCompany({
+        companyId: access.company.id,
+        propertyId: data.propertyId,
+        unitId: data.unitId,
+        tenantId: data.tenantId,
+        leaseId: data.leaseId,
+        workOrderId: data.workOrderId,
+        inspectionId: data.inspectionId,
+      });
+      const stored = await storePrivatePmsDocument({ companyId: access.company.id, file: req.file });
+      storedKey = stored.storageKey;
+      const now = new Date();
+      const document = await prisma.$transaction(async (tx) => {
+        const created = await tx.pmsDocument.create({
+          data: {
+            companyId: access.company.id,
+            propertyId: data.propertyId ?? null,
+            unitId: data.unitId ?? null,
+            tenantId: data.tenantId ?? null,
+            leaseId: data.leaseId ?? null,
+            workOrderId: data.workOrderId ?? null,
+            inspectionId: data.inspectionId ?? null,
+            type: data.type,
+            title: data.title,
+            fileUrl: `private://${stored.storageKey}`,
+            storageDriver: PmsDocumentStorageDriver.LOCAL_PRIVATE,
+            storageKey: stored.storageKey,
+            originalFilename: stored.originalFilename,
+            mimeType: stored.mimeType,
+            sizeBytes: stored.sizeBytes,
+            checksumSha256: stored.checksumSha256,
+            scanStatus: PmsDocumentScanStatus.NOT_CONFIGURED,
+            fileUploadedAt: now,
+            status: getPmsDocumentLifecycleStatus({ status: data.status, expiryDate: data.expiryDate ?? null }),
+            expiryDate: data.expiryDate ?? null,
+            notes: normalizeNullableText(data.notes),
+            uploadedById: req.user!.id,
+            updatedById: req.user!.id,
+          },
+          include: pmsDocumentInclude,
+        });
+        await recordDomainAuditEvent(tx, {
+          companyId: access.company.id,
+          domain: DomainAuditDomain.PMS,
+          entityType: "pmsDocument",
+          entityId: created.id,
+          action: "upload",
+          actorId: req.user!.id,
+          changedFields: ["file", "metadata"],
+          metadata: { type: created.type, propertyId: created.propertyId, storageDriver: created.storageDriver, fileVersion: created.fileVersion },
+          ...requestAuditContext(req),
+        });
+        return created;
+      });
+      storedKey = null;
+      res.status(201).json({ document: pmsDocumentResponse(document) });
+    } catch (error) {
+      if (storedKey) await removePrivatePmsDocument(storedKey).catch(() => undefined);
+      next(error);
+    }
+  },
+);
+
+pmsRouter.get("/documents/:documentId/download", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+    const { documentId } = pmsDocumentParamsSchema.parse(req.params);
+    let document = await prisma.pmsDocument.findUnique({ where: { id: documentId }, include: pmsDocumentInclude });
+    if (!document) throw new AppError(404, "PMS document not found");
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: document.companyId });
+    assertCanViewPmsDocuments(access.member);
+    assertSensitiveDocumentAccess(access, document.type);
+    assertCanAccessOptionalPmsPropertyScope(access, document.propertyId);
+    if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) {
+      assertMaintenanceDocumentScope({ role: access.member.role, type: document.type, workOrderId: document.workOrderId, inspectionId: document.inspectionId });
+    }
+    if (document.scanStatus === PmsDocumentScanStatus.QUARANTINED) throw new AppError(423, "This document is quarantined and cannot be downloaded.");
+
+    if (document.storageDriver === PmsDocumentStorageDriver.LEGACY_REFERENCE) {
+      const migrated = await importLegacyLocalPmsDocument({
+        companyId: document.companyId,
+        fileUrl: document.fileUrl,
+        publicUploadDirectory: getLocalUploadDirectory(),
+      });
+      try {
+        document = await prisma.pmsDocument.update({
+          where: { id: document.id },
+          data: {
+            fileUrl: `private://${migrated.storageKey}`,
+            storageDriver: PmsDocumentStorageDriver.LOCAL_PRIVATE,
+            storageKey: migrated.storageKey,
+            originalFilename: migrated.originalFilename,
+            mimeType: migrated.mimeType,
+            sizeBytes: migrated.sizeBytes,
+            checksumSha256: migrated.checksumSha256,
+            scanStatus: PmsDocumentScanStatus.NOT_CONFIGURED,
+            fileUploadedAt: new Date(),
+            updatedById: req.user.id,
+          },
+          include: pmsDocumentInclude,
+        });
+      } catch (error) {
+        await restoreLegacyLocalPmsDocument({
+          storageKey: migrated.storageKey,
+          fileUrl: document.fileUrl,
+          publicUploadDirectory: getLocalUploadDirectory(),
+        }).catch(() => undefined);
+        throw error;
+      }
+    }
+    if (document.storageDriver !== PmsDocumentStorageDriver.LOCAL_PRIVATE || !document.storageKey) {
+      throw new AppError(501, "This private document storage adapter is not configured for downloads.");
+    }
+    const contents = await readPrivatePmsDocument(document.storageKey);
+    await recordDomainAuditEvent(prisma, {
+      companyId: document.companyId,
+      domain: DomainAuditDomain.PMS,
+      entityType: "pmsDocument",
+      entityId: document.id,
+      action: "download",
+      actorId: req.user.id,
+      metadata: { propertyId: document.propertyId, type: document.type, fileVersion: document.fileVersion },
+      ...requestAuditContext(req),
+    });
+    const filename = path.basename(document.originalFilename || `${document.title}.pdf`).replace(/["\r\n]/g, "_");
+    res.setHeader("Content-Type", document.mimeType || "application/octet-stream");
+    res.setHeader("Content-Length", String(contents.length));
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Cache-Control", "no-store, private");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(contents);
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post(
+  "/documents/:documentId/file",
+  requireAuth(),
+  privatePmsDocumentUploadMiddleware,
+  async (req, res, next) => {
+    let storedKey: string | null = null;
+    try {
+      if (!req.user) throw new AppError(401, "Unauthorized");
+      if (!req.file) throw new AppError(400, "A replacement document file is required.");
+      const { documentId } = pmsDocumentParamsSchema.parse(req.params);
+      const existing = await prisma.pmsDocument.findUnique({ where: { id: documentId } });
+      if (!existing) throw new AppError(404, "PMS document not found");
+      const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
+      if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) assertCanManagePmsMaintenanceDocuments(access.member);
+      else assertCanManagePmsDocuments(access.member);
+      assertSensitiveDocumentAccess(access, existing.type);
+      assertCanAccessOptionalPmsPropertyScope(access, existing.propertyId);
+      const stored = await storePrivatePmsDocument({ companyId: existing.companyId, file: req.file });
+      storedKey = stored.storageKey;
+      const document = await prisma.$transaction(async (tx) => {
+        const updated = await tx.pmsDocument.update({
+          where: { id: existing.id },
+          data: {
+            fileUrl: `private://${stored.storageKey}`,
+            storageDriver: PmsDocumentStorageDriver.LOCAL_PRIVATE,
+            storageKey: stored.storageKey,
+            originalFilename: stored.originalFilename,
+            mimeType: stored.mimeType,
+            sizeBytes: stored.sizeBytes,
+            checksumSha256: stored.checksumSha256,
+            scanStatus: PmsDocumentScanStatus.NOT_CONFIGURED,
+            quarantineReason: null,
+            fileVersion: { increment: 1 },
+            fileReplacedAt: new Date(),
+            updatedById: req.user!.id,
+          },
+          include: pmsDocumentInclude,
+        });
+        await recordDomainAuditEvent(tx, {
+          companyId: existing.companyId,
+          domain: DomainAuditDomain.PMS,
+          entityType: "pmsDocument",
+          entityId: existing.id,
+          action: "replace_file",
+          actorId: req.user!.id,
+          changedFields: ["file"],
+          beforeMetadata: { storageDriver: existing.storageDriver, fileVersion: existing.fileVersion, checksumSha256: existing.checksumSha256 },
+          afterMetadata: { storageDriver: updated.storageDriver, fileVersion: updated.fileVersion, checksumSha256: updated.checksumSha256 },
+          ...requestAuditContext(req),
+        });
+        return updated;
+      });
+      storedKey = null;
+      if (existing.storageDriver === PmsDocumentStorageDriver.LOCAL_PRIVATE) {
+        await removePrivatePmsDocument(existing.storageKey).catch(() => undefined);
+      }
+      res.json({ document: pmsDocumentResponse(document) });
+    } catch (error) {
+      if (storedKey) await removePrivatePmsDocument(storedKey).catch(() => undefined);
+      next(error);
+    }
+  },
+);
+
 pmsRouter.get("/documents", requireAuth(), async (req, res, next) => {
   try {
     if (!req.user) throw new AppError(401, "Unauthorized");
@@ -8314,6 +9021,10 @@ pmsRouter.get("/documents", requireAuth(), async (req, res, next) => {
     const query = pmsDocumentListQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
     assertCanViewPmsDocuments(access.member);
+    const canViewSensitiveDocuments = canViewPmsSensitiveData(access.member);
+    if (query.type !== "ALL" && isSensitivePmsDocumentType(query.type)) {
+      assertSensitiveDocumentAccess(access, query.type);
+    }
     await assertPmsDocumentLinksBelongToCompany({
       companyId: access.company.id,
       propertyId: query.propertyId,
@@ -8335,7 +9046,11 @@ pmsRouter.get("/documents", requireAuth(), async (req, res, next) => {
       ...(query.leaseId ? { leaseId: query.leaseId } : {}),
       ...(query.workOrderId ? { workOrderId: query.workOrderId } : {}),
       ...(query.inspectionId ? { inspectionId: query.inspectionId } : {}),
-      ...(query.type !== "ALL" ? { type: query.type } : {}),
+      ...(query.type !== "ALL"
+        ? { type: query.type }
+        : !canViewSensitiveDocuments
+          ? { type: { notIn: [PmsDocumentType.TENANT_ID, PmsDocumentType.PASSPORT_RESIDENCY] } }
+          : {}),
       ...(query.status !== "ALL" ? { status: query.status } : {}),
       ...(query.expiringWithinDays !== undefined ? { expiryDate: getPmsDocumentExpiryFilter({ expiringWithinDays: query.expiringWithinDays }) } : {}),
       ...(maintenanceOnly
@@ -8387,6 +9102,7 @@ pmsRouter.get("/documents/expiry-alerts", requireAuth(), async (req, res, next) 
     const query = pmsDocumentExpiryQuerySchema.parse(req.query);
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
     assertCanViewPmsDocuments(access.member);
+    const canViewSensitiveDocuments = canViewPmsSensitiveData(access.member);
 
     const expiryDate = getPmsDocumentExpiryFilter({ expiringWithinDays: query.withinDays });
     const propertyId = pmsScopedPropertyIdWhere(access);
@@ -8394,6 +9110,9 @@ pmsRouter.get("/documents/expiry-alerts", requireAuth(), async (req, res, next) 
       where: {
         companyId: access.company.id,
         ...(propertyId ? { propertyId } : {}),
+        ...(!canViewSensitiveDocuments
+          ? { type: { notIn: [PmsDocumentType.TENANT_ID, PmsDocumentType.PASSPORT_RESIDENCY] } }
+          : {}),
         status: { not: PmsDocumentStatus.ARCHIVED },
         expiryDate,
       },
@@ -8413,6 +9132,8 @@ pmsRouter.get("/documents/expiry-alerts", requireAuth(), async (req, res, next) 
 });
 
 pmsRouter.post("/documents", requireAuth(), async (req, res, next) => {
+  let migratedKey: string | null = null;
+  let migratedLegacyUrl: string | null = null;
   try {
     if (!req.user) throw new AppError(401, "Unauthorized");
 
@@ -8424,6 +9145,7 @@ pmsRouter.post("/documents", requireAuth(), async (req, res, next) => {
     } else {
       assertCanManagePmsDocuments(access.member);
     }
+    assertSensitiveDocumentAccess(access, data.type);
     assertMaintenanceDocumentScope({ role: access.member.role, type: data.type, workOrderId: data.workOrderId, inspectionId: data.inspectionId });
     assertCanAccessOptionalPmsPropertyScope(access, data.propertyId);
     await assertPmsDocumentLinksBelongToCompany({
@@ -8436,6 +9158,14 @@ pmsRouter.post("/documents", requireAuth(), async (req, res, next) => {
       inspectionId: data.inspectionId,
     });
 
+    const privateFile = await importLegacyLocalPmsDocument({
+      companyId: access.company.id,
+      fileUrl: data.fileUrl,
+      publicUploadDirectory: getLocalUploadDirectory(),
+    });
+    migratedKey = privateFile.storageKey;
+    migratedLegacyUrl = data.fileUrl;
+
     const document = await prisma.pmsDocument.create({
       data: {
         companyId: access.company.id,
@@ -8447,7 +9177,15 @@ pmsRouter.post("/documents", requireAuth(), async (req, res, next) => {
         inspectionId: data.inspectionId ?? null,
         type: data.type,
         title: data.title,
-        fileUrl: data.fileUrl,
+        fileUrl: `private://${privateFile.storageKey}`,
+        storageDriver: PmsDocumentStorageDriver.LOCAL_PRIVATE,
+        storageKey: privateFile.storageKey,
+        originalFilename: privateFile.originalFilename,
+        mimeType: privateFile.mimeType,
+        sizeBytes: privateFile.sizeBytes,
+        checksumSha256: privateFile.checksumSha256,
+        scanStatus: PmsDocumentScanStatus.NOT_CONFIGURED,
+        fileUploadedAt: new Date(),
         status: getPmsDocumentLifecycleStatus({ status: data.status, expiryDate: data.expiryDate ?? null }),
         expiryDate: data.expiryDate ?? null,
         notes: normalizeNullableText(data.notes),
@@ -8456,6 +9194,8 @@ pmsRouter.post("/documents", requireAuth(), async (req, res, next) => {
       },
       include: pmsDocumentInclude,
     });
+    migratedKey = null;
+    migratedLegacyUrl = null;
 
     await recordPmsWorkspaceAudit({
       actorId: req.user.id,
@@ -8464,10 +9204,18 @@ pmsRouter.post("/documents", requireAuth(), async (req, res, next) => {
       title: "PMS document created",
       message: `${req.user.email} added PMS document ${document.title}.`,
       metadata: { action: "create", resourceType: "pmsDocument", documentId: document.id, type: document.type },
+      request: req,
     });
 
     res.status(201).json({ document: pmsDocumentResponse(document) });
   } catch (error) {
+    if (migratedKey && migratedLegacyUrl) {
+      await restoreLegacyLocalPmsDocument({
+        storageKey: migratedKey,
+        fileUrl: migratedLegacyUrl,
+        publicUploadDirectory: getLocalUploadDirectory(),
+      }).catch(() => undefined);
+    }
     next(error);
   }
 });
@@ -8482,6 +9230,7 @@ pmsRouter.get("/documents/:documentId", requireAuth(), async (req, res, next) =>
 
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: document.companyId });
     assertCanViewPmsDocuments(access.member);
+    assertSensitiveDocumentAccess(access, document.type);
     assertCanAccessOptionalPmsPropertyScope(access, document.propertyId);
     if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) {
       assertMaintenanceDocumentScope({ role: access.member.role, type: document.type, workOrderId: document.workOrderId, inspectionId: document.inspectionId });
@@ -8497,6 +9246,8 @@ pmsRouter.get("/documents/:documentId", requireAuth(), async (req, res, next) =>
 });
 
 pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) => {
+  let replacementKey: string | null = null;
+  let replacementLegacyUrl: string | null = null;
   try {
     if (!req.user) throw new AppError(401, "Unauthorized");
 
@@ -8511,6 +9262,8 @@ pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) 
     } else {
       assertCanManagePmsDocuments(access.member);
     }
+    assertSensitiveDocumentAccess(access, existing.type);
+    assertSensitiveDocumentAccess(access, data.type ?? existing.type);
     assertCanAccessOptionalPmsPropertyScope(access, existing.propertyId);
     if (data.propertyId !== undefined) {
       assertCanAccessOptionalPmsPropertyScope(access, data.propertyId);
@@ -8532,6 +9285,15 @@ pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) 
     });
 
     const expiryDate = data.expiryDate === undefined ? existing.expiryDate : data.expiryDate ?? null;
+    const replacementFile = data.fileUrl
+      ? await importLegacyLocalPmsDocument({
+          companyId: access.company.id,
+          fileUrl: data.fileUrl,
+          publicUploadDirectory: getLocalUploadDirectory(),
+        })
+      : null;
+    replacementKey = replacementFile?.storageKey ?? null;
+    replacementLegacyUrl = replacementFile ? data.fileUrl ?? null : null;
     const document = await prisma.pmsDocument.update({
       where: { id: documentId },
       data: {
@@ -8543,7 +9305,21 @@ pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) 
         ...(data.inspectionId !== undefined ? { inspectionId: data.inspectionId } : {}),
         ...(data.type !== undefined ? { type: data.type } : {}),
         ...(data.title !== undefined ? { title: data.title } : {}),
-        ...(data.fileUrl !== undefined ? { fileUrl: data.fileUrl } : {}),
+        ...(replacementFile
+          ? {
+              fileUrl: `private://${replacementFile.storageKey}`,
+              storageDriver: PmsDocumentStorageDriver.LOCAL_PRIVATE,
+              storageKey: replacementFile.storageKey,
+              originalFilename: replacementFile.originalFilename,
+              mimeType: replacementFile.mimeType,
+              sizeBytes: replacementFile.sizeBytes,
+              checksumSha256: replacementFile.checksumSha256,
+              scanStatus: PmsDocumentScanStatus.NOT_CONFIGURED,
+              quarantineReason: null,
+              fileVersion: { increment: 1 },
+              fileReplacedAt: new Date(),
+            }
+          : {}),
         ...(data.status !== undefined || data.expiryDate !== undefined
           ? { status: getPmsDocumentLifecycleStatus({ status: data.status ?? existing.status, expiryDate }) }
           : {}),
@@ -8553,6 +9329,12 @@ pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) 
       },
       include: pmsDocumentInclude,
     });
+    replacementKey = null;
+    replacementLegacyUrl = null;
+
+    if (replacementFile && existing.storageDriver === PmsDocumentStorageDriver.LOCAL_PRIVATE) {
+      await removePrivatePmsDocument(existing.storageKey).catch(() => undefined);
+    }
 
     await recordPmsWorkspaceAudit({
       actorId: req.user.id,
@@ -8560,10 +9342,55 @@ pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) 
       companyId: access.company.id,
       title: "PMS document updated",
       message: `${req.user.email} updated PMS document ${document.title}.`,
-      metadata: { action: "update", resourceType: "pmsDocument", documentId: document.id, changedFields: Object.keys(data) },
+      metadata: { action: replacementFile ? "replace_file" : "update", resourceType: "pmsDocument", documentId: document.id, changedFields: Object.keys(data), fileVersion: document.fileVersion },
     });
 
     res.json({ document: pmsDocumentResponse(document) });
+  } catch (error) {
+    if (replacementKey && replacementLegacyUrl) {
+      await restoreLegacyLocalPmsDocument({
+        storageKey: replacementKey,
+        fileUrl: replacementLegacyUrl,
+        publicUploadDirectory: getLocalUploadDirectory(),
+      }).catch(() => undefined);
+    }
+    next(error);
+  }
+});
+
+pmsRouter.get("/audit-events", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+    const query = pmsDomainAuditQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    if (isPmsPropertyScopeRestricted(access)) {
+      throw new AppError(403, "Property-scoped users cannot inspect workspace-wide operational audit events.");
+    }
+    const canInspect = access.member.permissionKeys.includes(PmsPermissionKey.SETTINGS_MANAGE)
+      || access.member.permissionKeys.includes(PmsPermissionKey.STAFF_MANAGE);
+    if (!canInspect) throw new AppError(403, "Your PMS access cannot inspect operational audit events.");
+    if (query.domain === DomainAuditDomain.CRM && !access.member.permissionKeys.includes(PmsPermissionKey.CRM_VIEW)) {
+      throw new AppError(403, "CRM access is required to inspect CRM audit events.");
+    }
+    const where: Prisma.DomainAuditEventWhereInput = {
+      companyId: access.company.id,
+      ...(query.domain !== "ALL" ? { domain: query.domain } : {}),
+      ...(query.entityType ? { entityType: query.entityType } : {}),
+      ...(query.entityId ? { entityId: query.entityId } : {}),
+      ...(query.action ? { action: { contains: query.action, mode: "insensitive" } } : {}),
+      ...(query.dateFrom || query.dateTo ? { createdAt: buildPmsAccountingDateFilter({ dateFrom: query.dateFrom, dateTo: query.dateTo }) } : {}),
+    };
+    const [events, total] = await prisma.$transaction([
+      prisma.domainAuditEvent.findMany({
+        where,
+        include: { actor: { select: { id: true, name: true, email: true, role: true } } },
+        orderBy: { createdAt: "desc" },
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.domainAuditEvent.count({ where }),
+    ]);
+    res.json({ workspace: pmsWorkspacePayload(access), events, pagination: { take: query.take, skip: query.skip, count: events.length, total } });
   } catch (error) {
     next(error);
   }
@@ -8708,6 +9535,7 @@ pmsRouter.post("/staff", requireAuth(), async (req, res, next) => {
       message: `${req.user.email} granted PMS ${data.role} access to ${targetUser.email}.`,
       metadata: {
         action: "staff_upsert",
+        resourceType: "pmsCompanyMember",
         memberId: member.id,
         targetUserId: targetUser.id,
         targetEmail: targetUser.email,
@@ -9236,6 +10064,10 @@ pmsRouter.post(
         publicListingId,
       });
 
+      if (data.status === PmsUnitStatus.OCCUPIED || data.occupancyStatus === PmsOccupancyStatus.OCCUPIED) {
+        throw new AppError(400, "Unit occupancy is derived from active leases; create the lease instead.");
+      }
+
       const unit = await prisma.pmsUnit.create({
         data: {
           propertyId: property.id,
@@ -9246,9 +10078,12 @@ pmsRouter.post(
           bedrooms: data.bedrooms ?? null,
           bathrooms: data.bathrooms ?? null,
           areaSqm: data.areaSqm ?? null,
-          status: data.status,
-          occupancyStatus:
-            data.occupancyStatus ?? defaultOccupancyForUnitStatus(data.status),
+          operationalStatus: data.operationalStatus ?? operationalStatusFromLegacyUnitStatus(data.status),
+          occupancyStatus: PmsOccupancyStatus.VACANT,
+          status: compatibilityUnitStatus(
+            data.operationalStatus ?? operationalStatusFromLegacyUnitStatus(data.status),
+            PmsOccupancyStatus.VACANT,
+          ),
           rentAmount: data.rentAmount ?? null,
           currency: data.currency,
           notes: normalizeNullableText(data.notes),
@@ -9392,7 +10227,7 @@ pmsRouter.patch("/units/:unitId", requireAuth(), async (req, res, next) => {
     const data = pmsUnitUpdateSchema.parse(req.body);
     const existing = await prisma.pmsUnit.findUnique({
       where: { id: unitId },
-      select: { id: true, companyId: true, propertyId: true },
+      select: { id: true, companyId: true, propertyId: true, occupancyStatus: true, operationalStatus: true },
     });
 
     if (!existing) {
@@ -9411,9 +10246,19 @@ pmsRouter.patch("/units/:unitId", requireAuth(), async (req, res, next) => {
       publicListingId: data.publicListingId,
     });
 
+    if (data.status === PmsUnitStatus.OCCUPIED || data.occupancyStatus === PmsOccupancyStatus.OCCUPIED) {
+      throw new AppError(400, "Unit occupancy is derived from active leases and cannot be set directly.");
+    }
+    const operationalStatus = data.operationalStatus
+      ?? (data.status ? operationalStatusFromLegacyUnitStatus(data.status) : existing.operationalStatus);
     const unit = await prisma.pmsUnit.update({
       where: { id: unitId },
-      data: buildPmsUnitWriteData(data, req.user.id),
+      data: {
+        ...buildPmsUnitWriteData(data, req.user.id),
+        operationalStatus,
+        occupancyStatus: existing.occupancyStatus,
+        status: compatibilityUnitStatus(operationalStatus, existing.occupancyStatus),
+      },
       include: pmsUnitInclude,
     });
 
@@ -9425,6 +10270,117 @@ pmsRouter.patch("/units/:unitId", requireAuth(), async (req, res, next) => {
   }
 });
 
+
+async function buildPmsOccupancyReconciliation(access: PmsWorkspaceAccess, propertyId?: string) {
+  if (propertyId) assertCanAccessPmsPropertyScope(access, propertyId);
+  const scopedProperty = pmsRequestedOrScopedPropertyIdWhere(access, propertyId);
+  const units = await prisma.pmsUnit.findMany({
+    where: { companyId: access.company.id, ...(scopedProperty ? { propertyId: scopedProperty } : {}) },
+    select: {
+      id: true,
+      propertyId: true,
+      unitNumber: true,
+      occupancyStatus: true,
+      operationalStatus: true,
+      status: true,
+      pmsLeases: {
+        where: { status: { notIn: [PmsLeaseStatus.DRAFT, PmsLeaseStatus.ENDED, PmsLeaseStatus.TERMINATED] } },
+        select: { id: true, status: true, startDate: true, endDate: true },
+        orderBy: { startDate: "asc" },
+      },
+    },
+    orderBy: [{ propertyId: "asc" }, { unitNumber: "asc" }],
+  });
+  const now = new Date();
+  const issues: Array<Record<string, unknown>> = [];
+  for (const unit of units) {
+    const activeLeases = unit.pmsLeases.filter((lease) => getLeaseOccupancyStatus(lease.status));
+    if (unit.occupancyStatus === PmsOccupancyStatus.OCCUPIED && activeLeases.length === 0) {
+      issues.push({ type: "OCCUPIED_WITHOUT_ACTIVE_LEASE", unitId: unit.id, propertyId: unit.propertyId, unitNumber: unit.unitNumber });
+    }
+    if (activeLeases.length > 0 && unit.occupancyStatus !== PmsOccupancyStatus.OCCUPIED) {
+      issues.push({ type: "ACTIVE_LEASE_ON_VACANT_UNIT", unitId: unit.id, propertyId: unit.propertyId, unitNumber: unit.unitNumber, leaseIds: activeLeases.map((lease) => lease.id) });
+    }
+    for (const lease of activeLeases) {
+      if (lease.endDate && lease.endDate < now) {
+        issues.push({ type: "EXPIRED_LEASE_STILL_ACTIVE", unitId: unit.id, propertyId: unit.propertyId, unitNumber: unit.unitNumber, leaseId: lease.id, endDate: lease.endDate });
+      }
+    }
+    for (let left = 0; left < unit.pmsLeases.length; left += 1) {
+      for (let right = left + 1; right < unit.pmsLeases.length; right += 1) {
+        const first = unit.pmsLeases[left];
+        const second = unit.pmsLeases[right];
+        const firstEnd = first.endDate?.getTime() ?? Number.POSITIVE_INFINITY;
+        if (second.startDate.getTime() <= firstEnd) {
+          issues.push({ type: "OVERLAPPING_LEASES", unitId: unit.id, propertyId: unit.propertyId, unitNumber: unit.unitNumber, leaseIds: [first.id, second.id] });
+        }
+      }
+    }
+  }
+  return { units, issues };
+}
+
+pmsRouter.get("/occupancy/reconciliation", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+    const query = pmsOccupancyReconciliationQuerySchema.parse(req.query);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    if (!access.member.permissionKeys.includes(PmsPermissionKey.INVENTORY_VIEW) || !access.member.permissionKeys.includes(PmsPermissionKey.TENANCY_VIEW)) {
+      throw new AppError(403, "Inventory and tenancy access are required to inspect occupancy consistency.");
+    }
+    const reconciliation = await buildPmsOccupancyReconciliation(access, query.propertyId);
+    res.json({
+      workspace: pmsWorkspacePayload(access),
+      checkedUnits: reconciliation.units.length,
+      issueCount: reconciliation.issues.length,
+      issues: reconciliation.issues,
+      sourceOfTruth: "ACTIVE_OR_EXPIRING_LEASE",
+      operationalAvailabilityField: "operationalStatus",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsRouter.post("/occupancy/reconciliation", requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, "Unauthorized");
+    const query = pmsOccupancyReconciliationQuerySchema.parse(req.body);
+    const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: query.companyId });
+    assertCanManagePmsInventory(access.member);
+    assertCanManagePmsTenancies(access.member);
+    const reconciliation = await buildPmsOccupancyReconciliation(access, query.propertyId);
+    let correctedUnits = 0;
+    if (query.apply) {
+      await prisma.$transaction(async (tx) => {
+        for (const unit of reconciliation.units) {
+          const occupied = unit.pmsLeases.some((lease) => getLeaseOccupancyStatus(lease.status));
+          const expectedOccupancy = occupied ? PmsOccupancyStatus.OCCUPIED : PmsOccupancyStatus.VACANT;
+          const expectedStatus = compatibilityUnitStatus(unit.operationalStatus, expectedOccupancy);
+          if (unit.occupancyStatus !== expectedOccupancy || unit.status !== expectedStatus) {
+            await tx.pmsUnit.update({
+              where: { id: unit.id },
+              data: { occupancyStatus: expectedOccupancy, status: expectedStatus, updatedById: req.user!.id },
+            });
+            correctedUnits += 1;
+          }
+        }
+        await recordDomainAuditEvent(tx, {
+          companyId: access.company.id,
+          domain: DomainAuditDomain.PMS,
+          entityType: "pmsOccupancyReconciliation",
+          action: "apply",
+          actorId: req.user!.id,
+          metadata: { propertyId: query.propertyId ?? null, detectedIssues: reconciliation.issues.length, correctedUnits },
+          ...requestAuditContext(req),
+        });
+      });
+    }
+    res.json({ dryRun: !query.apply, detectedIssues: reconciliation.issues.length, correctedUnits, issues: reconciliation.issues });
+  } catch (error) {
+    next(error);
+  }
+});
 
 pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
   try {
@@ -9552,10 +10508,10 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
       }),
       prisma.pmsUnit.count({ where: { companyId: access.company.id, ...propertyWhere } }),
       prisma.pmsUnit.count({
-        where: { companyId: access.company.id, ...propertyWhere, status: PmsUnitStatus.OCCUPIED },
+        where: { companyId: access.company.id, ...propertyWhere, occupancyStatus: PmsOccupancyStatus.OCCUPIED },
       }),
       prisma.pmsUnit.count({
-        where: { companyId: access.company.id, ...propertyWhere, status: PmsUnitStatus.VACANT },
+        where: { companyId: access.company.id, ...propertyWhere, occupancyStatus: PmsOccupancyStatus.VACANT },
       }),
       prisma.pmsTenant.count({
         where: {
@@ -9565,7 +10521,8 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
         },
       }),
       prisma.pmsLease.count({ where: activeLeaseWhere }),
-      prisma.pmsRentDueItem.aggregate({
+      prisma.pmsRentDueItem.groupBy({
+        by: ["currency"],
         where: {
           companyId: access.company.id,
           ...propertyWhere,
@@ -9573,19 +10530,22 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
           dueDate: { gte: periodFrom, lte: periodTo },
         },
         _sum: { amount: true, paidAmount: true },
-        _count: true,
+        _count: { _all: true },
       }),
-      prisma.pmsRentDueItem.aggregate({
+      prisma.pmsRentDueItem.groupBy({
+        by: ["currency"],
         where: openRentWhere,
         _sum: { amount: true, paidAmount: true },
-        _count: true,
+        _count: { _all: true },
       }),
-      prisma.pmsRentDueItem.aggregate({
+      prisma.pmsRentDueItem.groupBy({
+        by: ["currency"],
         where: overdueRentWhere,
         _sum: { amount: true, paidAmount: true },
-        _count: true,
+        _count: { _all: true },
       }),
-      prisma.pmsRentPayment.aggregate({
+      prisma.pmsRentPayment.groupBy({
+        by: ["currency"],
         where: {
           companyId: access.company.id,
           ...propertyWhere,
@@ -9649,7 +10609,7 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
         where: {
           companyId: access.company.id,
           ...propertyWhere,
-          status: { not: PmsUnitStatus.UNAVAILABLE },
+          operationalStatus: { not: PmsUnitOperationalStatus.UNAVAILABLE },
           OR: [{ rentAmount: null }, { areaSqm: null }],
         },
       }),
@@ -9668,7 +10628,7 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
         where: {
           companyId: access.company.id,
           ...propertyWhere,
-          status: { not: PmsUnitStatus.UNAVAILABLE },
+          operationalStatus: { not: PmsUnitOperationalStatus.UNAVAILABLE },
           OR: [{ rentAmount: null }, { areaSqm: null }],
         },
         select: {
@@ -9691,6 +10651,7 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
           dueDate: true,
           amount: true,
           paidAmount: true,
+          currency: true,
           propertyId: true,
           property: { select: { name: true } },
           unit: { select: { unitNumber: true } },
@@ -9881,19 +10842,72 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
       }),
     ]);
 
-    const periodScheduledAmount = Number(periodDue._sum.amount ?? 0);
-    const periodPaidAgainstDue = Number(periodDue._sum.paidAmount ?? 0);
-    const outstandingRentAmount = Math.max(
-      Number(outstandingRent._sum.amount ?? 0) - Number(outstandingRent._sum.paidAmount ?? 0),
-      0,
-    );
-    const overdueRentAmount = Math.max(
-      Number(overdueRent._sum.amount ?? 0) - Number(overdueRent._sum.paidAmount ?? 0),
-      0,
-    );
-    const collectionRate = periodScheduledAmount > 0
-      ? Math.min((periodPaidAgainstDue / periodScheduledAmount) * 100, 100)
+    type CommandCurrencyTotal = {
+      currency: string;
+      scheduledRent: number;
+      paidAgainstScheduled: number;
+      outstandingRent: number;
+      overdueRent: number;
+      rentCollected: number;
+    };
+    const commandCurrencyTotals = new Map<string, CommandCurrencyTotal>();
+    const commandCurrency = (currency: string) => {
+      const key = currency.toUpperCase();
+      const current = commandCurrencyTotals.get(key) ?? {
+        currency: key,
+        scheduledRent: 0,
+        paidAgainstScheduled: 0,
+        outstandingRent: 0,
+        overdueRent: 0,
+        rentCollected: 0,
+      };
+      commandCurrencyTotals.set(key, current);
+      return current;
+    };
+    periodDue.forEach((row) => {
+      const total = commandCurrency(row.currency);
+      total.scheduledRent += Number(row._sum.amount ?? 0);
+      total.paidAgainstScheduled += Number(row._sum.paidAmount ?? 0);
+    });
+    outstandingRent.forEach((row) => {
+      commandCurrency(row.currency).outstandingRent += Math.max(
+        Number(row._sum.amount ?? 0) - Number(row._sum.paidAmount ?? 0),
+        0,
+      );
+    });
+    overdueRent.forEach((row) => {
+      commandCurrency(row.currency).overdueRent += Math.max(
+        Number(row._sum.amount ?? 0) - Number(row._sum.paidAmount ?? 0),
+        0,
+      );
+    });
+    rentCollected.forEach((row) => {
+      commandCurrency(row.currency).rentCollected += Number(row._sum.amount ?? 0);
+    });
+    const commandTotalsByCurrency = [...commandCurrencyTotals.values()]
+      .sort((a, b) => a.currency.localeCompare(b.currency))
+      .map((total) => ({
+        currency: total.currency,
+        scheduledRent: moneyString(total.scheduledRent),
+        paidAgainstScheduled: moneyString(total.paidAgainstScheduled),
+        outstandingRent: moneyString(total.outstandingRent),
+        overdueRent: moneyString(total.overdueRent),
+        rentCollected: moneyString(total.rentCollected),
+        collectionRate: total.scheduledRent > 0
+          ? Math.round(Math.min((total.paidAgainstScheduled / total.scheduledRent) * 100, 100) * 10) / 10
+          : null,
+      }));
+    const commandCurrencyState = currencyState(commandCurrencyTotals.keys());
+    const commandSingleCurrency = commandCurrencyState.status === "SINGLE"
+      ? commandTotalsByCurrency[0]
       : null;
+    const periodScheduledAmount = commandSingleCurrency ? Number(commandSingleCurrency.scheduledRent) : 0;
+    const periodPaidAgainstDue = commandSingleCurrency ? Number(commandSingleCurrency.paidAgainstScheduled) : 0;
+    const outstandingRentAmount = commandSingleCurrency ? Number(commandSingleCurrency.outstandingRent) : 0;
+    const overdueRentAmount = commandSingleCurrency ? Number(commandSingleCurrency.overdueRent) : 0;
+    const collectionRate = commandSingleCurrency?.collectionRate ?? null;
+    const overdueRentCount = overdueRent.reduce((sum, row) => sum + row._count._all, 0);
+    const outstandingRentCount = outstandingRent.reduce((sum, row) => sum + row._count._all, 0);
     const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : null;
 
     const tenantRiskMap = new Map<string, {
@@ -9906,12 +10920,14 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
       outstandingAmount: number;
       originalAmount: number;
       overdueItems: number;
+      currency: string;
     }>();
     overdueRentItems.forEach((item) => {
-      const current = tenantRiskMap.get(item.tenantId);
+      const riskKey = `${item.tenantId}:${item.currency.toUpperCase()}`;
+      const current = tenantRiskMap.get(riskKey);
       const outstanding = Math.max(Number(item.amount) - Number(item.paidAmount), 0);
       if (!current) {
-        tenantRiskMap.set(item.tenantId, {
+        tenantRiskMap.set(riskKey, {
           tenantId: item.tenantId,
           tenantName: item.tenant.fullName,
           propertyId: item.propertyId,
@@ -9921,6 +10937,7 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
           outstandingAmount: outstanding,
           originalAmount: Number(item.amount),
           overdueItems: 1,
+          currency: item.currency.toUpperCase(),
         });
         return;
       }
@@ -9945,7 +10962,7 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
           priority: priorityFromScore(riskScore),
           reasons: [
             `${item.overdueItems} overdue rent item${item.overdueItems === 1 ? "" : "s"}`,
-            `${moneyString(item.outstandingAmount)} OMR outstanding`,
+            `${moneyString(item.outstandingAmount)} ${item.currency} outstanding`,
           ],
           href: `/pms/rentals/${item.leaseId}?companyId=${access.company.id}`,
         };
@@ -9971,13 +10988,13 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
     const queue: CommandQueueItem[] = [
       ...(canRent
         ? highRiskTenants.map((item): CommandQueueItem => ({
-            id: `rent-${item.tenantId}`,
+            id: `rent-${item.tenantId}-${item.currency}`,
             type: "OVERDUE_RENT",
             status: "OVERDUE",
             priority: item.priority,
             riskScore: item.riskScore,
             title: `Tenant account risk · ${item.tenantName}`,
-            detail: `${item.outstandingAmount} OMR outstanding across ${item.overdueItems} item${item.overdueItems === 1 ? "" : "s"}`,
+            detail: `${item.outstandingAmount} ${item.currency} outstanding across ${item.overdueItems} item${item.overdueItems === 1 ? "" : "s"}`,
             reasons: item.reasons,
             propertyId: item.propertyId,
             propertyName: item.propertyName,
@@ -10122,17 +11139,49 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
       ...statementLedgerProperties.flatMap((item) => item.propertyId ? [item.propertyId] : []),
     ]);
     const statementProperties = properties.filter((property) => statementPropertyIds.has(property.id));
+    const ownerStatements = canAccounting && statementProperties.length > 0
+      ? await prisma.pmsOwnerStatement.findMany({
+          where: {
+            companyId: access.company.id,
+            propertyId: { in: statementProperties.map((property) => property.id) },
+            status: { not: PmsOwnerStatementStatus.VOID },
+            periodStart: { lte: periodTo },
+            periodEnd: { gte: periodFrom },
+          },
+          select: { id: true, propertyId: true, status: true, currency: true, periodStart: true, periodEnd: true, revision: true },
+          orderBy: [{ generatedAt: "desc" }, { revision: "desc" }],
+        })
+      : [];
+    const latestStatementByProperty = new Map<string, (typeof ownerStatements)[number]>();
+    ownerStatements.forEach((statement) => {
+      if (!latestStatementByProperty.has(statement.propertyId)) latestStatementByProperty.set(statement.propertyId, statement);
+    });
+    const statementReadiness = statementProperties.map((property) => ({
+      property,
+      statement: latestStatementByProperty.get(property.id) ?? null,
+    }));
     if (canAccounting) {
-      statementProperties.forEach((property) => {
+      statementReadiness.forEach(({ property, statement }) => {
+        if (statement?.status === PmsOwnerStatementStatus.PUBLISHED) return;
+        const approved = statement?.status === PmsOwnerStatementStatus.APPROVED;
+        const missing = !statement;
         queue.push({
-          id: `statement-${property.id}`,
-          type: "STATEMENT_REVIEW",
+          id: `statement-${property.id}-${statement?.id ?? "missing"}`,
+          type: missing ? "STATEMENT_GENERATION" : approved ? "STATEMENT_PUBLISH" : "STATEMENT_REVIEW",
           status: "NEEDS_REVIEW",
-          priority: "MEDIUM",
-          riskScore: 45,
-          title: `Owner statement review · ${property.name}`,
-          detail: "Current-period financial activity is ready for review",
-          reasons: ["Property has financial activity in the selected period"],
+          priority: approved ? "LOW" : "MEDIUM",
+          riskScore: approved ? 30 : missing ? 50 : 45,
+          title: missing
+            ? `Generate owner statement · ${property.name}`
+            : approved
+              ? `Publish approved owner statement · ${property.name}`
+              : `Owner statement review · ${property.name}`,
+          detail: missing
+            ? "Financial activity exists but no persistent statement covers this period"
+            : `${statement.status.replaceAll("_", " ")} · ${statement.currency} · revision ${statement.revision}`,
+          reasons: missing
+            ? ["Property has financial activity in the selected period", "No persistent statement snapshot exists"]
+            : ["A persistent owner statement requires the next controlled lifecycle transition"],
           propertyId: property.id,
           propertyName: property.name,
           dueAt: periodTo,
@@ -10210,22 +11259,28 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
       : buildHealthSignal({ score: null, label: "Occupancy health", detail: "Inventory permission is required." });
     const collectionHealth = canRent
       ? buildHealthSignal({
-          score: collectionRate,
+          score: commandCurrencyState.status === "MIXED" ? null : collectionRate,
           label: "Rent collection health",
-          detail: periodScheduledAmount > 0
-            ? `${moneyString(periodPaidAgainstDue)} of ${moneyString(periodScheduledAmount)} OMR applied to period rent`
-            : "No rent obligations fall inside the selected period.",
+          detail: commandCurrencyState.status === "MIXED"
+            ? "Multiple currencies are present. Review collection performance by currency."
+            : periodScheduledAmount > 0
+              ? `${moneyString(periodPaidAgainstDue)} of ${moneyString(periodScheduledAmount)} ${commandSingleCurrency?.currency ?? ""} applied to period rent`.trim()
+              : "No rent obligations fall inside the selected period.",
         })
       : buildHealthSignal({ score: null, label: "Rent collection health", detail: "Rent permission is required." });
     const arrearsHealth = canRent
       ? buildHealthSignal({
-          score: outstandingRentAmount > 0
-            ? 100 - Math.min((overdueRentAmount / outstandingRentAmount) * 100, 100)
-            : 100,
+          score: commandCurrencyState.status === "MIXED"
+            ? null
+            : outstandingRentAmount > 0
+              ? 100 - Math.min((overdueRentAmount / outstandingRentAmount) * 100, 100)
+              : 100,
           label: "Arrears health",
-          detail: overdueRentAmount > 0
-            ? `${moneyString(overdueRentAmount)} OMR is overdue`
-            : "No overdue rent is currently recorded.",
+          detail: commandCurrencyState.status === "MIXED"
+            ? "Multiple currencies are present. Arrears are grouped and never combined."
+            : overdueRentAmount > 0
+              ? `${moneyString(overdueRentAmount)} ${commandSingleCurrency?.currency ?? ""} is overdue`.trim()
+              : "No overdue rent is currently recorded.",
         })
       : buildHealthSignal({ score: null, label: "Arrears health", detail: "Rent permission is required." });
     const maintenanceHealth = canMaintenance
@@ -10300,7 +11355,7 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
       {
         type: "OVERDUE_RENT" as const,
         label: "Overdue rent reminders",
-        count: canRent ? overdueRent._count : null,
+        count: canRent ? overdueRentCount : null,
         canRun: canRent && canRunRentAutomation,
         lastGeneratedAt: latestAutomationByType.OVERDUE_RENT ?? null,
         href: `/pms/settings?companyId=${access.company.id}`,
@@ -10351,6 +11406,7 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
         priority: query.priority,
       },
       period: { from: periodFrom, to: periodTo },
+      financialArchitecture: "GROUPED_NO_CONVERSION",
       riskWindow: { from: now, to: riskWindowTo, days: query.riskWindowDays },
       properties: canInventory ? properties : [],
       health: {
@@ -10370,13 +11426,15 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
         vacantUnits: canInventory ? vacantUnits : null,
         incompleteProperties: canInventory ? incompletePropertyCount : null,
         incompleteUnits: canInventory ? incompleteUnitCount : null,
-        overdueRentItems: canRent ? overdueRent._count : null,
-        overdueRentAmount: canRent ? moneyString(overdueRentAmount) : null,
-        outstandingRentItems: canRent ? outstandingRent._count : null,
-        outstandingRentAmount: canRent ? moneyString(outstandingRentAmount) : null,
-        rentScheduledThisPeriod: canRent ? moneyString(periodScheduledAmount) : null,
-        rentCollectedThisPeriod: canRent ? decimalToString(rentCollected._sum.amount) : null,
-        rentCollectionRate: canRent ? (collectionRate === null ? null : Math.round(collectionRate * 10) / 10) : null,
+        currencyState: canRent ? commandCurrencyState : null,
+        financialsByCurrency: canRent ? commandTotalsByCurrency : [],
+        overdueRentItems: canRent ? overdueRentCount : null,
+        overdueRentAmount: canRent ? commandSingleCurrency?.overdueRent ?? null : null,
+        outstandingRentItems: canRent ? outstandingRentCount : null,
+        outstandingRentAmount: canRent ? commandSingleCurrency?.outstandingRent ?? null : null,
+        rentScheduledThisPeriod: canRent ? commandSingleCurrency?.scheduledRent ?? null : null,
+        rentCollectedThisPeriod: canRent ? commandSingleCurrency?.rentCollected ?? null : null,
+        rentCollectionRate: canRent ? commandSingleCurrency?.collectionRate ?? null : null,
         leasesExpiringSoon: canTenancy ? leasesExpiring : null,
         activeMaintenanceRequests: canMaintenance ? activeMaintenance : null,
         overdueMaintenanceRequests: canMaintenance ? overdueMaintenance : null,
@@ -10385,8 +11443,18 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
         expiringDocuments: canDocuments ? expiringDocuments : null,
         expiredDocuments: canDocuments ? expiredDocuments : null,
         inspectionsDue: canMaintenance ? dueInspectionsCount : null,
-        ownerStatementReadyProperties: canAccounting ? statementProperties.length : null,
-        ownerStatementNeedsReviewProperties: canAccounting ? statementProperties.length : null,
+        ownerStatementReadyProperties: canAccounting
+          ? statementReadiness.filter(({ statement }) => statement?.status === PmsOwnerStatementStatus.APPROVED).length
+          : null,
+        ownerStatementNeedsReviewProperties: canAccounting
+          ? statementReadiness.filter(({ statement }) => statement && PMS_OWNER_STATEMENT_REVIEW_STATUSES.has(statement.status)).length
+          : null,
+        ownerStatementPublishedProperties: canAccounting
+          ? statementReadiness.filter(({ statement }) => statement?.status === PmsOwnerStatementStatus.PUBLISHED).length
+          : null,
+        ownerStatementMissingProperties: canAccounting
+          ? statementReadiness.filter(({ statement }) => !statement).length
+          : null,
         highRiskTenantAccounts: canRent ? highRiskTenants.filter((item) => item.priority === "CRITICAL" || item.priority === "HIGH").length : null,
         tenantExperienceSignals: canMaintenance ? tenantExperienceIds.size : null,
       },
@@ -10400,7 +11468,7 @@ pmsRouter.get("/command-center", requireAuth(), async (req, res, next) => {
           : null,
       },
       automation: {
-        rentRemindersDue: canRent ? overdueRent._count + dueSoonRentCount : null,
+        rentRemindersDue: canRent ? overdueRentCount + dueSoonRentCount : null,
         leaseExpiryRemindersDue: canTenancy ? leasesExpiring : null,
         maintenanceRemindersDue: canMaintenance ? maintenanceReminderCount : null,
         documentExpiryRemindersDue: canDocuments ? expiringDocuments + expiredDocuments : null,
@@ -10611,21 +11679,21 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
         where: {
           companyId,
           propertyId: scopedPropertyId,
-          status: PmsUnitStatus.VACANT,
+          occupancyStatus: PmsOccupancyStatus.VACANT,
         },
       }),
       prisma.pmsUnit.count({
         where: {
           companyId,
           propertyId: scopedPropertyId,
-          status: PmsUnitStatus.OCCUPIED,
+          occupancyStatus: PmsOccupancyStatus.OCCUPIED,
         },
       }),
       prisma.pmsUnit.count({
         where: {
           companyId,
           propertyId: scopedPropertyId,
-          status: PmsUnitStatus.MAINTENANCE,
+          operationalStatus: PmsUnitOperationalStatus.MAINTENANCE,
         },
       }),
       prisma.pmsTenant.count({
@@ -10804,6 +11872,8 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
       }),
     ]);
 
+    const overviewFinancials = await buildPmsReportsSummary(companyId, scopedPropertyId);
+
     res.json({
       workspace: {
         company: access.company,
@@ -10839,23 +11909,15 @@ pmsRouter.get("/overview", requireAuth(), async (req, res, next) => {
         overduePmsRentDueItems: canRent ? overduePmsRentDueItems : null,
         partiallyPaidPmsRentDueItems: canRent ? partiallyPaidPmsRentDueItems : null,
         paidPmsRentDueItems: canRent ? paidPmsRentDueItems : null,
-        pmsRentDueAmount: canRent
-          ? moneyString(
-              Math.max(
-                Number(pmsRentDueAggregate._sum.amount ?? 0) -
-                  Number(pmsRentDueAggregate._sum.paidAmount ?? 0),
-                0,
-              ),
-            )
-          : null,
-        pmsRentCollectedAmount: canRent
-          ? decimalToString(pmsRentCollectedAggregate._sum.amount)
-          : null,
+        pmsFinancialCurrencyState: canRent ? overviewFinancials.accounting.currencyState : null,
+        pmsFinancialsByCurrency: canRent ? overviewFinancials.accounting.totalsByCurrency : [],
+        pmsRentDueAmount: canRent ? overviewFinancials.accounting.outstandingRent : null,
+        pmsRentCollectedAmount: canRent ? overviewFinancials.accounting.incomeCollected : null,
         openPmsWorkOrders: canMaintenance ? openPmsWorkOrders : null,
         inProgressPmsWorkOrders: canMaintenance ? inProgressPmsWorkOrders : null,
         urgentPmsWorkOrders: canMaintenance ? urgentPmsWorkOrders : null,
         pmsMaintenanceCostAmount: canMaintenance
-          ? decimalToString(pmsMaintenanceCostAggregate._sum.cost)
+          ? overviewFinancials.accounting.maintenanceCosts
           : null,
         scheduledPmsInspections: canMaintenance ? scheduledPmsInspections : null,
         needsActionPmsInspections: canMaintenance ? needsActionPmsInspections : null,

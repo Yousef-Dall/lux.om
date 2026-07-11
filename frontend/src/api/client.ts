@@ -98,6 +98,23 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return payload as T;
 }
 
+
+async function downloadRequest(
+  path: string,
+  options: Pick<RequestOptions, 'token' | 'params'> = {},
+): Promise<{ blob: Blob; filename: string | null }> {
+  const headers = new Headers({ Accept: 'application/octet-stream, application/pdf, image/*' });
+  if (options.token) headers.set('Authorization', `Bearer ${options.token}`);
+  const response = await fetch(buildUrl(path, options.params), { headers });
+  if (!response.ok) {
+    const payload = await parseResponse(response);
+    throw new ApiError(getErrorMessage(payload), response.status, payload);
+  }
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return { blob: await response.blob(), filename: filenameMatch?.[1] ?? null };
+}
+
 export const apiClient = {
   get: <T>(path: string, options?: RequestOptions) => request<T>(path, options),
 
@@ -126,5 +143,8 @@ export const apiClient = {
       ...options,
       method: 'POST',
       body: formData
-    })
+    }),
+
+  download: (path: string, options?: Pick<RequestOptions, 'token' | 'params'>) =>
+    downloadRequest(path, options)
 };

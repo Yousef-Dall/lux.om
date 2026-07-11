@@ -19,6 +19,7 @@
     "db:migrate:status": "npm run db:migrate:status -w backend",
     "verify:db-safety": "npm run verify:db-safety -w backend",
     "ops:db:backup": "npm run ops:db:backup -w backend",
+    "ops:pms-documents:migrate": "npm run ops:pms-documents:migrate -w backend",
     "test": "npm run test -w backend",
     "test:watch": "npm run test:watch -w backend",
     "test:integration": "npm run test:integration -w backend",

@@ -8,6 +8,8 @@ import { signToken } from '../src/middleware/auth';
 const app = createApp();
 
 async function clearCrmTestData() {
+  await prisma.domainAuditEvent.deleteMany();
+  await prisma.pmsOwnerStatement.deleteMany();
   await prisma.crmActivity.deleteMany();
   await prisma.crmLead.deleteMany();
   await prisma.crmContact.deleteMany();

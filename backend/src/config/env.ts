@@ -154,6 +154,8 @@ function createEnvSchema(input: NodeJS.ProcessEnv) {
       STORAGE_DRIVER: z.enum(['local', 'cloudinary']).default('local'),
       UPLOAD_DIR: z.string().default('uploads'),
       MAX_UPLOAD_MB: z.coerce.number().positive().default(5),
+      PMS_PRIVATE_DOCUMENT_DIR: z.string().trim().default('private-pms-documents'),
+      MAX_PMS_DOCUMENT_MB: z.coerce.number().positive().max(50).default(10),
       CLOUDINARY_CLOUD_NAME: z
         .string()
         .trim()
@@ -392,5 +394,7 @@ export function validateEnv(input: NodeJS.ProcessEnv) {
 export const env = validateEnv(process.env);
 
 export const isProduction = env.NODE_ENV === 'production';
+
+export const maxPmsDocumentBytes = Math.floor(env.MAX_PMS_DOCUMENT_MB * 1024 * 1024);
 
 export const maxUploadBytes = env.MAX_UPLOAD_MB * 1024 * 1024;

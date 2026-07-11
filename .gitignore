@@ -25,6 +25,8 @@ build/
 # Runtime uploads
 backend/uploads/*
 !backend/uploads/.gitkeep
+backend/private-pms-documents/*
+!backend/private-pms-documents/.gitkeep
 
 # Logs
 *.log

@@ -128,7 +128,7 @@ export type TenantDocumentPayload = {
   leaseId?: string;
   type?: Extract<PmsDocumentType, 'TENANT_ID' | 'PASSPORT_RESIDENCY' | 'OTHER'>;
   title: string;
-  fileUrl: string;
+  fileUrl?: string;
   expiryDate?: string | null;
   notes?: string | null;
 };
@@ -315,6 +315,28 @@ export async function getTenantDocuments(token: string, accessId?: string) {
   return apiClient.get<TenantDocumentsResponse>('/api/tenant/documents', {
     token,
     params: tenantParams(accessId)
+  });
+}
+
+export async function uploadTenantDocument(
+  token: string,
+  payload: Omit<TenantDocumentPayload, 'fileUrl'>,
+  file: File,
+  accessId?: string,
+) {
+  const formData = new FormData();
+  formData.append('metadata', JSON.stringify(payload));
+  formData.append('file', file);
+  return apiClient.upload<{
+    workspace: TenantPortalWorkspace;
+    document: PmsDocument;
+  }>('/api/tenant/documents/upload', formData, { token, params: tenantParams(accessId) });
+}
+
+export async function downloadTenantDocument(token: string, documentId: string, accessId?: string) {
+  return apiClient.download(`/api/tenant/documents/${documentId}/download`, {
+    token,
+    params: tenantParams(accessId),
   });
 }
 

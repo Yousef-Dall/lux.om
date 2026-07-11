@@ -6,8 +6,11 @@ import { prisma } from "../src/lib/prisma";
 import { signToken } from "../src/middleware/auth";
 
 const app = createApp();
+const TEST_PDF = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
 
 async function clearPmsTestDatabase() {
+  await prisma.domainAuditEvent.deleteMany();
+  await prisma.pmsOwnerStatement.deleteMany();
   await prisma.crmActivity.deleteMany();
   await prisma.crmLead.deleteMany();
   await prisma.crmContact.deleteMany();
@@ -382,7 +385,7 @@ describe("PMS company entitlement access architecture", () => {
         bedrooms: 1,
         bathrooms: 1,
         areaSqm: 74,
-        status: "OCCUPIED",
+        status: "VACANT",
         rentAmount: 620,
         currency: "OMR",
       })
@@ -415,10 +418,10 @@ describe("PMS company entitlement access architecture", () => {
 
     expect(overviewResponse.body.metrics.totalPmsProperties).toBe(1);
     expect(overviewResponse.body.metrics.totalPmsUnits).toBe(3);
-    expect(overviewResponse.body.metrics.vacantPmsUnits).toBe(1);
-    expect(overviewResponse.body.metrics.occupiedPmsUnits).toBe(1);
+    expect(overviewResponse.body.metrics.vacantPmsUnits).toBe(3);
+    expect(overviewResponse.body.metrics.occupiedPmsUnits).toBe(0);
     expect(overviewResponse.body.metrics.maintenancePmsUnits).toBe(1);
-    expect(overviewResponse.body.metrics.pmsOccupancyRate).toBeCloseTo(33.3, 1);
+    expect(overviewResponse.body.metrics.pmsOccupancyRate).toBe(0);
 
     const publicListings = await request(app).get("/api/listings").expect(200);
     expect(
@@ -1515,20 +1518,21 @@ describe("PMS company entitlement access architecture", () => {
       })
       .expect(403);
 
-    const auditEvents = await prisma.accountSecurityEvent.findMany({
+    const auditEvents = await prisma.domainAuditEvent.findMany({
       where: {
-        type: "ADMIN_PMS_ACCESS_UPDATED",
-        title: {
-          in: [
-            "PMS rent payment recorded",
-            "PMS maintenance work order created",
-          ],
-        },
+        companyId: company.id,
+        domain: "PMS",
+        action: "create",
+        entityType: { in: ["pmsRentPayment", "pmsWorkOrder"] },
       },
-      select: { title: true },
+      select: { metadata: true },
     });
+    const auditTitles = auditEvents
+      .map((event) => (event.metadata as { title?: unknown } | null)?.title)
+      .filter((title): title is string => typeof title === "string")
+      .sort();
 
-    expect(auditEvents.map((event) => event.title).sort()).toEqual([
+    expect(auditTitles).toEqual([
       "PMS maintenance work order created",
       "PMS rent payment recorded",
     ]);
@@ -2536,9 +2540,9 @@ describe("PMS company entitlement access architecture", () => {
     const otherTenantToken = signToken(otherTenantUser);
 
     const createdDocument = await request(app)
-      .post("/api/pms/documents")
+      .post("/api/pms/documents/upload")
       .set("Authorization", `Bearer ${managerToken}`)
-      .send({
+      .field("metadata", JSON.stringify({
         companyId: company.id,
         tenantId: tenant.id,
         leaseId: lease.id,
@@ -2546,10 +2550,10 @@ describe("PMS company entitlement access architecture", () => {
         unitId: unit.id,
         type: "LEASE_AGREEMENT",
         title: "Signed lease agreement",
-        fileUrl: "/uploads/pms/signed-lease.pdf",
         expiryDate: "2026-12-20",
         notes: "Private lease document",
-      })
+      }))
+      .attach("file", TEST_PDF, { filename: "signed-lease.pdf", contentType: "application/pdf" })
       .expect(201);
 
     expect(createdDocument.body.document.tenant.id).toBe(tenant.id);
@@ -2564,15 +2568,15 @@ describe("PMS company entitlement access architecture", () => {
     expect(listResponse.body.documents[0].title).toBe("Signed lease agreement");
 
     await request(app)
-      .post("/api/pms/documents")
+      .post("/api/pms/documents/upload")
       .set("Authorization", `Bearer ${viewerToken}`)
-      .send({
+      .field("metadata", JSON.stringify({
         companyId: company.id,
         tenantId: tenant.id,
         type: "OTHER",
         title: "Viewer upload attempt",
-        fileUrl: "/uploads/pms/viewer.pdf",
-      })
+      }))
+      .attach("file", TEST_PDF, { filename: "viewer.pdf", contentType: "application/pdf" })
       .expect(403);
 
     const renewalResponse = await request(app)
@@ -2626,13 +2630,13 @@ describe("PMS company entitlement access architecture", () => {
     expect(otherTenantDocumentsResponse.body.documents).toHaveLength(0);
 
     const tenantUploadResponse = await request(app)
-      .post("/api/tenant/documents")
+      .post("/api/tenant/documents/upload")
       .set("Authorization", `Bearer ${tenantToken}`)
-      .send({
+      .field("metadata", JSON.stringify({
         type: "PASSPORT_RESIDENCY",
         title: "Updated residency card",
-        fileUrl: "/uploads/pms/residency.pdf",
-      })
+      }))
+      .attach("file", TEST_PDF, { filename: "residency.pdf", contentType: "application/pdf" })
       .expect(201);
 
     expect(tenantUploadResponse.body.document.tenantId).toBe(tenant.id);
@@ -2772,9 +2776,14 @@ describe("PMS company entitlement access architecture", () => {
       .set("Authorization", `Bearer ${otherToken}`)
       .expect(403);
 
-    const exportResponse = await request(app)
+    await request(app)
       .get(`/api/pms/exports/properties.csv?companyId=${company.id}`)
       .set("Authorization", `Bearer ${viewerToken}`)
+      .expect(403);
+
+    const exportResponse = await request(app)
+      .get(`/api/pms/exports/properties.csv?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${managerToken}`)
       .expect(200);
 
     expect(exportResponse.text).toContain("Bulk Tower");
@@ -3049,7 +3058,8 @@ describe("PMS advanced permissions and property scopes", () => {
     expect(response.body.metrics.missingLeaseDocuments).toBe(1);
     expect(response.body.metrics.expiringDocuments).toBe(1);
     expect(response.body.metrics.inspectionsDue).toBe(1);
-    expect(response.body.metrics.ownerStatementReadyProperties).toBe(1);
+    expect(response.body.metrics.ownerStatementReadyProperties).toBe(0);
+    expect(response.body.metrics.ownerStatementMissingProperties).toBe(1);
     expect(response.body.metrics.highRiskTenantAccounts).toBe(1);
     expect(response.body.health.portfolio.score).toEqual(expect.any(Number));
     expect(response.body.health.collection.status).not.toBe("NO_DATA");
@@ -3065,6 +3075,7 @@ describe("PMS advanced permissions and property scopes", () => {
     expect(queueTypes).toContain("MISSING_DOCUMENT");
     expect(queueTypes).toContain("DOCUMENT_EXPIRING");
     expect(queueTypes).toContain("INSPECTION_DUE");
+    expect(queueTypes).toContain("STATEMENT_GENERATION");
     expect(response.body.priorityQueue.every((item: { propertyId: string | null }) => item.propertyId === propertyA.id)).toBe(true);
 
     const openResponse = await request(app)
@@ -3156,14 +3167,17 @@ describe("PMS advanced permissions and property scopes", () => {
     expect(automationLogs[0].status).toBe("LOGGED");
     expect(automationLogs[0].notes).toContain("External delivery is not enabled");
 
-    const audit = await prisma.accountSecurityEvent.findFirst({
+    const audit = await prisma.domainAuditEvent.findFirst({
       where: {
+        companyId: company.id,
+        domain: "PMS",
         actorId: staff.id,
-        title: "PMS automation alerts generated",
+        action: "runOperationalAutomation",
       },
       orderBy: { createdAt: "desc" },
     });
     expect(audit).toBeTruthy();
+    expect((audit?.metadata as { title?: unknown } | null)?.title).toBe("PMS automation alerts generated");
 
     await request(app)
       .post("/api/pms/automations/run")
@@ -3239,15 +3253,18 @@ describe("PMS advanced permissions and property scopes", () => {
 
     expect(staffList.body.members.some((member: { user: { email: string } }) => member.user.email === target.email)).toBe(true);
 
-    const audit = await prisma.accountSecurityEvent.findFirst({
+    const audit = await prisma.domainAuditEvent.findFirst({
       where: {
-        type: "ADMIN_PMS_ACCESS_UPDATED",
+        companyId: company.id,
+        domain: "PMS",
+        entityType: "pmsCompanyMember",
         actorId: owner.id,
-        userId: target.id,
+        action: "staff_upsert",
       },
     });
 
     expect(audit).toBeTruthy();
+    expect((audit?.metadata as { targetUserId?: unknown } | null)?.targetUserId).toBe(target.id);
 
     const scopedStaffToken = signToken(staff);
     await request(app)

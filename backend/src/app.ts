@@ -184,7 +184,7 @@ function isSupportedApiContentType(req: Request) {
     req.is('application/json') ||
       req.is('application/*+json') ||
       req.is('application/x-www-form-urlencoded') ||
-      (req.path.startsWith('/api/uploads') && req.is('multipart/form-data'))
+      ((req.path.startsWith('/api/uploads') || req.path.startsWith('/api/pms/documents') || req.path.startsWith('/api/tenant/documents')) && req.is('multipart/form-data'))
   );
 }
 
@@ -433,6 +433,21 @@ export function createApp() {
     app.use(
       '/uploads',
       validateLocalUploadRequest,
+      async (req, res, next) => {
+        try {
+          const legacyPmsDocument = await prisma.pmsDocument.findFirst({
+            where: { fileUrl: `/uploads${req.path}` },
+            select: { id: true },
+          });
+          if (legacyPmsDocument) {
+            res.status(404).json({ message: 'File not found' });
+            return;
+          }
+          next();
+        } catch (error) {
+          next(error);
+        }
+      },
       express.static(getLocalUploadDirectory(), {
         dotfiles: 'deny',
         index: false,

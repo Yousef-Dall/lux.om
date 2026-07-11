@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { CrmLeadStatus, Prisma } from '@prisma/client';
+import { DomainAuditDomain, type CrmLeadStatus, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 import {
@@ -10,6 +10,7 @@ import {
   getCrmAccess
 } from '../lib/crmAccess';
 import { buildCrmCommunicationTemplates, calculateCrmLeadIntelligence, type CrmLeadIntelligenceInput } from '../lib/crmIntelligence';
+import { recordDomainAuditEvent, requestAuditContext } from '../lib/domainAudit';
 import { prisma } from '../lib/prisma';
 import { getPmsPermissionKeys } from '../lib/pmsPermissions';
 import { requireAuth } from '../middleware/auth';
@@ -1069,6 +1070,25 @@ crmRouter.patch('/leads/:id', async (req, res, next) => {
             assignedToId: data.assignedToId,
             updatedById: req.user!.id
           }
+        });
+      }
+
+      const changedFields = [
+        ...(data.status && data.status !== current.status ? ['status'] : []),
+        ...(data.assignedToId !== undefined && data.assignedToId !== current.assignedToId ? ['assignedToId'] : [])
+      ];
+      if (changedFields.length > 0) {
+        await recordDomainAuditEvent(tx, {
+          companyId: current.companyId,
+          domain: DomainAuditDomain.CRM,
+          entityType: 'crmLead',
+          entityId: id,
+          action: changedFields.length === 2 ? 'stage_and_assignment_change' : changedFields[0] === 'status' ? 'stage_change' : 'assignment_change',
+          actorId: req.user!.id,
+          changedFields,
+          beforeMetadata: { status: current.status, assignedToId: current.assignedToId },
+          afterMetadata: { status: data.status ?? current.status, assignedToId: data.assignedToId === undefined ? current.assignedToId : data.assignedToId },
+          ...requestAuditContext(req)
         });
       }
 

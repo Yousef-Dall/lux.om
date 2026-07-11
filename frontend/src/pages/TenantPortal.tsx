@@ -3,7 +3,7 @@ import { FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { NavLink, Navigate, useLocation } from 'react-router-dom';
 
 import {
-  createTenantDocument,
+  downloadTenantDocument,
   confirmTenantMaintenanceResolved,
   createTenantMaintenanceRequest,
   createTenantRentCheckoutSession,
@@ -18,6 +18,7 @@ import {
   reopenTenantMaintenance,
   syncTenantRentPayment,
   updateTenantProfile,
+  uploadTenantDocument,
   type TenantLeaseResponse,
   type TenantMaintenanceResponse,
   type TenantOverview,
@@ -107,6 +108,8 @@ export default function TenantPortal() {
   const [documents, setDocuments] = useState<PmsDocument[]>([]);
   const [documentsNote, setDocumentsNote] = useState('');
   const [documentForm, setDocumentForm] = useState<TenantDocumentPayload>(emptyTenantDocumentForm);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentDownloadingId, setDocumentDownloadingId] = useState<string | null>(null);
   const [maintenanceForm, setMaintenanceForm] = useState<MaintenanceFormState>({
     title: '',
     description: '',
@@ -430,31 +433,54 @@ export default function TenantPortal() {
 
   async function handleCreateDocument(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token || !activeAccessId) return;
+    if (!token || !activeAccessId || !documentFile) return;
 
     setSaving(true);
     setError('');
     setSuccess('');
 
     try {
-      const response = await createTenantDocument(
+      const response = await uploadTenantDocument(
         token,
         {
-          ...documentForm,
+          leaseId: documentForm.leaseId,
+          type: documentForm.type,
           title: documentForm.title.trim(),
-          fileUrl: documentForm.fileUrl.trim(),
           expiryDate: documentForm.expiryDate || null,
           notes: documentForm.notes || null
         },
+        documentFile,
         activeAccessId
       );
       setDocuments((current) => [response.document, ...current]);
       setDocumentForm(emptyTenantDocumentForm);
+      setDocumentFile(null);
       setSuccess(copy.saved);
     } catch (documentError) {
       setError(getErrorMessage(documentError));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDownloadDocument(document: PmsDocument) {
+    if (!token || !activeAccessId) return;
+    try {
+      setDocumentDownloadingId(document.id);
+      setError('');
+      const response = await downloadTenantDocument(token, document.id, activeAccessId);
+      const url = window.URL.createObjectURL(response.blob);
+      const link = window.document.createElement('a');
+      link.href = url;
+      link.download = response.filename || document.originalFilename || `${document.title}.bin`;
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setError(getErrorMessage(downloadError));
+    } finally {
+      setDocumentDownloadingId(null);
     }
   }
 
@@ -837,10 +863,11 @@ export default function TenantPortal() {
                   <span>{copy.documentUrl}</span>
                   <input
                     required
-                    value={documentForm.fileUrl}
-                    placeholder="/uploads/file.pdf or https://..."
-                    onChange={(event) => setDocumentForm((form) => ({ ...form, fileUrl: event.target.value }))}
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                    onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)}
                   />
+                  <small>{documentFile?.name ?? copy.documentsText}</small>
                 </label>
                 <label>
                   <span>{copy.expiryDate}</span>
@@ -858,7 +885,7 @@ export default function TenantPortal() {
                     onChange={(event) => setDocumentForm((form) => ({ ...form, notes: event.target.value }))}
                   />
                 </label>
-                <button className="button-link button-link--primary" type="submit" disabled={saving}>
+                <button className="button-link button-link--primary" type="submit" disabled={saving || !documentFile}>
                   {saving ? copy.saving : copy.uploadDocument}
                 </button>
               </form>
@@ -872,10 +899,10 @@ export default function TenantPortal() {
                     <div><dt>{copy.expiryDate}</dt><dd>{formatDate(document.expiryDate, language)}</dd></div>
                   </dl>
                   {document.notes ? <p>{document.notes}</p> : null}
-                  <a className="button-link" href={document.fileUrl} target="_blank" rel="noreferrer">
-                    <ExternalLink size={16} aria-hidden="true" />
-                    {copy.openDocument}
-                  </a>
+                  <button className="button-link" type="button" disabled={documentDownloadingId === document.id} onClick={() => void handleDownloadDocument(document)}>
+                    <ShieldCheck size={16} aria-hidden="true" />
+                    {documentDownloadingId === document.id ? copy.saving : copy.openDocument}
+                  </button>
                 </InfoCard>
               ))}
             </div>

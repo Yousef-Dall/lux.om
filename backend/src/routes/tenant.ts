@@ -1,5 +1,10 @@
+import path from 'node:path';
+
 import {
   AccountSecurityEventType,
+  DomainAuditDomain,
+  PmsDocumentScanStatus,
+  PmsDocumentStorageDriver,
   NotificationType,
   PmsDocumentStatus,
   PmsDocumentType,
@@ -11,6 +16,7 @@ import {
   type Prisma
 } from '@prisma/client';
 import { Router } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 
 import {
@@ -36,8 +42,19 @@ import {
   type ThawaniRetrieveSessionData
 } from '../lib/pmsRentPayments';
 import { recordAccountSecurityEvent } from '../lib/accountSecurityEvents';
+import { recordDomainAuditEvent, requestAuditContext } from '../lib/domainAudit';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../utils/http';
+import { maxPmsDocumentBytes } from '../config/env';
+import { getLocalUploadDirectory } from '../storage/imageStorage';
+import {
+  importLegacyLocalPmsDocument,
+  readPrivatePmsDocument,
+  removePrivatePmsDocument,
+  restoreLegacyLocalPmsDocument,
+  storePrivatePmsDocument,
+  supportedPrivateDocumentMimeTypes,
+} from '../storage/privatePmsDocumentStorage';
 
 export const tenantRouter = Router();
 
@@ -50,20 +67,39 @@ const tenantDocumentFileSchema = z
   .trim()
   .min(1)
   .max(1000)
-  .refine((value) => value.startsWith('/uploads/') || /^https?:\/\//i.test(value), {
-    message: 'Document file must be an uploaded file path or a HTTPS URL.'
+  .refine((value) => value.startsWith('/uploads/'), {
+    message: 'Legacy tenant document paths must reference local /uploads storage for private migration.'
   });
 
-const tenantDocumentCreateSchema = z
+const tenantDocumentMetadataSchema = z
   .object({
     leaseId: z.string().trim().min(1).optional(),
     type: z.enum([PmsDocumentType.TENANT_ID, PmsDocumentType.PASSPORT_RESIDENCY, PmsDocumentType.OTHER] as const).default(PmsDocumentType.OTHER),
     title: z.string().trim().min(2).max(180),
-    fileUrl: tenantDocumentFileSchema,
     expiryDate: z.coerce.date().optional().nullable(),
     notes: z.string().trim().max(2000).optional().nullable()
   })
   .strict();
+
+const tenantDocumentCreateSchema = tenantDocumentMetadataSchema.extend({
+  fileUrl: tenantDocumentFileSchema,
+});
+
+const tenantDocumentParamsSchema = z.object({
+  documentId: z.string().trim().min(1),
+});
+
+const tenantDocumentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { files: 1, fileSize: maxPmsDocumentBytes },
+  fileFilter(_req, file, callback) {
+    if (!supportedPrivateDocumentMimeTypes.has(file.mimetype)) {
+      callback(new AppError(400, 'Private tenant documents must be PDF, JPG, PNG, or WEBP.'));
+      return;
+    }
+    callback(null, true);
+  },
+}).single('file');
 
 const tenantRentQuerySchema = tenantAccessQuerySchema.extend({
   status: z
@@ -400,7 +436,13 @@ function tenantDocumentResponse(document: TenantDocumentWithRelations) {
     inspection: document.inspection,
     type: document.type,
     title: document.title,
-    fileUrl: document.fileUrl,
+    fileUrl: `/api/tenant/documents/${document.id}/download`,
+    downloadPath: `/api/tenant/documents/${document.id}/download`,
+    originalFilename: document.originalFilename,
+    mimeType: document.mimeType,
+    sizeBytes: document.sizeBytes,
+    fileVersion: document.fileVersion,
+    scanStatus: document.scanStatus,
     status: document.status,
     expiryDate: document.expiryDate,
     notes: document.notes,
@@ -1431,7 +1473,156 @@ tenantRouter.get('/documents', requireAuth(), async (req, res, next) => {
   }
 });
 
+tenantRouter.post('/documents/upload', requireAuth(), tenantDocumentUpload, async (req, res, next) => {
+  let storedKey: string | null = null;
+  try {
+    if (!req.user) throw new AppError(401, 'Unauthorized');
+    if (!req.file) throw new AppError(400, 'A private tenant document file is required.');
+    const query = tenantAccessQuerySchema.parse(req.query);
+    let rawMetadata: unknown = req.body;
+    if (typeof req.body.metadata === 'string') {
+      try {
+        rawMetadata = JSON.parse(req.body.metadata);
+      } catch {
+        throw new AppError(400, 'Document metadata must be valid JSON.');
+      }
+    }
+    const data = tenantDocumentMetadataSchema.parse(rawMetadata);
+    const access = await resolveTenantAccessOrThrow({ userId: req.user.id, accessId: query.accessId });
+    const activeLease = data.leaseId
+      ? await prisma.pmsLease.findFirst({
+          where: { id: data.leaseId, companyId: access.company.id, tenantId: access.tenant.id },
+          select: { id: true, propertyId: true, unitId: true },
+        })
+      : await prisma.pmsLease.findFirst({
+          where: activeTenantLeaseWhere({ companyId: access.company.id, tenantId: access.tenant.id }),
+          select: { id: true, propertyId: true, unitId: true },
+          orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+        });
+    if (data.leaseId && !activeLease) throw new AppError(404, 'Tenant lease was not found.');
+    const stored = await storePrivatePmsDocument({ companyId: access.company.id, file: req.file });
+    storedKey = stored.storageKey;
+    const document = await prisma.$transaction(async (tx) => {
+      const created = await tx.pmsDocument.create({
+        data: {
+          companyId: access.company.id,
+          tenantId: access.tenant.id,
+          leaseId: activeLease?.id ?? null,
+          propertyId: activeLease?.propertyId ?? null,
+          unitId: activeLease?.unitId ?? null,
+          type: data.type,
+          title: data.title,
+          fileUrl: `private://${stored.storageKey}`,
+          storageDriver: PmsDocumentStorageDriver.LOCAL_PRIVATE,
+          storageKey: stored.storageKey,
+          originalFilename: stored.originalFilename,
+          mimeType: stored.mimeType,
+          sizeBytes: stored.sizeBytes,
+          checksumSha256: stored.checksumSha256,
+          scanStatus: PmsDocumentScanStatus.NOT_CONFIGURED,
+          fileUploadedAt: new Date(),
+          status: PmsDocumentStatus.ACTIVE,
+          expiryDate: data.expiryDate ?? null,
+          notes: normalizeNullableText(data.notes),
+          uploadedById: req.user!.id,
+          updatedById: req.user!.id,
+        },
+        include: tenantDocumentInclude,
+      });
+      await recordDomainAuditEvent(tx, {
+        companyId: access.company.id,
+        domain: DomainAuditDomain.PMS,
+        entityType: 'pmsDocument',
+        entityId: created.id,
+        action: 'tenant_upload',
+        actorId: req.user!.id,
+        changedFields: ['file', 'metadata'],
+        metadata: { tenantId: access.tenant.id, propertyId: created.propertyId, type: created.type, fileVersion: created.fileVersion },
+        ...requestAuditContext(req),
+      });
+      return created;
+    });
+    storedKey = null;
+    res.status(201).json({ workspace: tenantWorkspaceResponse(access), document: tenantDocumentResponse(document) });
+  } catch (error) {
+    if (storedKey) await removePrivatePmsDocument(storedKey).catch(() => undefined);
+    next(error);
+  }
+});
+
+tenantRouter.get('/documents/:documentId/download', requireAuth(), async (req, res, next) => {
+  try {
+    if (!req.user) throw new AppError(401, 'Unauthorized');
+    const query = tenantAccessQuerySchema.parse(req.query);
+    const { documentId } = tenantDocumentParamsSchema.parse(req.params);
+    const access = await resolveTenantAccessOrThrow({ userId: req.user.id, accessId: query.accessId });
+    let document = await prisma.pmsDocument.findFirst({
+      where: { id: documentId, companyId: access.company.id, tenantId: access.tenant.id, status: { not: PmsDocumentStatus.ARCHIVED } },
+      include: tenantDocumentInclude,
+    });
+    if (!document) throw new AppError(404, 'Tenant document not found.');
+    if (document.scanStatus === PmsDocumentScanStatus.QUARANTINED) throw new AppError(423, 'This document is quarantined and cannot be downloaded.');
+    if (document.storageDriver === PmsDocumentStorageDriver.LEGACY_REFERENCE) {
+      const migrated = await importLegacyLocalPmsDocument({
+        companyId: document.companyId,
+        fileUrl: document.fileUrl,
+        publicUploadDirectory: getLocalUploadDirectory(),
+      });
+      try {
+        document = await prisma.pmsDocument.update({
+          where: { id: document.id },
+          data: {
+            fileUrl: `private://${migrated.storageKey}`,
+            storageDriver: PmsDocumentStorageDriver.LOCAL_PRIVATE,
+            storageKey: migrated.storageKey,
+            originalFilename: migrated.originalFilename,
+            mimeType: migrated.mimeType,
+            sizeBytes: migrated.sizeBytes,
+            checksumSha256: migrated.checksumSha256,
+            scanStatus: PmsDocumentScanStatus.NOT_CONFIGURED,
+            fileUploadedAt: new Date(),
+            updatedById: req.user.id,
+          },
+          include: tenantDocumentInclude,
+        });
+      } catch (error) {
+        await restoreLegacyLocalPmsDocument({
+          storageKey: migrated.storageKey,
+          fileUrl: document.fileUrl,
+          publicUploadDirectory: getLocalUploadDirectory(),
+        }).catch(() => undefined);
+        throw error;
+      }
+    }
+    if (document.storageDriver !== PmsDocumentStorageDriver.LOCAL_PRIVATE || !document.storageKey) {
+      throw new AppError(501, 'This private document storage adapter is not configured for downloads.');
+    }
+    const contents = await readPrivatePmsDocument(document.storageKey);
+    await recordDomainAuditEvent(prisma, {
+      companyId: document.companyId,
+      domain: DomainAuditDomain.PMS,
+      entityType: 'pmsDocument',
+      entityId: document.id,
+      action: 'tenant_download',
+      actorId: req.user.id,
+      metadata: { tenantId: access.tenant.id, propertyId: document.propertyId, type: document.type, fileVersion: document.fileVersion },
+      ...requestAuditContext(req),
+    });
+    const filename = path.basename(document.originalFilename || `${document.title}.pdf`).replace(/["\r\n]/g, '_');
+    res.setHeader('Content-Type', document.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Length', String(contents.length));
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-store, private');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(contents);
+  } catch (error) {
+    next(error);
+  }
+});
+
 tenantRouter.post('/documents', requireAuth(), async (req, res, next) => {
+  let migratedKey: string | null = null;
+  let migratedLegacyUrl: string | null = null;
   try {
     if (!req.user) throw new AppError(401, 'Unauthorized');
 
@@ -1456,31 +1647,66 @@ tenantRouter.post('/documents', requireAuth(), async (req, res, next) => {
           select: { id: true, propertyId: true, unitId: true },
           orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }]
         });
+    if (data.leaseId && !activeLease) throw new AppError(404, 'Tenant lease was not found.');
 
-    const document = await prisma.pmsDocument.create({
-      data: {
+    const migrated = await importLegacyLocalPmsDocument({ companyId: access.company.id, fileUrl: data.fileUrl, publicUploadDirectory: getLocalUploadDirectory() });
+    migratedKey = migrated.storageKey;
+    migratedLegacyUrl = data.fileUrl;
+    const document = await prisma.$transaction(async (tx) => {
+      const created = await tx.pmsDocument.create({
+        data: {
+          companyId: access.company.id,
+          tenantId: access.tenant.id,
+          leaseId: activeLease?.id ?? null,
+          propertyId: activeLease?.propertyId ?? null,
+          unitId: activeLease?.unitId ?? null,
+          type: data.type,
+          title: data.title,
+          fileUrl: `private://${migrated.storageKey}`,
+          storageDriver: PmsDocumentStorageDriver.LOCAL_PRIVATE,
+          storageKey: migrated.storageKey,
+          originalFilename: migrated.originalFilename,
+          mimeType: migrated.mimeType,
+          sizeBytes: migrated.sizeBytes,
+          checksumSha256: migrated.checksumSha256,
+          scanStatus: PmsDocumentScanStatus.NOT_CONFIGURED,
+          fileUploadedAt: new Date(),
+          status: PmsDocumentStatus.ACTIVE,
+          expiryDate: data.expiryDate ?? null,
+          notes: normalizeNullableText(data.notes),
+          uploadedById: req.user!.id,
+          updatedById: req.user!.id
+        },
+        include: tenantDocumentInclude
+      });
+      await recordDomainAuditEvent(tx, {
         companyId: access.company.id,
-        tenantId: access.tenant.id,
-        leaseId: activeLease?.id ?? null,
-        propertyId: activeLease?.propertyId ?? null,
-        unitId: activeLease?.unitId ?? null,
-        type: data.type,
-        title: data.title,
-        fileUrl: data.fileUrl,
-        status: PmsDocumentStatus.ACTIVE,
-        expiryDate: data.expiryDate ?? null,
-        notes: normalizeNullableText(data.notes),
-        uploadedById: req.user.id,
-        updatedById: req.user.id
-      },
-      include: tenantDocumentInclude
+        domain: DomainAuditDomain.PMS,
+        entityType: 'pmsDocument',
+        entityId: created.id,
+        action: 'tenant_upload_legacy_migration',
+        actorId: req.user!.id,
+        changedFields: ['file', 'metadata'],
+        metadata: { tenantId: access.tenant.id, propertyId: created.propertyId, type: created.type, fileVersion: created.fileVersion },
+        ...requestAuditContext(req),
+      });
+      return created;
     });
+    migratedKey = null;
+    migratedLegacyUrl = null;
 
     res.status(201).json({
       workspace: tenantWorkspaceResponse(access),
       document: tenantDocumentResponse(document)
     });
   } catch (error) {
+    if (migratedKey && migratedLegacyUrl) {
+      await restoreLegacyLocalPmsDocument({
+        storageKey: migratedKey,
+        fileUrl: migratedLegacyUrl,
+        publicUploadDirectory: getLocalUploadDirectory(),
+      }).catch(() => undefined);
+    }
     next(error);
   }
 });

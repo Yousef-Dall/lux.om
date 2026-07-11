@@ -33,7 +33,7 @@ import {
   previewPmsCommunication,
   sendPmsCommunication,
   createPmsInspection,
-  createPmsDocument,
+  createPmsOwnerStatement,
   createPmsLeaseChecklistItem,
   createPmsLeaseRenewalDraft,
   createPmsLease,
@@ -53,6 +53,7 @@ import {
   getPmsCommandCenter,
   getPmsProperty,
   getPmsOwnerStatement,
+  getPmsOccupancyReconciliation,
   getPmsReportsSummary,
   runPmsAutomation,
   listPmsAccountingLedger,
@@ -67,6 +68,7 @@ import {
   listPmsLeaseRentDueItems,
   listPmsLeases,
   listPmsPolicies,
+  listPmsOwnerStatements,
   listPmsProperties,
   listPmsPropertyUnits,
   listPmsStaff,
@@ -77,6 +79,10 @@ import {
   listPmsUnits,
   listPmsWorkOrders,
   previewPmsImport,
+  applyPmsOccupancyReconciliation,
+  downloadPmsDocument,
+  transitionPmsOwnerStatement,
+  uploadPmsDocument,
   updatePmsProperty,
   updatePmsStaffMember,
   upsertPmsStaffMember,
@@ -118,6 +124,9 @@ import {
   type PmsPropertyPayload,
   type PmsRentDueItem,
   type PmsOwnerStatement,
+  type PmsOwnerStatementStatus,
+  type PmsPersistedOwnerStatement,
+  type PmsOccupancyReconciliation,
   type PmsRentReceipt,
   type PmsReportsSummary,
   type PmsStaffMember,
@@ -200,7 +209,7 @@ const pmsPermissionGroups: Array<{
   {
     key: "operations",
     label: { en: "Operations", ar: "التشغيل" },
-    permissions: ["MAINTENANCE_VIEW", "MAINTENANCE_MANAGE", "DOCUMENTS_VIEW", "DOCUMENTS_MANAGE", "COMMUNICATIONS_SEND"],
+    permissions: ["MAINTENANCE_VIEW", "MAINTENANCE_MANAGE", "DOCUMENTS_VIEW", "DOCUMENTS_MANAGE", "COMMUNICATIONS_SEND", "SENSITIVE_DATA_VIEW", "SENSITIVE_DATA_EXPORT"],
   },
   {
     key: "crm",
@@ -232,6 +241,8 @@ const pmsPermissionLabels: Record<PmsPermissionKey, { en: string; ar: string }> 
   DOCUMENTS_MANAGE: { en: "Manage documents", ar: "إدارة المستندات" },
   STAFF_MANAGE: { en: "Manage staff", ar: "إدارة الفريق" },
   IMPORT_EXPORT: { en: "Import / export", ar: "استيراد وتصدير" },
+  SENSITIVE_DATA_VIEW: { en: "View sensitive identity data", ar: "عرض بيانات الهوية الحساسة" },
+  SENSITIVE_DATA_EXPORT: { en: "Export sensitive identity data", ar: "تصدير بيانات الهوية الحساسة" },
   CRM_VIEW: { en: "View CRM", ar: "عرض إدارة العملاء" },
   CRM_MANAGE: { en: "Manage CRM", ar: "إدارة العملاء" },
 };
@@ -470,6 +481,33 @@ function formatPercent(
   return `${new Intl.NumberFormat(language === "ar" ? "ar-OM" : "en-GB", {
     maximumFractionDigits: 1,
   }).format(value)}%`;
+}
+
+function formatCurrencyAmount(
+  value: string | number | null | undefined,
+  currency: string | null | undefined,
+  language: "en" | "ar",
+) {
+  if (value == null || !currency) return "—";
+  const numericValue = typeof value === "number" ? value : Number(value);
+  const amount = Number.isFinite(numericValue)
+    ? new Intl.NumberFormat(language === "ar" ? "ar-OM" : "en-GB", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(numericValue)
+    : String(value);
+  return `${amount} ${currency}`;
+}
+
+function formatCommandCurrencyBreakdown(
+  totals: PmsCommandCenter["metrics"]["financialsByCurrency"],
+  field: "outstandingRent" | "overdueRent" | "rentCollected",
+  language: "en" | "ar",
+) {
+  if (!totals.length) return "—";
+  return totals
+    .map((total) => formatCurrencyAmount(total[field], total.currency, language))
+    .join(" · ");
 }
 
 function getRoleLabel(role: string, language: "en" | "ar") {
@@ -801,11 +839,19 @@ function cleanDocumentPayload(form: PmsDocumentPayload, companyId: string): PmsD
     inspectionId: form.inspectionId || null,
     type: form.type || "OTHER",
     title: form.title.trim(),
-    fileUrl: form.fileUrl.trim(),
+    fileUrl: form.fileUrl?.trim() ?? "",
     status: form.status || "ACTIVE",
     expiryDate: form.expiryDate || null,
     notes: form.notes?.trim() || null,
   };
+}
+
+function cleanPrivateDocumentPayload(
+  form: PmsDocumentPayload,
+  companyId: string,
+): Omit<PmsDocumentPayload, "fileUrl"> & { companyId: string } {
+  const { fileUrl: _legacyFileUrl, ...payload } = cleanDocumentPayload(form, companyId);
+  return payload;
 }
 
 function StatusBadge({ status, label }: { status: string; label?: string }) {
@@ -823,6 +869,17 @@ function downloadCsvFile(filename: string, csvText: string) {
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
 
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function downloadBlobFile(filename: string, blob: Blob) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
   link.href = url;
   link.download = filename;
   document.body.appendChild(link);
@@ -874,6 +931,11 @@ export default function PmsPortal() {
   const [reportsSummary, setReportsSummary] = useState<PmsReportsSummary | null>(null);
   const [ledgerEntries, setLedgerEntries] = useState<PmsAccountingLedgerEntry[]>([]);
   const [ownerStatement, setOwnerStatement] = useState<PmsOwnerStatement | null>(null);
+  const [ownerStatements, setOwnerStatements] = useState<PmsPersistedOwnerStatement[]>([]);
+  const [ownerStatementMonth, setOwnerStatementMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [ownerStatementPropertyId, setOwnerStatementPropertyId] = useState("");
+  const [ownerStatementCurrency, setOwnerStatementCurrency] = useState("OMR");
+  const [occupancyReconciliation, setOccupancyReconciliation] = useState<PmsOccupancyReconciliation | null>(null);
   const [rentReceipt, setRentReceipt] = useState<PmsRentReceipt | null>(null);
   const [templates, setTemplates] = useState<PmsCommunicationTemplate[]>([]);
   const [communicationLogs, setCommunicationLogs] = useState<PmsCommunicationLog[]>([]);
@@ -924,6 +986,8 @@ export default function PmsPortal() {
     useState<PmsInspectionPayload>(emptyInspectionForm);
   const [documentForm, setDocumentForm] =
     useState<PmsDocumentPayload>(emptyDocumentForm);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentDownloadingId, setDocumentDownloadingId] = useState<string | null>(null);
   const [unitDrafts, setUnitDrafts] = useState<
     Record<string, Partial<PmsUnitPayload>>
   >({});
@@ -1501,6 +1565,8 @@ export default function PmsPortal() {
   const canEditTenantRecords = hasPmsPermission(permissionKeys, "TENANCY_MANAGE");
   const canCollect = hasPmsPermission(permissionKeys, "RENT_MANAGE");
   const canSeeAccounting = hasPmsPermission(permissionKeys, "ACCOUNTING_VIEW");
+  const canManageAccounting = hasPmsPermission(permissionKeys, "ACCOUNTING_MANAGE");
+  const canExportSensitiveIdentity = hasPmsPermission(permissionKeys, "SENSITIVE_DATA_EXPORT");
   const canManageMaintenance = hasPmsPermission(permissionKeys, "MAINTENANCE_MANAGE");
   const canManageOperations = hasPmsPermission(permissionKeys, "SETTINGS_MANAGE");
   const hasWorkspaceWidePropertyAccess =
@@ -1579,11 +1645,17 @@ export default function PmsPortal() {
         setUnits(unitsResponse.units);
         setActiveLease(null);
       } else if (section === "units") {
-        const unitsResponse = await listPmsUnits(token, {
-          companyId,
-          take: 200,
-        });
+        const [unitsResponse, reconciliationResponse] = await Promise.all([
+          listPmsUnits(token, {
+            companyId,
+            take: 200,
+          }),
+          workspacePermissions.includes("TENANCY_VIEW")
+            ? getPmsOccupancyReconciliation(token, { companyId })
+            : Promise.resolve(null),
+        ]);
         setUnits(unitsResponse.units);
+        setOccupancyReconciliation(reconciliationResponse);
         setActiveProperty(null);
         setActiveLease(null);
       } else if (section === "tenants") {
@@ -1686,9 +1758,10 @@ export default function PmsPortal() {
         const canViewRent = workspacePermissions.includes("RENT_VIEW");
         const canViewReports = workspacePermissions.includes("REPORTS_VIEW");
         const canViewMaintenance = workspacePermissions.includes("MAINTENANCE_VIEW");
-        const [ledgerResponse, statementResponse, propertiesResponse, unitsResponse, tenantsResponse, leasesResponse] = await Promise.all([
+        const [ledgerResponse, statementResponse, statementsResponse, propertiesResponse, unitsResponse, tenantsResponse, leasesResponse] = await Promise.all([
           listPmsAccountingLedger(token, { companyId, take: 100 }),
           getPmsOwnerStatement(token, { companyId }),
+          listPmsOwnerStatements(token, { companyId, take: 50 }),
           listPmsProperties(token, { companyId, take: 100 }),
           listPmsUnits(token, { companyId, take: 200 }),
           listPmsTenants(token, { companyId, take: 100 }),
@@ -1709,6 +1782,7 @@ export default function PmsPortal() {
         setReportsSummary(summaryResponse);
         setLedgerEntries(ledgerResponse.ledgerEntries);
         setOwnerStatement(statementResponse.statement);
+        setOwnerStatements(statementsResponse.statements);
         setProperties(propertiesResponse.properties);
         setUnits(unitsResponse.units);
         setTenants(tenantsResponse.tenants);
@@ -2139,14 +2213,27 @@ export default function PmsPortal() {
     }
   }
 
-  async function handleExportCsv(type: PmsExportType) {
+  async function handleExportCsv(type: PmsExportType, includeSensitive = false) {
     if (!token || !overview) return;
+
+    if (includeSensitive) {
+      const confirmed = window.confirm(
+        language === "ar"
+          ? "سيشمل هذا التصدير أرقام الهوية والجوازات الحساسة وسيتم تسجيل العملية في سجل التدقيق. هل تريد المتابعة؟"
+          : "This export will include sensitive national ID and passport fields and will be recorded in the audit trail. Continue?",
+      );
+      if (!confirmed) return;
+    }
 
     try {
       setSaving(true);
       setError("");
-      const csvText = await getPmsExportCsv(token, type, overview.workspace.company.id);
-      downloadCsvFile(pmsExportFilename(type), csvText);
+      const csvText = await getPmsExportCsv(token, type, {
+        companyId: overview.workspace.company.id,
+        includeSensitive,
+        sensitiveExportConfirmation: includeSensitive ? "EXPORT_SENSITIVE_TENANT_DATA" : undefined,
+      });
+      downloadCsvFile(includeSensitive ? "pms-tenants-sensitive.csv" : pmsExportFilename(type), csvText);
     } catch (downloadError) {
       console.error(downloadError);
       setError(downloadError instanceof ApiError ? downloadError.message : copy.unavailable);
@@ -2823,17 +2910,19 @@ export default function PmsPortal() {
 
   async function handleCreateDocument(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token || !overview || !canManageDocumentRecords) return;
+    if (!token || !overview || !canManageDocumentRecords || !documentFile) return;
 
     try {
       setSaving(true);
       setError("");
       setSuccess("");
-      await createPmsDocument(
+      await uploadPmsDocument(
         token,
-        cleanDocumentPayload(documentForm, overview.workspace.company.id),
+        cleanPrivateDocumentPayload(documentForm, overview.workspace.company.id),
+        documentFile,
       );
       setDocumentForm(emptyDocumentForm);
+      setDocumentFile(null);
       setSuccess(copy.saved);
       await loadPortal();
     } catch (saveError) {
@@ -2841,6 +2930,91 @@ export default function PmsPortal() {
       setError(
         saveError instanceof ApiError ? saveError.message : copy.unavailable,
       );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDownloadDocument(document: PmsDocument) {
+    if (!token) return;
+    try {
+      setDocumentDownloadingId(document.id);
+      setError("");
+      const response = await downloadPmsDocument(token, document.id);
+      downloadBlobFile(response.filename || document.originalFilename || `${document.title}.bin`, response.blob);
+    } catch (downloadError) {
+      console.error(downloadError);
+      setError(downloadError instanceof ApiError ? downloadError.message : copy.unavailable);
+    } finally {
+      setDocumentDownloadingId(null);
+    }
+  }
+
+  async function handleCreateOwnerStatement(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !overview || !canManageAccounting || !ownerStatementPropertyId) return;
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      await createPmsOwnerStatement(token, {
+        companyId: overview.workspace.company.id,
+        propertyId: ownerStatementPropertyId,
+        month: ownerStatementMonth,
+        currency: ownerStatementCurrency.trim().toUpperCase(),
+      });
+      const response = await listPmsOwnerStatements(token, {
+        companyId: overview.workspace.company.id,
+        take: 50,
+      });
+      setOwnerStatements(response.statements);
+      setSuccess(copy.saved);
+    } catch (saveError) {
+      console.error(saveError);
+      setError(saveError instanceof ApiError ? saveError.message : copy.unavailable);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleOwnerStatementTransition(
+    statement: PmsPersistedOwnerStatement,
+    status: PmsOwnerStatementStatus,
+  ) {
+    if (!token || !overview || !canManageAccounting) return;
+    const destructive = status === "VOID";
+    if (destructive && !window.confirm(language === "ar" ? "إلغاء هذا الكشف؟ لا يمكن تعديل النسخة المنشورة." : "Void this statement? Published snapshots remain immutable.")) return;
+    try {
+      setSaving(true);
+      setError("");
+      const response = await transitionPmsOwnerStatement(token, statement.id, status);
+      setOwnerStatements((current) => current.map((item) => item.id === statement.id ? response.statement : item));
+      setSuccess(copy.saved);
+    } catch (saveError) {
+      console.error(saveError);
+      setError(saveError instanceof ApiError ? saveError.message : copy.unavailable);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleOccupancyReconciliation(apply: boolean) {
+    if (!token || !overview) return;
+    if (apply && !window.confirm(language === "ar" ? "تحديث حالة إشغال الوحدات من العقود النشطة؟" : "Reconcile unit occupancy from active lease state?")) return;
+    try {
+      setSaving(true);
+      setError("");
+      const response = apply
+        ? await applyPmsOccupancyReconciliation(token, { companyId: overview.workspace.company.id, apply: true })
+        : await getPmsOccupancyReconciliation(token, { companyId: overview.workspace.company.id });
+      setOccupancyReconciliation(response);
+      if (apply) {
+        const unitsResponse = await listPmsUnits(token, { companyId: overview.workspace.company.id, take: 200 });
+        setUnits(unitsResponse.units);
+      }
+    } catch (reconciliationError) {
+      console.error(reconciliationError);
+      setError(reconciliationError instanceof ApiError ? reconciliationError.message : copy.unavailable);
     } finally {
       setSaving(false);
     }
@@ -3179,13 +3353,25 @@ export default function PmsPortal() {
 
                       <div className="pms-command-kpi-grid">
                         <article><span>{language === "ar" ? "الإشغال" : "Occupancy"}</span><strong>{formatPercent(commandCenter.metrics.occupancyRate, language)}</strong><small>{commandCenter.metrics.occupiedUnits ?? "—"} / {commandCenter.metrics.totalUnits ?? "—"} {language === "ar" ? "وحدة" : "units"}</small></article>
-                        <article><span>{language === "ar" ? "إيجار مستحق" : "Outstanding rent"}</span><strong>{commandCenter.metrics.outstandingRentAmount == null ? "—" : `${commandCenter.metrics.outstandingRentAmount} OMR`}</strong><small>{commandCenter.metrics.outstandingRentItems ?? "—"} {language === "ar" ? "بند" : "items"}</small></article>
-                        <article><span>{language === "ar" ? "إيجار متأخر" : "Overdue rent"}</span><strong>{commandCenter.metrics.overdueRentAmount == null ? "—" : `${commandCenter.metrics.overdueRentAmount} OMR`}</strong><small>{commandCenter.metrics.highRiskTenantAccounts ?? "—"} {language === "ar" ? "حساب عالي المخاطر" : "high-risk accounts"}</small></article>
-                        <article><span>{language === "ar" ? "معدل التحصيل" : "Collection rate"}</span><strong>{formatPercent(commandCenter.metrics.rentCollectionRate, language)}</strong><small>{commandCenter.metrics.rentCollectedThisPeriod == null ? "—" : `${commandCenter.metrics.rentCollectedThisPeriod} OMR`} {language === "ar" ? "محصل" : "collected"}</small></article>
+                        <article>
+                          <span>{language === "ar" ? "إيجار مستحق" : "Outstanding rent"}</span>
+                          <strong>{formatCurrencyAmount(commandCenter.metrics.outstandingRentAmount, commandCenter.metrics.currencyState?.displayCurrency, language)}</strong>
+                          <small>{commandCenter.metrics.currencyState?.status === "MIXED" ? formatCommandCurrencyBreakdown(commandCenter.metrics.financialsByCurrency, "outstandingRent", language) : `${commandCenter.metrics.outstandingRentItems ?? "—"} ${language === "ar" ? "بند" : "items"}`}</small>
+                        </article>
+                        <article>
+                          <span>{language === "ar" ? "إيجار متأخر" : "Overdue rent"}</span>
+                          <strong>{formatCurrencyAmount(commandCenter.metrics.overdueRentAmount, commandCenter.metrics.currencyState?.displayCurrency, language)}</strong>
+                          <small>{commandCenter.metrics.currencyState?.status === "MIXED" ? formatCommandCurrencyBreakdown(commandCenter.metrics.financialsByCurrency, "overdueRent", language) : `${commandCenter.metrics.highRiskTenantAccounts ?? "—"} ${language === "ar" ? "حساب عالي المخاطر" : "high-risk accounts"}`}</small>
+                        </article>
+                        <article>
+                          <span>{language === "ar" ? "معدل التحصيل" : "Collection rate"}</span>
+                          <strong>{formatPercent(commandCenter.metrics.rentCollectionRate, language)}</strong>
+                          <small>{commandCenter.metrics.currencyState?.status === "MIXED" ? formatCommandCurrencyBreakdown(commandCenter.metrics.financialsByCurrency, "rentCollected", language) : `${formatCurrencyAmount(commandCenter.metrics.rentCollectedThisPeriod, commandCenter.metrics.currencyState?.displayCurrency, language)} ${language === "ar" ? "محصل" : "collected"}`}</small>
+                        </article>
                         <article><span>{language === "ar" ? "عقود تنتهي" : "Leases expiring"}</span><strong>{commandCenter.metrics.leasesExpiringSoon ?? "—"}</strong><small>{commandCenter.riskWindow.days} {language === "ar" ? "يوماً" : "day window"}</small></article>
                         <article><span>{language === "ar" ? "صيانة متأخرة" : "Maintenance overdue"}</span><strong>{commandCenter.metrics.overdueMaintenanceRequests ?? "—"}</strong><small>{commandCenter.metrics.urgentMaintenanceRequests ?? "—"} {language === "ar" ? "عاجلة" : "urgent"}</small></article>
                         <article><span>{language === "ar" ? "فجوات الامتثال" : "Compliance gaps"}</span><strong>{(commandCenter.metrics.missingLeaseDocuments ?? 0) + (commandCenter.metrics.expiredDocuments ?? 0)}</strong><small>{commandCenter.metrics.expiringDocuments ?? "—"} {language === "ar" ? "تنتهي قريباً" : "expiring soon"}</small></article>
-                        <article><span>{language === "ar" ? "كشوف جاهزة" : "Statements ready"}</span><strong>{commandCenter.metrics.ownerStatementReadyProperties ?? "—"}</strong><small>{language === "ar" ? "تحتاج مراجعة" : "ready for review"}</small></article>
+                        <article><span>{language === "ar" ? "كشوف معتمدة" : "Approved statements"}</span><strong>{commandCenter.metrics.ownerStatementReadyProperties ?? "—"}</strong><small>{language === "ar" ? "جاهزة للنشر" : "ready to publish"}</small></article>
                       </div>
 
                       <div className="pms-priority-summary" aria-label={language === "ar" ? "ملخص الأولويات" : "Priority summary"}>
@@ -3252,7 +3438,7 @@ export default function PmsPortal() {
                             {commandCenter.riskSignals.highRiskTenants.slice(0, 5).map((tenant) => (
                               <Link key={tenant.tenantId} to={tenant.href} role="row">
                                 <span><strong>{tenant.tenantName}</strong><small>{tenant.propertyName}</small></span>
-                                <span>{tenant.outstandingAmount} OMR</span>
+                                <span>{formatCurrencyAmount(tenant.outstandingAmount, tenant.currency, language)}</span>
                                 <span>{tenant.overdueItems} {language === "ar" ? "متأخر" : "overdue"}</span>
                                 <span className={`pms-priority-item__badge pms-priority-item__badge--${tenant.priority.toLowerCase()}`}>{tenant.riskScore}</span>
                               </Link>
@@ -3493,16 +3679,26 @@ export default function PmsPortal() {
             ) : null}
 
             {section === "units" ? (
-              <UnitTable
-                copy={copy}
-                units={units}
-                language={language}
-                canEdit={canEdit}
-                saving={saving}
-                unitDrafts={unitDrafts}
-                setUnitDrafts={setUnitDrafts}
-                onUpdateUnit={handleUpdateUnit}
-              />
+              <section className="pms-panel-grid">
+                <OccupancyReconciliationPanel
+                  language={language}
+                  reconciliation={occupancyReconciliation}
+                  canApply={canEdit && canEditTenantRecords}
+                  saving={saving}
+                  onRefresh={() => void handleOccupancyReconciliation(false)}
+                  onApply={() => void handleOccupancyReconciliation(true)}
+                />
+                <UnitTable
+                  copy={copy}
+                  units={units}
+                  language={language}
+                  canEdit={canEdit}
+                  saving={saving}
+                  unitDrafts={unitDrafts}
+                  setUnitDrafts={setUnitDrafts}
+                  onUpdateUnit={handleUpdateUnit}
+                />
+              </section>
             ) : null}
 
             {section === "tenants" ? (
@@ -3722,9 +3918,9 @@ export default function PmsPortal() {
                           <strong>{document.title}</strong>
                           <span>{formatStatusText(document.type)} · {document.status}</span>
                         </div>
-                        <a className="button-link" href={document.fileUrl} target="_blank" rel="noreferrer">
-                          {copy.openDocument}
-                        </a>
+                        <button className="button-link" type="button" disabled={documentDownloadingId === document.id} onClick={() => void handleDownloadDocument(document)}>
+                          {documentDownloadingId === document.id ? copy.loading : copy.openDocument}
+                        </button>
                       </article>
                     ))}
                   </div>
@@ -3804,9 +4000,9 @@ export default function PmsPortal() {
                               .join(" · ")}
                           </small>
                         </div>
-                        <a className="button-link" href={document.fileUrl} target="_blank" rel="noreferrer">
-                          {copy.openDocument}
-                        </a>
+                        <button className="button-link" type="button" disabled={documentDownloadingId === document.id} onClick={() => void handleDownloadDocument(document)}>
+                          {documentDownloadingId === document.id ? copy.loading : copy.openDocument}
+                        </button>
                       </article>
                     ))}
                   </div>
@@ -3828,8 +4024,10 @@ export default function PmsPortal() {
                     leases={leases}
                     workOrders={workOrders}
                     inspections={inspections}
+                    file={documentFile}
+                    onFileChange={setDocumentFile}
                   />
-                  <button className="button-link button-link--primary" type="submit" disabled={!canManageDocumentRecords || saving}>
+                  <button className="button-link button-link--primary" type="submit" disabled={!canManageDocumentRecords || saving || !documentFile}>
                     <Plus size={16} aria-hidden="true" />
                     {copy.createDocument}
                   </button>
@@ -3924,6 +4122,21 @@ export default function PmsPortal() {
                   language={language}
                 />
                 <OwnerStatementPanel copy={copy} statement={ownerStatement} />
+                <OwnerStatementLifecyclePanel
+                  language={language}
+                  properties={properties}
+                  statements={ownerStatements}
+                  propertyId={ownerStatementPropertyId}
+                  month={ownerStatementMonth}
+                  currency={ownerStatementCurrency}
+                  canManage={canManageAccounting}
+                  saving={saving}
+                  onPropertyChange={setOwnerStatementPropertyId}
+                  onMonthChange={setOwnerStatementMonth}
+                  onCurrencyChange={setOwnerStatementCurrency}
+                  onCreate={handleCreateOwnerStatement}
+                  onTransition={(statement, status) => void handleOwnerStatementTransition(statement, status)}
+                />
                 {rentReceipt ? (
                   <PmsRentReceiptPanel copy={copy} receipt={rentReceipt} language={language} />
                 ) : null}
@@ -4054,6 +4267,17 @@ export default function PmsPortal() {
                         <strong>{label}</strong>
                       </button>
                     ))}
+                    {canExportSensitiveIdentity ? (
+                      <button
+                        type="button"
+                        className="pms-export-button pms-export-button--sensitive"
+                        onClick={() => void handleExportCsv("tenants", true)}
+                        disabled={!overview || !token || saving}
+                      >
+                        <span>{language === "ar" ? "تصدير حساس ومدقق" : "Audited sensitive export"}</span>
+                        <strong>{language === "ar" ? "هويات المستأجرين" : "Tenant identity fields"}</strong>
+                      </button>
+                    ) : null}
                   </div>
 
                   <div className="pms-inventory-list pms-import-batches">
@@ -5634,14 +5858,129 @@ function OwnerStatementPanel({ copy, statement }: { copy: PmsCopy; statement: Pm
         <p className="eyebrow">{copy.accounting}</p>
         <h2>{copy.ownerStatement}</h2>
       </div>
+      {statement.currencyState.status === "MIXED" ? (
+        <p className="form-error">{statement.currencyState.message ?? "Amounts are grouped by currency and are not combined."}</p>
+      ) : null}
       <div className="pms-metric-grid">
-        <article className="pms-metric-card"><span>{copy.incomeCollected}</span><strong>{statement.totals.income} OMR</strong></article>
-        <article className="pms-metric-card"><span>{copy.expenses}</span><strong>{statement.totals.expenses} OMR</strong></article>
-        <article className="pms-metric-card"><span>{copy.netAmount}</span><strong>{statement.totals.netAmount} OMR</strong></article>
-        <article className="pms-metric-card"><span>{copy.outstandingRent}</span><strong>{statement.totals.outstandingRent} OMR</strong></article>
-        <article className="pms-metric-card"><span>{copy.depositHeld}</span><strong>{statement.totals.depositHeld} OMR</strong></article>
-        <article className="pms-metric-card"><span>{copy.maintenanceCosts}</span><strong>{statement.totals.maintenanceCosts} OMR</strong></article>
+        {statement.totalsByCurrency.map((totals) => (
+          <article className="pms-metric-card" key={totals.currency}>
+            <span>{copy.netAmount} · {totals.currency}</span>
+            <strong>{totals.netAmount} {totals.currency}</strong>
+            <small>{copy.incomeCollected}: {totals.income} · {copy.expenses}: {totals.expenses}</small>
+            <small>{copy.outstandingRent}: {totals.outstandingRent} · {copy.maintenanceCosts}: {totals.maintenanceCosts}</small>
+          </article>
+        ))}
       </div>
+    </section>
+  );
+}
+
+function OwnerStatementLifecyclePanel({
+  language,
+  properties,
+  statements,
+  propertyId,
+  month,
+  currency,
+  canManage,
+  saving,
+  onPropertyChange,
+  onMonthChange,
+  onCurrencyChange,
+  onCreate,
+  onTransition,
+}: {
+  language: "en" | "ar";
+  properties: PmsProperty[];
+  statements: PmsPersistedOwnerStatement[];
+  propertyId: string;
+  month: string;
+  currency: string;
+  canManage: boolean;
+  saving: boolean;
+  onPropertyChange: (value: string) => void;
+  onMonthChange: (value: string) => void;
+  onCurrencyChange: (value: string) => void;
+  onCreate: (event: FormEvent<HTMLFormElement>) => void;
+  onTransition: (statement: PmsPersistedOwnerStatement, status: PmsOwnerStatementStatus) => void;
+}) {
+  const labels = language === "ar"
+    ? { title: "دورة كشف المالك", create: "إنشاء لقطة كشف", empty: "لا توجد كشوف محفوظة بعد.", property: "العقار", month: "الشهر", currency: "العملة", immutable: "النسخ المنشورة محفوظة كلقطات غير قابلة للتعديل" }
+    : { title: "Owner statement lifecycle", create: "Generate statement snapshot", empty: "No persisted statements yet.", property: "Property", month: "Month", currency: "Currency", immutable: "Published statements are immutable snapshots" };
+  const nextStatus: Partial<Record<PmsOwnerStatementStatus, PmsOwnerStatementStatus>> = {
+    DRAFT: "GENERATED",
+    GENERATED: "NEEDS_REVIEW",
+    NEEDS_REVIEW: "APPROVED",
+    APPROVED: "PUBLISHED",
+  };
+
+  return (
+    <section className="pms-next-actions pms-unit-table-card">
+      <div className="pms-next-actions__header">
+        <p className="eyebrow">{labels.immutable}</p>
+        <h2>{labels.title}</h2>
+      </div>
+      <form className="pms-form-grid pms-form-grid--compact" onSubmit={onCreate}>
+        <label>{labels.property}<select required value={propertyId} onChange={(event) => onPropertyChange(event.target.value)}><option value="">—</option>{properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>
+        <label>{labels.month}<input required type="month" value={month} onChange={(event) => onMonthChange(event.target.value)} /></label>
+        <label>{labels.currency}<input required minLength={3} maxLength={3} value={currency} onChange={(event) => onCurrencyChange(event.target.value.toUpperCase())} /></label>
+        <button className="button-link button-link--primary" type="submit" disabled={!canManage || saving || !propertyId}>{labels.create}</button>
+      </form>
+      {statements.length === 0 ? <p>{labels.empty}</p> : null}
+      <div className="pms-inventory-list">
+        {statements.map((statement) => {
+          const next = nextStatus[statement.status];
+          return (
+            <article className="pms-inventory-card" key={statement.id}>
+              <div>
+                <strong>{statement.property.name} · {statement.currency}</strong>
+                <span>{formatStatusText(statement.status)} · v{statement.revision} · {statement.closingBalance} {statement.currency}</span>
+                <small>{formatDate(statement.periodStart, language)} – {formatDate(statement.periodEnd, language)}</small>
+              </div>
+              <div className="pms-action-row">
+                {next ? <button className="button-link" type="button" disabled={!canManage || saving} onClick={() => onTransition(statement, next)}>{formatStatusText(next)}</button> : null}
+                {statement.status !== "VOID" ? <button className="button-link button-link--danger" type="button" disabled={!canManage || saving} onClick={() => onTransition(statement, "VOID")}>VOID</button> : null}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function OccupancyReconciliationPanel({
+  language,
+  reconciliation,
+  canApply,
+  saving,
+  onRefresh,
+  onApply,
+}: {
+  language: "en" | "ar";
+  reconciliation: PmsOccupancyReconciliation | null;
+  canApply: boolean;
+  saving: boolean;
+  onRefresh: () => void;
+  onApply: () => void;
+}) {
+  const issueCount = reconciliation?.issueCount ?? reconciliation?.detectedIssues ?? reconciliation?.issues.length ?? 0;
+  return (
+    <section className="pms-next-actions pms-unit-table-card">
+      <div className="pms-next-actions__header">
+        <p className="eyebrow">{language === "ar" ? "العقود النشطة هي مصدر الإشغال" : "Active leases are the occupancy source of truth"}</p>
+        <h2>{language === "ar" ? "مطابقة الإشغال" : "Occupancy reconciliation"}</h2>
+      </div>
+      <p>{issueCount === 0 ? (language === "ar" ? "لا توجد تناقضات مكتشفة." : "No occupancy inconsistencies detected.") : `${issueCount} ${language === "ar" ? "مشكلة تحتاج مراجعة" : "issues require review"}`}</p>
+      <div className="pms-action-row">
+        <button className="button-link" type="button" disabled={saving} onClick={onRefresh}>{language === "ar" ? "إعادة الفحص" : "Run check"}</button>
+        <button className="button-link button-link--primary" type="button" disabled={!canApply || saving || issueCount === 0} onClick={onApply}>{language === "ar" ? "إصلاح حالات الوحدات" : "Repair unit occupancy"}</button>
+      </div>
+      {reconciliation?.issues.slice(0, 10).map((issue, index) => (
+        <div className="pms-detail-list" key={`${issue.type}-${issue.unitId}-${index}`}>
+          <span><strong>{formatStatusText(issue.type)}</strong> · {issue.unitNumber}</span>
+        </div>
+      ))}
     </section>
   );
 }
@@ -5711,23 +6050,20 @@ function ReportsSummaryPanel({
         <p className="eyebrow">{copy.reports}</p>
         <h2>{copy.accountingSummary}</h2>
       </div>
+      {summary.accounting.currencyState.status === "MIXED" ? (
+        <p className="form-error">
+          {summary.accounting.currencyState.message ?? (language === "ar" ? "تم تجميع المبالغ حسب العملة ولا يمكن جمعها بأمان." : "Amounts are grouped by currency and cannot be combined safely.")}
+        </p>
+      ) : null}
       <div className="pms-metric-grid">
-        <article className="pms-metric-card">
-          <span>{copy.incomeCollected}</span>
-          <strong>{summary.accounting.incomeCollected ?? "0"} OMR</strong>
-        </article>
-        <article className="pms-metric-card">
-          <span>{copy.outstandingRent}</span>
-          <strong>{summary.accounting.outstandingRent ?? "0"} OMR</strong>
-        </article>
-        <article className="pms-metric-card">
-          <span>{copy.overdueAmount}</span>
-          <strong>{summary.accounting.overdueRent ?? "0"} OMR</strong>
-        </article>
-        <article className="pms-metric-card">
-          <span>{copy.maintenanceCosts}</span>
-          <strong>{summary.accounting.maintenanceCosts ?? "0"} OMR</strong>
-        </article>
+        {summary.accounting.totalsByCurrency.map((total) => (
+          <article className="pms-metric-card" key={total.currency}>
+            <span>{copy.incomeCollected} · {total.currency}</span>
+            <strong>{total.incomeCollected} {total.currency}</strong>
+            <small>{copy.outstandingRent}: {total.outstandingRent} · {copy.overdueAmount}: {total.overdueRent}</small>
+            <small>{copy.maintenanceCosts}: {total.maintenanceCosts} · {copy.expenses}: {total.expenses}</small>
+          </article>
+        ))}
         <article className="pms-metric-card">
           <span>{copy.occupancyReport}</span>
           <strong>{formatPercent(summary.reports.occupancy.occupancyRate, language)}</strong>
@@ -5856,6 +6192,8 @@ function DocumentFields({
   leases,
   workOrders,
   inspections,
+  file,
+  onFileChange,
 }: {
   copy: PmsCopy;
   form: PmsDocumentPayload;
@@ -5866,6 +6204,8 @@ function DocumentFields({
   leases: PmsLease[];
   workOrders: PmsWorkOrder[];
   inspections: PmsInspection[];
+  file: File | null;
+  onFileChange: (file: File | null) => void;
 }) {
   const propertyUnits = form.propertyId ? units.filter((unit) => unit.propertyId === form.propertyId) : units;
 
@@ -5889,7 +6229,13 @@ function DocumentFields({
       </label>
       <label>
         {copy.documentUrl}
-        <input required value={form.fileUrl} placeholder="/uploads/document.pdf" onChange={(event) => setForm((current) => ({ ...current, fileUrl: event.target.value }))} />
+        <input
+          required
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+          onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
+        />
+        <small>{file?.name ?? (copy.privateNote || "Private file")}</small>
       </label>
       <label>
         {copy.expiryDate}

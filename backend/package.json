@@ -18,6 +18,7 @@
     "db:migrate:status": "prisma migrate status",
     "verify:db-safety": "tsx scripts/verifyMigrationSafety.ts",
     "ops:db:backup": "tsx scripts/backupDatabase.ts",
+    "ops:pms-documents:migrate": "tsx scripts/migrateLegacyPmsDocuments.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "node scripts/run-with-test-env.mjs npx prisma migrate deploy && node scripts/run-with-test-env.mjs npx vitest run --config vitest.integration.config.mts",

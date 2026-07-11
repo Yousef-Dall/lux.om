@@ -49,6 +49,8 @@ async function clearPmsLaunchSmokeDatabase() {
   await prisma.developerProject.deleteMany();
 
   await prisma.pmsMoveChecklistItem.deleteMany();
+  await prisma.domainAuditEvent.deleteMany();
+  await prisma.pmsOwnerStatement.deleteMany();
   await prisma.pmsDocument.deleteMany();
   await prisma.pmsInspection.deleteMany();
   await prisma.pmsCommunicationLog.deleteMany();
@@ -290,9 +292,9 @@ describe('PMS production launch smoke coverage', () => {
     expect(workOrder.property.id).toBe(property.id);
 
     const documentResponse = await request(app)
-      .post('/api/pms/documents')
+      .post('/api/pms/documents/upload')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({
+      .field('metadata', JSON.stringify({
         companyId: company.id,
         propertyId: property.id,
         unitId: unit.id,
@@ -300,12 +302,22 @@ describe('PMS production launch smoke coverage', () => {
         leaseId: lease.id,
         type: 'LEASE_AGREEMENT',
         title: 'Launch lease agreement',
-        fileUrl: '/uploads/launch-lease.pdf',
         status: 'ACTIVE',
+      }))
+      .attach('file', Buffer.from('%PDF-1.7\nLaunch test document\n%%EOF'), {
+        filename: 'launch-lease.pdf',
+        contentType: 'application/pdf',
       })
       .expect(201);
 
     expect(documentResponse.body.document.tenant.id).toBe(tenant.id);
+    expect(documentResponse.body.document.fileUrl).not.toContain('/uploads/');
+
+    await request(app)
+      .get(`/api/pms/documents/${documentResponse.body.document.id}/download`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200)
+      .expect('Content-Type', /application\/pdf/);
 
     const templateResponse = await request(app)
       .post('/api/pms/communication-templates')

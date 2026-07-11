@@ -20,6 +20,8 @@ export type PmsPermissionKeyLike =
   | "DOCUMENTS_MANAGE"
   | "STAFF_MANAGE"
   | "IMPORT_EXPORT"
+  | "SENSITIVE_DATA_VIEW"
+  | "SENSITIVE_DATA_EXPORT"
   | "CRM_VIEW"
   | "CRM_MANAGE";
 
@@ -42,6 +44,8 @@ export const DEFAULT_PMS_ROLE_PERMISSIONS: Record<PmsMemberRole, PmsPermissionKe
     "DOCUMENTS_MANAGE",
     "STAFF_MANAGE",
     "IMPORT_EXPORT",
+    "SENSITIVE_DATA_VIEW",
+    "SENSITIVE_DATA_EXPORT",
     "CRM_VIEW",
     "CRM_MANAGE",
   ],
@@ -62,6 +66,7 @@ export const DEFAULT_PMS_ROLE_PERMISSIONS: Record<PmsMemberRole, PmsPermissionKe
     "DOCUMENTS_VIEW",
     "DOCUMENTS_MANAGE",
     "IMPORT_EXPORT",
+    "SENSITIVE_DATA_VIEW",
     "CRM_VIEW",
     "CRM_MANAGE",
   ],
@@ -379,11 +384,8 @@ export function canExportPmsData(
     | "maintenance"
     | "accounting",
 ) {
-  if (!type) return hasPmsPermission(subject, "IMPORT_EXPORT");
-
-  const role = typeof subject === "string" ? subject : subject.role;
-  if (role === "PMS_AGENT") return true;
-  if (role === "PMS_VIEWER" && type === "accounting") return false;
+  if (!hasPmsPermission(subject, "IMPORT_EXPORT")) return false;
+  if (!type) return true;
 
   const requiredPermission: Record<NonNullable<typeof type>, PmsPermissionKeyLike> = {
     properties: "INVENTORY_VIEW",
@@ -424,4 +426,31 @@ export function assertCanManagePmsStaff(subject: PmsPermissionSubject) {
     "STAFF_MANAGE",
     "Your PMS access cannot manage staff access.",
   );
+}
+
+
+export function canViewPmsSensitiveData(subject: PmsPermissionSubject) {
+  return hasPmsPermission(subject, "SENSITIVE_DATA_VIEW");
+}
+
+export function assertCanViewPmsSensitiveData(subject: PmsPermissionSubject) {
+  assertHasPmsPermission(
+    subject,
+    "SENSITIVE_DATA_VIEW",
+    "Your PMS access cannot view sensitive tenant identity data.",
+  );
+}
+
+export function canExportPmsSensitiveData(subject: PmsPermissionSubject) {
+  return (
+    hasPmsPermission(subject, "IMPORT_EXPORT") &&
+    hasPmsPermission(subject, "TENANCY_VIEW") &&
+    hasPmsPermission(subject, "SENSITIVE_DATA_EXPORT")
+  );
+}
+
+export function assertCanExportPmsSensitiveData(subject: PmsPermissionSubject) {
+  if (!canExportPmsSensitiveData(subject)) {
+    throw new AppError(403, "Your PMS access cannot export sensitive tenant identity data.");
+  }
 }
