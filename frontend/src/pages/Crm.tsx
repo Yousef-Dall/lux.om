@@ -31,7 +31,6 @@ import { ApiError } from '../api/client';
 import {
   addCrmActivity,
   createCrmLead,
-  getCrmAccess,
   getCrmAnalytics,
   getCrmCommunicationTemplates,
   getCrmLead,
@@ -54,8 +53,7 @@ import {
   type CrmLeadStatus,
   type CrmPerson,
   type CrmPipelineGroup,
-  type CrmPipelineGroupBy,
-  type CrmWorkspaceAccess
+  type CrmPipelineGroupBy
 } from '../api/crm';
 import { WorkspaceSelector, type CrmWorkspaceChoice } from '../features/crm/WorkspaceSelector';
 import { useAuth } from '../auth/AuthContext';
@@ -135,7 +133,7 @@ function isOverdue(value: string | null | undefined) {
 }
 
 export default function Crm() {
-  const { token, user } = useAuth();
+  const { token, user, crmAccess: access } = useAuth();
   const navigate = useNavigate();
   const { leadId } = useParams<{ leadId?: string }>();
   const { language } = useLanguage();
@@ -168,7 +166,6 @@ export default function Crm() {
 
   useDocumentTitle('CRM | lux.om');
 
-  const [access, setAccess] = useState<CrmWorkspaceAccess | null>(null);
   const [workspaceKey, setWorkspaceKey] = useState('');
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [summary, setSummary] = useState<{ total: number; byStatus: Partial<Record<CrmLeadStatus, number>> }>({ total: 0, byStatus: {} });
@@ -179,7 +176,6 @@ export default function Crm() {
   const [templates, setTemplates] = useState<CrmCommunicationTemplate[]>([]);
   const [assignees, setAssignees] = useState<CrmPerson[]>([]);
   const [properties, setProperties] = useState<Array<{ id: string; name: string; code?: string | null }>>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -229,19 +225,13 @@ export default function Crm() {
     };
   }
 
-  async function loadAccess() {
-    if (!token) return;
-    const response = await getCrmAccess(token);
-    setAccess(response.access);
-    const first = response.access.isAdmin
-      ? 'all'
-      : response.access.personalWorkspace.canView
-        ? 'personal'
-        : response.access.companyWorkspaces.find((item) => item.canView)
-          ? `company:${response.access.companyWorkspaces.find((item) => item.canView)!.companyId}`
-          : '';
-    setWorkspaceKey((current) => current || first);
-  }
+  useEffect(() => {
+    setWorkspaceKey((current) =>
+      workspaceChoices.some((item) => item.key === current)
+        ? current
+        : workspaceChoices[0]?.key ?? ''
+    );
+  }, [workspaceChoices]);
 
   async function loadWorkspaceSupport(choice: WorkspaceChoice | undefined) {
     if (!token || !choice) return;
@@ -277,12 +267,6 @@ export default function Crm() {
       setRefreshing(false);
     }
   }
-
-  useEffect(() => {
-    if (!token) return;
-    setLoading(true);
-    loadAccess().catch((loadError) => setError(loadError instanceof ApiError ? loadError.message : copy.unavailable)).finally(() => setLoading(false));
-  }, [token]);
 
   useEffect(() => {
     if (!activeWorkspace) return;
@@ -459,7 +443,6 @@ export default function Crm() {
     }
   }
 
-  if (loading) return <section className="page-section container crm-page"><div className="crm-state"><Loader2 className="spin" /><p>{copy.loading}</p></div></section>;
   if (!access?.hasAccess) return <section className="page-section container crm-page"><div className="crm-state"><AlertCircle /><h1>{copy.noAccess}</h1><Link className="button-link" to="/dashboard">{copy.back}</Link></div></section>;
 
   return (

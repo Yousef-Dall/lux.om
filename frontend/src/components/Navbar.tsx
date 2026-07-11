@@ -1,18 +1,12 @@
 import {
-Bell,
 ChevronDown,
 Globe2,
-LayoutDashboard,
 LogOut,
 Mail,
 Menu,
-ShieldCheck,
 AlertTriangle,
-ArrowUpRight,
 Users,
 Building2,
-Home,
-Wrench,
 UserCircle,
 X
 } from 'lucide-react';
@@ -22,12 +16,10 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { cn } from '../utils/format';
-import {
-  getMarketplacePersonaLabel,
-  getMarketplacePersonaPrimaryActions
-} from '../utils/marketplacePersona';
+import { getMarketplacePersonaLabel } from '../utils/marketplacePersona';
 import ButtonLink from './ButtonLink';
 import NotificationBell from './NotificationBell';
+import { useAuthenticatedProductNavigation } from '../features/workspace/productNavigation';
 
 export default function Navbar() {
 const [isOpen, setIsOpen] = useState(false);
@@ -37,9 +29,9 @@ const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
 const { pathname } = useLocation();
 const navigate = useNavigate();
 const { t, toggleLanguage, language } = useLanguage();
-const { user, token, isAuthenticated, isAdmin, canAccessPms, canAccessTenantPortal, canAccessOwnerPortal, canAccessVendorPortal, logout } = useAuth();
+const { user, token, isAuthenticated, isAdmin, logout } = useAuth();
 const accountRoleLabel = user ? getMarketplacePersonaLabel(user.role, language) : '';
-const accountPersonaActions = user ? getMarketplacePersonaPrimaryActions(user.role, language) : [];
+const productNavigation = useAuthenticatedProductNavigation();
 
 const navCopy =
 language === 'ar'
@@ -93,11 +85,6 @@ login: 'تسجيل الدخول',
 register: 'إنشاء حساب',
 dashboard: 'لوحة التحكم',
 pms: 'lux PMS',
-tenantPortal: 'بوابة المستأجر',
-ownerPortal: 'بوابة المالك',
-vendorPortal: 'بوابة المورّد',
-profile: 'الملف الشخصي',
-notifications: 'الإشعارات',
 admin: 'الأدمن',
 users: 'المستخدمون',
 reports: 'البلاغات',
@@ -116,11 +103,6 @@ login: 'Login',
 register: 'Register',
 dashboard: 'Dashboard',
 pms: 'lux PMS',
-tenantPortal: 'Tenant portal',
-ownerPortal: 'Owner portal',
-vendorPortal: 'Vendor portal',
-profile: 'Profile',
-notifications: 'Notifications',
 admin: 'Admin',
 users: 'Users',
 reports: 'Reports',
@@ -266,105 +248,29 @@ return (
                 <span>{user?.email}</span>
               </div>
 
-              <NavLink
-                to="/dashboard"
-                className="nav-account__item"
-                onClick={() => setIsOpen(false)}
-              >
-                <LayoutDashboard size={17} aria-hidden="true" />
-                {accessibilityCopy.dashboard}
-              </NavLink>
+              {productNavigation.map((item) => {
+                const Icon = item.icon;
 
-              {accountPersonaActions.map((action) => (
-                <NavLink
-                  key={action.key}
-                  to={action.to}
-                  className="nav-account__item"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <ArrowUpRight size={17} aria-hidden="true" />
-                  {action.text}
-                </NavLink>
-              ))}
-
-              {canAccessPms ? (
-                <NavLink
-                  to="/pms"
-                  className="nav-account__item"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <Building2 size={17} aria-hidden="true" />
-                  {accessibilityCopy.pms}
-                </NavLink>
-              ) : null}
-
-              {canAccessTenantPortal ? (
-                <NavLink
-                  to="/tenant"
-                  className="nav-account__item"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <Home size={17} aria-hidden="true" />
-                  {accessibilityCopy.tenantPortal}
-                </NavLink>
-              ) : null}
-
-              {canAccessOwnerPortal ? (
-                <NavLink
-                  to="/owner"
-                  className="nav-account__item"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <Building2 size={17} aria-hidden="true" />
-                  {accessibilityCopy.ownerPortal}
-                </NavLink>
-              ) : null}
-
-              {canAccessVendorPortal ? (
-                <NavLink
-                  to="/vendor"
-                  className="nav-account__item"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <Wrench size={17} aria-hidden="true" />
-                  {accessibilityCopy.vendorPortal}
-                </NavLink>
-              ) : null}
-
-              <NavLink
-                to="/profile"
-                className="nav-account__item"
-                onClick={() => setIsOpen(false)}
-              >
-                <UserCircle size={17} aria-hidden="true" />
-                {accessibilityCopy.profile}
-              </NavLink>
-
-              <NavLink
-                to="/notifications"
-                className="nav-account__item"
-                onClick={() => setIsOpen(false)}
-              >
-                <Bell size={17} aria-hidden="true" />
-                <span>{accessibilityCopy.notifications}</span>
-                {notificationUnreadCount > 0 ? (
-                  <span className="nav-account__badge">
-                    {notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}
-                  </span>
-                ) : null}
-              </NavLink>
-
-              {isAdmin ? (
-                <>
+                return (
                   <NavLink
-                    to="/admin"
+                    key={item.key}
+                    to={item.to}
                     className="nav-account__item"
                     onClick={() => setIsOpen(false)}
                   >
-                    <ShieldCheck size={17} aria-hidden="true" />
-                    {accessibilityCopy.admin}
+                    <Icon size={17} aria-hidden="true" />
+                    <span>{item.label}</span>
+                    {item.key === 'notifications' && notificationUnreadCount > 0 ? (
+                      <span className="nav-account__badge">
+                        {notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}
+                      </span>
+                    ) : null}
                   </NavLink>
+                );
+              })}
 
+              {isAdmin ? (
+                <>
                   <NavLink
                     to="/admin/users"
                     className="nav-account__item"

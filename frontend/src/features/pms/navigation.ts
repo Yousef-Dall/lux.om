@@ -17,7 +17,7 @@ import {
 
 import type { PmsPermissionKey } from '../../api/pms';
 
-export type PmsNavigationKey = 'overview' | 'crm' | 'properties' | 'units' | 'tenants' | 'rentals' | 'documents' | 'maintenance' | 'assetsInspections' | 'accounting' | 'financialOperations' | 'importExport' | 'staff' | 'reports' | 'settings';
+export type PmsNavigationKey = 'overview' | 'properties' | 'units' | 'tenants' | 'rentals' | 'documents' | 'maintenance' | 'assetsInspections' | 'accounting' | 'financialOperations' | 'importExport' | 'staff' | 'reports' | 'settings';
 export type PmsNavigationGroup = 'workspace' | 'leasing' | 'operations' | 'control';
 
 export const pmsNavigation: ReadonlyArray<{
@@ -28,7 +28,6 @@ export const pmsNavigation: ReadonlyArray<{
   permission: PmsPermissionKey | null;
 }> = [
   { to: '/pms/overview', key: 'overview', group: 'workspace', icon: Home, permission: null },
-  { to: '/crm', key: 'crm', group: 'workspace', icon: UserRoundCheck, permission: 'CRM_VIEW' },
   { to: '/pms/properties', key: 'properties', group: 'workspace', icon: Building2, permission: 'INVENTORY_VIEW' },
   { to: '/pms/units', key: 'units', group: 'workspace', icon: KeyRound, permission: 'INVENTORY_VIEW' },
   { to: '/pms/tenants', key: 'tenants', group: 'leasing', icon: UserRoundCheck, permission: 'TENANCY_VIEW' },

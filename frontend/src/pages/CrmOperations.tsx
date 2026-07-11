@@ -7,7 +7,6 @@ import {
   Clock3,
   Columns3,
   GitMerge,
-  Loader2,
   MailCheck,
   Plus,
   RefreshCw,
@@ -19,7 +18,7 @@ import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
-import { getCrmAccess, getCrmLead, type CrmLead, type CrmWorkspaceAccess } from '../api/crm';
+import { getCrmLead, type CrmLead, type CrmWorkspaceAccess } from '../api/crm';
 import {
   archiveCrmDeal,
   convertCrmLead,
@@ -67,7 +66,7 @@ function money(value: string | number | null | undefined, currency: string) {
   return new Intl.NumberFormat('en-OM', { style: 'currency', currency, maximumFractionDigits: 3 }).format(Number.isFinite(amount) ? amount : 0);
 }
 
-function workspaceChoices(access: CrmWorkspaceAccess | null): CrmWorkspaceChoice[] {
+function workspaceChoices(access: CrmWorkspaceAccess | null | undefined): CrmWorkspaceChoice[] {
   if (!access) return [];
   const values: CrmWorkspaceChoice[] = [];
   const personal = access.workspaces?.find((item) => item.type === 'PERSONAL');
@@ -81,10 +80,11 @@ function workspaceChoices(access: CrmWorkspaceAccess | null): CrmWorkspaceChoice
 }
 
 export default function CrmOperations() {
-  const { token } = useAuth();
+  const { token, crmAccess: access } = useAuth();
   const [params, setParams] = useSearchParams();
-  const [access, setAccess] = useState<CrmWorkspaceAccess | null>(null);
   const choices = useMemo(() => workspaceChoices(access), [access]);
+  const requestedWorkspaceId = params.get('workspaceId');
+  const convertLeadId = params.get('convertLeadId');
   const [workspaceId, setWorkspaceId] = useState('');
   const [tab, setTab] = useState<Tab>('accounts');
   const [accounts, setAccounts] = useState<CrmAccountSummary[]>([]);
@@ -97,7 +97,6 @@ export default function CrmOperations() {
   const [duplicates, setDuplicates] = useState<CrmDuplicateCandidate[]>([]);
   const [scoreHistory, setScoreHistory] = useState<CrmScoreSnapshot[]>([]);
   const [conversionLead, setConversionLead] = useState<CrmLead | null>(null);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -112,14 +111,14 @@ export default function CrmOperations() {
   useDocumentTitle('CRM revenue operations | lux.om');
 
   useEffect(() => {
-    if (!token) return;
-    void getCrmAccess(token).then(({ access: result }) => {
-      setAccess(result);
-      const available = workspaceChoices(result);
-      const requested = params.get('workspaceId');
-      setWorkspaceId(available.some((item) => item.workspaceId === requested) ? requested! : available[0]?.workspaceId ?? '');
-    }).catch((cause) => setError(message(cause))).finally(() => setLoading(false));
-  }, [token]);
+    setWorkspaceId((current) => {
+      if (choices.some((item) => item.workspaceId === current)) return current;
+      if (requestedWorkspaceId && choices.some((item) => item.workspaceId === requestedWorkspaceId)) {
+        return requestedWorkspaceId;
+      }
+      return choices[0]?.workspaceId ?? '';
+    });
+  }, [choices, requestedWorkspaceId]);
 
   async function load() {
     if (!token || !workspaceId) return;
@@ -138,7 +137,6 @@ export default function CrmOperations() {
       setPipelines(pipelineResult.pipelines);
       setForecast(forecastResult);
       setCommunicationPolicy(policyResult?.policy ?? null);
-      const convertLeadId = params.get('convertLeadId');
       if (convertLeadId) {
         const [leadResult, scores] = await Promise.all([getCrmLead(token, convertLeadId), getCrmLeadScoreHistory(token, convertLeadId)]);
         setConversionLead(leadResult.lead);
@@ -371,7 +369,6 @@ export default function CrmOperations() {
     } catch (cause) { setError(message(cause)); }
   }
 
-  if (loading) return <section className="page-section container crm-page"><div className="crm-state"><Loader2 className="spin" /><p>Loading CRM revenue operations…</p></div></section>;
   if (!access?.hasAccess || choices.length === 0) return <section className="page-section container crm-page"><div className="crm-state"><AlertCircle /><h1>No CRM access</h1><Link className="button-link" to="/dashboard">Back to dashboard</Link></div></section>;
 
   const defaultPipeline = pipelines.find((item) => item.isDefault) ?? pipelines[0];
@@ -383,7 +380,7 @@ export default function CrmOperations() {
         <div className="crm-hero__actions"><Link className="button-link button-link--ghost" to="/crm"><ArrowLeft size={16} /> Leads</Link><button className="button-link button-link--secondary" type="button" onClick={() => void load()} disabled={refreshing}><RefreshCw size={16} className={refreshing ? 'spin' : ''} /> Refresh</button></div>
       </header>
 
-      <div className="container crm-operations__workspace"><WorkspaceSelector label="Workspace" value={workspaceId} choices={choices} onChange={(value) => { setWorkspaceId(value); setSelectedAccount(null); setSelectedDeal(null); setSelectedContact(null); }} /></div>
+      <div className="container crm-operations__workspace"><WorkspaceSelector label="Workspace" value={workspaceId} choices={choices} onChange={(value) => { const next = new URLSearchParams(params); next.set('workspaceId', value); setParams(next, { replace: true }); setWorkspaceId(value); setSelectedAccount(null); setSelectedDeal(null); setSelectedContact(null); }} /></div>
       <nav className="container crm-operations__tabs" aria-label="CRM operations sections">{tabs.map((item) => <button type="button" key={item} className={tab === item ? 'is-active' : ''} onClick={() => setTab(item)}>{item}</button>)}</nav>
 
       <main className="container crm-operations__main">

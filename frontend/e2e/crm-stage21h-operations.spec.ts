@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { crmApiPattern, mockNotificationsApi } from './support/apiMocks';
+
 const workspace = {
   workspaceId: 'workspace-crm-21h',
   type: 'COMPANY',
@@ -88,21 +90,18 @@ const forecast = {
   rules: { currenciesCombined: false, historicalOutcomesPreservedAfterArchive: true, truncatedResultSetsUsed: false }
 };
 
-async function authenticate(page: Page) {
+async function authenticate(page: Page, crmAccess: Record<string, unknown> = { hasAccess: true, isAdmin: false, personalWorkspace: { enabled: false, canView: false, canManage: false }, companyWorkspaces: [workspace], workspaces: [workspace] }) {
   await page.addInitScript(() => localStorage.setItem('lux_om_auth_token', 'browser-stage21h-token'));
   await page.route('**/api/auth/me', (route) => route.fulfill({
-    json: { user: { id: 'user-manager', name: 'Manager', email: 'manager@lux.test', role: 'USER', emailVerified: true } }
+    json: { user: { id: 'user-manager', name: 'Manager', email: 'manager@lux.test', role: 'USER', emailVerified: true, crmAccess } }
   }));
-  await page.route(/\/api\/notifications(?:\?.*)?$/, (route) => route.fulfill({ json: { notifications: [], unreadCount: 0, pagination: { total: 0 } } }));
+  await mockNotificationsApi(page);
 }
 
 async function mockRevenueOperations(page: Page, requests: string[] = []) {
-  await page.route('**/api/crm/**', (route) => {
+  await page.route(crmApiPattern, (route) => {
     const url = new URL(route.request().url());
     requests.push(`${route.request().method()} ${url.pathname}${url.search}`);
-    if (url.pathname.endsWith('/api/crm/access')) {
-      return route.fulfill({ json: { access: { hasAccess: true, isAdmin: false, personalWorkspace: { enabled: false, canView: false, canManage: false }, companyWorkspaces: [workspace], workspaces: [workspace] } } });
-    }
     if (url.pathname.endsWith('/api/crm/accounts')) return route.fulfill({ json: { accounts: [account], pagination: { total: 1, take: 100, skip: 0, count: 1 } } });
     if (url.pathname.endsWith('/api/crm/deals')) return route.fulfill({ json: { deals, pagination: { total: 2, take: 200, skip: 0, count: 2 } } });
     if (url.pathname.endsWith('/api/crm/pipelines')) return route.fulfill({ json: { pipelines: [pipeline] } });
@@ -113,19 +112,15 @@ async function mockRevenueOperations(page: Page, requests: string[] = []) {
 }
 
 test('direct CRM operations URL blocks users without CRM access before loading internal records', async ({ page }) => {
-  await authenticate(page);
+  await authenticate(page, { hasAccess: false, isAdmin: false, personalWorkspace: { enabled: false, canView: false, canManage: false }, companyWorkspaces: [], workspaces: [] });
   const internalRequests: string[] = [];
-  await page.route('**/api/crm/**', (route) => {
-    const url = new URL(route.request().url());
-    if (!url.pathname.endsWith('/api/crm/access')) internalRequests.push(url.pathname);
-    if (url.pathname.endsWith('/api/crm/access')) {
-      return route.fulfill({ json: { access: { hasAccess: false, isAdmin: false, personalWorkspace: { enabled: false, canView: false, canManage: false }, companyWorkspaces: [], workspaces: [] } } });
-    }
+  await page.route(crmApiPattern, (route) => {
+    internalRequests.push(new URL(route.request().url()).pathname);
     return route.fulfill({ status: 403, json: { message: 'Forbidden' } });
   });
 
   await page.goto('/crm/operations');
-  await expect(page.getByRole('heading', { name: 'No CRM access' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'CRM access is not enabled for this account.' })).toBeVisible();
   expect(internalRequests).toEqual([]);
 });
 

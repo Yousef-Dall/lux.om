@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { mockNotificationsApi } from './support/apiMocks';
+
 const baseUser = (extra: Record<string, unknown> = {}) => ({
   id: 'stage21g-browser-user',
   name: 'Stage 21G Browser User',
@@ -12,6 +14,7 @@ const baseUser = (extra: Record<string, unknown> = {}) => ({
 async function authenticate(page: Page, extra: Record<string, unknown> = {}) {
   await page.addInitScript(() => localStorage.setItem('lux_om_auth_token', 'stage21g-browser-token'));
   await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: baseUser(extra) } }));
+  await mockNotificationsApi(page);
 }
 
 const ownerAccesses = [

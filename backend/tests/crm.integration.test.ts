@@ -78,6 +78,38 @@ describe('CRM foundation access and lifecycle', () => {
     await clearCrmTestData();
   });
 
+  it('resolves CRM product access in the authenticated session without granting customers', async () => {
+    const [owner, customer] = await Promise.all([
+      createUser('crm-session-owner@lux.test', 'OWNER'),
+      createUser('crm-session-customer@lux.test')
+    ]);
+
+    const ownerResponse = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${signToken(owner)}`)
+      .expect(200);
+
+    expect(ownerResponse.body.user.crmAccess).toMatchObject({
+      hasAccess: true,
+      isAdmin: false,
+      personalWorkspace: { enabled: true, canView: true, canManage: true }
+    });
+    expect(ownerResponse.body.user.crmAccess.workspaces).toHaveLength(1);
+
+    const customerResponse = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${signToken(customer)}`)
+      .expect(200);
+
+    expect(customerResponse.body.user.crmAccess).toMatchObject({
+      hasAccess: false,
+      isAdmin: false,
+      personalWorkspace: { enabled: false, canView: false, canManage: false },
+      companyWorkspaces: [],
+      workspaces: []
+    });
+  });
+
   it('captures listing inquiries as private leads for the marketplace owner', async () => {
     const [owner, outsider, customer, admin] = await Promise.all([
       createUser('crm-owner@lux.test', 'OWNER'),

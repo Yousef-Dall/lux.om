@@ -4,6 +4,7 @@ import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import Footer from './components/Footer';
 import AdminWorkspaceNav from './components/AdminWorkspaceNav';
+import AuthenticatedProductNav from './components/AuthenticatedProductNav';
 import Navbar from './components/Navbar';
 
 import About from './pages/About';
@@ -639,6 +640,33 @@ function RequireVendorPortal({ children }: { children: ReactNode }) {
   return children;
 }
 
+function CrmAccessDenied() {
+  const { language } = useLanguage();
+  const copy = language === 'ar'
+    ? { title: 'لا توجد صلاحية CRM لهذا الحساب.', back: 'العودة إلى مساحة الحساب' }
+    : { title: 'CRM access is not enabled for this account.', back: 'Back to account workspace' };
+
+  return (
+    <section className="page-section container crm-page">
+      <div className="crm-state" role="alert">
+        <h1>{copy.title}</h1>
+        <Link className="button-link" to="/dashboard">{copy.back}</Link>
+      </div>
+    </section>
+  );
+}
+
+function RequireCrm({ children }: { children: ReactNode }) {
+  const { canAccessCrm, isAuthenticated, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <LoadingPage />;
+  if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!canAccessCrm) return <CrmAccessDenied />;
+
+  return children;
+}
+
 function RequirePms({ children }: { children: ReactNode }) {
   const { canAccessPms, isAuthenticated, loading } = useAuth();
   const location = useLocation();
@@ -760,6 +788,7 @@ export default function App() {
       <SeoManager />
       <RouteAnnouncer />
       <Navbar />
+      {isWorkspaceRoute ? <AuthenticatedProductNav /> : null}
 
       <main
           id="main-content"
@@ -871,26 +900,26 @@ export default function App() {
           <Route
             path="/crm"
             element={
-              <RequireAuth>
+              <RequireCrm>
                 <Crm />
-              </RequireAuth>
+              </RequireCrm>
             }
           />
           <Route
             path="/crm/operations"
             element={
-              <RequireAuth>
+              <RequireCrm>
                 <CrmOperations />
-              </RequireAuth>
+              </RequireCrm>
             }
           />
 
           <Route
             path="/crm/:leadId"
             element={
-              <RequireAuth>
+              <RequireCrm>
                 <Crm />
-              </RequireAuth>
+              </RequireCrm>
             }
           />
 

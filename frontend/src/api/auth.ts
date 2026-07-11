@@ -4,6 +4,7 @@ import type { PmsAccessSummary } from './pms';
 import type { TenantAccessSummary } from './tenant';
 import type { OwnerPortalAccessSummary } from './ownerPortal';
 import type { VendorPortalAccessSummary } from './vendorPortal';
+import type { CrmWorkspaceAccess } from './crm';
 
 export type PublicRegistrationRole = Exclude<UserRole, 'ADMIN'>;
 
@@ -21,6 +22,7 @@ export type AuthUser = PublicUser & {
   tenantAccess?: TenantAccessSummary;
   ownerAccess?: OwnerPortalAccessSummary;
   vendorAccess?: VendorPortalAccessSummary;
+  crmAccess?: CrmWorkspaceAccess;
 };
 
 export type AuthVerificationResponse = {

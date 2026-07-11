@@ -45,6 +45,8 @@ type AuthContextValue = {
   canUseVerification: boolean;
   canUsePerformance: boolean;
   canAccessAdmin: boolean;
+  crmAccess: AuthUser['crmAccess'];
+  canAccessCrm: boolean;
   canAccessPms: boolean;
   canAccessTenantPortal: boolean;
   canAccessOwnerPortal: boolean;
@@ -77,17 +79,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => readStoredToken());
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(Boolean(token));
+  const [sessionRevision, setSessionRevision] = useState(0);
 
   const logout = useCallback(() => {
     removeToken();
     setToken(null);
     setUser(null);
+    setLoading(false);
   }, []);
 
   const replaceSession = useCallback((nextToken: string, nextUser: AuthUser) => {
+    setLoading(true);
     saveToken(nextToken);
     setToken(nextToken);
     setUser(nextUser);
+    setSessionRevision((current) => current + 1);
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -136,30 +142,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [token, logout]);
+  }, [token, sessionRevision, logout]);
 
   const login = useCallback(async (payload: LoginPayload) => {
     const response = await loginRequest(payload);
 
+    setLoading(true);
     saveToken(response.token);
     setToken(response.token);
     setUser(response.user);
+    setSessionRevision((current) => current + 1);
   }, []);
 
   const register = useCallback(async (payload: RegisterPayload) => {
     const response = await registerRequest(payload);
 
+    setLoading(true);
     saveToken(response.token);
     setToken(response.token);
     setUser(response.user);
+    setSessionRevision((current) => current + 1);
   }, []);
 
   const completeOAuthLogin = useCallback(async (oauthCode: string) => {
     const response = await exchangeGoogleOAuthCode(oauthCode);
 
+    setLoading(true);
     saveToken(response.token);
     setToken(response.token);
     setUser(response.user);
+    setSessionRevision((current) => current + 1);
 
     return response.user;
   }, []);
@@ -207,6 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         marketplaceCapabilities.canManageListings ||
         marketplaceCapabilities.canManageActivities ||
         marketplaceCapabilities.canManageTravelPackages ||
+        marketplaceCapabilities.canManageDeveloperProjects ||
         marketplaceCapabilities.canAccessAdmin,
       canManageListings: marketplaceCapabilities.canManageListings,
       canManageActivities: marketplaceCapabilities.canManageActivities,
@@ -217,6 +230,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canUseVerification: marketplaceCapabilities.canUseVerification,
       canUsePerformance: marketplaceCapabilities.canUsePerformance,
       canAccessAdmin: marketplaceCapabilities.canAccessAdmin,
+      crmAccess: user?.crmAccess,
+      canAccessCrm: Boolean(user?.crmAccess?.hasAccess),
       canAccessPms: Boolean(user?.pmsAccess?.hasAccess),
       canAccessTenantPortal: Boolean(user?.tenantAccess?.hasAccess),
       canAccessOwnerPortal: Boolean(user?.ownerAccess?.hasAccess),

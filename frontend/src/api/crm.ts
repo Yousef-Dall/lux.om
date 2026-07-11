@@ -22,9 +22,15 @@ export type {
 } from '../generated/crmContract';
 
 export type CrmWorkspaceAccess = {
+  userId?: string;
   hasAccess: boolean;
   isAdmin: boolean;
-  personalWorkspace: { enabled: boolean; canView: boolean; canManage: boolean };
+  personalWorkspace: {
+    enabled: boolean;
+    canView: boolean;
+    canManage: boolean;
+    workspaceId?: string;
+  };
   companyWorkspaces: Array<{
     workspaceId: string;
     type: 'COMPANY';

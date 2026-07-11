@@ -22,6 +22,7 @@ import { recordAccountSecurityEvent } from '../lib/accountSecurityEvents';
 import { getUserPmsAccessSummary } from '../lib/pmsAccess';
 import { getUserTenantPortalAccessSummary } from '../lib/tenantPortalAccess';
 import { getUserOwnerPortalAccessSummary, getUserVendorPortalAccessSummary } from '../modules/pms/portals/access';
+import { getCrmAccess, hasAnyCrmAccess } from '../modules/workspaces/access';
 import { AppError, publicUser } from '../utils/http';
 import { authAbuseRateLimiters } from '../middleware/rateLimit';
 import { env } from '../config/env';
@@ -1839,11 +1840,12 @@ authRouter.get('/me', requireAuth(), async (req, res, next) => {
       throw new AppError(401, 'Unauthorized');
     }
 
-    const [pmsAccess, tenantAccess, ownerAccess, vendorAccess] = await Promise.all([
+    const [pmsAccess, tenantAccess, ownerAccess, vendorAccess, crmAccess] = await Promise.all([
       getUserPmsAccessSummary(req.user.id),
       getUserTenantPortalAccessSummary(req.user.id),
       getUserOwnerPortalAccessSummary(req.user.id),
-      getUserVendorPortalAccessSummary(req.user.id)
+      getUserVendorPortalAccessSummary(req.user.id),
+      getCrmAccess(req.user)
     ]);
 
     res.json({
@@ -1852,7 +1854,11 @@ authRouter.get('/me', requireAuth(), async (req, res, next) => {
         pmsAccess,
         tenantAccess,
         ownerAccess,
-        vendorAccess
+        vendorAccess,
+        crmAccess: {
+          ...crmAccess,
+          hasAccess: hasAnyCrmAccess(crmAccess)
+        }
       }
     });
   } catch (error) {
@@ -1890,11 +1896,12 @@ authRouter.patch('/me', requireAuth(), async (req, res, next) => {
       }
     });
 
-    const [pmsAccess, tenantAccess, ownerAccess, vendorAccess] = await Promise.all([
+    const [pmsAccess, tenantAccess, ownerAccess, vendorAccess, crmAccess] = await Promise.all([
       getUserPmsAccessSummary(user.id),
       getUserTenantPortalAccessSummary(user.id),
       getUserOwnerPortalAccessSummary(user.id),
-      getUserVendorPortalAccessSummary(user.id)
+      getUserVendorPortalAccessSummary(user.id),
+      getCrmAccess(user)
     ]);
 
     res.json({
@@ -1903,7 +1910,11 @@ authRouter.patch('/me', requireAuth(), async (req, res, next) => {
         pmsAccess,
         tenantAccess,
         ownerAccess,
-        vendorAccess
+        vendorAccess,
+        crmAccess: {
+          ...crmAccess,
+          hasAccess: hasAnyCrmAccess(crmAccess)
+        }
       }
     });
   } catch (error) {
