@@ -38,7 +38,9 @@
     "test:e2e": "npm run test:e2e -w frontend",
     "test:e2e:install": "npm run test:e2e:install -w frontend",
     "contracts:crm:generate": "npm run contracts:crm:generate -w backend",
-    "contracts:crm:check": "npm run contracts:crm:check -w backend"
+    "contracts:crm:check": "npm run contracts:crm:check -w backend",
+    "jobs:pms-preventive:once": "npm run jobs:pms-preventive:once -w backend",
+    "ops:pms-stage21g:verify-backfill": "npm run ops:pms-stage21g:verify-backfill -w backend"
   },
   "workspaces": [
     "backend",

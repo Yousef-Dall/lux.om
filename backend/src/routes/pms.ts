@@ -93,6 +93,17 @@ import {
   storePrivatePmsDocument,
   supportedPrivateDocumentMimeTypes,
 } from "../storage/privatePmsDocumentStorage";
+import { pmsFinanceRouter } from "../modules/pms/finance/router";
+import { pmsAssetsRouter } from "../modules/pms/assets/router";
+import { pmsPreventiveMaintenanceRouter } from "../modules/pms/maintenance/router";
+import { pmsStructuredInspectionsRouter } from "../modules/pms/inspections/router";
+import { pmsPortalAccessRouter } from "../modules/pms/portals/managementRouter";
+import { assertFinancialPeriodOpen } from "../modules/pms/finance/periods";
+import {
+  allocateLegacyRentPayment,
+  ensureLeaseSecurityDepositAccount,
+  ensureRentDueStructuredCharge,
+} from "../modules/pms/finance/compatibility";
 import {
   averageHealthScore,
   buildHealthSignal,
@@ -106,6 +117,12 @@ import {
 } from "../lib/pmsOperationalIntelligence";
 
 export const pmsRouter = Router();
+
+pmsRouter.use("/accounting", pmsFinanceRouter);
+pmsRouter.use("/assets", pmsAssetsRouter);
+pmsRouter.use("/preventive-maintenance", pmsPreventiveMaintenanceRouter);
+pmsRouter.use("/structured-inspections", pmsStructuredInspectionsRouter);
+pmsRouter.use("/portal-access", pmsPortalAccessRouter);
 
 function isPrismaErrorCode(error: unknown, code: string) {
   return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === code);
@@ -675,6 +692,12 @@ const pmsDocumentListQuerySchema = z.object({
   leaseId: z.string().trim().min(1).optional(),
   workOrderId: z.string().trim().min(1).optional(),
   inspectionId: z.string().trim().min(1).optional(),
+  chargeId: z.string().trim().min(1).optional(),
+  securityDepositTransactionId: z.string().trim().min(1).optional(),
+  ownerPayoutBatchId: z.string().trim().min(1).optional(),
+  assetId: z.string().trim().min(1).optional(),
+  statementId: z.string().trim().min(1).optional(),
+  inspectionDefectId: z.string().trim().min(1).optional(),
   search: z.string().trim().max(120).optional(),
   type: z.enum(['ALL', ...Object.values(PmsDocumentType)] as ['ALL', ...PmsDocumentType[]]).default('ALL'),
   status: z.enum(['ALL', ...Object.values(PmsDocumentStatus)] as ['ALL', ...PmsDocumentStatus[]]).default('ALL'),
@@ -694,6 +717,12 @@ const pmsDocumentCreateSchema = z
     leaseId: nullableId,
     workOrderId: nullableId,
     inspectionId: nullableId,
+    chargeId: nullableId,
+    securityDepositTransactionId: nullableId,
+    ownerPayoutBatchId: nullableId,
+    assetId: nullableId,
+    statementId: nullableId,
+    inspectionDefectId: nullableId,
     type: z.nativeEnum(PmsDocumentType),
     title: z.string().trim().min(2).max(180),
     fileUrl: pmsDocumentFileSchema,
@@ -2183,6 +2212,12 @@ async function assertPmsDocumentLinksBelongToCompany(input: {
   leaseId?: string | null;
   workOrderId?: string | null;
   inspectionId?: string | null;
+  chargeId?: string | null;
+  securityDepositTransactionId?: string | null;
+  ownerPayoutBatchId?: string | null;
+  assetId?: string | null;
+  statementId?: string | null;
+  inspectionDefectId?: string | null;
 }) {
   await assertPmsFilterLinksBelongToCompany({
     companyId: input.companyId,
@@ -2210,6 +2245,19 @@ async function assertPmsDocumentLinksBelongToCompany(input: {
       throw new AppError(400, 'PMS inspection link must belong to this PMS company.');
     }
   }
+
+
+  const linkedChecks: Array<Promise<unknown>> = [];
+  if (input.chargeId) linkedChecks.push(prisma.pmsCharge.findFirst({ where: { id: input.chargeId, companyId: input.companyId, ...(input.propertyId ? { propertyId: input.propertyId } : {}) }, select: { id: true } }));
+  if (input.securityDepositTransactionId) linkedChecks.push(prisma.pmsSecurityDepositTransaction.findFirst({ where: { id: input.securityDepositTransactionId, companyId: input.companyId, account: input.propertyId ? { propertyId: input.propertyId } : undefined }, select: { id: true } }));
+  if (input.ownerPayoutBatchId) linkedChecks.push(prisma.pmsOwnerPayoutBatch.findFirst({ where: { id: input.ownerPayoutBatchId, companyId: input.companyId, ...(input.propertyId ? { lines: { some: { propertyId: input.propertyId } } } : {}) }, select: { id: true } }));
+  if (input.assetId) linkedChecks.push(prisma.pmsAsset.findFirst({ where: { id: input.assetId, companyId: input.companyId, ...(input.propertyId ? { propertyId: input.propertyId } : {}) }, select: { id: true } }));
+  if (input.statementId) linkedChecks.push(prisma.pmsOwnerStatement.findFirst({ where: { id: input.statementId, companyId: input.companyId, ...(input.propertyId ? { propertyId: input.propertyId } : {}) }, select: { id: true } }));
+  if (input.inspectionDefectId) linkedChecks.push(prisma.pmsInspectionDefect.findFirst({ where: { id: input.inspectionDefectId, companyId: input.companyId, ...(input.propertyId ? { propertyId: input.propertyId } : {}) }, select: { id: true } }));
+  if (linkedChecks.length > 0) {
+    const linkedRecords = await Promise.all(linkedChecks);
+    if (linkedRecords.some((record) => !record)) throw new AppError(400, 'PMS financial, asset, statement, or inspection link must belong to this PMS company and property.');
+  }
 }
 
 function assertMaintenanceDocumentScope(input: {
@@ -2217,6 +2265,12 @@ function assertMaintenanceDocumentScope(input: {
   type?: PmsDocumentType;
   workOrderId?: string | null;
   inspectionId?: string | null;
+  chargeId?: string | null;
+  securityDepositTransactionId?: string | null;
+  ownerPayoutBatchId?: string | null;
+  assetId?: string | null;
+  statementId?: string | null;
+  inspectionDefectId?: string | null;
 }) {
   if (input.role !== PmsMemberRole.PMS_MAINTENANCE) return;
 
@@ -3117,7 +3171,7 @@ function pmsRentPaymentResponse(payment: PmsRentPaymentWithRelations) {
     id: payment.id,
     companyId: payment.companyId,
     rentDueItemId: payment.rentDueItemId,
-    rentDueItem: pmsRentDueItemResponse(payment.rentDueItem),
+    rentDueItem: payment.rentDueItem ? pmsRentDueItemResponse(payment.rentDueItem) : null,
     leaseId: payment.leaseId,
     lease: payment.lease,
     tenantId: payment.tenantId,
@@ -3164,7 +3218,7 @@ function pmsRentReceiptResponse(payment: PmsRentPaymentWithRelations) {
     property: payment.property,
     unit: payment.unit,
     lease: payment.lease,
-    rentDueItem: pmsRentDueItemResponse(payment.rentDueItem),
+    rentDueItem: payment.rentDueItem ? pmsRentDueItemResponse(payment.rentDueItem) : null,
     recordedBy: payment.recordedBy,
   };
 }
@@ -3394,6 +3448,12 @@ const pmsDocumentInclude = {
   lease: { select: { id: true, title: true, status: true, startDate: true, endDate: true } },
   workOrder: { select: { id: true, title: true, status: true } },
   inspection: { select: { id: true, title: true, status: true, scheduledFor: true } },
+  charge: { select: { id: true, chargeNumber: true, status: true } },
+  securityDepositTransaction: { select: { id: true, type: true, status: true } },
+  ownerPayoutBatch: { select: { id: true, payoutNumber: true, status: true } },
+  asset: { select: { id: true, assetCode: true, name: true } },
+  statement: { select: { id: true, status: true, periodStart: true, periodEnd: true } },
+  inspectionDefect: { select: { id: true, title: true, status: true } },
   uploadedBy: { select: { id: true, name: true, email: true } },
   updatedBy: { select: { id: true, name: true, email: true } },
 } satisfies Prisma.PmsDocumentInclude;
@@ -3431,6 +3491,18 @@ function pmsDocumentResponse(document: PmsDocumentWithRelations) {
     workOrder: document.workOrder,
     inspectionId: document.inspectionId,
     inspection: document.inspection,
+    chargeId: document.chargeId,
+    charge: document.charge,
+    securityDepositTransactionId: document.securityDepositTransactionId,
+    securityDepositTransaction: document.securityDepositTransaction,
+    ownerPayoutBatchId: document.ownerPayoutBatchId,
+    ownerPayoutBatch: document.ownerPayoutBatch,
+    assetId: document.assetId,
+    asset: document.asset,
+    statementId: document.statementId,
+    statement: document.statement,
+    inspectionDefectId: document.inspectionDefectId,
+    inspectionDefect: document.inspectionDefect,
     type: document.type,
     title: document.title,
     fileUrl: `/api/pms/documents/${document.id}/download`,
@@ -4678,8 +4750,24 @@ pmsRouter.post("/leases", requireAuth(), async (req, res, next) => {
 
         if (dueItems.length > 0) {
           await tx.pmsRentDueItem.createMany({ data: dueItems });
+          const createdDueItems = await tx.pmsRentDueItem.findMany({
+            where: { leaseId: createdLease.id },
+          });
+          for (const dueItem of createdDueItems) {
+            await ensureRentDueStructuredCharge(tx, dueItem, userId);
+          }
         }
       }
+
+      await ensureLeaseSecurityDepositAccount(tx, {
+        companyId: access.company.id,
+        propertyId: createdLease.propertyId,
+        unitId: createdLease.unitId,
+        leaseId: createdLease.id,
+        tenantId: createdLease.tenantId,
+        currency: createdLease.currency,
+        expectedAmount: createdLease.securityDeposit,
+      });
 
       if (getLeaseOccupancyStatus(data.status)) {
         await syncPmsUnitOccupancy(tx, { unitId: data.unitId, occupied: true, userId });
@@ -5302,6 +5390,14 @@ pmsRouter.post("/rent-due/:rentDueItemId/payments", requireAuth(), async (req, r
     assertCanCollectPmsRent(access.member);
     assertCanAccessPmsPropertyScope(access, rentDueItem.propertyId);
 
+    const paymentDate = data.paidAt ?? new Date();
+    await assertFinancialPeriodOpen(prisma, {
+      companyId: access.company.id,
+      propertyId: rentDueItem.propertyId,
+      currency: rentDueItem.currency,
+      transactionDate: paymentDate,
+    });
+
     const confirmedAggregate = await prisma.pmsRentPayment.aggregate({
       where: {
         rentDueItemId,
@@ -5317,6 +5413,7 @@ pmsRouter.post("/rent-due/:rentDueItemId/payments", requireAuth(), async (req, r
     });
 
     const { payment, updatedRentDueItem } = await prisma.$transaction(async (tx) => {
+      const structuredCharge = await ensureRentDueStructuredCharge(tx, rentDueItem, req.user!.id);
       const createdPayment = await tx.pmsRentPayment.create({
         data: {
           companyId: access.company.id,
@@ -5331,16 +5428,22 @@ pmsRouter.post("/rent-due/:rentDueItemId/payments", requireAuth(), async (req, r
           status: PmsRentPaymentStatus.CONFIRMED,
           referenceNumber: normalizeNullableText(data.referenceNumber),
           notes: normalizeNullableText(data.notes),
-          paidAt: data.paidAt ?? new Date(),
+          paidAt: paymentDate,
           confirmedAt: new Date(),
           receiptNumber: createPmsRentReceiptNumber(),
           recordedById: req.user!.id,
         },
         include: pmsRentPaymentInclude,
       });
+      await allocateLegacyRentPayment(tx, {
+        payment: createdPayment,
+        chargeId: structuredCharge.id,
+        actorId: req.user!.id,
+      });
       await tx.pmsAccountingLedgerEntry.create({
         data: {
           companyId: access.company.id,
+          chargeId: structuredCharge.id,
           rentDueItemId: rentDueItem.id,
           rentPaymentId: createdPayment.id,
           leaseId: rentDueItem.leaseId,
@@ -6674,6 +6777,12 @@ pmsRouter.post("/accounting/ledger", requireAuth(), async (req, res, next) => {
       rentDueItemId: data.rentDueItemId,
       workOrderId: data.workOrderId,
     });
+    await assertFinancialPeriodOpen(prisma, {
+      companyId: access.company.id,
+      propertyId: data.propertyId ?? null,
+      currency: data.currency,
+      transactionDate: data.transactionDate,
+    });
 
     const ledgerEntry = await prisma.pmsAccountingLedgerEntry.create({
       data: buildPmsAccountingLedgerData({ ...data, companyId: access.company.id }, req.user.id),
@@ -6713,6 +6822,8 @@ pmsRouter.patch("/accounting/ledger/:ledgerEntryId", requireAuth(), async (req, 
         rentDueItemId: true,
         workOrderId: true,
         source: true,
+        currency: true,
+        transactionDate: true,
       },
     });
     if (!existing) throw new AppError(404, "PMS accounting ledger entry not found");
@@ -6738,6 +6849,12 @@ pmsRouter.patch("/accounting/ledger/:ledgerEntryId", requireAuth(), async (req, 
           : data.rentDueItemId,
       workOrderId:
         data.workOrderId === undefined ? existing.workOrderId : data.workOrderId,
+    });
+    await assertFinancialPeriodOpen(prisma, {
+      companyId: access.company.id,
+      propertyId: targetPropertyId,
+      currency: data.currency ?? existing.currency,
+      transactionDate: data.transactionDate ?? existing.transactionDate,
     });
 
     const ledgerEntry = await prisma.pmsAccountingLedgerEntry.update({
@@ -8822,6 +8939,12 @@ pmsRouter.post(
         leaseId: data.leaseId,
         workOrderId: data.workOrderId,
         inspectionId: data.inspectionId,
+        chargeId: data.chargeId,
+        securityDepositTransactionId: data.securityDepositTransactionId,
+        ownerPayoutBatchId: data.ownerPayoutBatchId,
+        assetId: data.assetId,
+        statementId: data.statementId,
+        inspectionDefectId: data.inspectionDefectId,
       });
       const stored = await storePrivatePmsDocument({ companyId: access.company.id, file: req.file });
       storedKey = stored.storageKey;
@@ -8836,6 +8959,12 @@ pmsRouter.post(
             leaseId: data.leaseId ?? null,
             workOrderId: data.workOrderId ?? null,
             inspectionId: data.inspectionId ?? null,
+            chargeId: data.chargeId ?? null,
+            securityDepositTransactionId: data.securityDepositTransactionId ?? null,
+            ownerPayoutBatchId: data.ownerPayoutBatchId ?? null,
+            assetId: data.assetId ?? null,
+            statementId: data.statementId ?? null,
+            inspectionDefectId: data.inspectionDefectId ?? null,
             type: data.type,
             title: data.title,
             fileUrl: `private://${stored.storageKey}`,
@@ -9046,6 +9175,12 @@ pmsRouter.get("/documents", requireAuth(), async (req, res, next) => {
       ...(query.leaseId ? { leaseId: query.leaseId } : {}),
       ...(query.workOrderId ? { workOrderId: query.workOrderId } : {}),
       ...(query.inspectionId ? { inspectionId: query.inspectionId } : {}),
+        ...(query.chargeId ? { chargeId: query.chargeId } : {}),
+        ...(query.securityDepositTransactionId ? { securityDepositTransactionId: query.securityDepositTransactionId } : {}),
+        ...(query.ownerPayoutBatchId ? { ownerPayoutBatchId: query.ownerPayoutBatchId } : {}),
+        ...(query.assetId ? { assetId: query.assetId } : {}),
+        ...(query.statementId ? { statementId: query.statementId } : {}),
+        ...(query.inspectionDefectId ? { inspectionDefectId: query.inspectionDefectId } : {}),
       ...(query.type !== "ALL"
         ? { type: query.type }
         : !canViewSensitiveDocuments
@@ -9156,6 +9291,12 @@ pmsRouter.post("/documents", requireAuth(), async (req, res, next) => {
       leaseId: data.leaseId,
       workOrderId: data.workOrderId,
       inspectionId: data.inspectionId,
+      chargeId: data.chargeId,
+      securityDepositTransactionId: data.securityDepositTransactionId,
+      ownerPayoutBatchId: data.ownerPayoutBatchId,
+      assetId: data.assetId,
+      statementId: data.statementId,
+      inspectionDefectId: data.inspectionDefectId,
     });
 
     const privateFile = await importLegacyLocalPmsDocument({
@@ -9175,6 +9316,12 @@ pmsRouter.post("/documents", requireAuth(), async (req, res, next) => {
         leaseId: data.leaseId ?? null,
         workOrderId: data.workOrderId ?? null,
         inspectionId: data.inspectionId ?? null,
+        chargeId: data.chargeId ?? null,
+        securityDepositTransactionId: data.securityDepositTransactionId ?? null,
+        ownerPayoutBatchId: data.ownerPayoutBatchId ?? null,
+        assetId: data.assetId ?? null,
+        statementId: data.statementId ?? null,
+        inspectionDefectId: data.inspectionDefectId ?? null,
         type: data.type,
         title: data.title,
         fileUrl: `private://${privateFile.storageKey}`,
@@ -9273,6 +9420,12 @@ pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) 
       type: data.type ?? existing.type,
       workOrderId: data.workOrderId ?? existing.workOrderId,
       inspectionId: data.inspectionId ?? existing.inspectionId,
+      chargeId: data.chargeId ?? existing.chargeId,
+      securityDepositTransactionId: data.securityDepositTransactionId ?? existing.securityDepositTransactionId,
+      ownerPayoutBatchId: data.ownerPayoutBatchId ?? existing.ownerPayoutBatchId,
+      assetId: data.assetId ?? existing.assetId,
+      statementId: data.statementId ?? existing.statementId,
+      inspectionDefectId: data.inspectionDefectId ?? existing.inspectionDefectId,
     });
     await assertPmsDocumentLinksBelongToCompany({
       companyId: existing.companyId,
@@ -9303,6 +9456,12 @@ pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) 
         ...(data.leaseId !== undefined ? { leaseId: data.leaseId } : {}),
         ...(data.workOrderId !== undefined ? { workOrderId: data.workOrderId } : {}),
         ...(data.inspectionId !== undefined ? { inspectionId: data.inspectionId } : {}),
+        ...(data.chargeId !== undefined ? { chargeId: data.chargeId } : {}),
+        ...(data.securityDepositTransactionId !== undefined ? { securityDepositTransactionId: data.securityDepositTransactionId } : {}),
+        ...(data.ownerPayoutBatchId !== undefined ? { ownerPayoutBatchId: data.ownerPayoutBatchId } : {}),
+        ...(data.assetId !== undefined ? { assetId: data.assetId } : {}),
+        ...(data.statementId !== undefined ? { statementId: data.statementId } : {}),
+        ...(data.inspectionDefectId !== undefined ? { inspectionDefectId: data.inspectionDefectId } : {}),
         ...(data.type !== undefined ? { type: data.type } : {}),
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(replacementFile

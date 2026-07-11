@@ -3,25 +3,13 @@ import request from 'supertest';
 
 import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
+import { clearIntegrationTestDatabase } from './integration/clearDatabase';
 import { signToken } from '../src/middleware/auth';
 
 const app = createApp();
 
 async function clearCrmTestData() {
-  await prisma.domainAuditEvent.deleteMany();
-  await prisma.pmsOwnerStatement.deleteMany();
-  await prisma.crmActivity.deleteMany();
-  await prisma.crmLead.deleteMany();
-  await prisma.crmContact.deleteMany();
-  await prisma.inquiry.deleteMany();
-  await prisma.pmsMemberPermission.deleteMany();
-  await prisma.pmsMemberPropertyAccess.deleteMany();
-  await prisma.pmsCompanyMember.deleteMany();
-  await prisma.pmsCompanyEntitlement.deleteMany();
-  await prisma.pmsProperty.deleteMany();
-  await prisma.listing.deleteMany();
-  await prisma.developerCompany.deleteMany();
-  await prisma.user.deleteMany();
+  await clearIntegrationTestDatabase();
 }
 
 async function createUser(email: string, role: 'ADMIN' | 'USER' | 'OWNER' = 'USER') {

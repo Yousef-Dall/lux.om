@@ -6,6 +6,8 @@ import {
   FileText,
   Home,
   KeyRound,
+  Landmark,
+  PackageSearch,
   Settings,
   UserCog,
   UserRoundCheck,
@@ -15,7 +17,7 @@ import {
 
 import type { PmsPermissionKey } from '../../api/pms';
 
-export type PmsNavigationKey = 'overview' | 'crm' | 'properties' | 'units' | 'tenants' | 'rentals' | 'documents' | 'maintenance' | 'accounting' | 'importExport' | 'staff' | 'reports' | 'settings';
+export type PmsNavigationKey = 'overview' | 'crm' | 'properties' | 'units' | 'tenants' | 'rentals' | 'documents' | 'maintenance' | 'assetsInspections' | 'accounting' | 'financialOperations' | 'importExport' | 'staff' | 'reports' | 'settings';
 export type PmsNavigationGroup = 'workspace' | 'leasing' | 'operations' | 'control';
 
 export const pmsNavigation: ReadonlyArray<{
@@ -33,7 +35,9 @@ export const pmsNavigation: ReadonlyArray<{
   { to: '/pms/rentals', key: 'rentals', group: 'leasing', icon: ClipboardList, permission: 'TENANCY_VIEW' },
   { to: '/pms/documents', key: 'documents', group: 'operations', icon: FileText, permission: 'DOCUMENTS_VIEW' },
   { to: '/pms/maintenance', key: 'maintenance', group: 'operations', icon: Wrench, permission: 'MAINTENANCE_VIEW' },
+  { to: '/pms/assets-inspections', key: 'assetsInspections', group: 'operations', icon: PackageSearch, permission: 'MAINTENANCE_VIEW' },
   { to: '/pms/accounting', key: 'accounting', group: 'control', icon: CreditCard, permission: 'ACCOUNTING_VIEW' },
+  { to: '/pms/financial-operations', key: 'financialOperations', group: 'control', icon: Landmark, permission: 'ACCOUNTING_VIEW' },
   { to: '/pms/reports', key: 'reports', group: 'control', icon: BarChart3, permission: 'REPORTS_VIEW' },
   { to: '/pms/import-export', key: 'importExport', group: 'control', icon: FileText, permission: 'IMPORT_EXPORT' },
   { to: '/pms/staff', key: 'staff', group: 'control', icon: UserCog, permission: 'STAFF_MANAGE' },

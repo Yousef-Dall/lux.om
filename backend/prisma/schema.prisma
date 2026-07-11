@@ -82,7 +82,6 @@ enum InquiryType {
   GENERAL
 }
 
-
 enum WorkspaceType {
   PERSONAL
   COMPANY
@@ -344,6 +343,7 @@ enum PmsMaintenanceStatus {
   OPEN
   IN_PROGRESS
   WAITING_VENDOR
+  COMPLETION_REQUESTED
   RESOLVED
   CANCELLED
 }
@@ -457,6 +457,156 @@ enum PmsOwnerStatementStatus {
   APPROVED
   PUBLISHED
   VOID
+}
+
+enum PmsChargeCategory {
+  RENT
+  UTILITIES
+  SERVICE_CHARGE
+  LATE_FEE
+  MAINTENANCE
+  DEPOSIT_DEDUCTION
+  DISCOUNT
+  MANUAL_ADJUSTMENT
+  OTHER
+}
+
+enum PmsChargeStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+enum PmsChargeAdjustmentType {
+  DISCOUNT
+  WRITE_OFF
+  REVERSAL
+  MANUAL
+}
+
+enum PmsCreditNoteStatus {
+  DRAFT
+  APPROVED
+  APPLIED
+  VOID
+}
+
+enum PmsPaymentAllocationStatus {
+  ACTIVE
+  REVERSED
+}
+
+enum PmsPaymentAdjustmentType {
+  REFUND
+  REVERSAL
+  CHARGEBACK
+  WRITE_OFF
+}
+
+enum PmsPaymentAdjustmentStatus {
+  POSTED
+  REVERSED
+}
+
+enum PmsSecurityDepositStatus {
+  EXPECTED
+  HELD
+  PARTIALLY_REFUNDED
+  REFUNDED
+  CLOSED
+}
+
+enum PmsSecurityDepositTransactionType {
+  COLLECTION
+  DEDUCTION
+  REFUND
+  CONVERSION_TO_INCOME
+  ADJUSTMENT
+}
+
+enum PmsSecurityDepositTransactionStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  POSTED
+  VOID
+}
+
+enum PmsFinancialPeriodStatus {
+  OPEN
+  REVIEWING
+  CLOSED
+}
+
+enum PmsReconciliationSource {
+  BANK
+  PAYMENT_PROVIDER
+  CASHBOOK
+  MANUAL
+}
+
+enum PmsReconciliationStatus {
+  UNMATCHED
+  MATCHED
+  DUPLICATE
+  IGNORED
+}
+
+enum PmsOwnerPayoutStatus {
+  DRAFT
+  APPROVED
+  PROCESSING
+  PAID_MANUAL
+  FAILED
+  CANCELLED
+}
+
+enum PmsAssetStatus {
+  ACTIVE
+  OUT_OF_SERVICE
+  RETIRED
+  DISPOSED
+}
+
+enum PmsAssetEventType {
+  CREATED
+  UPDATED
+  SERVICED
+  REPAIRED
+  WARRANTY_CLAIM
+  RETIRED
+  DISPOSED
+}
+
+enum PmsMaintenancePlanStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum PmsInspectionType {
+  GENERAL
+  MOVE_IN
+  MOVE_OUT
+  PERIODIC
+  SAFETY
+}
+
+enum PmsInspectionItemResult {
+  PASS
+  FAIL
+  NOT_APPLICABLE
+  OBSERVATION
+}
+
+enum PmsInspectionDefectStatus {
+  OPEN
+  WORK_ORDER_CREATED
+  RESOLVED
+  WAIVED
 }
 
 enum DomainAuditDomain {
@@ -818,6 +968,42 @@ model User {
   pmsMoveChecklistItemsCreated PmsMoveChecklistItem[] @relation("PmsMoveChecklistItemCreatedBy")
   pmsMoveChecklistItemsUpdated PmsMoveChecklistItem[] @relation("PmsMoveChecklistItemUpdatedBy")
 
+  pmsOwnerPortalAccesses                 PmsOwnerPortalAccess[]          @relation("PmsOwnerPortalAccessUser")
+  pmsOwnerPortalAccessesCreated          PmsOwnerPortalAccess[]          @relation("PmsOwnerPortalAccessCreatedBy")
+  pmsVendorPortalAccesses                PmsVendorPortalAccess[]         @relation("PmsVendorPortalAccessUser")
+  pmsVendorPortalAccessesCreated         PmsVendorPortalAccess[]         @relation("PmsVendorPortalAccessCreatedBy")
+  pmsChargesCreated                      PmsCharge[]                     @relation("PmsChargeCreatedBy")
+  pmsChargesIssued                       PmsCharge[]                     @relation("PmsChargeIssuedBy")
+  pmsChargesVoided                       PmsCharge[]                     @relation("PmsChargeVoidedBy")
+  pmsChargeAdjustmentsCreated            PmsChargeAdjustment[]           @relation("PmsChargeAdjustmentCreatedBy")
+  pmsChargeAdjustmentsReversed           PmsChargeAdjustment[]           @relation("PmsChargeAdjustmentReversedBy")
+  pmsCreditNotesCreated                  PmsCreditNote[]                 @relation("PmsCreditNoteCreatedBy")
+  pmsCreditNotesApproved                 PmsCreditNote[]                 @relation("PmsCreditNoteApprovedBy")
+  pmsPaymentAllocationsCreated           PmsPaymentAllocation[]          @relation("PmsPaymentAllocationCreatedBy")
+  pmsPaymentAllocationsReversed          PmsPaymentAllocation[]          @relation("PmsPaymentAllocationReversedBy")
+  pmsPaymentAdjustmentsCreated           PmsPaymentAdjustment[]          @relation("PmsPaymentAdjustmentCreatedBy")
+  pmsPaymentAdjustmentsReversed          PmsPaymentAdjustment[]          @relation("PmsPaymentAdjustmentReversedBy")
+  pmsSecurityDepositTransactionsCreated  PmsSecurityDepositTransaction[] @relation("PmsSecurityDepositTransactionCreatedBy")
+  pmsSecurityDepositTransactionsApproved PmsSecurityDepositTransaction[] @relation("PmsSecurityDepositTransactionApprovedBy")
+  pmsFinancialPeriodsCreated             PmsFinancialPeriod[]            @relation("PmsFinancialPeriodCreatedBy")
+  pmsFinancialPeriodsUpdated             PmsFinancialPeriod[]            @relation("PmsFinancialPeriodUpdatedBy")
+  pmsFinancialPeriodEventsCreated        PmsFinancialPeriodEvent[]       @relation("PmsFinancialPeriodEventCreatedBy")
+  pmsReconciliationItemsCreated          PmsReconciliationItem[]         @relation("PmsReconciliationItemCreatedBy")
+  pmsReconciliationItemsMatched          PmsReconciliationItem[]         @relation("PmsReconciliationItemMatchedBy")
+  pmsOwnerPayoutsOwned                   PmsOwnerPayoutBatch[]           @relation("PmsOwnerPayoutOwner")
+  pmsOwnerPayoutsCreated                 PmsOwnerPayoutBatch[]           @relation("PmsOwnerPayoutCreatedBy")
+  pmsOwnerPayoutsApproved                PmsOwnerPayoutBatch[]           @relation("PmsOwnerPayoutApprovedBy")
+  pmsOwnerPayoutsPaid                    PmsOwnerPayoutBatch[]           @relation("PmsOwnerPayoutPaidBy")
+  pmsOwnerPayoutsCancelled               PmsOwnerPayoutBatch[]           @relation("PmsOwnerPayoutCancelledBy")
+  pmsAssetsCreated                       PmsAsset[]                      @relation("PmsAssetCreatedBy")
+  pmsAssetsUpdated                       PmsAsset[]                      @relation("PmsAssetUpdatedBy")
+  pmsAssetEventsCreated                  PmsAssetEvent[]                 @relation("PmsAssetEventCreatedBy")
+  pmsMaintenancePlansCreated             PmsMaintenancePlan[]            @relation("PmsMaintenancePlanCreatedBy")
+  pmsMaintenancePlansUpdated             PmsMaintenancePlan[]            @relation("PmsMaintenancePlanUpdatedBy")
+  pmsInspectionTemplatesCreated          PmsInspectionTemplate[]         @relation("PmsInspectionTemplateCreatedBy")
+  pmsInspectionTemplatesUpdated          PmsInspectionTemplate[]         @relation("PmsInspectionTemplateUpdatedBy")
+  pmsInspectionDefectsConverted          PmsInspectionDefect[]           @relation("PmsInspectionDefectConvertedBy")
+
   eligibilityMarkedListings       Listing[]          @relation("ListingEligibilityMarkedBy")
   listingVerificationReviews      Listing[]          @relation("ListingVerificationReviewedBy")
   activityVerificationReviews     Activity[]         @relation("ActivityVerificationReviewedBy")
@@ -961,6 +1147,29 @@ model DeveloperCompany {
   pmsInspections PmsInspection[]
   pmsDocuments PmsDocument[]
   pmsOwnerStatements PmsOwnerStatement[]
+  pmsCharges                     PmsCharge[]
+  pmsChargeLines                 PmsChargeLine[]
+  pmsChargeAdjustments           PmsChargeAdjustment[]
+  pmsCreditNotes                 PmsCreditNote[]
+  pmsPaymentAllocations          PmsPaymentAllocation[]
+  pmsPaymentAdjustments          PmsPaymentAdjustment[]
+  pmsSecurityDepositAccounts     PmsSecurityDepositAccount[]
+  pmsSecurityDepositTransactions PmsSecurityDepositTransaction[]
+  pmsFinancialPeriods            PmsFinancialPeriod[]
+  pmsFinancialPeriodEvents       PmsFinancialPeriodEvent[]
+  pmsReconciliationItems         PmsReconciliationItem[]
+  pmsOwnerPortalAccesses         PmsOwnerPortalAccess[]
+  pmsOwnerPayoutBatches          PmsOwnerPayoutBatch[]
+  pmsOwnerPayoutLines            PmsOwnerPayoutLine[]
+  pmsVendorPortalAccesses        PmsVendorPortalAccess[]
+  pmsAssets                      PmsAsset[]
+  pmsAssetEvents                 PmsAssetEvent[]
+  pmsMaintenancePlans            PmsMaintenancePlan[]
+  pmsInspectionTemplates         PmsInspectionTemplate[]
+  pmsInspectionTemplateSections  PmsInspectionTemplateSection[]
+  pmsInspectionTemplateItems     PmsInspectionTemplateItem[]
+  pmsInspectionResults           PmsInspectionResult[]
+  pmsInspectionDefects           PmsInspectionDefect[]
   domainAuditEvents DomainAuditEvent[]
   pmsMoveChecklistItems PmsMoveChecklistItem[]
   crmContacts CrmContact[]
@@ -1692,7 +1901,6 @@ model RentPaymentSchedule {
   contractDraftId String?
   contractDraft   RentalContractDraft? @relation(fields: [contractDraftId], references: [id], onDelete: SetNull)
 
-
   listingId String?
   listing   Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
 
@@ -2311,6 +2519,17 @@ model PmsProperty {
   pmsInspections PmsInspection[]
   pmsDocuments PmsDocument[]
   pmsOwnerStatements PmsOwnerStatement[]
+  pmsCharges                 PmsCharge[]
+  pmsCreditNotes             PmsCreditNote[]
+  pmsSecurityDepositAccounts PmsSecurityDepositAccount[]
+  pmsFinancialPeriods        PmsFinancialPeriod[]
+  pmsReconciliationItems     PmsReconciliationItem[]
+  pmsOwnerPortalAccesses     PmsOwnerPortalAccess[]
+  pmsOwnerPayoutLines        PmsOwnerPayoutLine[]
+  pmsAssets                  PmsAsset[]
+  pmsMaintenancePlans        PmsMaintenancePlan[]
+  pmsInspectionTemplates     PmsInspectionTemplate[]
+  pmsInspectionDefects       PmsInspectionDefect[]
   pmsMoveChecklistItems PmsMoveChecklistItem[]
   pmsPortfolioProperties PmsPortfolioProperty[]
   pmsMemberPropertyAccesses PmsMemberPropertyAccess[]
@@ -2370,6 +2589,12 @@ model PmsUnit {
   pmsWorkOrders PmsWorkOrder[]
   pmsInspections PmsInspection[]
   pmsDocuments PmsDocument[]
+  pmsCharges                 PmsCharge[]
+  pmsCreditNotes             PmsCreditNote[]
+  pmsSecurityDepositAccounts PmsSecurityDepositAccount[]
+  pmsAssets                  PmsAsset[]
+  pmsMaintenancePlans        PmsMaintenancePlan[]
+  pmsInspectionDefects       PmsInspectionDefect[]
   pmsMoveChecklistItems PmsMoveChecklistItem[]
 
   createdAt DateTime @default(now())
@@ -2421,6 +2646,10 @@ model PmsTenant {
   pmsInspections PmsInspection[]
   pmsTenantPortalAccesses PmsTenantPortalAccess[]
   pmsDocuments PmsDocument[]
+  pmsCharges                 PmsCharge[]
+  pmsCreditNotes             PmsCreditNote[]
+  pmsSecurityDepositAccounts PmsSecurityDepositAccount[]
+  pmsInspectionDefects       PmsInspectionDefect[]
   pmsMoveChecklistItems PmsMoveChecklistItem[]
   crmContacts CrmContact[]
   crmLeads    CrmLead[]
@@ -2483,6 +2712,10 @@ model PmsLease {
   pmsCommunicationLogs PmsCommunicationLog[]
   pmsInspections PmsInspection[]
   pmsDocuments PmsDocument[]
+  pmsCharges                 PmsCharge[]
+  pmsCreditNotes             PmsCreditNote[]
+  pmsSecurityDepositAccount  PmsSecurityDepositAccount?
+  pmsInspectionDefects       PmsInspectionDefect[]
   pmsMoveChecklistItems PmsMoveChecklistItem[]
 
   createdAt DateTime @default(now())
@@ -2536,6 +2769,7 @@ model PmsRentDueItem {
   updatedBy   User? @relation("PmsRentDueItemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   rentPayments PmsRentPayment[]
+  structuredCharge           PmsCharge?
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
   pmsCommunicationLogs PmsCommunicationLog[]
 
@@ -2575,8 +2809,8 @@ model PmsRentPayment {
   companyId String
   company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  rentDueItemId String
-  rentDueItem   PmsRentDueItem @relation(fields: [rentDueItemId], references: [id], onDelete: Cascade)
+  rentDueItemId String?
+  rentDueItem   PmsRentDueItem? @relation(fields: [rentDueItemId], references: [id], onDelete: SetNull)
 
   leaseId String
   lease   PmsLease @relation(fields: [leaseId], references: [id], onDelete: Cascade)
@@ -2594,6 +2828,10 @@ model PmsRentPayment {
   recordedBy   User? @relation("PmsRentPaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
 
   pmsAccountingLedgerEntries PmsAccountingLedgerEntry[]
+  allocations                 PmsPaymentAllocation[]
+  adjustments                 PmsPaymentAdjustment[]
+  securityDepositTransactions PmsSecurityDepositTransaction[]
+  reconciliationItems         PmsReconciliationItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2644,6 +2882,15 @@ model PmsAccountingLedgerEntry {
   workOrderId String?
   workOrder   PmsWorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
 
+  chargeId String?
+  charge   PmsCharge? @relation(fields: [chargeId], references: [id], onDelete: SetNull)
+
+  securityDepositTransactionId String?
+  securityDepositTransaction   PmsSecurityDepositTransaction? @relation(fields: [securityDepositTransactionId], references: [id], onDelete: SetNull)
+
+  ownerPayoutBatchId String?
+  ownerPayoutBatch   PmsOwnerPayoutBatch? @relation(fields: [ownerPayoutBatchId], references: [id], onDelete: SetNull)
+
   createdById String?
   createdBy   User? @relation("PmsAccountingLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -2664,6 +2911,9 @@ model PmsAccountingLedgerEntry {
   @@index([rentDueItemId])
   @@index([rentPaymentId])
   @@index([workOrderId])
+  @@index([chargeId])
+  @@index([securityDepositTransactionId])
+  @@index([ownerPayoutBatchId])
   @@index([createdById])
   @@index([updatedById])
 }
@@ -2692,6 +2942,7 @@ model PmsWorkOrder {
   nextScheduledDate  DateTime?
   generatedFromWorkOrderId String?
   approvedQuoteId    String?
+  preventiveGenerationKey  String?                      @unique
   tenantConfirmedAt  DateTime?
   tenantReopenedAt   DateTime?
   tenantConfirmationNotes String?
@@ -2711,6 +2962,14 @@ model PmsWorkOrder {
 
   vendorId String?
   vendor   PmsVendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  assetId String?
+  asset   PmsAsset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  maintenancePlanId String?
+  maintenancePlan   PmsMaintenancePlan? @relation(fields: [maintenancePlanId], references: [id], onDelete: SetNull)
+
+  inspectionDefect PmsInspectionDefect?
 
   generatedFromWorkOrder PmsWorkOrder? @relation("PmsRecurringGeneratedWorkOrders", fields: [generatedFromWorkOrderId], references: [id], onDelete: SetNull)
   generatedWorkOrders    PmsWorkOrder[] @relation("PmsRecurringGeneratedWorkOrders")
@@ -2739,6 +2998,8 @@ model PmsWorkOrder {
   @@index([unitId])
   @@index([tenantId])
   @@index([vendorId])
+  @@index([assetId])
+  @@index([maintenancePlanId])
   @@index([generatedFromWorkOrderId])
   @@index([createdById])
   @@index([updatedById])
@@ -2764,6 +3025,9 @@ model PmsVendor {
 
   workOrders PmsWorkOrder[]
   quotes     PmsMaintenanceQuote[]
+  portalAccesses   PmsVendorPortalAccess[]
+  assets           PmsAsset[]
+  maintenancePlans PmsMaintenancePlan[]
   crmLeads   CrmLead[]
 
   createdAt DateTime @default(now())
@@ -2957,6 +3221,12 @@ model PmsInspection {
   notes        String?
   feedback     String?
   rating       Int?
+  type            PmsInspectionType   @default(GENERAL)
+  acknowledgement Json?
+  acknowledgedAt  DateTime?
+
+  templateId String?
+  template   PmsInspectionTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
   companyId String
   company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -2980,6 +3250,8 @@ model PmsInspection {
   updatedBy   User? @relation("PmsInspectionUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   pmsDocuments PmsDocument[]
+  results      PmsInspectionResult[]
+  defects      PmsInspectionDefect[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2989,6 +3261,7 @@ model PmsInspection {
   @@index([unitId])
   @@index([tenantId])
   @@index([leaseId])
+  @@index([templateId])
   @@index([createdById])
   @@index([updatedById])
 }
@@ -3034,6 +3307,24 @@ model PmsDocument {
   inspectionId String?
   inspection   PmsInspection? @relation(fields: [inspectionId], references: [id], onDelete: SetNull)
 
+  chargeId String?
+  charge   PmsCharge? @relation(fields: [chargeId], references: [id], onDelete: SetNull)
+
+  securityDepositTransactionId String?
+  securityDepositTransaction   PmsSecurityDepositTransaction? @relation(fields: [securityDepositTransactionId], references: [id], onDelete: SetNull)
+
+  ownerPayoutBatchId String?
+  ownerPayoutBatch   PmsOwnerPayoutBatch? @relation(fields: [ownerPayoutBatchId], references: [id], onDelete: SetNull)
+
+  assetId String?
+  asset   PmsAsset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  statementId String?
+  statement   PmsOwnerStatement? @relation(fields: [statementId], references: [id], onDelete: SetNull)
+
+  inspectionDefectId String?
+  inspectionDefect   PmsInspectionDefect? @relation(fields: [inspectionDefectId], references: [id], onDelete: SetNull)
+
   uploadedById String?
   uploadedBy   User? @relation("PmsDocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
 
@@ -3056,6 +3347,12 @@ model PmsDocument {
   @@index([leaseId])
   @@index([workOrderId])
   @@index([inspectionId])
+  @@index([chargeId])
+  @@index([securityDepositTransactionId])
+  @@index([ownerPayoutBatchId])
+  @@index([assetId])
+  @@index([statementId])
+  @@index([inspectionDefectId])
   @@index([uploadedById])
   @@index([updatedById])
 }
@@ -3092,6 +3389,8 @@ model PmsOwnerStatement {
   revisionOfId String?
   revisionOf PmsOwnerStatement? @relation("PmsOwnerStatementRevisions", fields: [revisionOfId], references: [id], onDelete: SetNull)
   revisions PmsOwnerStatement[] @relation("PmsOwnerStatementRevisions")
+  payoutLines  PmsOwnerPayoutLine[]
+  documents    PmsDocument[]
 
   generatedById String?
   generatedBy User? @relation("PmsOwnerStatementGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
@@ -3111,6 +3410,657 @@ model PmsOwnerStatement {
   @@index([companyId, propertyId, periodStart, periodEnd, currency])
   @@index([propertyId, periodStart, periodEnd])
   @@index([revisionOfId])
+}
+
+model PmsCharge {
+  id                 String          @id @default(cuid())
+  chargeNumber       String
+  status             PmsChargeStatus @default(DRAFT)
+  currency           String          @default("OMR") @db.VarChar(3)
+  dueDate            DateTime
+  servicePeriodStart DateTime?
+  servicePeriodEnd   DateTime?
+  subtotal           Decimal         @default(0) @db.Decimal(14, 3)
+  adjustmentTotal    Decimal         @default(0) @db.Decimal(14, 3)
+  creditedAmount     Decimal         @default(0) @db.Decimal(14, 3)
+  paidAmount         Decimal         @default(0) @db.Decimal(14, 3)
+  totalAmount        Decimal         @default(0) @db.Decimal(14, 3)
+  balanceAmount      Decimal         @default(0) @db.Decimal(14, 3)
+  notes              String?
+  issuedAt           DateTime?
+  voidedAt           DateTime?
+  voidReason         String?
+
+  companyId           String
+  company             DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  propertyId          String
+  property            PmsProperty      @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  unitId              String?
+  unit                PmsUnit?         @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  leaseId             String?
+  lease               PmsLease?        @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+  tenantId            String?
+  tenant              PmsTenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  sourceRentDueItemId String?          @unique
+  sourceRentDueItem   PmsRentDueItem?  @relation(fields: [sourceRentDueItemId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User?   @relation("PmsChargeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  issuedById  String?
+  issuedBy    User?   @relation("PmsChargeIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
+  voidedById  String?
+  voidedBy    User?   @relation("PmsChargeVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+
+  lines                       PmsChargeLine[]
+  adjustments                 PmsChargeAdjustment[]
+  creditNotes                 PmsCreditNote[]
+  allocations                 PmsPaymentAllocation[]
+  securityDepositTransactions PmsSecurityDepositTransaction[]
+  ledgerEntries               PmsAccountingLedgerEntry[]
+  documents                   PmsDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, chargeNumber])
+  @@index([companyId, status, dueDate])
+  @@index([propertyId, status, dueDate])
+  @@index([tenantId, status])
+  @@index([leaseId])
+}
+
+model PmsChargeLine {
+  id                 String            @id @default(cuid())
+  category           PmsChargeCategory
+  description        String
+  quantity           Decimal           @default(1) @db.Decimal(12, 3)
+  unitAmount         Decimal           @db.Decimal(14, 3)
+  amount             Decimal           @db.Decimal(14, 3)
+  position           Int               @default(0)
+  servicePeriodStart DateTime?
+  servicePeriodEnd   DateTime?
+  metadata           Json?
+  companyId          String
+  company            DeveloperCompany  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  chargeId           String
+  charge             PmsCharge         @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  createdAt          DateTime          @default(now())
+
+  @@index([companyId, category])
+  @@index([chargeId, position])
+}
+
+model PmsChargeAdjustment {
+  id           String                  @id @default(cuid())
+  type         PmsChargeAdjustmentType
+  amount       Decimal                 @db.Decimal(14, 3)
+  reason       String
+  active       Boolean                 @default(true)
+  reversedAt   DateTime?
+  companyId    String
+  company      DeveloperCompany        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  chargeId     String
+  charge       PmsCharge               @relation(fields: [chargeId], references: [id], onDelete: Restrict)
+  createdById  String?
+  createdBy    User?                   @relation("PmsChargeAdjustmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  reversedById String?
+  reversedBy   User?                   @relation("PmsChargeAdjustmentReversedBy", fields: [reversedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+
+  @@index([companyId, type])
+  @@index([chargeId, active])
+}
+
+model PmsCreditNote {
+  id              String              @id @default(cuid())
+  creditNumber    String
+  status          PmsCreditNoteStatus @default(DRAFT)
+  amount          Decimal             @db.Decimal(14, 3)
+  remainingAmount Decimal             @db.Decimal(14, 3)
+  currency        String              @db.VarChar(3)
+  reason          String
+  approvedAt      DateTime?
+  appliedAt       DateTime?
+  voidedAt        DateTime?
+  companyId       String
+  company         DeveloperCompany    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  propertyId      String
+  property        PmsProperty         @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  unitId          String?
+  unit            PmsUnit?            @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  leaseId         String?
+  lease           PmsLease?           @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+  tenantId        String?
+  tenant          PmsTenant?          @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  chargeId        String?
+  charge          PmsCharge?          @relation(fields: [chargeId], references: [id], onDelete: SetNull)
+  createdById     String?
+  createdBy       User?               @relation("PmsCreditNoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedById    String?
+  approvedBy      User?               @relation("PmsCreditNoteApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([companyId, creditNumber])
+  @@index([companyId, status])
+  @@index([tenantId, status])
+  @@index([chargeId])
+}
+
+model PmsPaymentAllocation {
+  id             String                     @id @default(cuid())
+  amount         Decimal                    @db.Decimal(14, 3)
+  currency       String                     @db.VarChar(3)
+  status         PmsPaymentAllocationStatus @default(ACTIVE)
+  idempotencyKey String
+  reversedAt     DateTime?
+  reversalReason String?
+  companyId      String
+  company        DeveloperCompany           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  paymentId      String
+  payment        PmsRentPayment             @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  chargeId       String
+  charge         PmsCharge                  @relation(fields: [chargeId], references: [id], onDelete: Restrict)
+  createdById    String?
+  createdBy      User?                      @relation("PmsPaymentAllocationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  reversedById   String?
+  reversedBy     User?                      @relation("PmsPaymentAllocationReversedBy", fields: [reversedById], references: [id], onDelete: SetNull)
+  adjustments    PmsPaymentAdjustment[]
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  @@unique([companyId, idempotencyKey])
+  @@index([paymentId, status])
+  @@index([chargeId, status])
+}
+
+model PmsPaymentAdjustment {
+  id              String                     @id @default(cuid())
+  type            PmsPaymentAdjustmentType
+  status          PmsPaymentAdjustmentStatus @default(POSTED)
+  amount          Decimal                    @db.Decimal(14, 3)
+  currency        String                     @db.VarChar(3)
+  reason          String
+  idempotencyKey  String
+  referenceNumber String?
+  reversedAt      DateTime?
+  companyId       String
+  company         DeveloperCompany           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  paymentId       String
+  payment         PmsRentPayment             @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  allocationId    String?
+  allocation      PmsPaymentAllocation?      @relation(fields: [allocationId], references: [id], onDelete: SetNull)
+  createdById     String?
+  createdBy       User?                      @relation("PmsPaymentAdjustmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  reversedById    String?
+  reversedBy      User?                      @relation("PmsPaymentAdjustmentReversedBy", fields: [reversedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  @@unique([companyId, idempotencyKey])
+  @@index([paymentId, status])
+  @@index([allocationId])
+}
+
+model PmsSecurityDepositAccount {
+  id               String                          @id @default(cuid())
+  status           PmsSecurityDepositStatus        @default(EXPECTED)
+  expectedAmount   Decimal                         @default(0) @db.Decimal(14, 3)
+  liabilityBalance Decimal                         @default(0) @db.Decimal(14, 3)
+  currency         String                          @db.VarChar(3)
+  companyId        String
+  company          DeveloperCompany                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  propertyId       String
+  property         PmsProperty                     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  unitId           String
+  unit             PmsUnit                         @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  leaseId          String                          @unique
+  lease            PmsLease                        @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  tenantId         String
+  tenant           PmsTenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  transactions     PmsSecurityDepositTransaction[]
+  createdAt        DateTime                        @default(now())
+  updatedAt        DateTime                        @updatedAt
+
+  @@index([companyId, status])
+  @@index([propertyId, status])
+  @@index([tenantId])
+}
+
+model PmsSecurityDepositTransaction {
+  id             String                              @id @default(cuid())
+  type           PmsSecurityDepositTransactionType
+  status         PmsSecurityDepositTransactionStatus @default(DRAFT)
+  amount         Decimal                             @db.Decimal(14, 3)
+  currency       String                              @db.VarChar(3)
+  reason         String?
+  idempotencyKey String
+  approvedAt     DateTime?
+  postedAt       DateTime?
+  voidedAt       DateTime?
+  companyId      String
+  company        DeveloperCompany                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  accountId      String
+  account        PmsSecurityDepositAccount           @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  paymentId      String?
+  payment        PmsRentPayment?                     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  chargeId       String?
+  charge         PmsCharge?                          @relation(fields: [chargeId], references: [id], onDelete: SetNull)
+  createdById    String?
+  createdBy      User?                               @relation("PmsSecurityDepositTransactionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedById   String?
+  approvedBy     User?                               @relation("PmsSecurityDepositTransactionApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  ledgerEntries  PmsAccountingLedgerEntry[]
+  documents      PmsDocument[]
+  createdAt      DateTime                            @default(now())
+  updatedAt      DateTime                            @updatedAt
+
+  @@unique([companyId, idempotencyKey])
+  @@index([accountId, status])
+  @@index([paymentId])
+  @@index([chargeId])
+}
+
+model PmsFinancialPeriod {
+  id           String                    @id @default(cuid())
+  status       PmsFinancialPeriodStatus  @default(OPEN)
+  periodStart  DateTime
+  periodEnd    DateTime
+  currency     String                    @db.VarChar(3)
+  closeReason  String?
+  closedAt     DateTime?
+  reopenedAt   DateTime?
+  reopenReason String?
+  companyId    String
+  company      DeveloperCompany          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  propertyId   String?
+  property     PmsProperty?              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdById  String?
+  createdBy    User?                     @relation("PmsFinancialPeriodCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById  String?
+  updatedBy    User?                     @relation("PmsFinancialPeriodUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  events       PmsFinancialPeriodEvent[]
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  @@unique([companyId, propertyId, periodStart, periodEnd, currency])
+  @@index([companyId, status, periodStart])
+  @@index([propertyId, status, periodStart])
+}
+
+model PmsFinancialPeriodEvent {
+  id          String                    @id @default(cuid())
+  fromStatus  PmsFinancialPeriodStatus?
+  toStatus    PmsFinancialPeriodStatus
+  reason      String?
+  companyId   String
+  company     DeveloperCompany          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  periodId    String
+  period      PmsFinancialPeriod        @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?                     @relation("PmsFinancialPeriodEventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime                  @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([periodId, createdAt])
+}
+
+model PmsReconciliationItem {
+  id                String                  @id @default(cuid())
+  source            PmsReconciliationSource
+  status            PmsReconciliationStatus @default(UNMATCHED)
+  externalReference String
+  amount            Decimal                 @db.Decimal(14, 3)
+  currency          String                  @db.VarChar(3)
+  transactionDate   DateTime
+  payerReference    String?
+  metadata          Json?
+  matchedAt         DateTime?
+  matchReason       String?
+  companyId         String
+  company           DeveloperCompany        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  propertyId        String?
+  property          PmsProperty?            @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  paymentId         String?
+  payment           PmsRentPayment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  duplicateOfId     String?
+  duplicateOf       PmsReconciliationItem?  @relation("PmsReconciliationDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates        PmsReconciliationItem[] @relation("PmsReconciliationDuplicates")
+  createdById       String?
+  createdBy         User?                   @relation("PmsReconciliationItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  matchedById       String?
+  matchedBy         User?                   @relation("PmsReconciliationItemMatchedBy", fields: [matchedById], references: [id], onDelete: SetNull)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@unique([companyId, source, externalReference])
+  @@index([companyId, status, transactionDate])
+  @@index([paymentId])
+  @@index([duplicateOfId])
+}
+
+model PmsOwnerPortalAccess {
+  id                      String           @id @default(cuid())
+  active                  Boolean          @default(true)
+  canApproveQuotes        Boolean          @default(false)
+  canViewMaintenanceCosts Boolean          @default(true)
+  notes                   String?
+  companyId               String
+  company                 DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  propertyId              String
+  property                PmsProperty      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  userId                  String
+  user                    User             @relation("PmsOwnerPortalAccessUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdById             String?
+  createdBy               User?            @relation("PmsOwnerPortalAccessCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+
+  @@unique([propertyId, userId])
+  @@index([companyId, active])
+  @@index([userId, active])
+}
+
+model PmsOwnerPayoutBatch {
+  id                  String                     @id @default(cuid())
+  payoutNumber        String
+  status              PmsOwnerPayoutStatus       @default(DRAFT)
+  currency            String                     @db.VarChar(3)
+  grossAmount         Decimal                    @default(0) @db.Decimal(14, 3)
+  managementFeeAmount Decimal                    @default(0) @db.Decimal(14, 3)
+  reservedAmount      Decimal                    @default(0) @db.Decimal(14, 3)
+  payoutAmount        Decimal                    @default(0) @db.Decimal(14, 3)
+  periodStart         DateTime
+  periodEnd           DateTime
+  payoutReference     String?
+  paymentMethodNote   String?
+  approvedAt          DateTime?
+  processingAt        DateTime?
+  paidAt              DateTime?
+  cancelledAt         DateTime?
+  failureReason       String?
+  notes               String?
+  companyId           String
+  company             DeveloperCompany           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ownerUserId         String
+  ownerUser           User                       @relation("PmsOwnerPayoutOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  createdById         String?
+  createdBy           User?                      @relation("PmsOwnerPayoutCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedById        String?
+  approvedBy          User?                      @relation("PmsOwnerPayoutApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  paidById            String?
+  paidBy              User?                      @relation("PmsOwnerPayoutPaidBy", fields: [paidById], references: [id], onDelete: SetNull)
+  cancelledById       String?
+  cancelledBy         User?                      @relation("PmsOwnerPayoutCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  lines               PmsOwnerPayoutLine[]
+  ledgerEntries       PmsAccountingLedgerEntry[]
+  documents           PmsDocument[]
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+
+  @@unique([companyId, payoutNumber])
+  @@index([companyId, status, periodEnd])
+  @@index([ownerUserId, status])
+}
+
+model PmsOwnerPayoutLine {
+  id                  String              @id @default(cuid())
+  incomeAmount        Decimal             @default(0) @db.Decimal(14, 3)
+  expenseAmount       Decimal             @default(0) @db.Decimal(14, 3)
+  managementFeeAmount Decimal             @default(0) @db.Decimal(14, 3)
+  reservedAmount      Decimal             @default(0) @db.Decimal(14, 3)
+  netAmount           Decimal             @default(0) @db.Decimal(14, 3)
+  currency            String              @db.VarChar(3)
+  companyId           String
+  company             DeveloperCompany    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  payoutBatchId       String
+  payoutBatch         PmsOwnerPayoutBatch @relation(fields: [payoutBatchId], references: [id], onDelete: Cascade)
+  propertyId          String
+  property            PmsProperty         @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  statementId         String?
+  statement           PmsOwnerStatement?  @relation(fields: [statementId], references: [id], onDelete: SetNull)
+  createdAt           DateTime            @default(now())
+
+  @@unique([payoutBatchId, propertyId])
+  @@index([companyId, propertyId])
+  @@index([statementId])
+}
+
+model PmsVendorPortalAccess {
+  id          String           @id @default(cuid())
+  active      Boolean          @default(true)
+  companyId   String
+  company     DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vendorId    String
+  vendor      PmsVendor        @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User             @relation("PmsVendorPortalAccessUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?            @relation("PmsVendorPortalAccessCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([vendorId, userId])
+  @@index([companyId, active])
+  @@index([userId, active])
+}
+
+model PmsAsset {
+  id                  String               @id @default(cuid())
+  assetCode           String
+  name                String
+  category            String
+  manufacturer        String?
+  model               String?
+  serialNumber        String?
+  installationDate    DateTime?
+  warrantyExpiry      DateTime?
+  serviceIntervalDays Int?
+  nextServiceDate     DateTime?
+  status              PmsAssetStatus       @default(ACTIVE)
+  purchaseCost        Decimal?             @db.Decimal(14, 3)
+  currency            String               @default("OMR") @db.VarChar(3)
+  notes               String?
+  companyId           String
+  company             DeveloperCompany     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  propertyId          String
+  property            PmsProperty          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unitId              String?
+  unit                PmsUnit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  vendorId            String?
+  vendor              PmsVendor?           @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdById         String?
+  createdBy           User?                @relation("PmsAssetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById         String?
+  updatedBy           User?                @relation("PmsAssetUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  workOrders          PmsWorkOrder[]
+  maintenancePlans    PmsMaintenancePlan[]
+  events              PmsAssetEvent[]
+  documents           PmsDocument[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([companyId, assetCode])
+  @@index([propertyId, status])
+  @@index([unitId])
+  @@index([vendorId])
+  @@index([warrantyExpiry])
+  @@index([nextServiceDate])
+}
+
+model PmsAssetEvent {
+  id          String            @id @default(cuid())
+  type        PmsAssetEventType
+  occurredAt  DateTime          @default(now())
+  cost        Decimal?          @db.Decimal(14, 3)
+  currency    String?           @db.VarChar(3)
+  notes       String?
+  metadata    Json?
+  companyId   String
+  company     DeveloperCompany  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assetId     String
+  asset       PmsAsset          @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?             @relation("PmsAssetEventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime          @default(now())
+
+  @@index([companyId, occurredAt])
+  @@index([assetId, occurredAt])
+}
+
+model PmsMaintenancePlan {
+  id              String                   @id @default(cuid())
+  title           String
+  description     String?
+  status          PmsMaintenancePlanStatus @default(ACTIVE)
+  intervalDays    Int?
+  nextServiceDate DateTime
+  lastGeneratedAt DateTime?
+  checklist       String[]                 @default([])
+  slaHours        Int?
+  priority        PmsMaintenancePriority   @default(MEDIUM)
+  estimatedCost   Decimal?                 @db.Decimal(14, 3)
+  currency        String                   @default("OMR") @db.VarChar(3)
+  companyId       String
+  company         DeveloperCompany         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  propertyId      String
+  property        PmsProperty              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unitId          String?
+  unit            PmsUnit?                 @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  assetId         String?
+  asset           PmsAsset?                @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  vendorId        String?
+  vendor          PmsVendor?               @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdById     String?
+  createdBy       User?                    @relation("PmsMaintenancePlanCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById     String?
+  updatedBy       User?                    @relation("PmsMaintenancePlanUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  workOrders      PmsWorkOrder[]
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  @@index([companyId, status, nextServiceDate])
+  @@index([propertyId, status])
+  @@index([assetId])
+  @@index([vendorId])
+}
+
+model PmsInspectionTemplate {
+  id          String                         @id @default(cuid())
+  name        String
+  description String?
+  type        PmsInspectionType              @default(GENERAL)
+  active      Boolean                        @default(true)
+  version     Int                            @default(1)
+  companyId   String
+  company     DeveloperCompany               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  propertyId  String?
+  property    PmsProperty?                   @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  createdById String?
+  createdBy   User?                          @relation("PmsInspectionTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById String?
+  updatedBy   User?                          @relation("PmsInspectionTemplateUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  sections    PmsInspectionTemplateSection[]
+  inspections PmsInspection[]
+  createdAt   DateTime                       @default(now())
+  updatedAt   DateTime                       @updatedAt
+
+  @@unique([companyId, name, version])
+  @@index([companyId, active, type])
+  @@index([propertyId])
+}
+
+model PmsInspectionTemplateSection {
+  id          String                      @id @default(cuid())
+  title       String
+  description String?
+  position    Int                         @default(0)
+  companyId   String
+  company     DeveloperCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  templateId  String
+  template    PmsInspectionTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  items       PmsInspectionTemplateItem[]
+  createdAt   DateTime                    @default(now())
+
+  @@index([templateId, position])
+}
+
+model PmsInspectionTemplateItem {
+  id                     String                       @id @default(cuid())
+  label                  String
+  instructions           String?
+  position               Int                          @default(0)
+  required               Boolean                      @default(true)
+  requiresPhotoOnFailure Boolean                      @default(false)
+  companyId              String
+  company                DeveloperCompany             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sectionId              String
+  section                PmsInspectionTemplateSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  results                PmsInspectionResult[]
+  createdAt              DateTime                     @default(now())
+
+  @@index([sectionId, position])
+}
+
+model PmsInspectionResult {
+  id                 String                    @id @default(cuid())
+  result             PmsInspectionItemResult
+  valueText          String?
+  notes              String?
+  photoUrls          String[]                  @default([])
+  acknowledgedByName String?
+  acknowledgedAt     DateTime?
+  companyId          String
+  company            DeveloperCompany          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  inspectionId       String
+  inspection         PmsInspection             @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  templateItemId     String
+  templateItem       PmsInspectionTemplateItem @relation(fields: [templateItemId], references: [id], onDelete: Restrict)
+  defects            PmsInspectionDefect[]
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  @@unique([inspectionId, templateItemId])
+  @@index([companyId, result])
+  @@index([templateItemId])
+}
+
+model PmsInspectionDefect {
+  id            String                    @id @default(cuid())
+  title         String
+  description   String?
+  severity      PmsMaintenancePriority    @default(MEDIUM)
+  status        PmsInspectionDefectStatus @default(OPEN)
+  photoUrls     String[]                  @default([])
+  resolvedAt    DateTime?
+  companyId     String
+  company       DeveloperCompany          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  inspectionId  String
+  inspection    PmsInspection             @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  resultId      String?
+  result        PmsInspectionResult?      @relation(fields: [resultId], references: [id], onDelete: SetNull)
+  propertyId    String
+  property      PmsProperty               @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  unitId        String?
+  unit          PmsUnit?                  @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  leaseId       String?
+  lease         PmsLease?                 @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+  tenantId      String?
+  tenant        PmsTenant?                @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  workOrderId   String?                   @unique
+  workOrder     PmsWorkOrder?             @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  convertedById String?
+  convertedBy   User?                     @relation("PmsInspectionDefectConvertedBy", fields: [convertedById], references: [id], onDelete: SetNull)
+  documents     PmsDocument[]
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  @@index([companyId, status])
+  @@index([inspectionId, status])
+  @@index([propertyId])
+  @@index([unitId])
+  @@index([leaseId])
 }
 
 model DomainAuditEvent {

@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import { createApp } from '../src/app';
 import { validateEnv } from '../src/config/env';
 import { prisma } from '../src/lib/prisma';
+import { clearIntegrationTestDatabase } from './integration/clearDatabase';
 import { signToken } from '../src/middleware/auth';
 import { authAbuseRateLimitRules } from '../src/middleware/rateLimit';
 import { createOauthLoginCode } from '../src/services/googleOAuth';
@@ -45,63 +46,7 @@ function extractTokenFromDevUrl(devUrl?: string | null) {
 }
 
 async function clearTestDatabase() {
-  const databaseUrl = new URL(process.env.DATABASE_URL ?? '');
-  const databaseName = databaseUrl.pathname.replace(/^\/+/, '');
-
-  if (!databaseName.endsWith('_test')) {
-    throw new Error(
-      `Refusing destructive cleanup for database: ${databaseName}`
-    );
-  }
-
-  await prisma.crmActivity.deleteMany();
-  await prisma.crmLead.deleteMany();
-  await prisma.crmContact.deleteMany();
-  await prisma.inquiry.deleteMany();
-  await prisma.pmsCompanyMember.deleteMany();
-  await prisma.pmsCompanyEntitlement.deleteMany();
-  await prisma.accountSecurityEvent.deleteMany();
-  await prisma.emailDeliveryEvent.deleteMany();
-  await prisma.notification.deleteMany();
-  await prisma.bookingEvent.deleteMany();
-  await prisma.payment.deleteMany();
-  await prisma.booking.deleteMany();
-
-  await prisma.rentPaymentDueItem.deleteMany();
-  await prisma.rentPaymentSchedule.deleteMany();
-
-  await prisma.transactionAuditEvent.deleteMany();
-  await prisma.transactionParticipant.deleteMany();
-  await prisma.marketplacePaymentLedger.deleteMany();
-  await prisma.marketplaceTransaction.deleteMany();
-
-  await prisma.verificationRecord.deleteMany();
-  await prisma.rentalContractDraft.deleteMany();
-
-  await prisma.investorWatchlistItem.deleteMany();
-  await prisma.savedSearch.deleteMany();
-  await prisma.savedActivity.deleteMany();
-  await prisma.savedListing.deleteMany();
-
-  await prisma.trustReport.deleteMany();
-  await prisma.review.deleteMany();
-
-  await prisma.activityHighlight.deleteMany();
-  await prisma.activityImage.deleteMany();
-  await prisma.activity.deleteMany();
-
-  await prisma.listingImage.deleteMany();
-  await prisma.amenity.deleteMany();
-  await prisma.listing.deleteMany();
-
-  await prisma.developerProjectImage.deleteMany();
-  await prisma.developerProject.deleteMany();
-
-  await prisma.travelAgency.deleteMany();
-  await prisma.developerCompany.deleteMany();
-  await prisma.landmark.deleteMany();
-  await prisma.oauthLoginCode.deleteMany();
-  await prisma.user.deleteMany();
+  await clearIntegrationTestDatabase();
 }
 
 async function seedMarketplaceFixtures() {

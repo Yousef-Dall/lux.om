@@ -201,3 +201,43 @@ Recommended baseline retention is seven years for published owner-statement and 
 PMS company membership is synchronized into the shared company workspace for CRM compatibility, but PMS entitlement and PMS-specific permissions remain independent controls. Suspending PMS must not remove unrelated CRM workspace membership. Property restrictions are copied only when an existing PMS member is property-scoped and remain enforced for PMS-linked CRM leads.
 
 Use the shared helpers under `backend/src/modules/workspaces` and the PMS compatibility adapters under `backend/src/modules/pms/access`. Do not reintroduce CRM authorization checks directly against PMS entitlement. See `docs/crm-pms-relationship.md` and `docs/workspace-permission-matrix.md`.
+
+## Stage 21G financial operations and collaboration portals
+
+Stage 21G introduces a structured charge/allocation subledger while retaining compatibility with rent due items and rent payments. Follow `docs/pms-stage21g-architecture.md`, `docs/pms-financial-subledger.md`, and `docs/pms-stage21g-migration-backfill.md` before deployment.
+
+Deployment sequence:
+
+```bash
+npm run verify:db-safety
+npm run db:migrate:deploy
+npm run db:generate
+npm run ops:pms-stage21g:verify-backfill
+```
+
+Run the preventive-maintenance worker from the durable scheduler at the deployment's chosen daily cadence:
+
+```bash
+npm run jobs:pms-preventive:once
+```
+
+The job is idempotent per maintenance plan and due date. Do not build a second scheduler that writes work orders directly.
+
+Financial operations must remain currency-separated. Closed periods reject posting until an authorized user reopens the period with a reason. Issued charges, posted allocations, deposit transactions, and published statements are corrected through explicit reversal, credit, void, or revision workflows rather than direct mutation.
+
+Owner and vendor portals require explicit grants. Verify property and vendor assignment, private-document access, quote separation, no cross-company leakage, and tenant-data minimization before release. See `docs/pms-owner-vendor-portals.md` and `docs/pms-assets-inspections.md`.
+
+Targeted Stage 21G validation:
+
+```bash
+cd backend
+node scripts/run-with-test-env.mjs npx vitest run \
+  --config vitest.integration.config.mts \
+  tests/pmsStage21g.integration.test.ts \
+  tests/pmsAccess.integration.test.ts \
+  tests/pmsStage21e.integration.test.ts \
+  tests/pmsLaunchSmoke.integration.test.ts
+cd ..
+
+npm run test:e2e -- --grep "owner|vendor|portal|Stage 21G"
+```

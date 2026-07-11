@@ -30,7 +30,9 @@
     "test:marketplace-smoke": "node scripts/run-with-test-env.mjs npx prisma migrate deploy && node scripts/run-with-test-env.mjs npx vitest run --config vitest.integration.config.mts --testNamePattern=critical-marketplace-smoke",
     "test:pms-smoke": "node scripts/run-with-test-env.mjs npx prisma migrate deploy && node scripts/run-with-test-env.mjs npx vitest run --config vitest.integration.config.mts tests/pmsLaunchSmoke.integration.test.ts",
     "contracts:crm:generate": "tsx scripts/generateCrmContractTypes.ts",
-    "contracts:crm:check": "tsx scripts/generateCrmContractTypes.ts --check"
+    "contracts:crm:check": "tsx scripts/generateCrmContractTypes.ts --check",
+    "jobs:pms-preventive:once": "tsx src/jobs/runPreventiveMaintenance.ts",
+    "ops:pms-stage21g:verify-backfill": "tsx scripts/verifyPmsStage21gBackfill.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

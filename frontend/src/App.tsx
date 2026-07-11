@@ -45,6 +45,10 @@ const AdminEmailDeliveries = lazy(() => import('./pages/AdminEmailDeliveries'));
 const AdminTrustReports = lazy(() => import('./pages/AdminTrustReports'));
 const PmsPortal = lazy(() => import('./pages/PmsPortal'));
 const TenantPortal = lazy(() => import('./pages/TenantPortal'));
+const OwnerPortal = lazy(() => import('./pages/OwnerPortal'));
+const VendorPortal = lazy(() => import('./pages/VendorPortal'));
+const PmsFinancialOperations = lazy(() => import('./pages/PmsFinancialOperations'));
+const PmsAssetsInspections = lazy(() => import('./pages/PmsAssetsInspections'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Crm = lazy(() => import('./pages/Crm'));
 const DeveloperProjectDetails = lazy(() => import('./pages/DeveloperProjectDetails'));
@@ -225,6 +229,14 @@ const seoCopy = {
       title: 'Tenant portal | lux.om',
       description: 'Secure tenant portal for lease, rent, maintenance, documents, and contact details.'
     },
+    ownerPortal: {
+      title: 'Owner portal | lux.om',
+      description: 'Secure property-owner portal for approved summaries, published statements, maintenance, documents, and payouts.'
+    },
+    vendorPortal: {
+      title: 'Vendor portal | lux.om',
+      description: 'Secure maintenance-vendor portal for assigned work orders, quotes, scheduling, progress, and private files.'
+    },
     auth: {
       title: 'Account access | lux.om',
       description: 'Sign in or create your lux.om account.'
@@ -317,6 +329,14 @@ const seoCopy = {
       title: 'بوابة المستأجر | lux.om',
       description: 'بوابة آمنة للمستأجرين لعرض العقد والإيجارات والصيانة والبيانات الشخصية.'
     },
+    ownerPortal: {
+      title: 'بوابة المالك | lux.om',
+      description: 'بوابة آمنة للمالك للملخصات المعتمدة والكشوف المنشورة والصيانة والمستندات وحالة الدفعات.'
+    },
+    vendorPortal: {
+      title: 'بوابة المورّد | lux.om',
+      description: 'بوابة آمنة للمورّد لأوامر العمل المسندة والعروض والجدولة والتقدم والملفات الخاصة.'
+    },
     auth: {
       title: 'الدخول إلى الحساب | lux.om',
       description: 'سجّل الدخول أو أنشئ حسابك في lux.om.'
@@ -356,6 +376,8 @@ function getSeoKey(pathname: string) {
   if (pathname.startsWith('/admin')) return 'admin';
   if (pathname.startsWith('/pms')) return 'pms';
   if (pathname.startsWith('/tenant')) return 'tenant';
+  if (pathname.startsWith('/owner')) return 'ownerPortal';
+  if (pathname.startsWith('/vendor')) return 'vendorPortal';
   if (pathname.startsWith('/login') || pathname.startsWith('/register') || pathname.startsWith('/forgot-password') || pathname.startsWith('/reset-password')) return 'auth';
 
   return 'fallback';
@@ -366,6 +388,8 @@ const NO_INDEX_ROUTE_PREFIXES = [
   '/admin',
   '/pms',
   '/tenant',
+  '/owner',
+  '/vendor',
   '/dashboard',
   '/profile',
   '/notifications',
@@ -596,6 +620,24 @@ function RequireTenantPortal({ children }: { children: ReactNode }) {
   return children;
 }
 
+function RequireOwnerPortal({ children }: { children: ReactNode }) {
+  const { canAccessOwnerPortal, isAuthenticated, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <LoadingPage />;
+  if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!canAccessOwnerPortal) return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
+function RequireVendorPortal({ children }: { children: ReactNode }) {
+  const { canAccessVendorPortal, isAuthenticated, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <LoadingPage />;
+  if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!canAccessVendorPortal) return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
 function RequirePms({ children }: { children: ReactNode }) {
   const { canAccessPms, isAuthenticated, loading } = useAuth();
   const location = useLocation();
@@ -695,10 +737,14 @@ export default function App() {
   const isAdminRoute = pathname.startsWith('/admin');
   const isPmsRoute = pathname.startsWith('/pms');
   const isTenantRoute = pathname.startsWith('/tenant');
+  const isOwnerPortalRoute = pathname.startsWith('/owner');
+  const isVendorPortalRoute = pathname.startsWith('/vendor');
   const isWorkspaceRoute =
     isAdminRoute ||
     isPmsRoute ||
     isTenantRoute ||
+    isOwnerPortalRoute ||
+    isVendorPortalRoute ||
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/crm') ||
     pathname.startsWith('/profile') ||
@@ -995,6 +1041,22 @@ export default function App() {
             }
           />
           <Route
+            path="/pms/financial-operations"
+            element={
+              <RequirePms>
+                <PmsFinancialOperations />
+              </RequirePms>
+            }
+          />
+          <Route
+            path="/pms/assets-inspections"
+            element={
+              <RequirePms>
+                <PmsAssetsInspections />
+              </RequirePms>
+            }
+          />
+          <Route
             path="/pms/import-export"
             element={
               <RequirePms>
@@ -1035,6 +1097,9 @@ export default function App() {
             }
           />
 
+
+          <Route path="/owner" element={<RequireOwnerPortal><OwnerPortal /></RequireOwnerPortal>} />
+          <Route path="/vendor" element={<RequireVendorPortal><VendorPortal /></RequireVendorPortal>} />
 
           {['/tenant', '/tenant/overview', '/tenant/lease', '/tenant/rent', '/tenant/maintenance', '/tenant/documents', '/tenant/profile'].map((path) => (
             <Route

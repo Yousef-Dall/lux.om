@@ -3,6 +3,8 @@ import path from 'node:path';
 import {
   AccountSecurityEventType,
   DomainAuditDomain,
+  PmsAccountingEntryType,
+  PmsAccountingSource,
   PmsDocumentScanStatus,
   PmsDocumentStorageDriver,
   NotificationType,
@@ -45,6 +47,11 @@ import { recordAccountSecurityEvent } from '../lib/accountSecurityEvents';
 import { recordDomainAuditEvent, requestAuditContext } from '../lib/domainAudit';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../utils/http';
+import { assertFinancialPeriodOpen } from '../modules/pms/finance/periods';
+import {
+  allocateLegacyRentPayment,
+  ensureRentDueStructuredCharge,
+} from '../modules/pms/finance/compatibility';
 import { maxPmsDocumentBytes } from '../config/env';
 import { getLocalUploadDirectory } from '../storage/imageStorage';
 import {
@@ -456,7 +463,7 @@ function tenantRentPaymentResponse(payment: TenantRentPaymentWithRelations) {
     id: payment.id,
     companyId: payment.companyId,
     rentDueItemId: payment.rentDueItemId,
-    rentDueItem: tenantRentDueResponse(payment.rentDueItem),
+    rentDueItem: payment.rentDueItem ? tenantRentDueResponse(payment.rentDueItem) : null,
     leaseId: payment.leaseId,
     lease: payment.lease,
     tenantId: payment.tenantId,
@@ -499,7 +506,7 @@ function tenantRentReceiptResponse(payment: TenantRentPaymentWithRelations) {
     property: payment.property,
     unit: payment.unit,
     lease: payment.lease,
-    rentDueItem: tenantRentDueResponse(payment.rentDueItem)
+    rentDueItem: payment.rentDueItem ? tenantRentDueResponse(payment.rentDueItem) : null
   };
 }
 
@@ -1138,10 +1145,17 @@ tenantRouter.post('/rent-payments/:rentPaymentId/sync', requireAuth(), async (re
       throw new AppError(400, 'Rent payment checkout session has not been created yet.');
     }
 
+    if (!payment.rentDueItemId || !payment.rentDueItem) {
+      throw new AppError(400, 'This unallocated PMS payment is not a tenant checkout payment.');
+    }
+
+    const rentDueItemId = payment.rentDueItemId;
+    const rentDueItem = payment.rentDueItem;
+
     if (payment.status === PmsRentPaymentStatus.CONFIRMED) {
       res.json({
         workspace: tenantWorkspaceResponse(access),
-        rentDueItem: tenantRentDueResponse(payment.rentDueItem),
+        rentDueItem: payment.rentDueItem ? tenantRentDueResponse(payment.rentDueItem) : null,
         payment: tenantRentPaymentResponse(payment),
         receipt: payment.receiptNumber ? tenantRentReceiptResponse(payment) : null
       });
@@ -1149,21 +1163,27 @@ tenantRouter.post('/rent-payments/:rentPaymentId/sync', requireAuth(), async (re
     }
 
     const thawaniSession = await callThawani<ThawaniRetrieveSessionData>(`/checkout/session/${payment.providerSessionId}`);
-    assertTenantThawaniRentSessionMatchesPayment(thawaniSession, payment);
+    assertTenantThawaniRentSessionMatchesPayment(thawaniSession, { ...payment, rentDueItemId });
     const nextStatus = mapThawaniPaymentStatus(thawaniSession.payment_status);
 
     if (nextStatus === PmsRentPaymentStatus.CONFIRMED) {
       const confirmedAggregate = await prisma.pmsRentPayment.aggregate({
         where: {
-          rentDueItemId: payment.rentDueItemId,
+          rentDueItemId,
           status: PmsRentPaymentStatus.CONFIRMED
         },
         _sum: { amount: true }
       });
       assertCanApplyRentPayment({
-        rentDueItem: payment.rentDueItem,
+        rentDueItem,
         paymentAmount: rentDecimalToNumber(payment.amount),
         existingConfirmedAmount: roundMoney(rentDecimalToNumber(confirmedAggregate._sum.amount))
+      });
+      await assertFinancialPeriodOpen(prisma, {
+        companyId: access.company.id,
+        propertyId: rentDueItem.propertyId,
+        currency: rentDueItem.currency,
+        transactionDate: payment.paidAt ?? new Date()
       });
     }
 
@@ -1186,13 +1206,44 @@ tenantRouter.post('/rent-payments/:rentPaymentId/sync', requireAuth(), async (re
         include: tenantRentPaymentInclude
       });
 
+      if (nextStatus === PmsRentPaymentStatus.CONFIRMED) {
+        const structuredCharge = await ensureRentDueStructuredCharge(tx, rentDueItem, req.user!.id);
+        await allocateLegacyRentPayment(tx, {
+          payment: changedPayment,
+          chargeId: structuredCharge.id,
+          actorId: req.user!.id
+        });
+        await tx.pmsAccountingLedgerEntry.create({
+          data: {
+            companyId: access.company.id,
+            chargeId: structuredCharge.id,
+            rentDueItemId,
+            rentPaymentId: changedPayment.id,
+            leaseId: rentDueItem.leaseId,
+            tenantId: rentDueItem.tenantId,
+            propertyId: rentDueItem.propertyId,
+            unitId: rentDueItem.unitId,
+            type: PmsAccountingEntryType.INCOME,
+            source: PmsAccountingSource.RENT_PAYMENT,
+            category: 'Rent payment',
+            amount: changedPayment.amount,
+            currency: changedPayment.currency,
+            transactionDate: changedPayment.paidAt ?? changedPayment.confirmedAt ?? new Date(),
+            referenceNumber: changedPayment.receiptNumber ?? changedPayment.referenceNumber,
+            notes: 'Online tenant rent payment allocation',
+            createdById: req.user!.id,
+            updatedById: req.user!.id
+          }
+        });
+      }
+
       const refreshedRentDueItem =
         nextStatus === PmsRentPaymentStatus.CONFIRMED
           ? await syncTenantRentDueItemFromConfirmedPayments(tx, {
-              rentDueItemId: payment.rentDueItemId,
+              rentDueItemId,
               updatedById: req.user!.id
             })
-          : payment.rentDueItem;
+          : rentDueItem;
 
       return { updatedPayment: changedPayment, updatedRentDueItem: refreshedRentDueItem };
     });

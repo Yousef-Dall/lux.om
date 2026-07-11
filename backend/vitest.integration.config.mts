@@ -7,6 +7,7 @@ export default defineConfig({
     setupFiles: ['./tests/integration/setup.ts'],
     fileParallelism: false,
     maxWorkers: 1,
+    hookTimeout: 60_000,
     clearMocks: true,
     mockReset: true,
     restoreMocks: true,

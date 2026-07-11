@@ -2,6 +2,8 @@ import { apiClient } from './client';
 import type { PublicUser, UserRole } from '../types';
 import type { PmsAccessSummary } from './pms';
 import type { TenantAccessSummary } from './tenant';
+import type { OwnerPortalAccessSummary } from './ownerPortal';
+import type { VendorPortalAccessSummary } from './vendorPortal';
 
 export type PublicRegistrationRole = Exclude<UserRole, 'ADMIN'>;
 
@@ -17,6 +19,8 @@ export type AuthUser = PublicUser & {
   emailMarketingUpdates?: boolean;
   pmsAccess?: PmsAccessSummary;
   tenantAccess?: TenantAccessSummary;
+  ownerAccess?: OwnerPortalAccessSummary;
+  vendorAccess?: VendorPortalAccessSummary;
 };
 
 export type AuthVerificationResponse = {

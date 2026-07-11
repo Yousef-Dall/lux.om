@@ -35,6 +35,8 @@ import { landmarksRouter } from './routes/landmarks';
 import { listingsRouter } from './routes/listings';
 import { notificationsRouter } from './routes/notifications';
 import { pmsRouter } from './routes/pms';
+import { ownerPortalRouter } from './modules/pms/portals/ownerRouter';
+import { vendorPortalRouter } from './modules/pms/portals/vendorRouter';
 import { tenantRouter } from './routes/tenant';
 import { travelAgenciesRouter } from './routes/travelAgencies';
 import { uploadsRouter } from './routes/uploads';
@@ -121,7 +123,9 @@ const SENSITIVE_API_PREFIXES = [
   '/api/inquiries',
   '/api/media-quality',
   '/api/pms',
-  '/api/tenant'
+  '/api/tenant',
+  '/api/owner',
+  '/api/vendor'
 ];
 
 const PUBLIC_CACHEABLE_API_PREFIXES = [
@@ -536,6 +540,8 @@ export function createApp() {
   app.use('/api/saved', savedRouter);
   app.use('/api/pms', pmsRouter);
   app.use('/api/tenant', tenantRouter);
+  app.use('/api/owner', ownerPortalRouter);
+  app.use('/api/vendor', vendorPortalRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
