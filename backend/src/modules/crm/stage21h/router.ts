@@ -12,6 +12,7 @@ import { prisma } from '../../../lib/prisma';
 import { requireAuth } from '../../../middleware/auth';
 import { getCrmAccess, assertCrmWorkspaceAccess, assertHasAnyCrmAccess } from '../../workspaces/access';
 import { AppError } from '../../../utils/http';
+import { crmContactConsentStatuses } from '../contracts';
 import { createCrmDeliveryAttempt, confirmCrmDeliveryFromProvider, normalizeCommunicationDestination } from './communications';
 import { buildContactMergePreview, findCrmContactDuplicates, mergeCrmContacts, normalizeCrmEmail, normalizeCrmPhone, syncCrmContactIdentities, upsertCrmContact } from './identity';
 import { ensureDefaultCrmPipeline } from './provisioning';
@@ -27,7 +28,6 @@ const accountTypes = ['INDIVIDUAL', 'COMPANY', 'DEVELOPER', 'TRAVEL_AGENCY', 'AC
 const dealOutcomes = ['OPEN', 'WON', 'LOST'] as const;
 const forecastCategories = ['PIPELINE', 'BEST_CASE', 'COMMIT', 'CLOSED', 'OMITTED'] as const;
 const stageTypes = ['OPEN', 'WON', 'LOST'] as const;
-const consentStatuses = ['UNKNOWN', 'CONSENTED', 'LEGITIMATE_INTEREST', 'OPTED_OUT', 'BLOCKED'] as const;
 const channels = ['EMAIL', 'WHATSAPP', 'PHONE'] as const;
 const suppressionReasons = ['OPT_OUT', 'BOUNCE', 'COMPLAINT', 'INVALID_DESTINATION', 'MANUAL', 'LEGAL'] as const;
 const deliveryProviders = ['DRAFT_ONLY', 'VERIFIED_EMAIL', 'WHATSAPP_BUSINESS'] as const;
@@ -838,7 +838,7 @@ crmStage21hRouter.get('/contacts/:id/communication-governance', async (req, res,
 crmStage21hRouter.patch('/contacts/:id/communication-governance', async (req, res, next) => {
   try {
     const contactId = id.parse(req.params.id);
-    const data = z.object({ channel: z.enum(channels), status: z.enum(consentStatuses), lawfulBasis: z.string().trim().max(500).nullable().optional(), preferred: z.boolean().default(false), quietHoursStart: z.coerce.number().int().min(0).max(1439).nullable().optional(), quietHoursEnd: z.coerce.number().int().min(0).max(1439).nullable().optional(), timezone: z.string().trim().min(3).max(100).nullable().optional() }).strict().superRefine((value, ctx) => {
+    const data = z.object({ channel: z.enum(channels), status: z.enum(crmContactConsentStatuses), lawfulBasis: z.string().trim().max(500).nullable().optional(), preferred: z.boolean().default(false), quietHoursStart: z.coerce.number().int().min(0).max(1439).nullable().optional(), quietHoursEnd: z.coerce.number().int().min(0).max(1439).nullable().optional(), timezone: z.string().trim().min(3).max(100).nullable().optional() }).strict().superRefine((value, ctx) => {
       if (value.timezone && !validIanaTimezone(value.timezone)) ctx.addIssue({ code: 'custom', path: ['timezone'], message: 'A valid IANA timezone is required.' });
     }).parse(req.body);
     const summary = await prisma.crmContact.findUnique({ where: { id: contactId }, select: { workspaceId: true } });

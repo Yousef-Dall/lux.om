@@ -25,7 +25,7 @@
     "test:integration": "npm run test:integration -w backend",
     "test:smoke": "npm run test:smoke -w backend",
     "test:all": "npm run test:all -w backend",
-    "verify:production": "npm run verify:production-env -w backend && npm run verify:db-safety && npm run verify:deployment-checklist && npm run verify:release-candidate && npm run typecheck && npm run verify:seo && npm run verify:frontend-polish && npm run test:integration && npm run build && npm run verify:frontend-cache",
+    "verify:production": "npm run verify:production-env -w backend && npm run verify:db-safety && npm run contracts:crm:check && npm run verify:deployment-checklist && npm run verify:release-candidate && npm run typecheck && npm run verify:seo && npm run verify:frontend-polish && npm run test:integration && npm run build && npm run verify:frontend-cache",
     "verify:frontend-cache": "npm run verify:cache -w frontend",
     "verify:frontend-polish": "npm run verify:polish -w frontend",
     "ops:email-deliveries:prune:dry-run": "npm run jobs:email-deliveries:prune -w backend -- --days=180 --dry-run",

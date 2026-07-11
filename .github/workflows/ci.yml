@@ -66,6 +66,9 @@ jobs:
       - name: Generate Prisma client
         run: npm run db:generate
 
+      - name: Verify generated CRM contracts
+        run: npm run contracts:crm:check
+
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
 

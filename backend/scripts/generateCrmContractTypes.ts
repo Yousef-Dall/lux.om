@@ -23,6 +23,10 @@ import {
   workspacePermissionKeys,
   workspaceTypes
 } from '../src/modules/crm/contracts';
+import {
+  normalizeTextLineEndings,
+  readPrismaEnumValues
+} from '../src/modules/crm/contracts/prismaSchema';
 
 const literal = (values: readonly string[]) => values.map((value) => `'${value}'`).join(' | ');
 
@@ -41,11 +45,28 @@ export type CrmDeliveryStatus = ${literal(crmDeliveryStatuses)};
 }
 
 async function main() {
+  const schemaPath = path.resolve(process.cwd(), 'prisma/schema.prisma');
+  const prismaConsentStatuses = await readPrismaEnumValues(
+    schemaPath,
+    'CrmContactConsentStatus'
+  );
+
+  if (
+    prismaConsentStatuses.length !== crmContactConsentStatuses.length ||
+    prismaConsentStatuses.some(
+      (value, index) => value !== crmContactConsentStatuses[index]
+    )
+  ) {
+    throw new Error(
+      `CrmContactConsentStatus drift detected. Prisma defines [${prismaConsentStatuses.join(', ')}], but the CRM contract defines [${crmContactConsentStatuses.join(', ')}].`
+    );
+  }
+
   const destination = path.resolve(process.cwd(), '../frontend/src/generated/crmContract.ts');
   const output = buildOutput();
   if (process.argv.includes('--check')) {
     const existing = await readFile(destination, 'utf8').catch(() => '');
-    if (existing !== output) {
+    if (normalizeTextLineEndings(existing) !== normalizeTextLineEndings(output)) {
       throw new Error('Generated CRM contract types are out of date. Run npm run contracts:crm:generate.');
     }
     console.log('[lux.om] Generated CRM contract types are current.');
