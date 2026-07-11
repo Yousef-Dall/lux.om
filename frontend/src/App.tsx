@@ -5,6 +5,12 @@ import { useAuth } from './auth/AuthContext';
 import Footer from './components/Footer';
 import AdminWorkspaceNav from './components/AdminWorkspaceNav';
 import AuthenticatedProductNav from './components/AuthenticatedProductNav';
+import CrmShell from './features/crm/shell/CrmShell';
+import {
+  CrmIndexRedirect,
+  CrmLegacyLeadRedirect,
+  CrmLegacyOperationsRedirect
+} from './features/crm/shell/CrmCompatibilityRedirects';
 import Navbar from './components/Navbar';
 
 import About from './pages/About';
@@ -901,27 +907,29 @@ export default function App() {
             path="/crm"
             element={
               <RequireCrm>
-                <Crm />
+                <CrmShell />
               </RequireCrm>
             }
-          />
-          <Route
-            path="/crm/operations"
-            element={
-              <RequireCrm>
-                <CrmOperations />
-              </RequireCrm>
-            }
-          />
-
-          <Route
-            path="/crm/:leadId"
-            element={
-              <RequireCrm>
-                <Crm />
-              </RequireCrm>
-            }
-          />
+          >
+            <Route index element={<CrmIndexRedirect />} />
+            <Route path="overview" element={<Crm section="overview" />} />
+            <Route path="leads" element={<Crm section="leads" />} />
+            <Route path="leads/:leadId" element={<Crm section="leads" />} />
+            <Route path="tasks" element={<Crm section="tasks" />} />
+            <Route path="accounts" element={<CrmOperations section="accounts" />} />
+            <Route path="accounts/:accountId" element={<CrmOperations section="accounts" />} />
+            <Route path="contacts" element={<CrmOperations section="contacts" />} />
+            <Route path="contacts/:contactId" element={<CrmOperations section="contacts" />} />
+            <Route path="deals" element={<CrmOperations section="deals" />} />
+            <Route path="deals/:dealId" element={<CrmOperations section="deals" />} />
+            <Route path="communications" element={<CrmOperations section="communications" />} />
+            <Route path="analytics" element={<CrmOperations section="analytics" />} />
+            <Route path="settings/pipelines" element={<CrmOperations section="pipelines" />} />
+            <Route path="settings/scoring" element={<CrmOperations section="scoring" />} />
+            <Route path="settings/communications" element={<CrmOperations section="communication-settings" />} />
+            <Route path="operations" element={<CrmLegacyOperationsRedirect />} />
+            <Route path=":leadId" element={<CrmLegacyLeadRedirect />} />
+          </Route>
 
           <Route
             path="/profile"

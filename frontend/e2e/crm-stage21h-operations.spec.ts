@@ -134,12 +134,12 @@ test('CRM revenue operations renders accounts, configurable stages, and currency
   await expect(page.getByRole('combobox', { name: 'Workspace', exact: true })).toHaveValue(workspace.workspaceId);
   await expect(page.getByRole('button', { name: /Atlas Development Group/ })).toContainText('2 contacts · 2 deals');
 
-  await page.getByRole('button', { name: 'deals', exact: true }).click();
+  await page.getByRole('navigation', { name: 'CRM sections' }).getByRole('link', { name: 'Deals', exact: true }).click();
   await expect(page.getByText('Enterprise onboarding')).toBeVisible();
   await expect(page.getByText('International distribution')).toBeVisible();
   await expect(page.getByText('Qualified', { exact: true }).first()).toBeVisible();
 
-  await page.getByRole('button', { name: 'forecast', exact: true }).click();
+  await page.getByRole('navigation', { name: 'CRM sections' }).getByRole('link', { name: 'Analytics', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Conversion and forecast' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'OMR' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'USD' })).toBeVisible();
@@ -154,7 +154,7 @@ test('CRM revenue operations remains usable on a narrow mobile viewport', async 
 
   await page.goto('/crm/operations');
   await expect(page.getByRole('heading', { name: 'CRM accounts, deals, pipelines, and governance' })).toBeVisible();
-  await page.getByRole('button', { name: 'forecast', exact: true }).click();
+  await page.getByRole('navigation', { name: 'CRM sections' }).getByRole('link', { name: 'Analytics', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'OMR' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'USD' })).toBeVisible();
   await expect(page.locator('body')).not.toHaveCSS('overflow-x', 'scroll');

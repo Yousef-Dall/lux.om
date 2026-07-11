@@ -23,6 +23,9 @@ function isActiveItem(item: { key: string; to: string }, pathname: string, searc
   if (item.key === 'pms') {
     return pathname === '/pms' || pathname.startsWith('/pms/');
   }
+  if (item.key === 'crm') {
+    return pathname === '/crm' || pathname.startsWith('/crm/');
+  }
 
   return pathname === target.pathname || pathname.startsWith(`${target.pathname}/`);
 }

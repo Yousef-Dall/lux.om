@@ -34,7 +34,7 @@ const adminWorkspaceLinks = [
     icon: Building2
   },
   {
-    to: '/crm',
+    to: '/crm/overview',
     key: 'crm',
     icon: UserRoundCheck
   },

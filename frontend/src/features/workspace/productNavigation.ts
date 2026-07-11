@@ -98,7 +98,7 @@ export function useAuthenticatedProductNavigation() {
       items.push({ key: 'marketplace', to: marketplacePath, label: copy.marketplace, icon: BarChart3 });
     }
     if (auth.canAccessCrm) {
-      items.push({ key: 'crm', to: '/crm', label: copy.crm, icon: UsersRound });
+      items.push({ key: 'crm', to: '/crm/overview', label: copy.crm, icon: UsersRound });
     }
     if (auth.canAccessPms) {
       items.push({ key: 'pms', to: '/pms/overview', label: copy.pms, icon: Building2 });

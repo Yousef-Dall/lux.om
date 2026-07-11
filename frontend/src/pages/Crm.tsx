@@ -24,8 +24,8 @@ import {
   UserRound,
   UsersRound
 } from 'lucide-react';
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
 import {
@@ -132,11 +132,62 @@ function isOverdue(value: string | null | undefined) {
   return Boolean(value && new Date(value).getTime() < Date.now());
 }
 
-export default function Crm() {
+export type CrmSection = 'overview' | 'leads' | 'tasks';
+
+type CrmQueryUpdates = Record<string, string | null | undefined>;
+
+export default function Crm({ section = 'overview' }: { section?: CrmSection }) {
   const { token, user, crmAccess: access } = useAuth();
   const navigate = useNavigate();
   const { leadId } = useParams<{ leadId?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const latestSearchParamsRef = useRef(new URLSearchParams(searchParams));
+  const pendingSearchParamsRef = useRef<string[]>([]);
   const { language } = useLanguage();
+
+  useEffect(() => {
+    const incomingSearch = searchParams.toString();
+    const pendingIndex = pendingSearchParamsRef.current.indexOf(incomingSearch);
+
+    if (pendingIndex >= 0) {
+      pendingSearchParamsRef.current = pendingSearchParamsRef.current.slice(pendingIndex + 1);
+      if (pendingSearchParamsRef.current.length === 0) {
+        latestSearchParamsRef.current = new URLSearchParams(searchParams);
+      }
+      return;
+    }
+
+    pendingSearchParamsRef.current = [];
+    latestSearchParamsRef.current = new URLSearchParams(searchParams);
+  }, [searchParams]);
+
+  const replaceCrmQuery = useCallback((updates: CrmQueryUpdates, pathname?: string) => {
+    const current = latestSearchParamsRef.current;
+    const next = new URLSearchParams(current);
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+
+    const nextSearch = next.toString();
+    if (!pathname && nextSearch === current.toString()) return;
+
+    latestSearchParamsRef.current = next;
+    pendingSearchParamsRef.current.push(nextSearch);
+
+    if (pathname) {
+      navigate({ pathname, search: nextSearch ? `?${nextSearch}` : '' }, { replace: true });
+      return;
+    }
+
+    setSearchParams(next, { replace: true });
+  }, [navigate, setSearchParams]);
+
+  const latestCrmSearch = useCallback(() => {
+    const search = latestSearchParamsRef.current.toString();
+    return search ? `?${search}` : '';
+  }, []);
   const locale = language === 'ar' ? 'ar-OM' : 'en-GB';
   const copy = language === 'ar'
     ? {
@@ -164,9 +215,9 @@ export default function Crm() {
         openEmail: 'Open email draft', openWhatsapp: 'Open WhatsApp draft', taskPriority: 'Task priority', outcome: 'Communication outcome', tasks: 'Follow-up tasks', noTasks: 'No open tasks in this scope.', analytics: 'Conversion analytics', sourceConversion: 'Conversion by source'
       };
 
-  useDocumentTitle('CRM | lux.om');
+  useDocumentTitle(`${section === 'overview' ? 'CRM' : section === 'leads' ? 'CRM leads' : 'CRM tasks'} | lux.om`);
 
-  const [workspaceKey, setWorkspaceKey] = useState('');
+  const [workspaceKey, setWorkspaceKey] = useState(() => searchParams.get('workspace') ?? '');
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [summary, setSummary] = useState<{ total: number; byStatus: Partial<Record<CrmLeadStatus, number>> }>({ total: 0, byStatus: {} });
   const [analytics, setAnalytics] = useState<CrmAnalytics>(emptyAnalytics);
@@ -182,15 +233,19 @@ export default function Crm() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showCreate, setShowCreate] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'board'>('board');
-  const [groupBy, setGroupBy] = useState<CrmPipelineGroupBy>('status');
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<CrmLeadStatus | ''>('');
-  const [priority, setPriority] = useState<CrmLeadPriority | ''>('');
-  const [source, setSource] = useState<CrmLeadSource | ''>('');
-  const [assignedToId, setAssignedToId] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const viewMode: 'list' | 'board' = searchParams.get('view') === 'list' ? 'list' : 'board';
+  const rawGroupBy = searchParams.get('groupBy');
+  const groupBy: CrmPipelineGroupBy = rawGroupBy === 'assignedTo' || rawGroupBy === 'source' || rawGroupBy === 'company' ? rawGroupBy : 'status';
+  const search = searchParams.get('q') ?? '';
+  const rawStatus = searchParams.get('status') as CrmLeadStatus | null;
+  const status: CrmLeadStatus | '' = rawStatus && statuses.includes(rawStatus) ? rawStatus : '';
+  const rawPriority = searchParams.get('priority') as CrmLeadPriority | null;
+  const priority: CrmLeadPriority | '' = rawPriority && priorities.includes(rawPriority) ? rawPriority : '';
+  const rawSource = searchParams.get('source') as CrmLeadSource | null;
+  const source: CrmLeadSource | '' = rawSource && sources.includes(rawSource) ? rawSource : '';
+  const assignedToId = searchParams.get('assignedTo') ?? '';
+  const dateFrom = searchParams.get('from') ?? '';
+  const dateTo = searchParams.get('to') ?? '';
   const [createForm, setCreateForm] = useState({ title: '', fullName: '', email: '', phone: '', description: '', priority: 'MEDIUM' as CrmLeadPriority, source: 'MANUAL' as CrmLeadSource, nextFollowUpAt: '', expectedValue: '', pmsPropertyId: '' });
   const [activityForm, setActivityForm] = useState({ type: 'TASK' as ManualActivityType, subject: '', body: '', dueAt: '', priority: 'MEDIUM' as CrmActivityPriority, outcome: '' as CrmCommunicationOutcome | '' });
 
@@ -226,12 +281,19 @@ export default function Crm() {
   }
 
   useEffect(() => {
-    setWorkspaceKey((current) =>
-      workspaceChoices.some((item) => item.key === current)
-        ? current
-        : workspaceChoices[0]?.key ?? ''
-    );
-  }, [workspaceChoices]);
+    const requested = searchParams.get('workspace');
+    setWorkspaceKey((current) => {
+      if (requested && workspaceChoices.some((item) => item.key === requested)) return requested;
+      if (workspaceChoices.some((item) => item.key === current)) return current;
+      return workspaceChoices[0]?.key ?? '';
+    });
+  }, [workspaceChoices, searchParams]);
+
+  useEffect(() => {
+    if (!workspaceKey) return;
+    if (latestSearchParamsRef.current.get('workspace') === workspaceKey) return;
+    replaceCrmQuery({ workspace: workspaceKey });
+  }, [replaceCrmQuery, workspaceKey]);
 
   async function loadWorkspaceSupport(choice: WorkspaceChoice | undefined) {
     if (!token || !choice) return;
@@ -293,10 +355,10 @@ export default function Crm() {
       const companyWorkspaceKey = leadResponse.lead.companyId ? `company:${leadResponse.lead.companyId}` : null;
       if (companyWorkspaceKey && workspaceChoices.some((choice) => choice.key === companyWorkspaceKey)) setWorkspaceKey(companyWorkspaceKey);
       else if (leadResponse.lead.ownerUserId === user?.id && workspaceChoices.some((choice) => choice.key === 'personal')) setWorkspaceKey('personal');
-      if (updateRoute) navigate(`/crm/${id}`);
+      if (updateRoute) navigate({ pathname: `/crm/leads/${id}`, search: latestCrmSearch() });
     } catch (loadError) {
       setError(loadError instanceof ApiError ? loadError.message : copy.unavailable);
-      if (updateRoute) navigate('/crm');
+      if (updateRoute) navigate({ pathname: '/crm/leads', search: latestCrmSearch() });
     } finally {
       setDetailLoading(false);
     }
@@ -443,6 +505,19 @@ export default function Crm() {
     }
   }
 
+  const sectionCopy = language === 'ar'
+    ? {
+        overview: { title: copy.title, description: copy.description },
+        leads: { title: 'العملاء المحتملون ومسار المبيعات', description: 'استعرض العملاء المحتملين وابحث وصفِّ النتائج وافتح السجل الكامل دون فقدان مساحة العمل أو عوامل التصفية.' },
+        tasks: { title: 'مهام CRM والمتابعات', description: 'راجع مهام المتابعة المفتوحة والمتأخرة ضمن مساحة العمل المحددة.' }
+      }
+    : {
+        overview: { title: copy.title, description: copy.description },
+        leads: { title: 'Leads and sales pipeline', description: 'Browse, filter, and inspect leads without losing the selected workspace or URL-backed view state.' },
+        tasks: { title: 'CRM tasks and follow-ups', description: 'Review open and overdue follow-up work in the selected workspace.' }
+      };
+  const activeSectionCopy = sectionCopy[section];
+
   if (!access?.hasAccess) return <section className="page-section container crm-page"><div className="crm-state"><AlertCircle /><h1>{copy.noAccess}</h1><Link className="button-link" to="/dashboard">{copy.back}</Link></div></section>;
 
   return (
@@ -450,44 +525,52 @@ export default function Crm() {
       <header className="crm-hero container">
         <div>
           <p className="eyebrow"><UsersRound size={17} /> {copy.eyebrow}</p>
-          <h1 id="crm-title">{copy.title}</h1>
-          <p>{copy.description}</p>
+          <h1 id="crm-title">{activeSectionCopy.title}</h1>
+          <p>{activeSectionCopy.description}</p>
         </div>
         <div className="crm-hero__actions">
           <Link className="button-link button-link--ghost" to={activeWorkspace?.companyId ? '/pms/overview' : '/dashboard'}><ArrowLeft size={16} /> {copy.back}</Link>
-          <Link className="button-link button-link--secondary" to={`/crm/operations${activeWorkspace?.workspaceId ? `?workspaceId=${activeWorkspace.workspaceId}` : ''}`}><Building2 size={16} /> Revenue operations</Link>
           <button className="button-link button-link--secondary" type="button" onClick={() => void loadWorkspaceData()} disabled={refreshing}><RefreshCw size={16} className={refreshing ? 'spin' : ''} /> {copy.refresh}</button>
-          {canCreate ? <button className="button-link button-link--primary" type="button" onClick={() => setShowCreate(true)}><Plus size={16} /> {copy.newLead}</button> : null}
+          {section === 'leads' && canCreate ? <button className="button-link button-link--primary" type="button" onClick={() => setShowCreate(true)}><Plus size={16} /> {copy.newLead}</button> : null}
         </div>
       </header>
 
       <div className="crm-shell container">
         <aside className="crm-sidebar">
-          <WorkspaceSelector label={copy.workspace} value={workspaceKey} choices={workspaceChoices} onChange={(value) => { setWorkspaceKey(value); setSelectedLead(null); navigate('/crm'); }} />
-          <div className="crm-filter-title"><Filter size={16} /><strong>{copy.allValues}</strong></div>
-          <label><span>{copy.search}</span><div className="crm-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} /></div></label>
-          <label><span>{copy.status}</span><select value={status} onChange={(event) => setStatus(event.target.value as CrmLeadStatus | '')}><option value="">{copy.allValues}</option>{statuses.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}</select></label>
-          <label><span>{copy.priority}</span><select value={priority} onChange={(event) => setPriority(event.target.value as CrmLeadPriority | '')}><option value="">{copy.allValues}</option>{priorities.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}</select></label>
-          <label><span>{copy.source}</span><select value={source} onChange={(event) => setSource(event.target.value as CrmLeadSource | '')}><option value="">{copy.allValues}</option>{sources.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}</select></label>
-          <label><span>{copy.assigned}</span><select value={assignedToId} onChange={(event) => setAssignedToId(event.target.value)}><option value="">{copy.allValues}</option>{assignees.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
-          <label><span>{copy.dateFrom}</span><input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
-          <label><span>{copy.dateTo}</span><input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} /></label>
+          <WorkspaceSelector label={copy.workspace} value={workspaceKey} choices={workspaceChoices} onChange={(value) => {
+            setWorkspaceKey(value);
+            setSelectedLead(null);
+            replaceCrmQuery(
+              { workspace: value, workspaceId: null },
+              section === 'tasks' ? '/crm/tasks' : section === 'overview' ? '/crm/overview' : '/crm/leads'
+            );
+          }} />
+          {section === 'leads' ? <>
+            <div className="crm-filter-title"><Filter size={16} /><strong>{copy.allValues}</strong></div>
+            <label><span>{copy.search}</span><div className="crm-search"><Search size={15} /><input value={search} onChange={(event) => replaceCrmQuery({ q: event.target.value })} placeholder={copy.search} /></div></label>
+            <label><span>{copy.status}</span><select value={status} onChange={(event) => replaceCrmQuery({ status: event.target.value })}><option value="">{copy.allValues}</option>{statuses.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}</select></label>
+            <label><span>{copy.priority}</span><select value={priority} onChange={(event) => replaceCrmQuery({ priority: event.target.value })}><option value="">{copy.allValues}</option>{priorities.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}</select></label>
+            <label><span>{copy.source}</span><select value={source} onChange={(event) => replaceCrmQuery({ source: event.target.value })}><option value="">{copy.allValues}</option>{sources.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}</select></label>
+            <label><span>{copy.assigned}</span><select value={assignedToId} onChange={(event) => replaceCrmQuery({ assignedTo: event.target.value })}><option value="">{copy.allValues}</option>{assignees.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
+            <label><span>{copy.dateFrom}</span><input type="date" value={dateFrom} onChange={(event) => replaceCrmQuery({ from: event.target.value })} /></label>
+            <label><span>{copy.dateTo}</span><input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => replaceCrmQuery({ to: event.target.value })} /></label>
+          </> : null}
         </aside>
 
         <main className="crm-main">
           {error ? <div className="form-error" role="alert">{error}</div> : null}
           {success ? <div className="form-success" role="status">{success}</div> : null}
 
-          <section className="crm-metrics" aria-label={copy.analytics}>
+          {section === 'overview' ? <section className="crm-metrics" aria-label={copy.analytics}>
             <article><Inbox /><span>{copy.total}</span><strong>{analytics.total || summary.total}</strong></article>
             <article><UserRound /><span>{copy.newCount}</span><strong>{analytics.newLeads}</strong></article>
             <article><Target /><span>{copy.open}</span><strong>{analytics.openLeads}</strong></article>
             <article className={analytics.overdueFollowUps > 0 ? 'crm-metric--risk' : ''}><CalendarClock /><span>{copy.overdue}</span><strong>{analytics.overdueFollowUps}</strong></article>
             <article><CheckCircle2 /><span>{copy.won}</span><strong>{analytics.won}</strong></article>
             <article><BarChart3 /><span>{copy.conversion}</span><strong>{analytics.conversionRate === null ? '—' : `${analytics.conversionRate}%`}</strong></article>
-          </section>
+          </section> : null}
 
-          <section className="crm-productivity-grid">
+          {section === 'overview' || section === 'tasks' ? <section className={`crm-productivity-grid${section === 'tasks' ? ' crm-productivity-grid--tasks' : ''}`}>
             <article className="crm-productivity-card">
               <header><div><p className="eyebrow">{copy.tasks}</p><h2>{analytics.openTasks} {copy.open.toLowerCase()}</h2></div>{analytics.overdueTasks > 0 ? <span className="crm-risk-count">{analytics.overdueTasks} {copy.overdue.toLowerCase()}</span> : null}</header>
               <div className="crm-task-queue">
@@ -499,7 +582,7 @@ export default function Crm() {
                 ))}
               </div>
             </article>
-            <article className="crm-productivity-card">
+            {section === 'overview' ? <article className="crm-productivity-card">
               <header><div><p className="eyebrow">{copy.sourceConversion}</p><h2>{copy.analytics}</h2></div></header>
               <div className="crm-source-analytics">
                 {analytics.bySource.slice(0, 6).map((item) => (
@@ -507,16 +590,17 @@ export default function Crm() {
                 ))}
                 {analytics.bySource.length === 0 ? <p>{copy.notConfigured}</p> : null}
               </div>
-            </article>
-          </section>
+            </article> : null}
+          </section> : null}
 
+          {section === 'leads' ? <>
           <section className="crm-pipeline-toolbar">
             <div><p className="eyebrow">{copy.pipeline}</p><strong>{summary.total} {copy.total.toLowerCase()}</strong></div>
             <div className="crm-view-toggle" role="group" aria-label={copy.pipeline}>
-              <button type="button" className={viewMode === 'list' ? 'is-active' : ''} onClick={() => setViewMode('list')}><LayoutList size={16} /> {copy.list}</button>
-              <button type="button" className={viewMode === 'board' ? 'is-active' : ''} onClick={() => setViewMode('board')}><Columns3 size={16} /> {copy.board}</button>
+              <button type="button" className={viewMode === 'list' ? 'is-active' : ''} onClick={() => replaceCrmQuery({ view: 'list', groupBy: null })}><LayoutList size={16} /> {copy.list}</button>
+              <button type="button" className={viewMode === 'board' ? 'is-active' : ''} onClick={() => replaceCrmQuery({ view: 'board', groupBy })}><Columns3 size={16} /> {copy.board}</button>
             </div>
-            {viewMode === 'board' ? <label><span>{copy.groupBy}</span><select value={groupBy} onChange={(event) => setGroupBy(event.target.value as CrmPipelineGroupBy)}><option value="status">{copy.status}</option><option value="assignedTo">{copy.assigned}</option><option value="source">{copy.source}</option><option value="company">{copy.workspace}</option></select></label> : null}
+            {viewMode === 'board' ? <label><span>{copy.groupBy}</span><select value={groupBy} onChange={(event) => replaceCrmQuery({ groupBy: event.target.value })}><option value="status">{copy.status}</option><option value="assignedTo">{copy.assigned}</option><option value="source">{copy.source}</option><option value="company">{copy.workspace}</option></select></label> : null}
           </section>
 
           {viewMode === 'board' ? (
@@ -538,10 +622,11 @@ export default function Crm() {
           )}
 
           {viewMode === 'board' && selectedLead ? <LeadDetail /> : null}
+          </> : null}
         </main>
       </div>
 
-      {showCreate ? (
+      {section === 'leads' && showCreate ? (
         <div className="crm-modal-backdrop" role="presentation">
           <form className="crm-modal" onSubmit={handleCreate}>
             <header><div><p className="eyebrow">{copy.eyebrow}</p><h2>{copy.newLead}</h2></div><button type="button" className="button-link button-link--ghost" onClick={() => setShowCreate(false)}>{copy.cancel}</button></header>
@@ -588,7 +673,7 @@ export default function Crm() {
             ) : null}
 
             <div className="crm-detail__controls">
-              {!selectedLead.convertedAt && selectedLead.status !== 'ARCHIVED' ? <Link className="button-link button-link--secondary" to={`/crm/operations?workspaceId=${selectedLead.workspaceId}&convertLeadId=${selectedLead.id}`}>Convert to deal</Link> : null}
+              {!selectedLead.convertedAt && selectedLead.status !== 'ARCHIVED' ? <Link className="button-link button-link--secondary" to={`/crm/deals?workspaceId=${selectedLead.workspaceId}&convertLeadId=${selectedLead.id}`}>Convert to deal</Link> : null}
               <label><span>{copy.status}</span><select value={selectedLead.status} disabled={!canManageLead || saving} onChange={(event) => void patchLead({ status: event.target.value as CrmLeadStatus })}>{statuses.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}</select></label>
               <label><span>{copy.priority}</span><select value={selectedLead.priority} disabled={!canManageLead || saving} onChange={(event) => void patchLead({ priority: event.target.value as CrmLeadPriority })}>{priorities.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}</select></label>
               <label><span>{copy.assigned}</span><select value={selectedLead.assignedToId || ''} disabled={!canManageLead || saving} onChange={(event) => void patchLead({ assignedToId: event.target.value || null })}><option value="">{copy.allValues}</option>{assignees.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>

@@ -1758,7 +1758,7 @@ export default function Dashboard() {
               </ButtonLink>
             ))}
             {user?.role !== 'USER' || canAccessAdmin ? (
-              <ButtonLink to="/crm" variant="secondary">
+              <ButtonLink to="/crm/overview" variant="secondary">
                 {copy.openCrm}
               </ButtonLink>
             ) : null}

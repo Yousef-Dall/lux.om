@@ -61,7 +61,7 @@ test('CRM and PMS are peer products in the authenticated shell', async ({ page }
 
   await page.goto('/profile');
   const nav = page.getByRole('navigation', { name: 'Products and workspaces' });
-  await expect(nav.getByRole('link', { name: 'CRM', exact: true })).toHaveAttribute('href', '/crm');
+  await expect(nav.getByRole('link', { name: 'CRM', exact: true })).toHaveAttribute('href', '/crm/overview');
   await expect(nav.getByRole('link', { name: 'PMS', exact: true })).toHaveAttribute(
     'href',
     '/pms/overview'
