@@ -760,6 +760,7 @@ export type PmsDocument = {
   chargeId?: string | null;
   securityDepositTransactionId?: string | null;
   ownerPayoutBatchId?: string | null;
+  vendorInvoiceId?: string | null;
   statementId?: string | null;
   assetId?: string | null;
   inspectionDefectId?: string | null;
@@ -1278,6 +1279,7 @@ export type PmsDocumentPayload = {
   chargeId?: string | null;
   securityDepositTransactionId?: string | null;
   ownerPayoutBatchId?: string | null;
+  vendorInvoiceId?: string | null;
   statementId?: string | null;
   assetId?: string | null;
   inspectionDefectId?: string | null;
@@ -2238,6 +2240,7 @@ export async function listPmsDocuments(
     leaseId?: string;
     workOrderId?: string;
     inspectionId?: string;
+    vendorInvoiceId?: string;
     search?: string;
     type?: "ALL" | PmsDocumentType;
     status?: "ALL" | PmsDocumentStatus;

@@ -447,6 +447,7 @@ enum PmsAccountingSource {
   RENT_PAYMENT
   MAINTENANCE_COST
   SECURITY_DEPOSIT
+  VENDOR_INVOICE
 }
 
 enum PmsMaintenancePriority {
@@ -678,6 +679,18 @@ enum PmsOwnerPayoutStatus {
   PAID_MANUAL
   FAILED
   CANCELLED
+}
+
+enum PmsVendorInvoiceStatus {
+  DRAFT
+  SUBMITTED
+  NEEDS_REVIEW
+  APPROVED
+  PROCESSING
+  PAID
+  FAILED
+  REJECTED
+  VOID
 }
 
 enum PmsAssetStatus {
@@ -1112,6 +1125,14 @@ model User {
   pmsOwnerPayoutsApproved                PmsOwnerPayoutBatch[]           @relation("PmsOwnerPayoutApprovedBy")
   pmsOwnerPayoutsPaid                    PmsOwnerPayoutBatch[]           @relation("PmsOwnerPayoutPaidBy")
   pmsOwnerPayoutsCancelled               PmsOwnerPayoutBatch[]           @relation("PmsOwnerPayoutCancelledBy")
+  pmsVendorInvoicesCreated                PmsVendorInvoice[]             @relation("PmsVendorInvoiceCreatedBy")
+  pmsVendorInvoicesSubmitted              PmsVendorInvoice[]             @relation("PmsVendorInvoiceSubmittedBy")
+  pmsVendorInvoicesReviewed               PmsVendorInvoice[]             @relation("PmsVendorInvoiceReviewedBy")
+  pmsVendorInvoicesApproved               PmsVendorInvoice[]             @relation("PmsVendorInvoiceApprovedBy")
+  pmsVendorInvoicesProcessing             PmsVendorInvoice[]             @relation("PmsVendorInvoiceProcessingBy")
+  pmsVendorInvoicesPaid                   PmsVendorInvoice[]             @relation("PmsVendorInvoicePaidBy")
+  pmsVendorInvoicesRejected               PmsVendorInvoice[]             @relation("PmsVendorInvoiceRejectedBy")
+  pmsVendorInvoicesVoided                 PmsVendorInvoice[]             @relation("PmsVendorInvoiceVoidedBy")
   pmsAssetsCreated                       PmsAsset[]                      @relation("PmsAssetCreatedBy")
   pmsAssetsUpdated                       PmsAsset[]                      @relation("PmsAssetUpdatedBy")
   pmsAssetEventsCreated                  PmsAssetEvent[]                 @relation("PmsAssetEventCreatedBy")
@@ -1283,6 +1304,7 @@ model DeveloperCompany {
   pmsOwnerPortalAccesses         PmsOwnerPortalAccess[]
   pmsOwnerPayoutBatches          PmsOwnerPayoutBatch[]
   pmsOwnerPayoutLines            PmsOwnerPayoutLine[]
+  pmsVendorInvoices              PmsVendorInvoice[]
   pmsVendorPortalAccesses        PmsVendorPortalAccess[]
   pmsAssets                      PmsAsset[]
   pmsAssetEvents                 PmsAssetEvent[]
@@ -2661,6 +2683,7 @@ model PmsProperty {
   pmsReconciliationItems     PmsReconciliationItem[]
   pmsOwnerPortalAccesses     PmsOwnerPortalAccess[]
   pmsOwnerPayoutLines        PmsOwnerPayoutLine[]
+  pmsVendorInvoices          PmsVendorInvoice[]
   pmsAssets                  PmsAsset[]
   pmsMaintenancePlans        PmsMaintenancePlan[]
   pmsInspectionTemplates     PmsInspectionTemplate[]
@@ -3026,6 +3049,9 @@ model PmsAccountingLedgerEntry {
   ownerPayoutBatchId String?
   ownerPayoutBatch   PmsOwnerPayoutBatch? @relation(fields: [ownerPayoutBatchId], references: [id], onDelete: SetNull)
 
+  vendorInvoiceId String? @unique
+  vendorInvoice   PmsVendorInvoice? @relation(fields: [vendorInvoiceId], references: [id], onDelete: SetNull)
+
   createdById String?
   createdBy   User?   @relation("PmsAccountingLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -3119,6 +3145,7 @@ model PmsWorkOrder {
   pmsDocuments               PmsDocument[]
   pmsCommunicationLogs       PmsCommunicationLog[]
   quotes                     PmsMaintenanceQuote[]
+  vendorInvoices             PmsVendorInvoice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3163,6 +3190,7 @@ model PmsVendor {
   portalAccesses   PmsVendorPortalAccess[]
   assets           PmsAsset[]
   maintenancePlans PmsMaintenancePlan[]
+  invoices         PmsVendorInvoice[]
   crmLeads         CrmLead[]
 
   createdAt DateTime @default(now())
@@ -3203,6 +3231,8 @@ model PmsMaintenanceQuote {
 
   approvedById String?
   approvedBy   User?   @relation("PmsMaintenanceQuoteApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  vendorInvoices PmsVendorInvoice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3451,6 +3481,9 @@ model PmsDocument {
   ownerPayoutBatchId String?
   ownerPayoutBatch   PmsOwnerPayoutBatch? @relation(fields: [ownerPayoutBatchId], references: [id], onDelete: SetNull)
 
+  vendorInvoiceId String?
+  vendorInvoice   PmsVendorInvoice? @relation(fields: [vendorInvoiceId], references: [id], onDelete: SetNull)
+
   assetId String?
   asset   PmsAsset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
 
@@ -3485,6 +3518,7 @@ model PmsDocument {
   @@index([chargeId])
   @@index([securityDepositTransactionId])
   @@index([ownerPayoutBatchId])
+  @@index([vendorInvoiceId])
   @@index([assetId])
   @@index([statementId])
   @@index([inspectionDefectId])
@@ -3960,6 +3994,70 @@ model PmsOwnerPayoutLine {
   @@unique([payoutBatchId, propertyId])
   @@index([companyId, propertyId])
   @@index([statementId])
+}
+
+model PmsVendorInvoice {
+  id                    String                 @id @default(cuid())
+  invoiceNumber         String
+  externalInvoiceNumber String?
+  status                PmsVendorInvoiceStatus @default(DRAFT)
+  issueDate             DateTime
+  dueDate               DateTime
+  currency              String                 @db.VarChar(3)
+  subtotalAmount        Decimal                @default(0) @db.Decimal(14, 3)
+  taxAmount             Decimal                @default(0) @db.Decimal(14, 3)
+  totalAmount           Decimal                @default(0) @db.Decimal(14, 3)
+  approvedAmount        Decimal?               @db.Decimal(14, 3)
+  paidAmount            Decimal                @default(0) @db.Decimal(14, 3)
+  submittedAt           DateTime?
+  reviewedAt            DateTime?
+  approvedAt            DateTime?
+  processingAt          DateTime?
+  paidAt                DateTime?
+  failedAt              DateTime?
+  rejectedAt            DateTime?
+  voidedAt              DateTime?
+  paymentReference      String?
+  paymentMethodNote     String?
+  failureReason         String?
+  notes                 String?
+  companyId             String
+  company               DeveloperCompany       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  propertyId            String
+  property              PmsProperty            @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  vendorId              String
+  vendor                PmsVendor              @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  workOrderId           String
+  workOrder             PmsWorkOrder           @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
+  approvedQuoteId       String?
+  approvedQuote         PmsMaintenanceQuote?   @relation(fields: [approvedQuoteId], references: [id], onDelete: SetNull)
+  createdById           String?
+  createdBy             User?                  @relation("PmsVendorInvoiceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  submittedById         String?
+  submittedBy           User?                  @relation("PmsVendorInvoiceSubmittedBy", fields: [submittedById], references: [id], onDelete: SetNull)
+  reviewedById          String?
+  reviewedBy            User?                  @relation("PmsVendorInvoiceReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  approvedById          String?
+  approvedBy            User?                  @relation("PmsVendorInvoiceApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  processingById        String?
+  processingBy          User?                  @relation("PmsVendorInvoiceProcessingBy", fields: [processingById], references: [id], onDelete: SetNull)
+  paidById              String?
+  paidBy                User?                  @relation("PmsVendorInvoicePaidBy", fields: [paidById], references: [id], onDelete: SetNull)
+  rejectedById          String?
+  rejectedBy            User?                  @relation("PmsVendorInvoiceRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
+  voidedById            String?
+  voidedBy              User?                  @relation("PmsVendorInvoiceVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+  documents             PmsDocument[]
+  ledgerEntry           PmsAccountingLedgerEntry?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  @@unique([companyId, vendorId, invoiceNumber])
+  @@index([companyId, status, dueDate])
+  @@index([companyId, propertyId, status])
+  @@index([vendorId, status])
+  @@index([workOrderId])
+  @@index([approvedQuoteId])
 }
 
 model PmsVendorPortalAccess {

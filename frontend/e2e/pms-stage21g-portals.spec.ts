@@ -107,6 +107,10 @@ test('vendor portal renders only explicitly assigned work and no tenant identity
     vendorAccess: { hasAccess: true, accesses: [vendorAccess] },
   });
   const requests: string[] = [];
+  await page.route('**/api/vendor/invoices**', (route) => {
+    requests.push(route.request().url());
+    return route.fulfill({ json: { invoices: [] } });
+  });
   await page.route('**/api/vendor/work-orders**', (route) => {
     requests.push(route.request().url());
     return route.fulfill({
@@ -124,7 +128,8 @@ test('vendor portal renders only explicitly assigned work and no tenant identity
             property: { id: 'property-a', name: 'Property A', address: 'Muscat' },
             unit: { id: 'unit-a', unitNumber: 'A-101' },
             asset: { id: 'asset-a', assetCode: 'HVAC-A', name: 'HVAC', warrantyExpiry: null },
-            quotes: [],
+            approvedQuoteId: 'approved-quote',
+            quotes: [{ id: 'approved-quote', amount: '75', currency: 'OMR', status: 'APPROVED' }],
             pmsDocuments: [],
           },
         ],
@@ -133,10 +138,11 @@ test('vendor portal renders only explicitly assigned work and no tenant identity
   });
 
   await page.goto('/vendor');
-  await expect(page.getByRole('heading', { name: 'Assigned work orders' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Assigned work and invoices' })).toBeVisible();
   await expect(page.getByText('Assigned HVAC repair')).toBeVisible();
   await expect(page.getByText('Unrelated work')).toHaveCount(0);
   await expect(page.getByText('Private Tenant A')).toHaveCount(0);
+  await expect(page.getByRole('form', { name: 'Submit invoice for Assigned HVAC repair' })).toBeVisible();
   await expect.poll(() => requests.some((url) => new URL(url).searchParams.get('accessId') === 'vendor-access-1')).toBe(true);
 });
 

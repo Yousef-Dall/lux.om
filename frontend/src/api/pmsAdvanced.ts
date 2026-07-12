@@ -386,6 +386,84 @@ export type PmsOwnerPayoutAuditEvent = {
   createdAt: string;
 };
 
+export type PmsVendorInvoiceStatus = 'DRAFT' | 'SUBMITTED' | 'NEEDS_REVIEW' | 'APPROVED' | 'PROCESSING' | 'PAID' | 'FAILED' | 'REJECTED' | 'VOID';
+export type PmsVendorInvoiceDocument = {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  originalFilename?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  createdAt: string;
+  uploadedBy?: { id: string; name: string; email: string } | null;
+};
+export type PmsVendorInvoice = {
+  id: string;
+  invoiceNumber: string;
+  externalInvoiceNumber?: string | null;
+  status: PmsVendorInvoiceStatus;
+  issueDate: string;
+  dueDate: string;
+  currency: string;
+  subtotalAmount: string;
+  taxAmount: string;
+  totalAmount: string;
+  approvedAmount?: string | null;
+  paidAmount: string;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  approvedAt?: string | null;
+  processingAt?: string | null;
+  paidAt?: string | null;
+  failedAt?: string | null;
+  rejectedAt?: string | null;
+  voidedAt?: string | null;
+  paymentReference?: string | null;
+  paymentMethodNote?: string | null;
+  failureReason?: string | null;
+  notes?: string | null;
+  companyId: string;
+  propertyId: string;
+  vendorId: string;
+  workOrderId: string;
+  approvedQuoteId?: string | null;
+  createdById?: string | null;
+  submittedById?: string | null;
+  reviewedById?: string | null;
+  approvedById?: string | null;
+  processingById?: string | null;
+  paidById?: string | null;
+  property: { id: string; name: string; code?: string | null };
+  vendor: { id: string; name: string; trade?: string | null; email?: string | null };
+  workOrder: { id: string; title: string; status: string; currency: string; cost?: string | null; approvedQuoteId?: string | null };
+  approvedQuote?: { id: string; amount: string; currency: string; status: string } | null;
+  createdBy?: { id: string; name: string; email: string } | null;
+  submittedBy?: { id: string; name: string; email: string } | null;
+  reviewedBy?: { id: string; name: string; email: string } | null;
+  approvedBy?: { id: string; name: string; email: string } | null;
+  processingBy?: { id: string; name: string; email: string } | null;
+  paidBy?: { id: string; name: string; email: string } | null;
+  rejectedBy?: { id: string; name: string; email: string } | null;
+  voidedBy?: { id: string; name: string; email: string } | null;
+  documents: PmsVendorInvoiceDocument[];
+  ledgerEntries: Array<{ id: string; type: string; source: string; amount: string; currency: string; transactionDate: string; referenceNumber?: string | null }>;
+  createdAt: string;
+  updatedAt: string;
+};
+export type PmsVendorInvoiceWorkOrderOption = {
+  id: string;
+  title: string;
+  status: string;
+  propertyId: string;
+  vendorId?: string | null;
+  currency: string;
+  approvedQuoteId?: string | null;
+  property: { id: string; name: string; code?: string | null };
+  vendor?: { id: string; name: string } | null;
+  approvedQuote?: { id: string; amount: string; currency: string; status: string } | null;
+};
+
 
 export type PmsAsset = {
   id: string;
@@ -663,6 +741,87 @@ export function transitionPmsOwnerPayout(token: string, payoutId: string, payloa
 }) {
   return apiClient.post<{ batch: PmsOwnerPayout }>(`/api/pms/accounting/owner-payouts/${payoutId}/transition`, payload, { token });
 }
+export function listPmsVendorInvoices(token: string, params: {
+  companyId?: string;
+  search?: string;
+  status?: PmsVendorInvoiceStatus;
+  currency?: string;
+  propertyId?: string;
+  vendorId?: string;
+  dueFrom?: string;
+  dueTo?: string;
+  sortBy?: 'createdAt' | 'dueDate' | 'totalAmount' | 'status' | 'invoiceNumber';
+  direction?: 'asc' | 'desc';
+  take?: number;
+  skip?: number;
+  signal?: AbortSignal;
+} = {}) {
+  const { signal, ...query } = params;
+  return apiClient.get<{
+    invoices: PmsVendorInvoice[];
+    pagination: PmsFinancePagination;
+    totalsByStatus: Array<{ status: PmsVendorInvoiceStatus; count: number }>;
+    totalsByCurrency: Array<{ currency: string; count: number; totalAmount: string; approvedAmount: string; paidAmount: string }>;
+    overdueCount: number;
+    vendors: Array<{ id: string; name: string }>;
+    properties: Array<{ id: string; name: string; code?: string | null }>;
+    workOrders: PmsVendorInvoiceWorkOrderOption[];
+  }>('/api/pms/accounting/vendor-invoices', { token, params: query, signal });
+}
+export function getPmsVendorInvoice(token: string, invoiceId: string, companyId?: string) {
+  return apiClient.get<{ invoice: PmsVendorInvoice }>(`/api/pms/accounting/vendor-invoices/${invoiceId}`, { token, params: companyParams(companyId) });
+}
+export function createPmsVendorInvoice(token: string, payload: {
+  companyId: string;
+  propertyId: string;
+  vendorId: string;
+  workOrderId: string;
+  approvedQuoteId?: string | null;
+  invoiceNumber: string;
+  externalInvoiceNumber?: string | null;
+  issueDate: string;
+  dueDate: string;
+  currency: string;
+  subtotalAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  notes?: string | null;
+}) {
+  return apiClient.post<{ invoice: PmsVendorInvoice }>('/api/pms/accounting/vendor-invoices', payload, { token });
+}
+export function updatePmsVendorInvoice(token: string, invoiceId: string, payload: Partial<{
+  companyId: string;
+  propertyId: string;
+  vendorId: string;
+  workOrderId: string;
+  approvedQuoteId: string | null;
+  invoiceNumber: string;
+  externalInvoiceNumber: string | null;
+  issueDate: string;
+  dueDate: string;
+  currency: string;
+  subtotalAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  notes: string | null;
+}>) {
+  return apiClient.patch<{ invoice: PmsVendorInvoice }>(`/api/pms/accounting/vendor-invoices/${invoiceId}`, payload, { token });
+}
+export function transitionPmsVendorInvoice(token: string, invoiceId: string, payload: {
+  companyId: string;
+  action: 'SUBMIT' | 'REVIEW' | 'APPROVE' | 'REJECT' | 'SUBMIT_PAYMENT' | 'RECORD_PAID' | 'RECORD_FAILED' | 'RETRY' | 'VOID';
+  reason?: string;
+  approvedAmount?: number;
+  evidenceDocumentId?: string;
+  paymentReference?: string;
+  paymentMethodNote?: string;
+  providerConfirmed?: boolean;
+  adapter?: 'MANUAL_BANK_EVIDENCE';
+  paidAt?: string;
+}) {
+  return apiClient.post<{ invoice: PmsVendorInvoice }>(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`, payload, { token });
+}
+
 export async function listPmsAssets(token: string, companyId?: string) {
   return apiClient.get<{ assets: PmsAsset[] }>('/api/pms/assets', { token, params: companyParams(companyId) });
 }

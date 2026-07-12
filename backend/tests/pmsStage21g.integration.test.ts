@@ -759,6 +759,190 @@ describe('PMS Stage 21G financial and portal operations', () => {
     expect(ownerOverview.body.payouts).toEqual([expect.objectContaining({ id: payoutId, status: 'PAID_MANUAL', payoutReference: 'BANK-SETTLED-21G' })]);
   });
 
+  it('governs vendor invoice submission, approval, evidence-backed payment, and one-time expense posting', async () => {
+    const fixture = await createFixture();
+    const workOrder = await prisma.pmsWorkOrder.create({
+      data: {
+        companyId: fixture.company.id,
+        propertyId: fixture.propertyA.id,
+        unitId: fixture.unitA.id,
+        tenantId: fixture.tenantA.id,
+        vendorId: fixture.vendor.id,
+        title: 'Replace chilled-water valve',
+        status: 'IN_PROGRESS',
+        currency: 'OMR',
+        createdById: fixture.manager.id,
+      },
+    });
+    const quote = await prisma.pmsMaintenanceQuote.create({
+      data: {
+        companyId: fixture.company.id,
+        workOrderId: workOrder.id,
+        vendorId: fixture.vendor.id,
+        amount: 120,
+        currency: 'OMR',
+        status: 'APPROVED',
+        submittedAt: new Date('2026-07-10T08:00:00.000Z'),
+        approvedAt: new Date('2026-07-10T09:00:00.000Z'),
+        createdById: fixture.vendorUser.id,
+        approvedById: fixture.manager.id,
+      },
+    });
+    await prisma.pmsWorkOrder.update({ where: { id: workOrder.id }, data: { approvedQuoteId: quote.id } });
+
+    const pdf = Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF');
+    const submitted = await request(app)
+      .post(`/api/vendor/work-orders/${workOrder.id}/invoices`)
+      .set('Authorization', `Bearer ${fixture.vendorToken}`)
+      .field('invoiceNumber', 'INV-21H-001')
+      .field('externalInvoiceNumber', 'SUPPLIER-001')
+      .field('issueDate', '2026-07-11')
+      .field('dueDate', '2026-07-31')
+      .field('currency', 'OMR')
+      .field('subtotalAmount', '100')
+      .field('taxAmount', '5')
+      .field('totalAmount', '105')
+      .field('notes', 'Approved valve replacement')
+      .attach('file', pdf, { filename: 'vendor-invoice.pdf', contentType: 'application/pdf' })
+      .expect(201);
+    const invoiceId = submitted.body.invoice.id as string;
+    expect(submitted.body.invoice).toMatchObject({ status: 'SUBMITTED', invoiceNumber: 'INV-21H-001', totalAmount: '105' });
+    await expect(prisma.pmsVendorInvoice.update({ where: { id: invoiceId }, data: { totalAmount: 104 } })).rejects.toThrow(/immutable/i);
+
+    const vendorQueue = await request(app).get('/api/vendor/invoices').set('Authorization', `Bearer ${fixture.vendorToken}`).expect(200);
+    expect(vendorQueue.body.invoices).toEqual([expect.objectContaining({ id: invoiceId, property: expect.objectContaining({ id: fixture.propertyA.id }) })]);
+    await request(app).get('/api/vendor/invoices').set('Authorization', `Bearer ${fixture.ownerToken}`).expect(403);
+
+    const scopedList = await request(app)
+      .get(`/api/pms/accounting/vendor-invoices?companyId=${fixture.company.id}`)
+      .set('Authorization', `Bearer ${fixture.scopedToken}`)
+      .expect(200);
+    expect(scopedList.body.invoices.map((invoice: { id: string }) => invoice.id)).toEqual([invoiceId]);
+    expect(scopedList.body.workOrders).toEqual([expect.objectContaining({ id: workOrder.id, approvedQuote: expect.objectContaining({ amount: '120' }) })]);
+    await request(app)
+      .get(`/api/pms/accounting/vendor-invoices?companyId=${fixture.otherCompany.id}`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(403);
+
+    await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'REVIEW' })
+      .expect(200);
+    await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`)
+      .set('Authorization', `Bearer ${fixture.vendorToken}`)
+      .send({ companyId: fixture.company.id, action: 'APPROVE', approvedAmount: 103 })
+      .expect(403);
+    const sourceDocument = await prisma.pmsDocument.findFirstOrThrow({ where: { vendorInvoiceId: invoiceId, type: 'MAINTENANCE_INVOICE' } });
+    await expect(prisma.pmsDocument.update({ where: { id: sourceDocument.id }, data: { status: 'ARCHIVED' } })).rejects.toThrow(/immutable/i);
+    const approved = await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ companyId: fixture.company.id, action: 'APPROVE', approvedAmount: 103, evidenceDocumentId: sourceDocument.id })
+      .expect(200);
+    expect(approved.body.invoice).toMatchObject({ status: 'APPROVED', approvedAmount: '103', approvedBy: { id: fixture.checker.id } });
+    await expect(prisma.pmsVendorInvoice.update({ where: { id: invoiceId }, data: { totalAmount: 1 } })).rejects.toThrow(/immutable/i);
+    await expect(prisma.pmsVendorInvoice.update({ where: { id: invoiceId }, data: { status: 'DRAFT' } })).rejects.toThrow(/payment processing/i);
+
+    const submissionEvidence = await request(app)
+      .post('/api/pms/documents/upload')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .field('metadata', JSON.stringify({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, workOrderId: workOrder.id, vendorInvoiceId: invoiceId, type: 'OTHER', title: 'Vendor payment submission evidence', status: 'ACTIVE' }))
+      .attach('file', pdf, { filename: 'payment-submission.pdf', contentType: 'application/pdf' })
+      .expect(201);
+    const vendorWorkOrdersAfterEvidence = await request(app).get('/api/vendor/work-orders').set('Authorization', `Bearer ${fixture.vendorToken}`).expect(200);
+    expect(vendorWorkOrdersAfterEvidence.body.workOrders.flatMap((item: { pmsDocuments: Array<{ id: string }> }) => item.pmsDocuments.map((document) => document.id))).not.toContain(submissionEvidence.body.document.id);
+    const vendorInvoicesAfterEvidence = await request(app).get('/api/vendor/invoices').set('Authorization', `Bearer ${fixture.vendorToken}`).expect(200);
+    expect(vendorInvoicesAfterEvidence.body.invoices[0].documents.map((document: { id: string }) => document.id)).toEqual([sourceDocument.id]);
+    await request(app).get(`/api/vendor/documents/${submissionEvidence.body.document.id}/download`).set('Authorization', `Bearer ${fixture.vendorToken}`).expect(404);
+    await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ companyId: fixture.company.id, action: 'SUBMIT_PAYMENT', evidenceDocumentId: submissionEvidence.body.document.id, paymentReference: 'AP-SUBMIT-21H', paymentMethodNote: 'Bank instruction accepted', providerConfirmed: true })
+      .expect(409);
+    const processing = await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'SUBMIT_PAYMENT', evidenceDocumentId: submissionEvidence.body.document.id, paymentReference: 'AP-SUBMIT-21H', paymentMethodNote: 'Bank instruction accepted', adapter: 'MANUAL_BANK_EVIDENCE', providerConfirmed: true })
+      .expect(200);
+    expect(processing.body.invoice).toMatchObject({ status: 'PROCESSING', processingBy: { id: fixture.manager.id } });
+
+    const failed = await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ companyId: fixture.company.id, action: 'RECORD_FAILED', reason: 'Bank beneficiary validation failed' })
+      .expect(200);
+    expect(failed.body.invoice).toMatchObject({ status: 'FAILED', failureReason: 'Bank beneficiary validation failed' });
+    const retried = await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ companyId: fixture.company.id, action: 'RETRY', reason: 'Verified corrected beneficiary details' })
+      .expect(200);
+    expect(retried.body.invoice).toMatchObject({ status: 'APPROVED', paymentReference: null, failureReason: null, approvedBy: { id: fixture.checker.id } });
+    await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'SUBMIT_PAYMENT', evidenceDocumentId: submissionEvidence.body.document.id, paymentReference: 'AP-SUBMIT-RETRY-STALE-21H', paymentMethodNote: 'Stale bank instruction', adapter: 'MANUAL_BANK_EVIDENCE', providerConfirmed: true })
+      .expect(409);
+    const retryEvidence = await request(app)
+      .post('/api/pms/documents/upload')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .field('metadata', JSON.stringify({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, vendorInvoiceId: invoiceId, type: 'OTHER', title: 'Corrected vendor payment submission evidence', status: 'ACTIVE' }))
+      .attach('file', pdf, { filename: 'payment-retry.pdf', contentType: 'application/pdf' })
+      .expect(201);
+    await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'SUBMIT_PAYMENT', evidenceDocumentId: retryEvidence.body.document.id, paymentReference: 'AP-SUBMIT-RETRY-21H', paymentMethodNote: 'Corrected bank instruction accepted', adapter: 'MANUAL_BANK_EVIDENCE', providerConfirmed: true })
+      .expect(200);
+
+    await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ companyId: fixture.company.id, action: 'RECORD_PAID', evidenceDocumentId: submissionEvidence.body.document.id, paymentReference: 'AP-PAID-21H', paymentMethodNote: 'Bank settlement confirmed', providerConfirmed: true })
+      .expect(409);
+    const paidEvidence = await request(app)
+      .post('/api/pms/documents/upload')
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .field('metadata', JSON.stringify({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, vendorInvoiceId: invoiceId, type: 'OTHER', title: 'Final vendor payment evidence', status: 'ACTIVE' }))
+      .attach('file', pdf, { filename: 'payment-result.pdf', contentType: 'application/pdf' })
+      .expect(201);
+    await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'RECORD_PAID', evidenceDocumentId: paidEvidence.body.document.id, paymentReference: 'AP-PAID-21H', paymentMethodNote: 'Bank settlement confirmed', providerConfirmed: true })
+      .expect(409);
+    const paid = await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ companyId: fixture.company.id, action: 'RECORD_PAID', evidenceDocumentId: paidEvidence.body.document.id, paymentReference: 'AP-PAID-21H', paymentMethodNote: 'Bank settlement confirmed', providerConfirmed: true, paidAt: '2026-07-13T12:00:00.000Z' })
+      .expect(200);
+    expect(paid.body.invoice).toMatchObject({ status: 'PAID', paidAmount: '103', paymentReference: 'AP-PAID-21H', paidBy: { id: fixture.checker.id } });
+    const ledgerEntry = await prisma.pmsAccountingLedgerEntry.findFirstOrThrow({ where: { vendorInvoiceId: invoiceId, source: 'VENDOR_INVOICE' } });
+    expect(await prisma.pmsAccountingLedgerEntry.count({ where: { vendorInvoiceId: invoiceId, source: 'VENDOR_INVOICE' } })).toBe(1);
+    await expect(prisma.pmsVendorInvoice.update({ where: { id: invoiceId }, data: { paymentReference: 'DIRECT-DB-EDIT' } })).rejects.toThrow(/immutable/i);
+    await expect(prisma.pmsAccountingLedgerEntry.update({ where: { id: ledgerEntry.id }, data: { amount: 1 } })).rejects.toThrow(/immutable/i);
+    await expect(prisma.pmsAccountingLedgerEntry.delete({ where: { id: ledgerEntry.id } })).rejects.toThrow(/cannot be deleted/i);
+    await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ companyId: fixture.company.id, action: 'RECORD_PAID', evidenceDocumentId: paidEvidence.body.document.id, paymentReference: 'AP-PAID-REPLAY', paymentMethodNote: 'Replay', providerConfirmed: true })
+      .expect(409);
+
+    const draftToVoid = await request(app)
+      .post('/api/pms/accounting/vendor-invoices')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, vendorId: fixture.vendor.id, workOrderId: workOrder.id, approvedQuoteId: quote.id, invoiceNumber: 'INV-21H-VOID', issueDate: '2026-07-12', dueDate: '2026-07-31', currency: 'OMR', subtotalAmount: 25, taxAmount: 0, totalAmount: 25 })
+      .expect(201);
+    await request(app)
+      .post(`/api/pms/accounting/vendor-invoices/${draftToVoid.body.invoice.id}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'VOID', reason: 'Duplicate supplier invoice' })
+      .expect(200);
+    await expect(prisma.pmsVendorInvoice.update({ where: { id: draftToVoid.body.invoice.id }, data: { notes: 'Direct edit' } })).rejects.toThrow(/immutable/i);
+  });
+
   it('scopes assets, generates preventive work orders idempotently, and converts inspection defects once', async () => {
     const fixture = await createFixture();
     const asset = await request(app).post('/api/pms/assets').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, unitId: fixture.unitA.id, assetCode: 'HVAC-A-101', name: 'Main HVAC', category: 'HVAC', serviceIntervalDays: 30, nextServiceDate: '2026-07-01', vendorId: fixture.vendor.id, currency: 'OMR' }).expect(201);

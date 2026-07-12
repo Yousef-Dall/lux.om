@@ -63,6 +63,7 @@ async function mockOperationalPages(page: Page) {
   await page.route('**/api/pms/accounting/deposits**', (route) => route.fulfill({ json: { accounts: [], pagination: { total: 0, take: 25, skip: 0, count: 0 }, totalsByCurrency: [] } }));
   await page.route('**/api/pms/accounting/periods**', (route) => route.fulfill({ json: { periods: [], pagination: { total: 0, take: 25, skip: 0, count: 0 } } }));
   await page.route('**/api/pms/accounting/owner-payouts**', (route) => route.fulfill({ json: { batches: [] } }));
+  await page.route('**/api/pms/accounting/vendor-invoices**', (route) => route.fulfill({ json: { invoices: [], pagination: { total: 0, take: 25, skip: 0, count: 0 }, totalsByStatus: [], totalsByCurrency: [], overdueCount: 0, vendors: [], properties: [], workOrders: [] } }));
   await page.route('**/api/pms/assets**', (route) => route.fulfill({ json: { assets: [] } }));
   await page.route('**/api/pms/preventive-maintenance/plans**', (route) => route.fulfill({ json: { plans: [] } }));
   await page.route('**/api/pms/structured-inspections/runs**', (route) => route.fulfill({ json: { inspections: [] } }));
@@ -96,6 +97,10 @@ test('PMS renders a persistent permission-aware information architecture', async
   await expect(navigation.getByRole('link', { name: 'Owner payouts', exact: true })).toHaveAttribute(
     'href',
     '/pms/finance/payouts?companyId=company-pms-all'
+  );
+  await expect(navigation.getByRole('link', { name: 'Vendor invoices', exact: true })).toHaveAttribute(
+    'href',
+    '/pms/finance/vendor-invoices?companyId=company-pms-all'
   );
   await expect(navigation.getByRole('link', { name: 'Staff and access', exact: true })).toBeVisible();
   await expect(page.getByText('Owner · All properties')).toBeVisible();

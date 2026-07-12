@@ -96,6 +96,7 @@ import {
   supportedPrivateDocumentMimeTypes,
 } from "../storage/privatePmsDocumentStorage";
 import { pmsFinanceRouter } from "../modules/pms/finance/router";
+import { pmsPayablesRouter } from "../modules/pms/finance/payablesRouter";
 import { pmsAssetsRouter } from "../modules/pms/assets/router";
 import { pmsPreventiveMaintenanceRouter } from "../modules/pms/maintenance/router";
 import { pmsStructuredInspectionsRouter } from "../modules/pms/inspections/router";
@@ -121,6 +122,7 @@ import {
 export const pmsRouter = Router();
 
 pmsRouter.use("/accounting", pmsFinanceRouter);
+pmsRouter.use("/accounting", pmsPayablesRouter);
 pmsRouter.use("/assets", pmsAssetsRouter);
 pmsRouter.use("/preventive-maintenance", pmsPreventiveMaintenanceRouter);
 pmsRouter.use("/structured-inspections", pmsStructuredInspectionsRouter);
@@ -701,6 +703,7 @@ const pmsDocumentListQuerySchema = z.object({
   chargeId: z.string().trim().min(1).optional(),
   securityDepositTransactionId: z.string().trim().min(1).optional(),
   ownerPayoutBatchId: z.string().trim().min(1).optional(),
+  vendorInvoiceId: z.string().trim().min(1).optional(),
   assetId: z.string().trim().min(1).optional(),
   statementId: z.string().trim().min(1).optional(),
   inspectionDefectId: z.string().trim().min(1).optional(),
@@ -726,6 +729,7 @@ const pmsDocumentCreateSchema = z
     chargeId: nullableId,
     securityDepositTransactionId: nullableId,
     ownerPayoutBatchId: nullableId,
+    vendorInvoiceId: nullableId,
     assetId: nullableId,
     statementId: nullableId,
     inspectionDefectId: nullableId,
@@ -2221,6 +2225,7 @@ async function assertPmsDocumentLinksBelongToCompany(input: {
   chargeId?: string | null;
   securityDepositTransactionId?: string | null;
   ownerPayoutBatchId?: string | null;
+  vendorInvoiceId?: string | null;
   assetId?: string | null;
   statementId?: string | null;
   inspectionDefectId?: string | null;
@@ -2257,6 +2262,7 @@ async function assertPmsDocumentLinksBelongToCompany(input: {
   if (input.chargeId) linkedChecks.push(prisma.pmsCharge.findFirst({ where: { id: input.chargeId, companyId: input.companyId, ...(input.propertyId ? { propertyId: input.propertyId } : {}) }, select: { id: true } }));
   if (input.securityDepositTransactionId) linkedChecks.push(prisma.pmsSecurityDepositTransaction.findFirst({ where: { id: input.securityDepositTransactionId, companyId: input.companyId, account: input.propertyId ? { propertyId: input.propertyId } : undefined }, select: { id: true } }));
   if (input.ownerPayoutBatchId) linkedChecks.push(prisma.pmsOwnerPayoutBatch.findFirst({ where: { id: input.ownerPayoutBatchId, companyId: input.companyId, ...(input.propertyId ? { lines: { some: { propertyId: input.propertyId } } } : {}) }, select: { id: true } }));
+  if (input.vendorInvoiceId) linkedChecks.push(prisma.pmsVendorInvoice.findFirst({ where: { id: input.vendorInvoiceId, companyId: input.companyId, ...(input.propertyId ? { propertyId: input.propertyId } : {}), ...(input.workOrderId ? { workOrderId: input.workOrderId } : {}) }, select: { id: true } }));
   if (input.assetId) linkedChecks.push(prisma.pmsAsset.findFirst({ where: { id: input.assetId, companyId: input.companyId, ...(input.propertyId ? { propertyId: input.propertyId } : {}) }, select: { id: true } }));
   if (input.statementId) linkedChecks.push(prisma.pmsOwnerStatement.findFirst({ where: { id: input.statementId, companyId: input.companyId, ...(input.propertyId ? { propertyId: input.propertyId } : {}) }, select: { id: true } }));
   if (input.inspectionDefectId) linkedChecks.push(prisma.pmsInspectionDefect.findFirst({ where: { id: input.inspectionDefectId, companyId: input.companyId, ...(input.propertyId ? { propertyId: input.propertyId } : {}) }, select: { id: true } }));
@@ -2274,6 +2280,7 @@ function assertMaintenanceDocumentScope(input: {
   chargeId?: string | null;
   securityDepositTransactionId?: string | null;
   ownerPayoutBatchId?: string | null;
+  vendorInvoiceId?: string | null;
   assetId?: string | null;
   statementId?: string | null;
   inspectionDefectId?: string | null;
@@ -3457,6 +3464,7 @@ const pmsDocumentInclude = {
   charge: { select: { id: true, chargeNumber: true, status: true } },
   securityDepositTransaction: { select: { id: true, type: true, status: true } },
   ownerPayoutBatch: { select: { id: true, payoutNumber: true, status: true } },
+  vendorInvoice: { select: { id: true, invoiceNumber: true, status: true, currency: true, totalAmount: true } },
   asset: { select: { id: true, assetCode: true, name: true } },
   statement: { select: { id: true, status: true, periodStart: true, periodEnd: true } },
   inspectionDefect: { select: { id: true, title: true, status: true } },
@@ -3503,6 +3511,8 @@ function pmsDocumentResponse(document: PmsDocumentWithRelations) {
     securityDepositTransaction: document.securityDepositTransaction,
     ownerPayoutBatchId: document.ownerPayoutBatchId,
     ownerPayoutBatch: document.ownerPayoutBatch,
+    vendorInvoiceId: document.vendorInvoiceId,
+    vendorInvoice: document.vendorInvoice ? { ...document.vendorInvoice, totalAmount: document.vendorInvoice.totalAmount.toString() } : null,
     assetId: document.assetId,
     asset: document.asset,
     statementId: document.statementId,
@@ -9084,6 +9094,40 @@ function assertSensitiveDocumentAccess(access: PmsWorkspaceAccess, type: PmsDocu
   if (isSensitivePmsDocumentType(type)) assertCanViewPmsSensitiveData(access.member);
 }
 
+function assertVendorInvoiceDocumentScope(input: {
+  type: PmsDocumentType;
+  vendorInvoiceId?: string | null;
+  tenantId?: string | null;
+  leaseId?: string | null;
+  inspectionId?: string | null;
+  chargeId?: string | null;
+  securityDepositTransactionId?: string | null;
+  ownerPayoutBatchId?: string | null;
+  assetId?: string | null;
+  statementId?: string | null;
+  inspectionDefectId?: string | null;
+}) {
+  if (!input.vendorInvoiceId) return;
+
+  if (input.type !== PmsDocumentType.MAINTENANCE_INVOICE && input.type !== PmsDocumentType.OTHER) {
+    throw new AppError(400, "Vendor invoice documents must be an invoice or payment evidence.");
+  }
+
+  if (
+    input.tenantId
+    || input.leaseId
+    || input.inspectionId
+    || input.chargeId
+    || input.securityDepositTransactionId
+    || input.ownerPayoutBatchId
+    || input.assetId
+    || input.statementId
+    || input.inspectionDefectId
+  ) {
+    throw new AppError(400, "Vendor invoice documents cannot be linked to unrelated PMS records.");
+  }
+}
+
 pmsRouter.post(
   "/documents/upload",
   requireAuth(),
@@ -9103,7 +9147,7 @@ pmsRouter.post(
       }
       const data = pmsDocumentUploadMetadataSchema.parse(rawMetadata);
       const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
-      const financeEvidenceOnly = Boolean(data.statementId || data.ownerPayoutBatchId)
+      const financeEvidenceOnly = Boolean(data.statementId || data.ownerPayoutBatchId || data.vendorInvoiceId)
         && !data.tenantId
         && !data.leaseId
         && !data.workOrderId
@@ -9113,10 +9157,23 @@ pmsRouter.post(
         && !data.assetId
         && !data.inspectionDefectId;
       if (financeEvidenceOnly && canManagePmsAccounting(access.member)) {
-        // Accounting managers may attach evidence directly to governed statements and payout batches.
+        // Accounting managers may attach evidence directly to governed statements, payouts, and vendor invoices.
       } else if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) assertCanManagePmsMaintenanceDocuments(access.member);
       else assertCanManagePmsDocuments(access.member);
       assertSensitiveDocumentAccess(access, data.type);
+      assertVendorInvoiceDocumentScope({
+        type: data.type,
+        vendorInvoiceId: data.vendorInvoiceId,
+        tenantId: data.tenantId,
+        leaseId: data.leaseId,
+        inspectionId: data.inspectionId,
+        chargeId: data.chargeId,
+        securityDepositTransactionId: data.securityDepositTransactionId,
+        ownerPayoutBatchId: data.ownerPayoutBatchId,
+        assetId: data.assetId,
+        statementId: data.statementId,
+        inspectionDefectId: data.inspectionDefectId,
+      });
       assertMaintenanceDocumentScope({ role: access.member.role, type: data.type, workOrderId: data.workOrderId, inspectionId: data.inspectionId });
       assertCanAccessOptionalPmsPropertyScope(access, data.propertyId);
       await assertPmsDocumentLinksBelongToCompany({
@@ -9130,6 +9187,7 @@ pmsRouter.post(
         chargeId: data.chargeId,
         securityDepositTransactionId: data.securityDepositTransactionId,
         ownerPayoutBatchId: data.ownerPayoutBatchId,
+        vendorInvoiceId: data.vendorInvoiceId,
         assetId: data.assetId,
         statementId: data.statementId,
         inspectionDefectId: data.inspectionDefectId,
@@ -9150,6 +9208,7 @@ pmsRouter.post(
             chargeId: data.chargeId ?? null,
             securityDepositTransactionId: data.securityDepositTransactionId ?? null,
             ownerPayoutBatchId: data.ownerPayoutBatchId ?? null,
+            vendorInvoiceId: data.vendorInvoiceId ?? null,
             assetId: data.assetId ?? null,
             statementId: data.statementId ?? null,
             inspectionDefectId: data.inspectionDefectId ?? null,
@@ -9351,6 +9410,13 @@ pmsRouter.get("/documents", requireAuth(), async (req, res, next) => {
       leaseId: query.leaseId,
       workOrderId: query.workOrderId,
       inspectionId: query.inspectionId,
+      chargeId: query.chargeId,
+      securityDepositTransactionId: query.securityDepositTransactionId,
+      ownerPayoutBatchId: query.ownerPayoutBatchId,
+      vendorInvoiceId: query.vendorInvoiceId,
+      assetId: query.assetId,
+      statementId: query.statementId,
+      inspectionDefectId: query.inspectionDefectId,
     });
 
     const search = query.search?.trim();
@@ -9367,6 +9433,7 @@ pmsRouter.get("/documents", requireAuth(), async (req, res, next) => {
         ...(query.chargeId ? { chargeId: query.chargeId } : {}),
         ...(query.securityDepositTransactionId ? { securityDepositTransactionId: query.securityDepositTransactionId } : {}),
         ...(query.ownerPayoutBatchId ? { ownerPayoutBatchId: query.ownerPayoutBatchId } : {}),
+        ...(query.vendorInvoiceId ? { vendorInvoiceId: query.vendorInvoiceId } : {}),
         ...(query.assetId ? { assetId: query.assetId } : {}),
         ...(query.statementId ? { statementId: query.statementId } : {}),
         ...(query.inspectionDefectId ? { inspectionDefectId: query.inspectionDefectId } : {}),
@@ -9470,6 +9537,19 @@ pmsRouter.post("/documents", requireAuth(), async (req, res, next) => {
       assertCanManagePmsDocuments(access.member);
     }
     assertSensitiveDocumentAccess(access, data.type);
+    assertVendorInvoiceDocumentScope({
+      type: data.type,
+      vendorInvoiceId: data.vendorInvoiceId,
+      tenantId: data.tenantId,
+      leaseId: data.leaseId,
+      inspectionId: data.inspectionId,
+      chargeId: data.chargeId,
+      securityDepositTransactionId: data.securityDepositTransactionId,
+      ownerPayoutBatchId: data.ownerPayoutBatchId,
+      assetId: data.assetId,
+      statementId: data.statementId,
+      inspectionDefectId: data.inspectionDefectId,
+    });
     assertMaintenanceDocumentScope({ role: access.member.role, type: data.type, workOrderId: data.workOrderId, inspectionId: data.inspectionId });
     assertCanAccessOptionalPmsPropertyScope(access, data.propertyId);
     await assertPmsDocumentLinksBelongToCompany({
@@ -9483,6 +9563,7 @@ pmsRouter.post("/documents", requireAuth(), async (req, res, next) => {
       chargeId: data.chargeId,
       securityDepositTransactionId: data.securityDepositTransactionId,
       ownerPayoutBatchId: data.ownerPayoutBatchId,
+      vendorInvoiceId: data.vendorInvoiceId,
       assetId: data.assetId,
       statementId: data.statementId,
       inspectionDefectId: data.inspectionDefectId,
@@ -9508,6 +9589,7 @@ pmsRouter.post("/documents", requireAuth(), async (req, res, next) => {
         chargeId: data.chargeId ?? null,
         securityDepositTransactionId: data.securityDepositTransactionId ?? null,
         ownerPayoutBatchId: data.ownerPayoutBatchId ?? null,
+        vendorInvoiceId: data.vendorInvoiceId ?? null,
         assetId: data.assetId ?? null,
         statementId: data.statementId ?? null,
         inspectionDefectId: data.inspectionDefectId ?? null,
@@ -9600,6 +9682,19 @@ pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) 
     }
     assertSensitiveDocumentAccess(access, existing.type);
     assertSensitiveDocumentAccess(access, data.type ?? existing.type);
+    assertVendorInvoiceDocumentScope({
+      type: data.type ?? existing.type,
+      vendorInvoiceId: data.vendorInvoiceId ?? existing.vendorInvoiceId,
+      tenantId: data.tenantId ?? existing.tenantId,
+      leaseId: data.leaseId ?? existing.leaseId,
+      inspectionId: data.inspectionId ?? existing.inspectionId,
+      chargeId: data.chargeId ?? existing.chargeId,
+      securityDepositTransactionId: data.securityDepositTransactionId ?? existing.securityDepositTransactionId,
+      ownerPayoutBatchId: data.ownerPayoutBatchId ?? existing.ownerPayoutBatchId,
+      assetId: data.assetId ?? existing.assetId,
+      statementId: data.statementId ?? existing.statementId,
+      inspectionDefectId: data.inspectionDefectId ?? existing.inspectionDefectId,
+    });
     assertCanAccessOptionalPmsPropertyScope(access, existing.propertyId);
     if (data.propertyId !== undefined) {
       assertCanAccessOptionalPmsPropertyScope(access, data.propertyId);
@@ -9612,6 +9707,7 @@ pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) 
       chargeId: data.chargeId ?? existing.chargeId,
       securityDepositTransactionId: data.securityDepositTransactionId ?? existing.securityDepositTransactionId,
       ownerPayoutBatchId: data.ownerPayoutBatchId ?? existing.ownerPayoutBatchId,
+      vendorInvoiceId: data.vendorInvoiceId ?? existing.vendorInvoiceId,
       assetId: data.assetId ?? existing.assetId,
       statementId: data.statementId ?? existing.statementId,
       inspectionDefectId: data.inspectionDefectId ?? existing.inspectionDefectId,
@@ -9624,6 +9720,13 @@ pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) 
       leaseId: data.leaseId ?? existing.leaseId,
       workOrderId: data.workOrderId ?? existing.workOrderId,
       inspectionId: data.inspectionId ?? existing.inspectionId,
+      chargeId: data.chargeId ?? existing.chargeId,
+      securityDepositTransactionId: data.securityDepositTransactionId ?? existing.securityDepositTransactionId,
+      ownerPayoutBatchId: data.ownerPayoutBatchId ?? existing.ownerPayoutBatchId,
+      vendorInvoiceId: data.vendorInvoiceId ?? existing.vendorInvoiceId,
+      assetId: data.assetId ?? existing.assetId,
+      statementId: data.statementId ?? existing.statementId,
+      inspectionDefectId: data.inspectionDefectId ?? existing.inspectionDefectId,
     });
 
     const expiryDate = data.expiryDate === undefined ? existing.expiryDate : data.expiryDate ?? null;
@@ -9648,6 +9751,7 @@ pmsRouter.patch("/documents/:documentId", requireAuth(), async (req, res, next) 
         ...(data.chargeId !== undefined ? { chargeId: data.chargeId } : {}),
         ...(data.securityDepositTransactionId !== undefined ? { securityDepositTransactionId: data.securityDepositTransactionId } : {}),
         ...(data.ownerPayoutBatchId !== undefined ? { ownerPayoutBatchId: data.ownerPayoutBatchId } : {}),
+        ...(data.vendorInvoiceId !== undefined ? { vendorInvoiceId: data.vendorInvoiceId } : {}),
         ...(data.assetId !== undefined ? { assetId: data.assetId } : {}),
         ...(data.statementId !== undefined ? { statementId: data.statementId } : {}),
         ...(data.inspectionDefectId !== undefined ? { inspectionDefectId: data.inspectionDefectId } : {}),

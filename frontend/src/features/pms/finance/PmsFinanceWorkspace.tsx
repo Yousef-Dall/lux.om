@@ -460,6 +460,7 @@ export default function PmsFinanceWorkspace({ section }: { section: PmsFinanceSe
           <Link to={`/pms/finance/reconciliation?companyId=${encodeURIComponent(companyId)}`}>{copy.reconciliation}</Link>
           <Link to={`/pms/finance/statements?companyId=${encodeURIComponent(companyId)}`}>{copy.statements}</Link>
           <Link to={`/pms/finance/payouts?companyId=${encodeURIComponent(companyId)}`}>{copy.payouts}</Link>
+          <Link to={`/pms/finance/vendor-invoices?companyId=${encodeURIComponent(companyId)}`}>{copy.vendorInvoices}</Link>
           <Link to={`/pms/finance/records?companyId=${encodeURIComponent(companyId)}`}>{copy.records}</Link>
         </nav>
       </header>

@@ -101,6 +101,7 @@ function SettlementSectionNav({ companyId, section, language }: { companyId: str
       <Link to={`/pms/finance/reconciliation${suffix}`}>{copy.reconciliation}</Link>
       <Link aria-current={section === 'statements' ? 'page' : undefined} to={`/pms/finance/statements${suffix}`}>{copy.statements}</Link>
       <Link aria-current={section === 'payouts' ? 'page' : undefined} to={`/pms/finance/payouts${suffix}`}>{copy.payouts}</Link>
+      <Link to={`/pms/finance/vendor-invoices${suffix}`}>{copy.vendorInvoices}</Link>
       <Link to={`/pms/finance/records${suffix}`}>{copy.records}</Link>
     </nav>
   );

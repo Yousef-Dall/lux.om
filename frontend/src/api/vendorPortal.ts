@@ -14,6 +14,7 @@ export type VendorWorkOrder = {
   description?: string | null;
   priority: string;
   status: string;
+  approvedQuoteId?: string | null;
   scheduledFor?: string | null;
   targetDate?: string | null;
   property: { id: string; name: string; address?: string | null };
@@ -36,4 +37,37 @@ export async function uploadVendorFile(token: string, workOrderId: string, formD
 }
 export async function downloadVendorDocument(token: string, documentId: string, accessId?: string) {
   return apiClient.download(`/api/vendor/documents/${documentId}/download`, { token, params: { accessId } });
+}
+
+export type VendorInvoice = {
+  id: string;
+  invoiceNumber: string;
+  externalInvoiceNumber?: string | null;
+  status: string;
+  issueDate: string;
+  dueDate: string;
+  currency: string;
+  subtotalAmount: string;
+  taxAmount: string;
+  totalAmount: string;
+  approvedAmount?: string | null;
+  paidAmount: string;
+  submittedAt?: string | null;
+  approvedAt?: string | null;
+  processingAt?: string | null;
+  paidAt?: string | null;
+  failureReason?: string | null;
+  paymentReference?: string | null;
+  property: { id: string; name: string; address?: string | null };
+  workOrder: { id: string; title: string; status: string };
+  approvedQuote?: { id: string; amount: string; currency: string } | null;
+  documents: Array<{ id: string; title: string; type: string; originalFilename?: string | null; createdAt: string }>;
+};
+
+export async function listVendorInvoices(token: string, accessId?: string) {
+  return apiClient.get<{ invoices: VendorInvoice[] }>('/api/vendor/invoices', { token, params: { accessId } });
+}
+
+export async function submitVendorInvoice(token: string, workOrderId: string, formData: FormData) {
+  return apiClient.upload<{ invoice: VendorInvoice }>(`/api/vendor/work-orders/${workOrderId}/invoices`, formData, { token });
 }

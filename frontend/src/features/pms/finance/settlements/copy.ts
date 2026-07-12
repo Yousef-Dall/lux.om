@@ -1,6 +1,6 @@
 export const settlementCopy = {
   en: {
-    financeControl: 'PMS financial control', overview: 'Overview', charges: 'Charges', payments: 'Payments', deposits: 'Deposits', periods: 'Financial periods', reconciliation: 'Reconciliation', records: 'Records',
+    financeControl: 'PMS financial control', overview: 'Overview', charges: 'Charges', payments: 'Payments', deposits: 'Deposits', periods: 'Financial periods', reconciliation: 'Reconciliation', vendorInvoices: 'Vendor invoices', records: 'Records',
     statements: 'Owner statements', payouts: 'Owner payouts', statementDescription: 'Prepare, review, approve, publish, and revise immutable owner financial snapshots.', payoutDescription: 'Prepare owner payouts from published statements and record evidence-backed submission and results.',
     loading: 'Loading finance records…', error: 'The owner settlement workspace could not be loaded.', noRecords: 'No records match the current filters.', permission: 'Accounting management permission is required for workflow actions.',
     createStatement: 'Prepare owner statement', createPayout: 'Prepare payout batch', search: 'Search', all: 'All', actions: 'Actions', status: 'Status', currency: 'Currency', property: 'Property', owner: 'Owner', sort: 'Sort', apply: 'Apply filters', clear: 'Clear', previous: 'Previous', next: 'Next', pageOf: 'of',
@@ -13,7 +13,7 @@ export const settlementCopy = {
     prepared: 'Prepared', databaseTotal: 'Database total', visibleRows: 'Visible rows', totalPayout: 'Total payout', selected: 'selected', chooseOwner: 'Choose an owner', chooseProperty: 'Choose a property', chooseEvidence: 'Choose linked evidence', formError: 'Complete all required fields with valid values.', actionError: 'The workflow action could not be completed.', view: 'View details',
   },
   ar: {
-    financeControl: 'الرقابة المالية لنظام إدارة العقارات', overview: 'النظرة العامة', charges: 'المطالبات', payments: 'الدفعات', deposits: 'التأمينات', periods: 'الفترات المالية', reconciliation: 'المطابقة', records: 'السجلات',
+    financeControl: 'الرقابة المالية لنظام إدارة العقارات', overview: 'النظرة العامة', charges: 'المطالبات', payments: 'الدفعات', deposits: 'التأمينات', periods: 'الفترات المالية', reconciliation: 'المطابقة', vendorInvoices: 'فواتير الموردين', records: 'السجلات',
     statements: 'كشوف الملاك', payouts: 'دفعات الملاك', statementDescription: 'إعداد ومراجعة واعتماد ونشر وتصحيح لقطات مالية ثابتة للملاك.', payoutDescription: 'إعداد دفعات الملاك من الكشوف المنشورة وتسجيل الإرسال والنتيجة بأدلة موثقة.',
     loading: 'جارٍ تحميل السجلات المالية…', error: 'تعذر تحميل مساحة تسويات الملاك.', noRecords: 'لا توجد سجلات تطابق عوامل التصفية.', permission: 'تتطلب إجراءات سير العمل صلاحية إدارة المحاسبة.',
     createStatement: 'إعداد كشف مالك', createPayout: 'إعداد دفعة مالك', search: 'بحث', all: 'الكل', actions: 'الإجراءات', status: 'الحالة', currency: 'العملة', property: 'العقار', owner: 'المالك', sort: 'الترتيب', apply: 'تطبيق التصفية', clear: 'مسح', previous: 'السابق', next: 'التالي', pageOf: 'من',

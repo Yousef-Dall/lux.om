@@ -184,12 +184,22 @@ function requestHasBody(req: Request) {
   return Number(contentLength ?? 0) > 0 || Boolean(req.headers['transfer-encoding']);
 }
 
+function isVendorPortalUploadPath(pathname: string) {
+  return /^\/api\/vendor\/work-orders\/[^/]+\/(?:invoices|files)$/.test(pathname);
+}
+
 function isSupportedApiContentType(req: Request) {
+  const supportsMultipart =
+    req.path.startsWith('/api/uploads') ||
+    req.path.startsWith('/api/pms/documents') ||
+    req.path.startsWith('/api/tenant/documents') ||
+    isVendorPortalUploadPath(req.path);
+
   return Boolean(
     req.is('application/json') ||
       req.is('application/*+json') ||
       req.is('application/x-www-form-urlencoded') ||
-      ((req.path.startsWith('/api/uploads') || req.path.startsWith('/api/pms/documents') || req.path.startsWith('/api/tenant/documents')) && req.is('multipart/form-data'))
+      (supportsMultipart && req.is('multipart/form-data'))
   );
 }
 

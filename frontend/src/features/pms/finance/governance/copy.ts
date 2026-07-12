@@ -1,6 +1,6 @@
 export const governanceCopy = {
   en: {
-    close: 'Close dialog', financeControl: 'PMS financial control', overview: 'Overview', charges: 'Charges', payments: 'Payments', deposits: 'Deposits', periods: 'Financial periods', reconciliation: 'Reconciliation', statements: 'Owner statements', payouts: 'Owner payouts', records: 'Records',
+    close: 'Close dialog', financeControl: 'PMS financial control', overview: 'Overview', charges: 'Charges', payments: 'Payments', deposits: 'Deposits', periods: 'Financial periods', reconciliation: 'Reconciliation', statements: 'Owner statements', payouts: 'Owner payouts', vendorInvoices: 'Vendor invoices', records: 'Records',
     depositsTitle: 'Security-deposit liabilities', depositsDescription: 'Track held tenant funds separately from income, with approval and posting history for deductions, refunds, and conversions.',
     periodsTitle: 'Financial periods', periodsDescription: 'Open, review, close, and reopen currency-specific periods with visible exception checks and reasons.',
     reconciliationTitle: 'Payment reconciliation', reconciliationDescription: 'Import external transactions, resolve duplicates and exceptions, and match each confirmed payment only once.',
@@ -16,7 +16,7 @@ export const governanceCopy = {
     destructiveWarning: 'This action changes controlled financial history. Confirm the reason before continuing.', formError: 'Review the required fields.',
   },
   ar: {
-    close: 'إغلاق النافذة', financeControl: 'الرقابة المالية لنظام إدارة العقارات', overview: 'النظرة العامة', charges: 'المطالبات', payments: 'الدفعات', deposits: 'التأمينات', periods: 'الفترات المالية', reconciliation: 'المطابقة البنكية', statements: 'كشوف الملاك', payouts: 'دفعات الملاك', records: 'السجلات',
+    close: 'إغلاق النافذة', financeControl: 'الرقابة المالية لنظام إدارة العقارات', overview: 'النظرة العامة', charges: 'المطالبات', payments: 'الدفعات', deposits: 'التأمينات', periods: 'الفترات المالية', reconciliation: 'المطابقة البنكية', statements: 'كشوف الملاك', payouts: 'دفعات الملاك', vendorInvoices: 'فواتير الموردين', records: 'السجلات',
     depositsTitle: 'التزامات التأمينات', depositsDescription: 'تتبّع أموال المستأجرين المحتجزة بشكل منفصل عن الدخل مع سجل اعتماد وترحيل الخصومات والاستردادات والتحويلات.',
     periodsTitle: 'الفترات المالية', periodsDescription: 'افتح وراجع وأغلق وأعد فتح الفترات حسب العملة مع إظهار الاستثناءات والأسباب.',
     reconciliationTitle: 'مطابقة الدفعات', reconciliationDescription: 'أدخل المعاملات الخارجية وعالج التكرارات والاستثناءات واربط كل دفعة مؤكدة مرة واحدة فقط.',
