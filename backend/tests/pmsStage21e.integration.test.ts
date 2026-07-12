@@ -15,12 +15,15 @@ async function clearStage21eDatabase() {
 }
 
 async function createWorkspaceFixture() {
-  const [owner, agent, otherOwner] = await Promise.all([
+  const [owner, agent, checker, otherOwner] = await Promise.all([
     prisma.user.create({
       data: { name: 'Stage 21E Owner', email: 'stage21e-owner@lux.test', password: 'test-password', role: 'DEVELOPER', emailVerified: true },
     }),
     prisma.user.create({
       data: { name: 'Stage 21E Agent', email: 'stage21e-agent@lux.test', password: 'test-password', role: 'USER', emailVerified: true },
+    }),
+    prisma.user.create({
+      data: { name: 'Stage 21E Checker', email: 'stage21e-checker@lux.test', password: 'test-password', role: 'USER', emailVerified: true },
     }),
     prisma.user.create({
       data: { name: 'Stage 21E Other Owner', email: 'stage21e-other-owner@lux.test', password: 'test-password', role: 'DEVELOPER', emailVerified: true },
@@ -38,6 +41,7 @@ async function createWorkspaceFixture() {
   });
   const ownerMember = await prisma.pmsCompanyMember.create({ data: { companyId: company.id, userId: owner.id, role: 'PMS_OWNER' } });
   const agentMember = await prisma.pmsCompanyMember.create({ data: { companyId: company.id, userId: agent.id, role: 'PMS_AGENT' } });
+  await prisma.pmsCompanyMember.create({ data: { companyId: company.id, userId: checker.id, role: 'PMS_ACCOUNTANT' } });
   await prisma.pmsMemberPermission.create({ data: { companyId: company.id, memberId: agentMember.id, key: 'IMPORT_EXPORT' } });
   await prisma.pmsCompanyMember.create({ data: { companyId: otherCompany.id, userId: otherOwner.id, role: 'PMS_OWNER' } });
 
@@ -91,6 +95,7 @@ async function createWorkspaceFixture() {
   return {
     owner,
     agent,
+    checker,
     otherOwner,
     ownerMember,
     agentMember,
@@ -107,6 +112,7 @@ async function createWorkspaceFixture() {
     tenantA2,
     ownerToken: signToken(owner),
     agentToken: signToken(agent),
+    checkerToken: signToken(checker),
     otherOwnerToken: signToken(otherOwner),
   };
 }
@@ -249,6 +255,34 @@ describe('PMS Stage 21E production hardening', () => {
     const originalSnapshot = generated.body.statement.immutableSnapshot;
     const originalClosingBalance = generated.body.statement.closingBalance;
 
+    await prisma.pmsFinancialPeriod.create({
+      data: {
+        companyId: fixture.company.id,
+        propertyId: fixture.propertyA.id,
+        currency: 'OMR',
+        periodStart: new Date('2026-06-01T00:00:00.000Z'),
+        periodEnd: new Date('2026-06-30T23:59:59.999Z'),
+        status: 'CLOSED',
+        createdById: fixture.owner.id,
+        updatedById: fixture.owner.id,
+        closedAt: new Date('2026-07-01T06:00:00.000Z'),
+      },
+    });
+    const statementEvidence = Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF');
+    await request(app)
+      .post('/api/pms/documents/upload')
+      .set('Authorization', `Bearer ${fixture.ownerToken}`)
+      .field('metadata', JSON.stringify({
+        companyId: fixture.company.id,
+        propertyId: fixture.propertyA.id,
+        statementId,
+        type: 'OTHER',
+        title: 'Stage 21E owner statement evidence',
+        status: 'ACTIVE',
+      }))
+      .attach('file', statementEvidence, { filename: 'owner-statement-evidence.pdf', contentType: 'application/pdf' })
+      .expect(201);
+
     await request(app)
       .post(`/api/pms/accounting/owner-statements/${statementId}/transition`)
       .set('Authorization', `Bearer ${fixture.ownerToken}`)
@@ -256,7 +290,7 @@ describe('PMS Stage 21E production hardening', () => {
       .expect(200);
     await request(app)
       .post(`/api/pms/accounting/owner-statements/${statementId}/transition`)
-      .set('Authorization', `Bearer ${fixture.ownerToken}`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
       .send({ status: 'APPROVED' })
       .expect(200);
     await request(app)

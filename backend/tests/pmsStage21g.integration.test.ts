@@ -16,8 +16,9 @@ async function clearDatabase() {
 }
 
 async function createFixture() {
-  const [manager, scopedUser, ownerUser, vendorUser, outsider] = await Promise.all([
+  const [manager, checker, scopedUser, ownerUser, vendorUser, outsider] = await Promise.all([
     prisma.user.create({ data: { name: 'Stage 21G Manager', email: 'stage21g-manager@lux.test', password: 'test-password', role: 'DEVELOPER', emailVerified: true } }),
+    prisma.user.create({ data: { name: 'Stage 21G Checker', email: 'stage21g-checker@lux.test', password: 'test-password', role: 'USER', emailVerified: true } }),
     prisma.user.create({ data: { name: 'Stage 21G Scoped', email: 'stage21g-scoped@lux.test', password: 'test-password', role: 'USER', emailVerified: true } }),
     prisma.user.create({ data: { name: 'Stage 21G Owner', email: 'stage21g-owner@lux.test', password: 'test-password', role: 'USER', emailVerified: true } }),
     prisma.user.create({ data: { name: 'Stage 21G Vendor', email: 'stage21g-vendor@lux.test', password: 'test-password', role: 'USER', emailVerified: true } }),
@@ -29,6 +30,7 @@ async function createFixture() {
   ]);
   await prisma.pmsCompanyEntitlement.createMany({ data: [{ companyId: company.id, status: 'ACTIVE', enabledAt: new Date() }, { companyId: otherCompany.id, status: 'ACTIVE', enabledAt: new Date() }] });
   await prisma.pmsCompanyMember.create({ data: { companyId: company.id, userId: manager.id, role: 'PMS_OWNER' } });
+  await prisma.pmsCompanyMember.create({ data: { companyId: company.id, userId: checker.id, role: 'PMS_ACCOUNTANT' } });
   const scopedMember = await prisma.pmsCompanyMember.create({ data: { companyId: company.id, userId: scopedUser.id, role: 'PMS_MANAGER' } });
   await prisma.pmsCompanyMember.create({ data: { companyId: otherCompany.id, userId: outsider.id, role: 'PMS_OWNER' } });
 
@@ -55,9 +57,9 @@ async function createFixture() {
   await prisma.pmsVendorPortalAccess.create({ data: { companyId: company.id, vendorId: vendor.id, userId: vendorUser.id, createdById: manager.id } });
 
   return {
-    manager, scopedUser, ownerUser, vendorUser, outsider, company, otherCompany, propertyA, propertyB, otherProperty,
+    manager, checker, scopedUser, ownerUser, vendorUser, outsider, company, otherCompany, propertyA, propertyB, otherProperty,
     unitA, unitB, tenantA, tenantB, leaseA, leaseB, vendor,
-    managerToken: signToken(manager), scopedToken: signToken(scopedUser), ownerToken: signToken(ownerUser), vendorToken: signToken(vendorUser), outsiderToken: signToken(outsider),
+    managerToken: signToken(manager), checkerToken: signToken(checker), scopedToken: signToken(scopedUser), ownerToken: signToken(ownerUser), vendorToken: signToken(vendorUser), outsiderToken: signToken(outsider),
   };
 }
 
@@ -538,6 +540,223 @@ describe('PMS Stage 21G financial and portal operations', () => {
     const payoutPayload = { companyId: fixture.company.id, ownerUserId: fixture.ownerUser.id, currency: 'OMR', periodStart: '2026-06-01T00:00:00.000Z', periodEnd: '2026-06-30T00:00:00.000Z', lines: [{ propertyId: fixture.propertyA.id, statementId: statement.id, incomeAmount: 100, expenseAmount: 20, managementFeeAmount: 0, reservedAmount: 0 }] };
     await request(app).post('/api/pms/accounting/owner-payouts').set('Authorization', `Bearer ${fixture.managerToken}`).send(payoutPayload).expect(201);
     await request(app).post('/api/pms/accounting/owner-payouts').set('Authorization', `Bearer ${fixture.managerToken}`).send(payoutPayload).expect(409);
+  });
+
+
+  it('publishes immutable owner statements and records evidence-backed maker-checker payouts', async () => {
+    const fixture = await createFixture();
+    const periodStart = new Date('2026-06-01T00:00:00.000Z');
+    const periodEnd = new Date('2026-06-30T23:59:59.999Z');
+    await prisma.pmsFinancialPeriod.create({
+      data: {
+        companyId: fixture.company.id,
+        propertyId: fixture.propertyA.id,
+        currency: 'OMR',
+        periodStart,
+        periodEnd,
+        status: 'CLOSED',
+        closeReason: 'Closed test period for owner statement publication',
+        createdById: fixture.manager.id,
+        updatedById: fixture.manager.id,
+        closedAt: new Date('2026-07-01T06:00:00.000Z'),
+      },
+    });
+    await prisma.pmsAccountingLedgerEntry.createMany({
+      data: [
+        {
+          companyId: fixture.company.id,
+          propertyId: fixture.propertyA.id,
+          type: 'INCOME',
+          source: 'MANUAL',
+          category: 'June owner income',
+          amount: 100,
+          currency: 'OMR',
+          transactionDate: new Date('2026-06-15T00:00:00.000Z'),
+          createdById: fixture.manager.id,
+        },
+        {
+          companyId: fixture.company.id,
+          propertyId: fixture.propertyA.id,
+          type: 'EXPENSE',
+          source: 'MANUAL',
+          category: 'June owner expense',
+          amount: 20,
+          currency: 'OMR',
+          transactionDate: new Date('2026-06-20T00:00:00.000Z'),
+          createdById: fixture.manager.id,
+        },
+      ],
+    });
+
+    const created = await request(app)
+      .post('/api/pms/accounting/owner-statements')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, month: '2026-06', currency: 'OMR', ownerReference: 'OWNER-JUNE-2026' })
+      .expect(201);
+    const statementId = created.body.statement.id as string;
+    expect(created.body.statement).toMatchObject({ status: 'GENERATED', revision: 1, ownerReference: 'OWNER-JUNE-2026' });
+    expect(Number(created.body.statement.closingBalance)).toBe(80);
+
+    await request(app)
+      .post(`/api/pms/accounting/owner-statements/${statementId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ status: 'NEEDS_REVIEW' })
+      .expect(200);
+    await request(app)
+      .post(`/api/pms/accounting/owner-statements/${statementId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ status: 'APPROVED' })
+      .expect(409);
+    await request(app)
+      .post(`/api/pms/accounting/owner-statements/${statementId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ status: 'APPROVED' })
+      .expect(200);
+    await request(app)
+      .post(`/api/pms/accounting/owner-statements/${statementId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ status: 'PUBLISHED' })
+      .expect(409);
+
+    const pdf = Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF');
+    const statementEvidence = await request(app)
+      .post('/api/pms/documents/upload')
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .field('metadata', JSON.stringify({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, statementId, type: 'OTHER', title: 'Closed period statement evidence', status: 'ACTIVE' }))
+      .attach('file', pdf, { filename: 'owner-statement.pdf', contentType: 'application/pdf' })
+      .expect(201);
+    expect(statementEvidence.body.document.statementId).toBe(statementId);
+
+    await request(app)
+      .post(`/api/pms/accounting/owner-statements/${statementId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ status: 'PUBLISHED' })
+      .expect(409);
+    await expect(prisma.pmsOwnerStatement.update({
+      where: { id: statementId },
+      data: { status: 'PUBLISHED', publishedAt: new Date(), publishedById: fixture.manager.id, income: 999 },
+    })).rejects.toThrow(/publication|snapshot|immutable/i);
+    const published = await request(app)
+      .post(`/api/pms/accounting/owner-statements/${statementId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ status: 'PUBLISHED' })
+      .expect(200);
+    expect(published.body.statement).toMatchObject({ status: 'PUBLISHED', approvedBy: { id: fixture.checker.id }, publishedBy: { id: fixture.manager.id } });
+
+    await expect(prisma.pmsOwnerStatement.update({ where: { id: statementId }, data: { income: 999 } })).rejects.toThrow(/immutable/i);
+
+    const mismatchPayload = {
+      companyId: fixture.company.id,
+      ownerUserId: fixture.ownerUser.id,
+      currency: 'OMR',
+      periodStart: periodStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
+      lines: [{ statementId, incomeAmount: 999, expenseAmount: Number(published.body.statement.expenses), managementFeeAmount: 0, reservedAmount: 0 }],
+    };
+    await request(app)
+      .post('/api/pms/accounting/owner-payouts')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send(mismatchPayload)
+      .expect(400);
+
+    await request(app)
+      .post('/api/pms/accounting/owner-payouts')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({
+        companyId: fixture.company.id,
+        ownerUserId: fixture.ownerUser.id,
+        currency: 'OMR',
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        managementFeeAmount: 5,
+        lines: [{ statementId, managementFeeAmount: 0, reservedAmount: 0 }],
+      })
+      .expect(400);
+
+    const payoutCreated = await request(app)
+      .post('/api/pms/accounting/owner-payouts')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({
+        companyId: fixture.company.id,
+        ownerUserId: fixture.ownerUser.id,
+        currency: 'OMR',
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        notes: 'June owner payout',
+        lines: [{ statementId, managementFeeAmount: 5, reservedAmount: 2 }],
+      })
+      .expect(201);
+    const payoutId = payoutCreated.body.batch.id as string;
+    expect(payoutCreated.body.batch.lines[0]).toMatchObject({ statementId, managementFeeAmount: '5', reservedAmount: '2' });
+    expect(payoutCreated.body.batch.lines[0].incomeAmount).not.toBe('999');
+
+    await request(app)
+      .post(`/api/pms/accounting/owner-payouts/${payoutId}/transition`)
+      .set('Authorization', `Bearer ${fixture.outsiderToken}`)
+      .send({ companyId: fixture.otherCompany.id, action: 'APPROVE' })
+      .expect(404);
+    await expect(prisma.pmsOwnerPayoutBatch.update({
+      where: { id: payoutId },
+      data: { status: 'APPROVED', approvedAt: new Date(), approvedById: fixture.checker.id, payoutAmount: 1 },
+    })).rejects.toThrow(/immutable/i);
+
+    const approvalEvidence = await request(app)
+      .post('/api/pms/documents/upload')
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .field('metadata', JSON.stringify({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, ownerPayoutBatchId: payoutId, type: 'OTHER', title: 'Payout approval evidence', status: 'ACTIVE' }))
+      .attach('file', pdf, { filename: 'payout-approval.pdf', contentType: 'application/pdf' })
+      .expect(201);
+
+    await request(app)
+      .post(`/api/pms/accounting/owner-payouts/${payoutId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'APPROVE', evidenceDocumentId: approvalEvidence.body.document.id })
+      .expect(409);
+    await request(app)
+      .post(`/api/pms/accounting/owner-payouts/${payoutId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ companyId: fixture.company.id, action: 'APPROVE', evidenceDocumentId: approvalEvidence.body.document.id })
+      .expect(200);
+    await request(app)
+      .post(`/api/pms/accounting/owner-payouts/${payoutId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ companyId: fixture.company.id, action: 'SUBMIT', evidenceDocumentId: approvalEvidence.body.document.id, payoutReference: 'BANK-SUBMISSION-21G', paymentMethodNote: 'Confirmed by bank adapter', adapter: 'MANUAL_BANK_EVIDENCE', providerConfirmed: true })
+      .expect(409);
+    const processing = await request(app)
+      .post(`/api/pms/accounting/owner-payouts/${payoutId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'SUBMIT', evidenceDocumentId: approvalEvidence.body.document.id, payoutReference: 'BANK-SUBMISSION-21G', paymentMethodNote: 'Confirmed by bank adapter', adapter: 'MANUAL_BANK_EVIDENCE', providerConfirmed: true })
+      .expect(200);
+    expect(processing.body.batch.status).toBe('PROCESSING');
+
+    await request(app)
+      .post(`/api/pms/accounting/owner-payouts/${payoutId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ companyId: fixture.company.id, action: 'RECORD_PAID', evidenceDocumentId: approvalEvidence.body.document.id, payoutReference: 'BANK-SETTLED-21G', paymentMethodNote: 'Settlement result received' })
+      .expect(409);
+    const paidEvidence = await request(app)
+      .post('/api/pms/documents/upload')
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .field('metadata', JSON.stringify({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, ownerPayoutBatchId: payoutId, type: 'OTHER', title: 'Final bank settlement evidence', status: 'ACTIVE' }))
+      .attach('file', pdf, { filename: 'payout-paid.pdf', contentType: 'application/pdf' })
+      .expect(201);
+    await request(app)
+      .post(`/api/pms/accounting/owner-payouts/${payoutId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'RECORD_PAID', evidenceDocumentId: paidEvidence.body.document.id, payoutReference: 'BANK-SETTLED-21G', paymentMethodNote: 'Settlement result received' })
+      .expect(409);
+    const paid = await request(app)
+      .post(`/api/pms/accounting/owner-payouts/${payoutId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ companyId: fixture.company.id, action: 'RECORD_PAID', evidenceDocumentId: paidEvidence.body.document.id, payoutReference: 'BANK-SETTLED-21G', paymentMethodNote: 'Settlement result received' })
+      .expect(200);
+    expect(paid.body.batch).toMatchObject({ status: 'PAID_MANUAL', payoutReference: 'BANK-SETTLED-21G', paidBy: { id: fixture.checker.id } });
+
+    await expect(prisma.pmsOwnerPayoutLine.update({ where: { id: paid.body.batch.lines[0].id }, data: { netAmount: 1 } })).rejects.toThrow(/immutable/i);
+
+    const ownerOverview = await request(app).get('/api/owner/overview').set('Authorization', `Bearer ${fixture.ownerToken}`).expect(200);
+    expect(ownerOverview.body.statements.map((statement: { id: string }) => statement.id)).toContain(statementId);
+    expect(ownerOverview.body.payouts).toEqual([expect.objectContaining({ id: payoutId, status: 'PAID_MANUAL', payoutReference: 'BANK-SETTLED-21G' })]);
   });
 
   it('scopes assets, generates preventive work orders idempotently, and converts inspection defects once', async () => {

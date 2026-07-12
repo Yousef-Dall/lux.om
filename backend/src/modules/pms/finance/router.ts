@@ -1,4 +1,5 @@
 import { DomainAuditDomain, Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -203,6 +204,16 @@ const reconciliationTransitionSchema = z.object({
   action: z.enum(['IGNORE', 'RESTORE_UNMATCHED']),
   reason: z.string().trim().min(3).max(1000),
 });
+const payoutListQuery = companyQuery.extend({
+  ...financeListPagination,
+  search: z.string().trim().max(200).optional(),
+  status: z.enum(['DRAFT', 'APPROVED', 'PROCESSING', 'PAID_MANUAL', 'FAILED', 'CANCELLED']).optional(),
+  currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+  ownerUserId: z.string().trim().min(1).optional(),
+  sortBy: z.enum(['createdAt', 'periodEnd', 'payoutAmount', 'status', 'payoutNumber']).default('createdAt'),
+  direction: z.enum(['asc', 'desc']).default('desc'),
+});
 const payoutSchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   ownerUserId: z.string().trim().min(1),
@@ -213,20 +224,23 @@ const payoutSchema = z.object({
   reservedAmount: z.coerce.number().nonnegative().default(0),
   notes: z.string().trim().max(2000).nullable().optional(),
   lines: z.array(z.object({
-    propertyId: z.string().trim().min(1),
-    statementId: z.string().trim().min(1).nullable().optional(),
-    incomeAmount: z.coerce.number().nonnegative(),
-    expenseAmount: z.coerce.number().nonnegative(),
+    statementId: z.string().trim().min(1),
+    propertyId: z.string().trim().min(1).optional(),
+    incomeAmount: z.coerce.number().nonnegative().optional(),
+    expenseAmount: z.coerce.number().nonnegative().optional(),
     managementFeeAmount: z.coerce.number().nonnegative().default(0),
     reservedAmount: z.coerce.number().nonnegative().default(0),
   })).min(1).max(500),
 });
 const payoutTransitionSchema = z.object({
   companyId: z.string().trim().min(1).optional(),
-  action: z.enum(['APPROVE', 'START_PROCESSING', 'MARK_PAID_MANUAL', 'FAIL', 'CANCEL']),
+  action: z.enum(['APPROVE', 'SUBMIT', 'RECORD_PAID', 'RECORD_FAILED', 'RETRY', 'CANCEL', 'START_PROCESSING', 'MARK_PAID_MANUAL', 'FAIL']),
   reason: z.string().trim().min(3).max(1000).optional(),
   payoutReference: z.string().trim().max(300).optional(),
   paymentMethodNote: z.string().trim().max(500).optional(),
+  evidenceDocumentId: z.string().trim().min(1).optional(),
+  adapter: z.enum(['MANUAL_BANK_EVIDENCE']).default('MANUAL_BANK_EVIDENCE'),
+  providerConfirmed: z.boolean().optional(),
 });
 
 function audit(req: Parameters<typeof requestAuditContext>[0], input: Parameters<typeof recordDomainAuditEvent>[1]) {
@@ -1478,13 +1492,221 @@ pmsFinanceRouter.post('/reconciliation/:id/transition', requireAuth(), async (re
   }
 });
 
+const ownerPayoutInclude = {
+  ownerUser: { select: { id: true, name: true, email: true } },
+  createdBy: { select: { id: true, name: true, email: true } },
+  approvedBy: { select: { id: true, name: true, email: true } },
+  paidBy: { select: { id: true, name: true, email: true } },
+  cancelledBy: { select: { id: true, name: true, email: true } },
+  lines: {
+    include: {
+      property: { select: { id: true, name: true, code: true } },
+      statement: {
+        select: {
+          id: true,
+          revision: true,
+          status: true,
+          periodStart: true,
+          periodEnd: true,
+          currency: true,
+          openingBalance: true,
+          income: true,
+          expenses: true,
+          adjustments: true,
+          closingBalance: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'asc' as const },
+  },
+  documents: {
+    where: { status: { not: 'ARCHIVED' as const } },
+    select: {
+      id: true,
+      title: true,
+      type: true,
+      status: true,
+      originalFilename: true,
+      mimeType: true,
+      sizeBytes: true,
+      createdAt: true,
+      uploadedBy: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: { createdAt: 'desc' as const },
+  },
+} satisfies Prisma.PmsOwnerPayoutBatchInclude;
+
+type OwnerPayoutWithRelations = Prisma.PmsOwnerPayoutBatchGetPayload<{ include: typeof ownerPayoutInclude }>;
+
+function ownerPayoutResponse(batch: OwnerPayoutWithRelations) {
+  return {
+    ...batch,
+    grossAmount: batch.grossAmount.toString(),
+    managementFeeAmount: batch.managementFeeAmount.toString(),
+    reservedAmount: batch.reservedAmount.toString(),
+    payoutAmount: batch.payoutAmount.toString(),
+    lines: batch.lines.map((line) => ({
+      ...line,
+      incomeAmount: line.incomeAmount.toString(),
+      expenseAmount: line.expenseAmount.toString(),
+      managementFeeAmount: line.managementFeeAmount.toString(),
+      reservedAmount: line.reservedAmount.toString(),
+      netAmount: line.netAmount.toString(),
+      statement: line.statement
+        ? {
+            ...line.statement,
+            openingBalance: line.statement.openingBalance.toString(),
+            income: line.statement.income.toString(),
+            expenses: line.statement.expenses.toString(),
+            adjustments: line.statement.adjustments.toString(),
+            closingBalance: line.statement.closingBalance.toString(),
+          }
+        : null,
+    })),
+  };
+}
+
+function ownerPayoutOrderBy(
+  sortBy: z.infer<typeof payoutListQuery>['sortBy'],
+  direction: z.infer<typeof payoutListQuery>['direction'],
+): Prisma.PmsOwnerPayoutBatchOrderByWithRelationInput[] {
+  if (sortBy === 'createdAt') return [{ createdAt: direction }];
+  if (sortBy === 'periodEnd') return [{ periodEnd: direction }, { createdAt: 'desc' }];
+  if (sortBy === 'payoutAmount') return [{ payoutAmount: direction }];
+  if (sortBy === 'status') return [{ status: direction }, { createdAt: 'desc' }];
+  return [{ payoutNumber: direction }];
+}
+
+async function lockOwnerPayout(tx: Prisma.TransactionClient, id: string, companyId: string) {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(
+    Prisma.sql`SELECT "id" FROM "PmsOwnerPayoutBatch" WHERE "id" = ${id} AND "companyId" = ${companyId} FOR UPDATE`,
+  );
+  if (rows.length === 0) throw new AppError(404, 'Owner payout batch not found.');
+  return tx.pmsOwnerPayoutBatch.findFirstOrThrow({ where: { id, companyId }, include: ownerPayoutInclude });
+}
+
+async function requireOwnerPayoutEvidence(input: {
+  tx: Prisma.TransactionClient;
+  batchId: string;
+  evidenceDocumentId?: string;
+  minimumCreatedAt?: Date | null;
+  purpose: string;
+}) {
+  if (!input.evidenceDocumentId) {
+    throw new AppError(400, `${input.purpose} requires a linked evidence document.`);
+  }
+  const document = await input.tx.pmsDocument.findFirst({
+    where: {
+      id: input.evidenceDocumentId,
+      ownerPayoutBatchId: input.batchId,
+      status: { not: 'ARCHIVED' },
+      ...(input.minimumCreatedAt ? { createdAt: { gte: input.minimumCreatedAt } } : {}),
+    },
+    select: { id: true, title: true, createdAt: true },
+  });
+  if (!document) {
+    throw new AppError(409, `${input.purpose} evidence must be active, linked to this payout, and recorded at the correct workflow stage.`);
+  }
+  return document;
+}
+
+function normalizedPayoutAction(action: z.infer<typeof payoutTransitionSchema>['action']) {
+  if (action === 'START_PROCESSING') return 'SUBMIT' as const;
+  if (action === 'MARK_PAID_MANUAL') return 'RECORD_PAID' as const;
+  if (action === 'FAIL') return 'RECORD_FAILED' as const;
+  return action;
+}
+
 pmsFinanceRouter.get('/owner-payouts', requireAuth(), async (req, res, next) => {
   try {
+    const query = payoutListQuery.parse(req.query);
+    const access = await requirePmsRouteAccess(req, query.companyId);
+    assertCanViewPmsAccounting(access.member);
+    if (query.propertyId) assertPmsPropertyScope(access, query.propertyId);
+    const scopeFilters: Prisma.PmsOwnerPayoutBatchWhereInput[] = [];
+    if (!access.member.propertyScope.allProperties) {
+      scopeFilters.push({
+        lines: {
+          some: {},
+          every: { propertyId: { in: access.member.propertyScope.propertyIds } },
+        },
+      });
+    }
+    if (query.propertyId) scopeFilters.push({ lines: { some: { propertyId: query.propertyId } } });
+    const where: Prisma.PmsOwnerPayoutBatchWhereInput = {
+      companyId: access.company.id,
+      ...(scopeFilters.length > 0 ? { AND: scopeFilters } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.currency ? { currency: query.currency } : {}),
+      ...(query.ownerUserId ? { ownerUserId: query.ownerUserId } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { payoutNumber: { contains: query.search, mode: 'insensitive' } },
+              { payoutReference: { contains: query.search, mode: 'insensitive' } },
+              { ownerUser: { name: { contains: query.search, mode: 'insensitive' } } },
+              { ownerUser: { email: { contains: query.search, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    };
+    const [batches, total, totalsByStatus, totalsByCurrency, ownerAccesses] = await prisma.$transaction([
+      prisma.pmsOwnerPayoutBatch.findMany({
+        where,
+        include: ownerPayoutInclude,
+        orderBy: ownerPayoutOrderBy(query.sortBy, query.direction),
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsOwnerPayoutBatch.count({ where }),
+      prisma.pmsOwnerPayoutBatch.groupBy({ by: ['status'], where, _count: { _all: true } }),
+      prisma.pmsOwnerPayoutBatch.groupBy({ by: ['currency'], where, _count: { _all: true }, _sum: { payoutAmount: true } }),
+      prisma.pmsOwnerPortalAccess.findMany({
+        where: {
+          companyId: access.company.id,
+          active: true,
+          ...(query.propertyId
+            ? { propertyId: query.propertyId }
+            : access.member.propertyScope.allProperties
+              ? {}
+              : { propertyId: { in: access.member.propertyScope.propertyIds } }),
+        },
+        select: {
+          id: true,
+          propertyId: true,
+          property: { select: { id: true, name: true, code: true } },
+          userId: true,
+          user: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: [{ user: { name: 'asc' } }, { property: { name: 'asc' } }],
+      }),
+    ]);
+    res.json({
+      batches: batches.map(ownerPayoutResponse),
+      pagination: { take: query.take, skip: query.skip, count: batches.length, total },
+      totalsByStatus: totalsByStatus.map((row) => ({ status: row.status, count: row._count._all })),
+      totalsByCurrency: totalsByCurrency.map((row) => ({ currency: row.currency, count: row._count._all, payoutAmount: row._sum.payoutAmount?.toString() ?? '0' })),
+      ownerAccesses,
+    });
+  } catch (error) { next(error); }
+});
+
+pmsFinanceRouter.get('/owner-payouts/:id', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParams.parse(req.params);
     const query = companyQuery.parse(req.query);
     const access = await requirePmsRouteAccess(req, query.companyId);
     assertCanViewPmsAccounting(access.member);
-    const batches = await prisma.pmsOwnerPayoutBatch.findMany({ where: { companyId: access.company.id, ...(access.member.propertyScope.allProperties ? {} : { lines: { some: { propertyId: { in: access.member.propertyScope.propertyIds } } } }) }, include: { ownerUser: { select: { id: true, name: true, email: true } }, lines: { include: { property: { select: { id: true, name: true } }, statement: { select: { id: true, revision: true, status: true } } } } }, orderBy: { createdAt: 'desc' } });
-    res.json({ batches });
+    const batch = await prisma.pmsOwnerPayoutBatch.findFirst({ where: { id, companyId: access.company.id }, include: ownerPayoutInclude });
+    if (!batch) throw new AppError(404, 'Owner payout batch not found.');
+    batch.lines.forEach((line) => assertPmsPropertyScope(access, line.propertyId));
+    const events = await prisma.domainAuditEvent.findMany({
+      where: { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsOwnerPayoutBatch', entityId: batch.id },
+      select: { id: true, action: true, actorId: true, metadata: true, beforeMetadata: true, afterMetadata: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    res.json({ batch: ownerPayoutResponse(batch), events });
   } catch (error) { next(error); }
 });
 
@@ -1493,75 +1715,253 @@ pmsFinanceRouter.post('/owner-payouts', requireAuth(), async (req, res, next) =>
     const data = payoutSchema.parse(req.body);
     const access = await requirePmsRouteAccess(req, data.companyId);
     assertCanManagePmsAccounting(access.member);
-    for (const line of data.lines) assertPmsPropertyScope(access, line.propertyId);
-    const propertyIds = [...new Set(data.lines.map((line) => line.propertyId))];
-    const ownerAccessCount = await prisma.pmsOwnerPortalAccess.count({ where: { companyId: access.company.id, userId: data.ownerUserId, active: true, propertyId: { in: propertyIds } } });
-    if (ownerAccessCount !== propertyIds.length) throw new AppError(400, 'Payout owner must have active portal access to every payout property.');
+    if (money(data.managementFeeAmount).greaterThan(0) || money(data.reservedAmount).greaterThan(0)) {
+      throw new AppError(400, 'Payout fees and reserves must be recorded against individual statement lines.');
+    }
     if (data.periodEnd < data.periodStart) throw new AppError(400, 'Payout period end must not be before its start.');
-    const statementIds = [...new Set(data.lines.flatMap((line) => line.statementId ? [line.statementId] : []))];
-    if (statementIds.length > 0) {
-      const statements = await prisma.pmsOwnerStatement.findMany({
+    const statementIds = data.lines.map((line) => line.statementId);
+    if (new Set(statementIds).size !== statementIds.length) throw new AppError(400, 'Each published statement can appear only once in a payout batch.');
+
+    const batch = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "PmsOwnerStatement" WHERE "id" IN (${Prisma.join(statementIds)}) FOR UPDATE`,
+      );
+      const statements = await tx.pmsOwnerStatement.findMany({
         where: { id: { in: statementIds }, companyId: access.company.id, status: 'PUBLISHED' },
-        select: { id: true, propertyId: true, currency: true, periodStart: true, periodEnd: true },
+        select: {
+          id: true,
+          propertyId: true,
+          currency: true,
+          periodStart: true,
+          periodEnd: true,
+          openingBalance: true,
+          income: true,
+          expenses: true,
+          adjustments: true,
+          closingBalance: true,
+        },
       });
-      const statementsById = new Map(statements.map((statement) => [statement.id, statement]));
-      for (const line of data.lines) {
-        if (!line.statementId) continue;
-        const statement = statementsById.get(line.statementId);
-        if (!statement) throw new AppError(400, 'Every linked payout statement must be published and belong to this company.');
-        if (statement.propertyId !== line.propertyId || statement.currency !== data.currency) {
-          throw new AppError(400, 'Payout statement property or currency does not match its payout line.');
-        }
-        if (statement.periodStart.getTime() !== data.periodStart.getTime() || statement.periodEnd.getTime() !== data.periodEnd.getTime()) {
-          throw new AppError(400, 'Payout statement period must match the payout batch period.');
-        }
+      if (statements.length !== statementIds.length) {
+        throw new AppError(400, 'Every payout line must reference a published owner statement in this company.');
       }
-      const existingPayout = await prisma.pmsOwnerPayoutLine.findFirst({
-        where: { statementId: { in: statementIds }, payoutBatch: { status: { notIn: ['FAILED', 'CANCELLED'] } } },
+      const statementsById = new Map(statements.map((statement) => [statement.id, statement]));
+      const propertyIds = [...new Set(statements.map((statement) => statement.propertyId))];
+      propertyIds.forEach((propertyId) => assertPmsPropertyScope(access, propertyId));
+      const ownerAccessCount = await tx.pmsOwnerPortalAccess.count({
+        where: { companyId: access.company.id, userId: data.ownerUserId, active: true, propertyId: { in: propertyIds } },
+      });
+      if (ownerAccessCount !== propertyIds.length) {
+        throw new AppError(400, 'Payout owner must have active portal access to every payout property.');
+      }
+      const existingPayout = await tx.pmsOwnerPayoutLine.findFirst({
+        where: { statementId: { in: statementIds }, payoutBatch: { status: { not: 'CANCELLED' } } },
         select: { statementId: true, payoutBatch: { select: { payoutNumber: true } } },
       });
-      if (existingPayout) throw new AppError(409, `Published statement is already linked to payout ${existingPayout.payoutBatch.payoutNumber}.`);
+      if (existingPayout) {
+        throw new AppError(409, `Published statement is already linked to payout ${existingPayout.payoutBatch.payoutNumber}.`);
+      }
+
+      const lineAmounts = data.lines.map((line) => {
+        const statement = statementsById.get(line.statementId)!;
+        if (statement.currency !== data.currency) throw new AppError(400, 'Every payout statement must use the payout currency.');
+        if (statement.periodStart.getTime() !== data.periodStart.getTime() || statement.periodEnd.getTime() !== data.periodEnd.getTime()) {
+          throw new AppError(400, 'Every payout statement must match the payout batch period.');
+        }
+        if (line.propertyId && line.propertyId !== statement.propertyId) {
+          throw new AppError(400, 'Payout line property does not match its published statement.');
+        }
+        const carryAndAdjustments = statement.openingBalance.plus(statement.adjustments);
+        const incomeAmount = statement.income.plus(carryAndAdjustments.isPositive() ? carryAndAdjustments : 0);
+        const expenseAmount = statement.expenses.plus(carryAndAdjustments.isNegative() ? carryAndAdjustments.abs() : 0);
+        if (line.incomeAmount !== undefined && !money(line.incomeAmount).equals(incomeAmount)) {
+          throw new AppError(400, 'Payout income must be derived from the immutable published statement.');
+        }
+        if (line.expenseAmount !== undefined && !money(line.expenseAmount).equals(expenseAmount)) {
+          throw new AppError(400, 'Payout expenses must be derived from the immutable published statement.');
+        }
+        const managementFeeAmount = money(line.managementFeeAmount);
+        const reservedAmount = money(line.reservedAmount);
+        const net = statement.closingBalance.minus(managementFeeAmount).minus(reservedAmount);
+        if (net.isNegative()) throw new AppError(400, 'A payout line cannot exceed the published statement closing balance.');
+        return { statement, incomeAmount, expenseAmount, managementFeeAmount, reservedAmount, net };
+      });
+      const gross = lineAmounts.reduce((sum, line) => sum.plus(line.incomeAmount), new Prisma.Decimal(0));
+      const fees = lineAmounts.reduce((sum, line) => sum.plus(line.managementFeeAmount), new Prisma.Decimal(0));
+      const reserves = lineAmounts.reduce((sum, line) => sum.plus(line.reservedAmount), new Prisma.Decimal(0));
+      const payout = lineAmounts.reduce((sum, line) => sum.plus(line.statement.closingBalance), new Prisma.Decimal(0)).minus(fees).minus(reserves);
+      if (payout.isNegative()) throw new AppError(400, 'Payout amount cannot be negative.');
+      const payoutNumber = `PAY-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${randomUUID().slice(0, 8).toUpperCase()}`;
+      return tx.pmsOwnerPayoutBatch.create({
+        data: {
+          companyId: access.company.id,
+          ownerUserId: data.ownerUserId,
+          payoutNumber,
+          currency: data.currency,
+          periodStart: data.periodStart,
+          periodEnd: data.periodEnd,
+          grossAmount: gross,
+          managementFeeAmount: fees,
+          reservedAmount: reserves,
+          payoutAmount: payout,
+          notes: data.notes ?? null,
+          createdById: req.user!.id,
+          lines: {
+            create: lineAmounts.map((line) => ({
+              companyId: access.company.id,
+              propertyId: line.statement.propertyId,
+              statementId: line.statement.id,
+              incomeAmount: line.incomeAmount,
+              expenseAmount: line.expenseAmount,
+              managementFeeAmount: line.managementFeeAmount,
+              reservedAmount: line.reservedAmount,
+              netAmount: line.net,
+              currency: data.currency,
+            })),
+          },
+        },
+        include: ownerPayoutInclude,
+      });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    await audit(req, {
+      companyId: access.company.id,
+      domain: DomainAuditDomain.PMS,
+      entityType: 'PmsOwnerPayoutBatch',
+      entityId: batch.id,
+      action: 'PMS_OWNER_PAYOUT_DRAFT_CREATED',
+      actorId: req.user!.id,
+      afterMetadata: {
+        payoutNumber: batch.payoutNumber,
+        payoutAmount: batch.payoutAmount.toString(),
+        currency: batch.currency,
+        ownerUserId: batch.ownerUserId,
+        statementIds,
+      },
+    });
+    res.status(201).json({ batch: ownerPayoutResponse(batch) });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+      return next(new AppError(409, 'The payout inputs changed concurrently. Reload and retry.'));
     }
-    if (statementIds.length !== data.lines.length && !data.notes) {
-      throw new AppError(400, 'Manual payout lines without a published statement require an explanatory note.');
-    }
-    const lineAmounts = data.lines.map((line) => ({ ...line, net: money(line.incomeAmount).minus(line.expenseAmount).minus(line.managementFeeAmount).minus(line.reservedAmount) }));
-    if (lineAmounts.some((line) => line.net.isNegative())) throw new AppError(400, 'A payout line cannot have a negative net amount.');
-    const gross = lineAmounts.reduce((sum, line) => sum.plus(line.incomeAmount), new Prisma.Decimal(0));
-    const fees = lineAmounts.reduce((sum, line) => sum.plus(line.managementFeeAmount), money(data.managementFeeAmount));
-    const reserves = lineAmounts.reduce((sum, line) => sum.plus(line.reservedAmount), money(data.reservedAmount));
-    const expenses = lineAmounts.reduce((sum, line) => sum.plus(line.expenseAmount), new Prisma.Decimal(0));
-    const payout = gross.minus(expenses).minus(fees).minus(reserves);
-    if (payout.isNegative()) throw new AppError(400, 'Payout amount cannot be negative.');
-    const sequence = await prisma.pmsOwnerPayoutBatch.count({ where: { companyId: access.company.id } });
-    const batch = await prisma.pmsOwnerPayoutBatch.create({ data: { companyId: access.company.id, ownerUserId: data.ownerUserId, payoutNumber: `PAY-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${String(sequence + 1).padStart(6, '0')}`, currency: data.currency, periodStart: data.periodStart, periodEnd: data.periodEnd, grossAmount: gross, managementFeeAmount: fees, reservedAmount: reserves, payoutAmount: payout, notes: data.notes ?? null, createdById: req.user!.id, lines: { create: lineAmounts.map((line) => ({ companyId: access.company.id, propertyId: line.propertyId, statementId: line.statementId ?? null, incomeAmount: money(line.incomeAmount), expenseAmount: money(line.expenseAmount), managementFeeAmount: money(line.managementFeeAmount), reservedAmount: money(line.reservedAmount), netAmount: line.net, currency: data.currency })) } }, include: { lines: true } });
-    await audit(req, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsOwnerPayoutBatch', entityId: batch.id, action: 'PMS_OWNER_PAYOUT_DRAFT_CREATED', actorId: req.user!.id, afterMetadata: { payoutNumber: batch.payoutNumber, payoutAmount: batch.payoutAmount.toString(), currency: batch.currency, ownerUserId: batch.ownerUserId } });
-    res.status(201).json({ batch });
-  } catch (error) { next(error); }
+    next(error);
+  }
 });
 
 pmsFinanceRouter.post('/owner-payouts/:id/transition', requireAuth(), async (req, res, next) => {
   try {
     const { id } = idParams.parse(req.params);
     const data = payoutTransitionSchema.parse(req.body);
+    const action = normalizedPayoutAction(data.action);
     const access = await requirePmsRouteAccess(req, data.companyId);
     assertCanManagePmsAccounting(access.member);
-    const current = await prisma.pmsOwnerPayoutBatch.findFirst({ where: { id, companyId: access.company.id }, include: { lines: true } });
-    if (!current) throw new AppError(404, 'Owner payout batch not found.');
-    current.lines.forEach((line) => assertPmsPropertyScope(access, line.propertyId));
-    const transitions: Record<typeof data.action, { from: string[]; to: 'APPROVED' | 'PROCESSING' | 'PAID_MANUAL' | 'FAILED' | 'CANCELLED' }> = {
+    const transitions: Record<ReturnType<typeof normalizedPayoutAction>, { from: string[]; to: 'DRAFT' | 'APPROVED' | 'PROCESSING' | 'PAID_MANUAL' | 'FAILED' | 'CANCELLED' }> = {
       APPROVE: { from: ['DRAFT'], to: 'APPROVED' },
-      START_PROCESSING: { from: ['APPROVED'], to: 'PROCESSING' },
-      MARK_PAID_MANUAL: { from: ['APPROVED', 'PROCESSING'], to: 'PAID_MANUAL' },
-      FAIL: { from: ['APPROVED', 'PROCESSING'], to: 'FAILED' },
-      CANCEL: { from: ['DRAFT', 'APPROVED'], to: 'CANCELLED' },
+      SUBMIT: { from: ['APPROVED'], to: 'PROCESSING' },
+      RECORD_PAID: { from: ['PROCESSING'], to: 'PAID_MANUAL' },
+      RECORD_FAILED: { from: ['PROCESSING'], to: 'FAILED' },
+      RETRY: { from: ['FAILED'], to: 'DRAFT' },
+      CANCEL: { from: ['DRAFT', 'APPROVED', 'FAILED'], to: 'CANCELLED' },
     };
-    const transition = transitions[data.action];
-    if (!transition.from.includes(current.status)) throw new AppError(409, `Cannot ${data.action.toLowerCase()} payout from ${current.status}.`);
-    if (data.action === 'MARK_PAID_MANUAL' && (!data.payoutReference || !data.paymentMethodNote)) throw new AppError(400, 'Manual payout completion requires a payout reference and payment-method evidence note.');
-    const now = new Date();
-    const batch = await prisma.pmsOwnerPayoutBatch.update({ where: { id }, data: { status: transition.to, ...(data.action === 'APPROVE' ? { approvedAt: now, approvedById: req.user!.id } : {}), ...(data.action === 'START_PROCESSING' ? { processingAt: now } : {}), ...(data.action === 'MARK_PAID_MANUAL' ? { paidAt: now, paidById: req.user!.id, payoutReference: data.payoutReference, paymentMethodNote: data.paymentMethodNote } : {}), ...(data.action === 'FAIL' ? { failureReason: data.reason ?? 'Manual payout processing failed.' } : {}), ...(data.action === 'CANCEL' ? { cancelledAt: now, cancelledById: req.user!.id, failureReason: data.reason ?? null } : {}) } });
-    await audit(req, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsOwnerPayoutBatch', entityId: id, action: `PMS_OWNER_PAYOUT_${data.action}`, actorId: req.user!.id, changedFields: ['status'], metadata: { fromStatus: current.status, toStatus: transition.to, reason: data.reason, payoutReference: data.payoutReference } });
-    res.json({ batch });
-  } catch (error) { next(error); }
+    const transition = transitions[action];
+    const batch = await prisma.$transaction(async (tx) => {
+      const current = await lockOwnerPayout(tx, id, access.company.id);
+      current.lines.forEach((line) => assertPmsPropertyScope(access, line.propertyId));
+      if (!transition.from.includes(current.status)) {
+        throw new AppError(409, `Cannot ${action.toLowerCase()} payout from ${current.status}.`);
+      }
+      if (['RECORD_FAILED', 'RETRY', 'CANCEL'].includes(action) && !data.reason) {
+        throw new AppError(400, `${action.replaceAll('_', ' ').toLowerCase()} requires a reason.`);
+      }
+      const now = new Date();
+      const updateData: Prisma.PmsOwnerPayoutBatchUncheckedUpdateInput = { status: transition.to };
+      let evidenceDocumentId: string | null = null;
+      if (action === 'APPROVE') {
+        if (current.createdById === req.user!.id) {
+          throw new AppError(409, 'The payout preparer cannot approve the same payout batch.');
+        }
+        const evidence = await requireOwnerPayoutEvidence({ tx, batchId: current.id, evidenceDocumentId: data.evidenceDocumentId, purpose: 'Payout approval' });
+        evidenceDocumentId = evidence.id;
+        Object.assign(updateData, { approvedAt: now, approvedById: req.user!.id, failureReason: null });
+      }
+      if (action === 'SUBMIT') {
+        if (current.approvedById === req.user!.id) {
+          throw new AppError(409, 'The payout approver cannot submit the same payout batch.');
+        }
+        if (!data.providerConfirmed || !data.payoutReference || !data.paymentMethodNote) {
+          throw new AppError(400, 'Payout submission requires adapter confirmation, an external reference, and a payment-method evidence note.');
+        }
+        const evidence = await requireOwnerPayoutEvidence({ tx, batchId: current.id, evidenceDocumentId: data.evidenceDocumentId, purpose: 'Payout submission' });
+        evidenceDocumentId = evidence.id;
+        Object.assign(updateData, {
+          processingAt: now,
+          payoutReference: data.payoutReference,
+          paymentMethodNote: `[${data.adapter}] ${data.paymentMethodNote}`,
+          failureReason: null,
+        });
+      }
+      if (action === 'RECORD_PAID') {
+        if (current.createdById === req.user!.id) {
+          throw new AppError(409, 'The payout preparer cannot record the final paid result.');
+        }
+        if (!data.payoutReference || !data.paymentMethodNote) {
+          throw new AppError(400, 'Recording a paid payout requires the final payment reference and evidence note.');
+        }
+        const evidence = await requireOwnerPayoutEvidence({
+          tx,
+          batchId: current.id,
+          evidenceDocumentId: data.evidenceDocumentId,
+          minimumCreatedAt: current.processingAt,
+          purpose: 'Paid payout result',
+        });
+        evidenceDocumentId = evidence.id;
+        Object.assign(updateData, {
+          paidAt: now,
+          paidById: req.user!.id,
+          payoutReference: data.payoutReference,
+          paymentMethodNote: data.paymentMethodNote,
+          failureReason: null,
+        });
+      }
+      if (action === 'RECORD_FAILED') Object.assign(updateData, { failureReason: data.reason });
+      if (action === 'RETRY') {
+        Object.assign(updateData, {
+          approvedAt: null,
+          approvedById: null,
+          processingAt: null,
+          paidAt: null,
+          paidById: null,
+          payoutReference: null,
+          paymentMethodNote: null,
+          failureReason: null,
+        });
+      }
+      if (action === 'CANCEL') Object.assign(updateData, { cancelledAt: now, cancelledById: req.user!.id, failureReason: data.reason });
+      const updated = await tx.pmsOwnerPayoutBatch.update({ where: { id }, data: updateData, include: ownerPayoutInclude });
+      await recordDomainAuditEvent(tx, {
+        companyId: access.company.id,
+        domain: DomainAuditDomain.PMS,
+        entityType: 'PmsOwnerPayoutBatch',
+        entityId: id,
+        action: `PMS_OWNER_PAYOUT_${action}`,
+        actorId: req.user!.id,
+        changedFields: ['status'],
+        beforeMetadata: { status: current.status },
+        afterMetadata: { status: updated.status },
+        metadata: {
+          reason: data.reason ?? null,
+          payoutReference: data.payoutReference ?? null,
+          adapter: action === 'SUBMIT' ? data.adapter : null,
+          providerConfirmed: action === 'SUBMIT' ? data.providerConfirmed === true : null,
+          evidenceDocumentId,
+        },
+        ...requestAuditContext(req),
+      });
+      return updated;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    res.json({ batch: ownerPayoutResponse(batch) });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+      return next(new AppError(409, 'The payout batch changed concurrently. Reload and retry.'));
+    }
+    next(error);
+  }
 });

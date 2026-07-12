@@ -93,6 +93,8 @@ function GovernanceSectionNav({ companyId, section, language }: { companyId: str
       <Link aria-current={section === 'deposits' ? 'page' : undefined} to={`/pms/finance/deposits${suffix}`}>{copy.deposits}</Link>
       <Link aria-current={section === 'periods' ? 'page' : undefined} to={`/pms/finance/periods${suffix}`}>{copy.periods}</Link>
       <Link aria-current={section === 'reconciliation' ? 'page' : undefined} to={`/pms/finance/reconciliation${suffix}`}>{copy.reconciliation}</Link>
+      <Link to={`/pms/finance/statements${suffix}`}>{copy.statements}</Link>
+      <Link to={`/pms/finance/payouts${suffix}`}>{copy.payouts}</Link>
       <Link to={`/pms/finance/records${suffix}`}>{copy.records}</Link>
     </nav>
   );

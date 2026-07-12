@@ -158,7 +158,7 @@ export default function OwnerPortal() {
 
           <PortalPanel title="Payout status">
             {overview.payouts.length === 0 ? <PortalEmpty title="No payout records" message="Approved payout batches will appear here. lux.om does not claim a bank transfer until evidence is recorded." /> : overview.payouts.map((payout) => (
-              <article className="pms-list-card" key={payout.id}><div><strong>{payout.payoutNumber}</strong><span>{payout.status}{payout.payoutReference ? ` · ${payout.payoutReference}` : ''}</span></div><b>{money(payout.payoutAmount, payout.currency)}</b></article>
+              <article className="pms-list-card" key={payout.id}><div><strong>{payout.payoutNumber}</strong><span>{payout.status}{payout.payoutReference ? ` · ${payout.payoutReference}` : ''}{payout.failureReason ? ` · ${payout.failureReason}` : ''}</span></div><b>{money(payout.payoutAmount, payout.currency)}</b></article>
             ))}
           </PortalPanel>
 

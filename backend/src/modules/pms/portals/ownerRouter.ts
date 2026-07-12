@@ -1,4 +1,4 @@
-import { DomainAuditDomain, type PmsOwnerStatement } from '@prisma/client';
+import { DomainAuditDomain, Prisma, type PmsOwnerStatement } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -57,18 +57,25 @@ ownerPortalRouter.get('/overview', requireAuth(), async (req, res, next) => {
       prisma.pmsLease.count({ where: { propertyId: access.propertyId, status: 'ACTIVE', startDate: { lte: now }, endDate: { gte: now } } }),
       prisma.pmsOwnerStatement.findMany({ where: { companyId: access.companyId, propertyId: access.propertyId, status: 'PUBLISHED' }, select: { id: true, status: true, periodStart: true, periodEnd: true, currency: true, openingBalance: true, income: true, expenses: true, adjustments: true, closingBalance: true, publishedAt: true, revision: true, documents: { where: { status: { not: 'ARCHIVED' } }, select: { id: true, title: true, type: true, mimeType: true, originalFilename: true } } }, orderBy: { periodEnd: 'desc' }, take: 24 }),
       prisma.pmsWorkOrder.findMany({ where: { companyId: access.companyId, propertyId: access.propertyId }, select: { id: true, title: true, priority: true, status: true, cost: access.canViewMaintenanceCosts, currency: true, scheduledFor: true, targetDate: true, resolvedAt: true, asset: { select: { id: true, assetCode: true, name: true } } }, orderBy: { createdAt: 'desc' }, take: 100 }),
-      prisma.pmsOwnerPayoutBatch.findMany({ where: { companyId: access.companyId, ownerUserId: req.user!.id, lines: { some: { propertyId: access.propertyId } } }, select: { id: true, payoutNumber: true, status: true, currency: true, grossAmount: true, managementFeeAmount: true, reservedAmount: true, payoutAmount: true, periodStart: true, periodEnd: true, payoutReference: true, paidAt: true, lines: { where: { propertyId: access.propertyId }, select: { incomeAmount: true, expenseAmount: true, managementFeeAmount: true, reservedAmount: true, netAmount: true, statementId: true } } }, orderBy: { createdAt: 'desc' }, take: 50 }),
+      prisma.pmsOwnerPayoutBatch.findMany({ where: { companyId: access.companyId, ownerUserId: req.user!.id, status: { in: ['APPROVED', 'PROCESSING', 'PAID_MANUAL', 'FAILED'] }, lines: { some: { propertyId: access.propertyId } } }, select: { id: true, payoutNumber: true, status: true, currency: true, grossAmount: true, managementFeeAmount: true, reservedAmount: true, payoutAmount: true, periodStart: true, periodEnd: true, payoutReference: true, paidAt: true, failureReason: true, lines: { where: { propertyId: access.propertyId }, select: { incomeAmount: true, expenseAmount: true, managementFeeAmount: true, reservedAmount: true, netAmount: true, statementId: true } } }, orderBy: { createdAt: 'desc' }, take: 50 }),
       access.canApproveQuotes ? prisma.pmsMaintenanceQuote.findMany({ where: { companyId: access.companyId, workOrder: { propertyId: access.propertyId }, status: 'SUBMITTED' }, select: { id: true, amount: true, currency: true, description: true, status: true, submittedAt: true, workOrder: { select: { id: true, title: true, priority: true, vendor: { select: { id: true, name: true, trade: true } } } } }, orderBy: { submittedAt: 'desc' } }) : Promise.resolve([]),
     ]);
     const totalUnits = unitCounts.reduce((sum, row) => sum + row._count._all, 0);
     const occupied = unitCounts.find((row) => row.status === 'OCCUPIED')?._count._all ?? activeLeases;
+    const propertyPayouts = payouts.map((batch) => ({
+      ...batch,
+      grossAmount: batch.lines.reduce((sum, line) => sum.plus(line.incomeAmount), new Prisma.Decimal(0)),
+      managementFeeAmount: batch.lines.reduce((sum, line) => sum.plus(line.managementFeeAmount), new Prisma.Decimal(0)),
+      reservedAmount: batch.lines.reduce((sum, line) => sum.plus(line.reservedAmount), new Prisma.Decimal(0)),
+      payoutAmount: batch.lines.reduce((sum, line) => sum.plus(line.netAmount), new Prisma.Decimal(0)),
+    }));
     res.json({
       access: { id: access.id, company: access.company, property: access.property, canApproveQuotes: access.canApproveQuotes, canViewMaintenanceCosts: access.canViewMaintenanceCosts },
       occupancy: { totalUnits, occupiedUnits: occupied, vacantUnits: unitCounts.find((row) => row.status === 'VACANT')?._count._all ?? Math.max(totalUnits - occupied, 0), occupancyRate: totalUnits > 0 ? Math.round((occupied / totalUnits) * 1000) / 10 : 0 },
       financialSummaries: summarizePublishedStatements(statements),
       statements,
       maintenance: workOrders,
-      payouts,
+      payouts: propertyPayouts,
       quotesAwaitingApproval: quotes,
     });
   } catch (error) { next(error); }

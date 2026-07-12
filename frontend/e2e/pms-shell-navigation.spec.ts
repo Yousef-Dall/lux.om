@@ -89,6 +89,14 @@ test('PMS renders a persistent permission-aware information architecture', async
   );
   await expect(navigation.getByRole('link', { name: 'Financial periods', exact: true })).toBeVisible();
   await expect(navigation.getByRole('link', { name: 'Reconciliation', exact: true })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: 'Owner statements', exact: true })).toHaveAttribute(
+    'href',
+    '/pms/finance/statements?companyId=company-pms-all'
+  );
+  await expect(navigation.getByRole('link', { name: 'Owner payouts', exact: true })).toHaveAttribute(
+    'href',
+    '/pms/finance/payouts?companyId=company-pms-all'
+  );
   await expect(navigation.getByRole('link', { name: 'Staff and access', exact: true })).toBeVisible();
   await expect(page.getByText('Owner · All properties')).toBeVisible();
 });

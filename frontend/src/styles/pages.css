@@ -21520,3 +21520,201 @@ transition: none;
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Stage 21I-G: immutable owner statements and evidence-backed payouts */
+.pms-settlement-workspace .pms-finance-section-nav {
+  max-width: 100%;
+}
+
+.pms-settlement-status-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.pms-settlement-status-summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border-color, #dfe3ea);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  font-size: 0.85rem;
+}
+
+.pms-settlement-detail {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.pms-settlement-detail__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.pms-settlement-detail__header h3,
+.pms-settlement-detail__header p {
+  margin: 0.45rem 0 0;
+}
+
+.pms-settlement-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+}
+
+.pms-settlement-governance-notes {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.pms-settlement-governance-notes p,
+.pms-settlement-calculated-total,
+.pms-settlement-confirmation {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #b8d7c3;
+  border-radius: 0.75rem;
+  background: #f2faf4;
+}
+
+.pms-settlement-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.pms-settlement-facts div {
+  padding: 0.75rem;
+  border: 1px solid var(--border-color, #dfe3ea);
+  border-radius: 0.75rem;
+}
+
+.pms-settlement-facts dt {
+  color: var(--muted-text, #687184);
+  font-size: 0.78rem;
+}
+
+.pms-settlement-facts dd {
+  margin: 0.3rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.pms-settlement-evidence-form {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-color, #dfe3ea);
+}
+
+.pms-settlement-field-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.pms-settlement-statement-picker {
+  display: grid;
+  gap: 0.65rem;
+  max-height: min(42vh, 28rem);
+  overflow: auto;
+  padding-inline-end: 0.25rem;
+}
+
+.pms-settlement-statement-picker article {
+  padding: 0.75rem;
+  border: 1px solid var(--border-color, #dfe3ea);
+  border-radius: 0.8rem;
+}
+
+.pms-settlement-check {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.pms-settlement-check input,
+.pms-settlement-confirmation input {
+  width: auto;
+  margin-top: 0.2rem;
+}
+
+.pms-settlement-check span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.pms-settlement-line-costs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px dashed var(--border-color, #dfe3ea);
+}
+
+.pms-settlement-calculated-total {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.pms-settlement-calculated-total strong {
+  font-size: 1.2rem;
+}
+
+.pms-settlement-actions {
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-color, #dfe3ea);
+}
+
+.pms-finance-status--generated,
+.pms-finance-status--needs-review,
+.pms-finance-status--processing {
+  background: #fff4d6;
+  color: #7b5600;
+}
+
+.pms-finance-status--published,
+.pms-finance-status--paid-manual,
+.pms-finance-status--active {
+  background: #e8f6ed;
+  color: #176536;
+}
+
+.pms-finance-status--void,
+.pms-finance-status--failed,
+.pms-finance-status--cancelled,
+.pms-finance-status--archived {
+  background: #fce9e9;
+  color: #8b2525;
+}
+
+@media (max-width: 760px) {
+  .pms-settlement-workspace .pms-finance-section-nav,
+  .pms-settlement-facts,
+  .pms-settlement-line-costs {
+    grid-template-columns: 1fr;
+  }
+
+  .pms-settlement-detail__header {
+    flex-direction: column;
+  }
+
+  .pms-settlement-detail__header > button {
+    align-self: stretch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pms-settlement-workspace * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

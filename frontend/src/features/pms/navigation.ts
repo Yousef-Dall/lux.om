@@ -16,6 +16,7 @@ import {
   UserCog,
   UserRoundCheck,
   UsersRound,
+  WalletCards,
   Wrench,
   type LucideIcon
 } from 'lucide-react';
@@ -39,6 +40,8 @@ export type PmsNavigationKey =
   | 'financeDeposits'
   | 'financePeriods'
   | 'financeReconciliation'
+  | 'financeStatements'
+  | 'financePayouts'
   | 'financeRecords'
   | 'reports'
   | 'staffAccess'
@@ -79,6 +82,8 @@ export const pmsNavigation: readonly PmsNavigationItem[] = [
   { to: '/pms/finance/deposits', key: 'financeDeposits', group: 'finance', icon: Landmark, permission: 'ACCOUNTING_VIEW' },
   { to: '/pms/finance/periods', key: 'financePeriods', group: 'finance', icon: CalendarRange, permission: 'ACCOUNTING_VIEW' },
   { to: '/pms/finance/reconciliation', key: 'financeReconciliation', group: 'finance', icon: Scale, permission: 'ACCOUNTING_VIEW' },
+  { to: '/pms/finance/statements', key: 'financeStatements', group: 'finance', icon: FileText, permission: 'ACCOUNTING_VIEW' },
+  { to: '/pms/finance/payouts', key: 'financePayouts', group: 'finance', icon: WalletCards, permission: 'ACCOUNTING_VIEW' },
   { to: '/pms/finance/records', key: 'financeRecords', group: 'finance', icon: ReceiptText, permission: 'ACCOUNTING_VIEW' },
   { to: '/pms/reports', key: 'reports', group: 'reports', icon: BarChart3, permission: 'REPORTS_VIEW' },
   { to: '/pms/administration/staff-access', key: 'staffAccess', group: 'administration', icon: UserCog, permission: 'STAFF_MANAGE', requiresWorkspaceWideAccess: true },

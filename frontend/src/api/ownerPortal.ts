@@ -16,7 +16,7 @@ export type OwnerPortalOverview = {
   financialSummaries: Array<{ currency: string; income: string; expenses: string; adjustments: string; net: string; periodStart: string; periodEnd: string }>;
   statements: Array<{ id: string; periodStart: string; periodEnd: string; currency: string; closingBalance: string; publishedAt?: string | null; revision: number; documents: Array<{ id: string; title: string; type: string; originalFilename?: string | null }> }>;
   maintenance: Array<{ id: string; title: string; priority: string; status: string; cost?: string | null; currency: string; asset?: { assetCode: string; name: string } | null }>;
-  payouts: Array<{ id: string; payoutNumber: string; status: string; currency: string; payoutAmount: string; periodStart: string; periodEnd: string; payoutReference?: string | null; paidAt?: string | null }>;
+  payouts: Array<{ id: string; payoutNumber: string; status: string; currency: string; payoutAmount: string; periodStart: string; periodEnd: string; payoutReference?: string | null; paidAt?: string | null; failureReason?: string | null }>;
   quotesAwaitingApproval: Array<{ id: string; amount: string; currency: string; description?: string | null; workOrder: { id: string; title: string; vendor?: { name: string } | null } }>;
 };
 export type OwnerPortalDocument = { id: string; title: string; type: string; originalFilename?: string | null; createdAt: string };

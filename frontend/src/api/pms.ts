@@ -523,8 +523,21 @@ export type PmsPersistedOwnerStatement = {
   approvedBy?: { id: string; name: string; email: string } | null;
   publishedBy?: { id: string; name: string; email: string } | null;
   voidedBy?: { id: string; name: string; email: string } | null;
+  documents?: Array<{ id: string; title: string; type: PmsDocumentType; status: PmsDocumentStatus; originalFilename?: string | null; mimeType?: string | null; sizeBytes?: number | null; createdAt: string; uploadedBy?: { id: string; name: string; email: string } | null }>;
+  revisions?: Array<{ id: string; revision: number; status: PmsOwnerStatementStatus; createdAt: string; publishedAt?: string | null }>;
+  payoutLines?: Array<{ id: string; netAmount: string; payoutBatch: { id: string; payoutNumber: string; status: string; payoutAmount: string; currency: string } }>;
   createdAt: string;
   updatedAt: string;
+};
+
+export type PmsOwnerStatementAuditEvent = {
+  id: string;
+  action: string;
+  actorId?: string | null;
+  metadata?: unknown;
+  beforeMetadata?: unknown;
+  afterMetadata?: unknown;
+  createdAt: string;
 };
 
 export type PmsOccupancyReconciliationIssue = {
@@ -744,6 +757,12 @@ export type PmsDocument = {
   workOrder?: Pick<PmsWorkOrder, "id" | "title" | "status"> | null;
   inspectionId?: string | null;
   inspection?: Pick<PmsInspection, "id" | "title" | "status" | "scheduledFor"> | null;
+  chargeId?: string | null;
+  securityDepositTransactionId?: string | null;
+  ownerPayoutBatchId?: string | null;
+  statementId?: string | null;
+  assetId?: string | null;
+  inspectionDefectId?: string | null;
   type: PmsDocumentType;
   title: string;
   fileUrl: string;
@@ -1256,6 +1275,12 @@ export type PmsDocumentPayload = {
   leaseId?: string | null;
   workOrderId?: string | null;
   inspectionId?: string | null;
+  chargeId?: string | null;
+  securityDepositTransactionId?: string | null;
+  ownerPayoutBatchId?: string | null;
+  statementId?: string | null;
+  assetId?: string | null;
+  inspectionDefectId?: string | null;
   type: PmsDocumentType;
   title: string;
   fileUrl?: string;
@@ -1965,6 +1990,9 @@ export async function listPmsOwnerStatements(
     propertyId?: string;
     status?: "ALL" | PmsOwnerStatementStatus;
     currency?: string;
+    search?: string;
+    sortBy?: "periodStart" | "periodEnd" | "createdAt" | "updatedAt" | "closingBalance" | "status";
+    direction?: "asc" | "desc";
     take?: number;
     skip?: number;
   } = {},
@@ -1973,6 +2001,9 @@ export async function listPmsOwnerStatements(
     workspace: PmsWorkspaceOverview["workspace"];
     statements: PmsPersistedOwnerStatement[];
     pagination: { take: number; skip: number; count: number; total: number };
+    totalsByStatus: Array<{ status: PmsOwnerStatementStatus; count: number }>;
+    totalsByCurrency: Array<{ currency: string; count: number; closingBalance: string }>;
+    properties: Array<Pick<PmsProperty, "id" | "name" | "code">>;
   }>("/api/pms/accounting/owner-statements", { token, params });
 }
 
@@ -2000,10 +2031,18 @@ export async function transitionPmsOwnerStatement(
   token: string,
   statementId: string,
   status: PmsOwnerStatementStatus,
+  reason?: string,
 ) {
   return apiClient.post<{ statement: PmsPersistedOwnerStatement }>(
     `/api/pms/accounting/owner-statements/${statementId}/transition`,
-    { status },
+    { status, reason },
+    { token },
+  );
+}
+
+export async function getPmsPersistedOwnerStatement(token: string, statementId: string) {
+  return apiClient.get<{ statement: PmsPersistedOwnerStatement; events: PmsOwnerStatementAuditEvent[] }>(
+    `/api/pms/accounting/owner-statements/${statementId}`,
     { token },
   );
 }

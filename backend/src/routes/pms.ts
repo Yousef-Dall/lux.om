@@ -53,6 +53,7 @@ import {
   assertCanCollectPmsRent,
   assertCanViewPmsRent,
   assertCanManagePmsAccounting,
+  canManagePmsAccounting,
   assertCanExportPmsData,
   assertCanManagePmsDocuments,
   assertCanManagePmsImports,
@@ -462,6 +463,9 @@ const pmsOwnerStatementListQuerySchema = z.object({
   propertyId: z.string().trim().min(1).optional(),
   status: z.enum(["ALL", ...Object.values(PmsOwnerStatementStatus)] as ["ALL", ...PmsOwnerStatementStatus[]]).default("ALL"),
   currency: z.string().trim().length(3).toUpperCase().optional(),
+  search: z.string().trim().max(180).optional(),
+  sortBy: z.enum(["periodStart", "periodEnd", "createdAt", "updatedAt", "closingBalance", "status"]).default("periodStart"),
+  direction: z.enum(["asc", "desc"]).default("desc"),
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0),
 });
@@ -484,6 +488,7 @@ const pmsOwnerStatementCreateSchema = z.object({
 
 const pmsOwnerStatementTransitionSchema = z.object({
   status: z.nativeEnum(PmsOwnerStatementStatus),
+  reason: z.string().trim().min(3).max(1000).optional(),
 }).strict();
 
 const pmsAccountingLedgerEntrySchema = z
@@ -6904,11 +6909,43 @@ const pmsOwnerStatementInclude = {
   voidedBy: { select: { id: true, name: true, email: true } },
 } satisfies Prisma.PmsOwnerStatementInclude;
 
+const pmsOwnerStatementDetailInclude = {
+  ...pmsOwnerStatementInclude,
+  documents: {
+    where: { status: { not: PmsDocumentStatus.ARCHIVED } },
+    select: {
+      id: true,
+      title: true,
+      type: true,
+      status: true,
+      originalFilename: true,
+      mimeType: true,
+      sizeBytes: true,
+      createdAt: true,
+      uploadedBy: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: { createdAt: "desc" as const },
+  },
+  revisions: {
+    select: { id: true, revision: true, status: true, createdAt: true, publishedAt: true },
+    orderBy: { revision: "desc" as const },
+  },
+  payoutLines: {
+    select: {
+      id: true,
+      netAmount: true,
+      payoutBatch: {
+        select: { id: true, payoutNumber: true, status: true, payoutAmount: true, currency: true },
+      },
+    },
+  },
+} satisfies Prisma.PmsOwnerStatementInclude;
+
 type PmsOwnerStatementWithRelations = Prisma.PmsOwnerStatementGetPayload<{
   include: typeof pmsOwnerStatementInclude;
 }>;
 
-function pmsOwnerStatementResponse(statement: PmsOwnerStatementWithRelations) {
+function pmsOwnerStatementResponse(statement: PmsOwnerStatementWithRelations | Prisma.PmsOwnerStatementGetPayload<{ include: typeof pmsOwnerStatementDetailInclude }>) {
   return {
     ...statement,
     openingBalance: decimalToString(statement.openingBalance),
@@ -6917,7 +6954,62 @@ function pmsOwnerStatementResponse(statement: PmsOwnerStatementWithRelations) {
     adjustments: decimalToString(statement.adjustments),
     closingBalance: decimalToString(statement.closingBalance),
     immutableSnapshot: statement.snapshot,
+    ...("payoutLines" in statement
+      ? {
+          payoutLines: statement.payoutLines.map((line) => ({
+            ...line,
+            netAmount: decimalToString(line.netAmount),
+            payoutBatch: {
+              ...line.payoutBatch,
+              payoutAmount: decimalToString(line.payoutBatch.payoutAmount),
+            },
+          })),
+        }
+      : {}),
   };
+}
+
+function ownerStatementOrderBy(
+  sortBy: z.infer<typeof pmsOwnerStatementListQuerySchema>["sortBy"],
+  direction: z.infer<typeof pmsOwnerStatementListQuerySchema>["direction"],
+): Prisma.PmsOwnerStatementOrderByWithRelationInput[] {
+  if (sortBy === "periodStart") return [{ periodStart: direction }, { revision: "desc" }];
+  if (sortBy === "periodEnd") return [{ periodEnd: direction }, { revision: "desc" }];
+  if (sortBy === "createdAt") return [{ createdAt: direction }];
+  if (sortBy === "updatedAt") return [{ updatedAt: direction }];
+  if (sortBy === "closingBalance") return [{ closingBalance: direction }];
+  return [{ status: direction }, { periodStart: "desc" }];
+}
+
+async function lockOwnerStatement(tx: Prisma.TransactionClient, statementId: string) {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(
+    Prisma.sql`SELECT "id" FROM "PmsOwnerStatement" WHERE "id" = ${statementId} FOR UPDATE`,
+  );
+  if (rows.length === 0) throw new AppError(404, "Owner statement not found.");
+  return tx.pmsOwnerStatement.findUniqueOrThrow({ where: { id: statementId }, include: pmsOwnerStatementDetailInclude });
+}
+
+async function assertOwnerStatementPublicationReady(
+  tx: Prisma.TransactionClient,
+  statement: Prisma.PmsOwnerStatementGetPayload<{ include: typeof pmsOwnerStatementDetailInclude }>,
+) {
+  if (statement.documents.length === 0) {
+    throw new AppError(409, "Attach at least one active supporting document before publishing the owner statement.");
+  }
+  const closedPeriod = await tx.pmsFinancialPeriod.findFirst({
+    where: {
+      companyId: statement.companyId,
+      currency: statement.currency,
+      status: "CLOSED",
+      periodStart: { lte: statement.periodStart },
+      periodEnd: { gte: statement.periodEnd },
+      OR: [{ propertyId: statement.propertyId }, { propertyId: null }],
+    },
+    select: { id: true },
+  });
+  if (!closedPeriod) {
+    throw new AppError(409, "The matching financial period must be closed before publishing this owner statement.");
+  }
 }
 
 function statementPeriod(input: z.infer<typeof pmsOwnerStatementCreateSchema>) {
@@ -6991,12 +7083,44 @@ pmsRouter.get("/accounting/owner-statements", requireAuth(), async (req, res, ne
       ...(propertyId ? { propertyId } : {}),
       ...(query.status !== "ALL" ? { status: query.status } : {}),
       ...(query.currency ? { currency: query.currency } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { ownerReference: { contains: query.search, mode: "insensitive" } },
+              { property: { name: { contains: query.search, mode: "insensitive" } } },
+              { property: { code: { contains: query.search, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
     };
-    const [statements, total] = await prisma.$transaction([
-      prisma.pmsOwnerStatement.findMany({ where, include: pmsOwnerStatementInclude, orderBy: [{ periodStart: "desc" }, { revision: "desc" }], take: query.take, skip: query.skip }),
+    const [statements, total, totalsByStatus, totalsByCurrency, properties] = await prisma.$transaction([
+      prisma.pmsOwnerStatement.findMany({
+        where,
+        include: pmsOwnerStatementInclude,
+        orderBy: ownerStatementOrderBy(query.sortBy, query.direction),
+        take: query.take,
+        skip: query.skip,
+      }),
       prisma.pmsOwnerStatement.count({ where }),
+      prisma.pmsOwnerStatement.groupBy({ by: ["status"], where, _count: { _all: true } }),
+      prisma.pmsOwnerStatement.groupBy({ by: ["currency"], where, _count: { _all: true }, _sum: { closingBalance: true } }),
+      prisma.pmsProperty.findMany({
+        where: {
+          companyId: access.company.id,
+          ...(access.member.propertyScope.allProperties ? {} : { id: { in: access.member.propertyScope.propertyIds } }),
+        },
+        select: { id: true, name: true, code: true },
+        orderBy: { name: "asc" },
+      }),
     ]);
-    res.json({ workspace: pmsWorkspacePayload(access), statements: statements.map(pmsOwnerStatementResponse), pagination: { take: query.take, skip: query.skip, count: statements.length, total } });
+    res.json({
+      workspace: pmsWorkspacePayload(access),
+      statements: statements.map(pmsOwnerStatementResponse),
+      pagination: { take: query.take, skip: query.skip, count: statements.length, total },
+      totalsByStatus: totalsByStatus.map((row) => ({ status: row.status, count: row._count._all })),
+      totalsByCurrency: totalsByCurrency.map((row) => ({ currency: row.currency, count: row._count._all, closingBalance: decimalToString(row._sum.closingBalance) })),
+      properties,
+    });
   } catch (error) {
     next(error);
   }
@@ -7006,12 +7130,23 @@ pmsRouter.get("/accounting/owner-statements/:statementId", requireAuth(), async 
   try {
     if (!req.user) throw new AppError(401, "Unauthorized");
     const { statementId } = pmsOwnerStatementParamsSchema.parse(req.params);
-    const statement = await prisma.pmsOwnerStatement.findUnique({ where: { id: statementId }, include: pmsOwnerStatementInclude });
+    const statement = await prisma.pmsOwnerStatement.findUnique({ where: { id: statementId }, include: pmsOwnerStatementDetailInclude });
     if (!statement) throw new AppError(404, "Owner statement not found.");
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: statement.companyId });
     assertCanViewPmsAccounting(access.member);
     assertCanAccessPmsPropertyScope(access, statement.propertyId);
-    res.json({ workspace: pmsWorkspacePayload(access), statement: pmsOwnerStatementResponse(statement) });
+    const events = await prisma.domainAuditEvent.findMany({
+      where: {
+        companyId: statement.companyId,
+        domain: DomainAuditDomain.PMS,
+        entityId: statement.id,
+        entityType: { in: ["pmsOwnerStatement", "PmsOwnerStatement"] },
+      },
+      select: { id: true, action: true, actorId: true, metadata: true, beforeMetadata: true, afterMetadata: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+    res.json({ workspace: pmsWorkspacePayload(access), statement: pmsOwnerStatementResponse(statement), events });
   } catch (error) {
     next(error);
   }
@@ -7104,18 +7239,40 @@ pmsRouter.post("/accounting/owner-statements/:statementId/transition", requireAu
     if (!req.user) throw new AppError(401, "Unauthorized");
     const { statementId } = pmsOwnerStatementParamsSchema.parse(req.params);
     const data = pmsOwnerStatementTransitionSchema.parse(req.body);
-    const existing = await prisma.pmsOwnerStatement.findUnique({ where: { id: statementId } });
+    const existing = await prisma.pmsOwnerStatement.findUnique({ where: { id: statementId }, select: { companyId: true, propertyId: true } });
     if (!existing) throw new AppError(404, "Owner statement not found.");
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: existing.companyId });
     assertCanManagePmsAccounting(access.member);
     assertCanAccessPmsPropertyScope(access, existing.propertyId);
-    if (!(ownerStatementTransitions[existing.status] ?? []).includes(data.status)) {
-      throw new AppError(409, `Owner statement cannot transition from ${existing.status} to ${data.status}.`);
+    if (data.status === PmsOwnerStatementStatus.VOID && !data.reason) {
+      throw new AppError(400, "Voiding an owner statement requires a reason.");
     }
-    const now = new Date();
     const statement = await prisma.$transaction(async (tx) => {
+      const current = await lockOwnerStatement(tx, statementId);
+      if (!(ownerStatementTransitions[current.status] ?? []).includes(data.status)) {
+        throw new AppError(409, `Owner statement cannot transition from ${current.status} to ${data.status}.`);
+      }
+      if (data.status === PmsOwnerStatementStatus.APPROVED && current.generatedById === req.user!.id) {
+        throw new AppError(409, "The statement generator cannot approve the same statement. A second accounting manager is required.");
+      }
+      if (data.status === PmsOwnerStatementStatus.PUBLISHED) {
+        if (current.approvedById === req.user!.id) {
+          throw new AppError(409, "The statement approver cannot publish the same statement. A separate publisher is required.");
+        }
+        await assertOwnerStatementPublicationReady(tx, current);
+      }
+      if (data.status === PmsOwnerStatementStatus.VOID && current.status === PmsOwnerStatementStatus.PUBLISHED) {
+        const activePayout = await tx.pmsOwnerPayoutLine.findFirst({
+          where: { statementId: current.id, payoutBatch: { status: { not: "CANCELLED" } } },
+          select: { payoutBatch: { select: { payoutNumber: true } } },
+        });
+        if (activePayout) {
+          throw new AppError(409, `Published statement is linked to payout ${activePayout.payoutBatch.payoutNumber} and cannot be voided.`);
+        }
+      }
+      const now = new Date();
       const updated = await tx.pmsOwnerStatement.update({
-        where: { id: existing.id },
+        where: { id: current.id },
         data: {
           status: data.status,
           ...(data.status === PmsOwnerStatementStatus.APPROVED
@@ -7129,25 +7286,28 @@ pmsRouter.post("/accounting/owner-statements/:statementId/transition", requireAu
           ...(data.status === PmsOwnerStatementStatus.PUBLISHED ? { publishedAt: now, publishedById: req.user!.id } : {}),
           ...(data.status === PmsOwnerStatementStatus.VOID ? { voidedAt: now, voidedById: req.user!.id } : {}),
         },
-        include: pmsOwnerStatementInclude,
+        include: pmsOwnerStatementDetailInclude,
       });
       await recordDomainAuditEvent(tx, {
-        companyId: existing.companyId,
+        companyId: current.companyId,
         domain: DomainAuditDomain.PMS,
         entityType: "pmsOwnerStatement",
-        entityId: existing.id,
+        entityId: current.id,
         action: "status_transition",
         actorId: req.user!.id,
         changedFields: ["status"],
-        beforeMetadata: { status: existing.status },
+        beforeMetadata: { status: current.status },
         afterMetadata: { status: updated.status },
-        metadata: { propertyId: existing.propertyId, currency: existing.currency, revision: existing.revision },
+        metadata: { propertyId: current.propertyId, currency: current.currency, revision: current.revision, reason: data.reason ?? null },
         ...requestAuditContext(req),
       });
       return updated;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     res.json({ statement: pmsOwnerStatementResponse(statement) });
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+      return next(new AppError(409, "The owner statement changed concurrently. Reload and retry."));
+    }
     next(error);
   }
 });
@@ -8943,7 +9103,18 @@ pmsRouter.post(
       }
       const data = pmsDocumentUploadMetadataSchema.parse(rawMetadata);
       const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: data.companyId });
-      if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) assertCanManagePmsMaintenanceDocuments(access.member);
+      const financeEvidenceOnly = Boolean(data.statementId || data.ownerPayoutBatchId)
+        && !data.tenantId
+        && !data.leaseId
+        && !data.workOrderId
+        && !data.inspectionId
+        && !data.chargeId
+        && !data.securityDepositTransactionId
+        && !data.assetId
+        && !data.inspectionDefectId;
+      if (financeEvidenceOnly && canManagePmsAccounting(access.member)) {
+        // Accounting managers may attach evidence directly to governed statements and payout batches.
+      } else if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) assertCanManagePmsMaintenanceDocuments(access.member);
       else assertCanManagePmsDocuments(access.member);
       assertSensitiveDocumentAccess(access, data.type);
       assertMaintenanceDocumentScope({ role: access.member.role, type: data.type, workOrderId: data.workOrderId, inspectionId: data.inspectionId });
@@ -9030,7 +9201,8 @@ pmsRouter.get("/documents/:documentId/download", requireAuth(), async (req, res,
     let document = await prisma.pmsDocument.findUnique({ where: { id: documentId }, include: pmsDocumentInclude });
     if (!document) throw new AppError(404, "PMS document not found");
     const access = await resolvePmsAccessOrThrow({ userId: req.user.id, companyId: document.companyId });
-    assertCanViewPmsDocuments(access.member);
+    const financeEvidence = Boolean(document.statementId || document.ownerPayoutBatchId);
+    if (!(financeEvidence && canManagePmsAccounting(access.member))) assertCanViewPmsDocuments(access.member);
     assertSensitiveDocumentAccess(access, document.type);
     assertCanAccessOptionalPmsPropertyScope(access, document.propertyId);
     if (access.member.role === PmsMemberRole.PMS_MAINTENANCE) {

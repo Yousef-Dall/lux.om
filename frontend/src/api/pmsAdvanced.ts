@@ -308,15 +308,84 @@ export type PmsReconciliationItem = {
   createdAt: string;
   updatedAt: string;
 };
+export type PmsOwnerPayoutStatus = 'DRAFT' | 'APPROVED' | 'PROCESSING' | 'PAID_MANUAL' | 'FAILED' | 'CANCELLED';
+export type PmsOwnerPayoutDocument = {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  originalFilename?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  createdAt: string;
+  uploadedBy?: { id: string; name: string; email: string } | null;
+};
+export type PmsOwnerPayoutLine = {
+  id: string;
+  propertyId: string;
+  property: { id: string; name: string; code?: string | null };
+  statementId: string;
+  statement: {
+    id: string;
+    revision: number;
+    status: string;
+    periodStart: string;
+    periodEnd: string;
+    currency: string;
+    openingBalance: string;
+    income: string;
+    expenses: string;
+    adjustments: string;
+    closingBalance: string;
+  };
+  incomeAmount: string;
+  expenseAmount: string;
+  managementFeeAmount: string;
+  reservedAmount: string;
+  netAmount: string;
+  currency: string;
+  createdAt: string;
+};
 export type PmsOwnerPayout = {
   id: string;
   payoutNumber: string;
-  status: string;
+  status: PmsOwnerPayoutStatus;
+  grossAmount: string;
+  managementFeeAmount: string;
+  reservedAmount: string;
   payoutAmount: string;
   currency: string;
   periodStart: string;
   periodEnd: string;
+  payoutReference?: string | null;
+  paymentMethodNote?: string | null;
+  approvedAt?: string | null;
+  processingAt?: string | null;
+  paidAt?: string | null;
+  cancelledAt?: string | null;
+  failureReason?: string | null;
+  notes?: string | null;
+  ownerUserId: string;
+  ownerUser: { id: string; name: string; email: string };
+  createdBy?: { id: string; name: string; email: string } | null;
+  approvedBy?: { id: string; name: string; email: string } | null;
+  paidBy?: { id: string; name: string; email: string } | null;
+  cancelledBy?: { id: string; name: string; email: string } | null;
+  lines: PmsOwnerPayoutLine[];
+  documents: PmsOwnerPayoutDocument[];
+  createdAt: string;
+  updatedAt: string;
 };
+export type PmsOwnerPayoutAuditEvent = {
+  id: string;
+  action: string;
+  actorId?: string | null;
+  metadata?: unknown;
+  beforeMetadata?: unknown;
+  afterMetadata?: unknown;
+  createdAt: string;
+};
+
 
 export type PmsAsset = {
   id: string;
@@ -546,8 +615,53 @@ export function matchPmsReconciliationItem(token: string, itemId: string, payloa
 export function transitionPmsReconciliationItem(token: string, itemId: string, payload: { companyId: string; action: 'IGNORE' | 'RESTORE_UNMATCHED'; reason: string }) {
   return apiClient.post<{ item: PmsReconciliationItem }>(`/api/pms/accounting/reconciliation/${itemId}/transition`, payload, { token });
 }
-export async function listPmsOwnerPayouts(token: string, companyId?: string) {
-  return apiClient.get<{ batches: PmsOwnerPayout[] }>('/api/pms/accounting/owner-payouts', { token, params: companyParams(companyId) });
+export async function listPmsOwnerPayouts(token: string, params: {
+  companyId?: string;
+  search?: string;
+  status?: PmsOwnerPayoutStatus;
+  currency?: string;
+  propertyId?: string;
+  ownerUserId?: string;
+  sortBy?: 'createdAt' | 'periodEnd' | 'payoutAmount' | 'status' | 'payoutNumber';
+  direction?: 'asc' | 'desc';
+  take?: number;
+  skip?: number;
+  signal?: AbortSignal;
+} = {}) {
+  const { signal, ...query } = params;
+  return apiClient.get<{
+    batches: PmsOwnerPayout[];
+    pagination: PmsFinancePagination;
+    totalsByStatus: Array<{ status: PmsOwnerPayoutStatus; count: number }>;
+    totalsByCurrency: Array<{ currency: string; count: number; payoutAmount: string }>;
+    ownerAccesses: Array<{ id: string; propertyId: string; property: { id: string; name: string; code?: string | null }; userId: string; user: { id: string; name: string; email: string } }>;
+  }>('/api/pms/accounting/owner-payouts', { token, params: query, signal });
+}
+export function getPmsOwnerPayout(token: string, payoutId: string, companyId?: string) {
+  return apiClient.get<{ batch: PmsOwnerPayout; events: PmsOwnerPayoutAuditEvent[] }>(`/api/pms/accounting/owner-payouts/${payoutId}`, { token, params: companyParams(companyId) });
+}
+export function createPmsOwnerPayout(token: string, payload: {
+  companyId: string;
+  ownerUserId: string;
+  currency: string;
+  periodStart: string;
+  periodEnd: string;
+  notes?: string | null;
+  lines: Array<{ statementId: string; managementFeeAmount?: number; reservedAmount?: number }>;
+}) {
+  return apiClient.post<{ batch: PmsOwnerPayout }>('/api/pms/accounting/owner-payouts', payload, { token });
+}
+export function transitionPmsOwnerPayout(token: string, payoutId: string, payload: {
+  companyId: string;
+  action: 'APPROVE' | 'SUBMIT' | 'RECORD_PAID' | 'RECORD_FAILED' | 'RETRY' | 'CANCEL';
+  reason?: string;
+  payoutReference?: string;
+  paymentMethodNote?: string;
+  evidenceDocumentId?: string;
+  adapter?: 'MANUAL_BANK_EVIDENCE';
+  providerConfirmed?: boolean;
+}) {
+  return apiClient.post<{ batch: PmsOwnerPayout }>(`/api/pms/accounting/owner-payouts/${payoutId}/transition`, payload, { token });
 }
 export async function listPmsAssets(token: string, companyId?: string) {
   return apiClient.get<{ assets: PmsAsset[] }>('/api/pms/assets', { token, params: companyParams(companyId) });

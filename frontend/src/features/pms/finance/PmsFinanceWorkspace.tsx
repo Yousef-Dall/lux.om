@@ -126,7 +126,7 @@ function FinanceOverview({ token, companyId, language }: { token: string; compan
       listPmsPayments(token, { companyId, take: 1, skip: 0, signal: controller.signal }),
       listPmsDeposits(token, { companyId, take: 1, skip: 0 }),
       listPmsFinancialPeriods(token, { companyId, take: 100, skip: 0 }),
-      listPmsOwnerPayouts(token, companyId),
+      listPmsOwnerPayouts(token, { companyId, take: 1, skip: 0 }),
     ]).then(([charges, payments, deposits, periods, payouts]) => {
       setChargeTotals(charges.totalsByCurrency);
       setPaymentTotals(payments.totalsByCurrency);
@@ -458,6 +458,8 @@ export default function PmsFinanceWorkspace({ section }: { section: PmsFinanceSe
           <Link to={`/pms/finance/deposits?companyId=${encodeURIComponent(companyId)}`}>{copy.deposits}</Link>
           <Link to={`/pms/finance/periods?companyId=${encodeURIComponent(companyId)}`}>{copy.periods}</Link>
           <Link to={`/pms/finance/reconciliation?companyId=${encodeURIComponent(companyId)}`}>{copy.reconciliation}</Link>
+          <Link to={`/pms/finance/statements?companyId=${encodeURIComponent(companyId)}`}>{copy.statements}</Link>
+          <Link to={`/pms/finance/payouts?companyId=${encodeURIComponent(companyId)}`}>{copy.payouts}</Link>
           <Link to={`/pms/finance/records?companyId=${encodeURIComponent(companyId)}`}>{copy.records}</Link>
         </nav>
       </header>
