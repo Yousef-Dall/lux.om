@@ -11,6 +11,13 @@ import {
   CrmLegacyLeadRedirect,
   CrmLegacyOperationsRedirect
 } from './features/crm/shell/CrmCompatibilityRedirects';
+import PmsShell from './features/pms/shell/PmsShell';
+import {
+  PmsIndexRedirect,
+  PmsLegacyLeaseRedirect,
+  PmsLegacyPropertyRedirect,
+  PmsLegacyRedirect
+} from './features/pms/shell/PmsCompatibilityRedirects';
 import Navbar from './components/Navbar';
 
 import About from './pages/About';
@@ -1001,149 +1008,55 @@ export default function App() {
             path="/pms"
             element={
               <RequirePms>
-                <PmsPortal />
+                <PmsShell />
               </RequirePms>
             }
-          />
+          >
+            <Route index element={<PmsIndexRedirect />} />
+            <Route path="overview" element={<PmsPortal />} />
 
-          <Route
-            path="/pms/overview"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
+            <Route path="portfolio" element={<PmsLegacyRedirect to="/pms/portfolio/properties" />} />
+            <Route path="portfolio/properties" element={<PmsPortal />} />
+            <Route path="portfolio/properties/:propertyId" element={<PmsPortal />} />
+            <Route path="portfolio/units" element={<PmsPortal />} />
 
+            <Route path="leasing" element={<PmsLegacyRedirect to="/pms/leasing/leases" />} />
+            <Route path="leasing/tenants" element={<PmsPortal />} />
+            <Route path="leasing/leases" element={<PmsPortal />} />
+            <Route path="leasing/leases/:leaseId" element={<PmsPortal />} />
 
-          <Route
-            path="/pms/properties"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
+            <Route path="operations" element={<PmsLegacyRedirect to="/pms/operations/maintenance" />} />
+            <Route path="operations/maintenance" element={<PmsPortal />} />
+            <Route path="operations/vendors" element={<PmsPortal />} />
+            <Route path="operations/assets-inspections" element={<PmsAssetsInspections />} />
+            <Route path="operations/documents" element={<PmsPortal />} />
 
-          <Route
-            path="/pms/properties/:propertyId"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
+            <Route path="finance" element={<PmsLegacyRedirect to="/pms/finance/overview" />} />
+            <Route path="finance/overview" element={<PmsFinancialOperations />} />
+            <Route path="finance/records" element={<PmsPortal />} />
 
-          <Route
-            path="/pms/units"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
+            <Route path="reports" element={<PmsPortal />} />
 
-          <Route
-            path="/pms/tenants"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
+            <Route path="administration" element={<PmsLegacyRedirect to="/pms/administration/settings" />} />
+            <Route path="administration/staff-access" element={<PmsPortal />} />
+            <Route path="administration/import-export" element={<PmsPortal />} />
+            <Route path="administration/settings" element={<PmsPortal />} />
 
-          <Route
-            path="/pms/rentals"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
-
-          <Route
-            path="/pms/rentals/:leaseId"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
-
-          <Route
-            path="/pms/documents"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
-
-          <Route
-            path="/pms/accounting"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
-          <Route
-            path="/pms/financial-operations"
-            element={
-              <RequirePms>
-                <PmsFinancialOperations />
-              </RequirePms>
-            }
-          />
-          <Route
-            path="/pms/assets-inspections"
-            element={
-              <RequirePms>
-                <PmsAssetsInspections />
-              </RequirePms>
-            }
-          />
-          <Route
-            path="/pms/import-export"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
-          <Route
-            path="/pms/staff"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
-          <Route
-            path="/pms/maintenance"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
-          <Route
-            path="/pms/reports"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
-          <Route
-            path="/pms/settings"
-            element={
-              <RequirePms>
-                <PmsPortal />
-              </RequirePms>
-            }
-          />
-
+            <Route path="properties" element={<PmsLegacyRedirect to="/pms/portfolio/properties" />} />
+            <Route path="properties/:propertyId" element={<PmsLegacyPropertyRedirect />} />
+            <Route path="units" element={<PmsLegacyRedirect to="/pms/portfolio/units" />} />
+            <Route path="tenants" element={<PmsLegacyRedirect to="/pms/leasing/tenants" />} />
+            <Route path="rentals" element={<PmsLegacyRedirect to="/pms/leasing/leases" />} />
+            <Route path="rentals/:leaseId" element={<PmsLegacyLeaseRedirect />} />
+            <Route path="documents" element={<PmsLegacyRedirect to="/pms/operations/documents" />} />
+            <Route path="maintenance" element={<PmsLegacyRedirect to="/pms/operations/maintenance" />} />
+            <Route path="assets-inspections" element={<PmsLegacyRedirect to="/pms/operations/assets-inspections" />} />
+            <Route path="accounting" element={<PmsLegacyRedirect to="/pms/finance/records" />} />
+            <Route path="financial-operations" element={<PmsLegacyRedirect to="/pms/finance/overview" />} />
+            <Route path="import-export" element={<PmsLegacyRedirect to="/pms/administration/import-export" />} />
+            <Route path="staff" element={<PmsLegacyRedirect to="/pms/administration/staff-access" />} />
+            <Route path="settings" element={<PmsLegacyRedirect to="/pms/administration/settings" />} />
+          </Route>
 
           <Route path="/owner" element={<RequireOwnerPortal><OwnerPortal /></RequireOwnerPortal>} />
           <Route path="/vendor" element={<RequireVendorPortal><VendorPortal /></RequireVendorPortal>} />

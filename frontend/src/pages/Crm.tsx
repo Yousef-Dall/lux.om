@@ -124,7 +124,7 @@ function sourceRoute(lead: CrmLead) {
   if (lead.listing) return `/listings/${lead.listing.slug}`;
   if (lead.activity) return `/activities/${lead.activity.slug}`;
   if (lead.developerProject) return `/projects/${lead.developerProject.slug}`;
-  if (lead.pmsProperty) return `/pms/properties/${lead.pmsProperty.id}?companyId=${lead.companyId}`;
+  if (lead.pmsProperty) return `/pms/portfolio/properties/${lead.pmsProperty.id}?companyId=${lead.companyId}`;
   return null;
 }
 

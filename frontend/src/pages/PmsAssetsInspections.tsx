@@ -35,16 +35,16 @@ export default function PmsAssetsInspections() {
     void load(); return () => { active = false; };
   }, [token, companyId]);
 
-  if (loading) return <section className="pms-portal"><PortalLoading label="Loading assets and inspections…" /></section>;
-  if (error) return <section className="pms-portal"><PortalError message={error} /></section>;
+  if (loading) return <section className="pms-route-content"><PortalLoading label="Loading assets and inspections…" /></section>;
+  if (error) return <section className="pms-route-content"><PortalError message={error} /></section>;
 
-  return <section className="pms-portal" aria-labelledby="assets-inspections-title"><div className="pms-main">
-    <header className="pms-header"><div><p className="eyebrow">PMS operations</p><h1 id="assets-inspections-title">Assets, preventive maintenance, and inspections</h1><p>Track warranty, service history, recurring plans, structured findings, and work-order conversion.</p></div><Link className="button-link button-link--secondary" to={`/pms/maintenance${companyId ? `?companyId=${companyId}` : ''}`}>Maintenance workspace</Link></header>
+  return <section className="pms-route-content" aria-labelledby="assets-inspections-title">
+    <header className="pms-header"><div><p className="eyebrow">PMS operations</p><h1 id="assets-inspections-title">Assets, preventive maintenance, and inspections</h1><p>Track warranty, service history, recurring plans, structured findings, and work-order conversion.</p></div><Link className="button-link button-link--secondary" to={`/pms/operations/maintenance${companyId ? `?companyId=${companyId}` : ''}`}>Maintenance workspace</Link></header>
     <section className="pms-metric-grid"><article className="pms-metric-card"><PackageSearch size={20} /><span>Registered assets</span><strong>{assets.length}</strong></article><article className="pms-metric-card"><Repeat2 size={20} /><span>Active plans</span><strong>{plans.filter((plan) => plan.status === 'ACTIVE').length}</strong></article><article className="pms-metric-card"><ClipboardCheck size={20} /><span>Inspection runs</span><strong>{inspections.length}</strong></article><article className="pms-metric-card"><ShieldAlert size={20} /><span>Open defects</span><strong>{inspections.flatMap((inspection) => inspection.defects ?? []).filter((defect) => defect.status === 'OPEN').length}</strong></article></section>
     <div className="pms-content-grid">
       <PortalPanel title="Asset register">{assets.length === 0 ? <PortalEmpty title="No assets" message="Register building systems, appliances, equipment, and warranty information." /> : assets.slice(0, 40).map((asset) => <article key={asset.id} className="pms-list-card"><div><strong>{asset.assetCode} · {asset.name}</strong><span>{asset.property.name}{asset.unit ? ` · ${asset.unit.unitNumber}` : ''} · {asset.category}</span></div><b>{asset.status}</b></article>)}</PortalPanel>
       <PortalPanel title="Preventive-maintenance plans">{plans.length === 0 ? <PortalEmpty title="No recurring plans" message="Create interval or date-based plans to generate idempotent work orders." /> : plans.slice(0, 30).map((plan) => <article key={plan.id} className="pms-list-card"><div><strong>{plan.title}</strong><span>{plan.property.name}{plan.asset ? ` · ${plan.asset.assetCode}` : ''}</span></div><b>{new Date(plan.nextServiceDate).toLocaleDateString()}</b></article>)}</PortalPanel>
       <PortalPanel title="Structured inspections">{inspections.length === 0 ? <PortalEmpty title="No inspection runs" message="Templates and completed checklists will appear here." /> : inspections.slice(0, 30).map((inspection) => <article key={inspection.id} className="pms-list-card"><div><strong>{inspection.title}</strong><span>{inspection.property.name}{inspection.unit ? ` · ${inspection.unit.unitNumber}` : ''} · {inspection.type}</span></div><b>{inspection.status}</b></article>)}</PortalPanel>
     </div>
-  </div></section>;
+  </section>;
 }

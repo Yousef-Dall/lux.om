@@ -12,7 +12,6 @@ import {
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Link,
-  NavLink,
   useLocation,
   useNavigate,
   useParams,
@@ -139,7 +138,7 @@ import {
   type PmsWorkOrder,
   type PmsWorkOrderPayload,
 } from "../api/pms";
-import { pmsNavigation, pmsNavigationGroups } from "../features/pms/navigation";
+import { hasPmsPermission } from "../features/pms/access";
 import { useAuth } from "../auth/AuthContext";
 import MapLocationPanel from "../components/MapLocationPanel";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -501,22 +500,6 @@ function getPermissionGroupLabel(group: (typeof pmsPermissionGroups)[number], la
   return group.label[language];
 }
 
-function getCompanyName(
-  company: { nameEn: string; nameAr?: string | null },
-  language: "en" | "ar",
-) {
-  return language === "ar"
-    ? company.nameAr || company.nameEn
-    : company.nameEn || company.nameAr || "";
-}
-
-function hasPmsPermission(
-  permissionKeys: readonly PmsPermissionKey[] | undefined,
-  permission: PmsPermissionKey,
-) {
-  return permissionKeys?.includes(permission) ?? false;
-}
-
 function getPmsSectionPermission(section: string): PmsPermissionKey | null {
   if (section === "properties" || section === "propertyDetail" || section === "units") return "INVENTORY_VIEW";
   if (section === "tenants" || section === "rentals" || section === "leaseDetail") return "TENANCY_VIEW";
@@ -872,7 +855,7 @@ export default function PmsPortal() {
   const location = useLocation();
   const navigate = useNavigate();
   const params = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const selectedCompanyId = searchParams.get("companyId") ?? undefined;
   const selectedPropertyId = params.propertyId;
   const selectedLeaseId = params.leaseId;
@@ -1505,29 +1488,30 @@ export default function PmsPortal() {
     ? "leaseDetail"
     : selectedPropertyId
       ? "propertyDetail"
-      : location.pathname.startsWith("/pms/units")
+      : location.pathname.startsWith("/pms/portfolio/units")
         ? "units"
-        : location.pathname.startsWith("/pms/properties")
+        : location.pathname.startsWith("/pms/portfolio/properties")
           ? "properties"
-          : location.pathname.startsWith("/pms/tenants")
+          : location.pathname.startsWith("/pms/leasing/tenants")
             ? "tenants"
-            : location.pathname.startsWith("/pms/rentals")
+            : location.pathname.startsWith("/pms/leasing/leases")
               ? "rentals"
-              : location.pathname.startsWith("/pms/documents")
+              : location.pathname.startsWith("/pms/operations/documents")
                 ? "documents"
-                : location.pathname.startsWith("/pms/maintenance")
-                ? "maintenance"
-                : location.pathname.startsWith("/pms/accounting")
-                  ? "accounting"
-                  : location.pathname.startsWith("/pms/import-export")
-                    ? "importExport"
-                  : location.pathname.startsWith("/pms/staff")
-                    ? "staff"
-                  : location.pathname.startsWith("/pms/reports")
-                    ? "reports"
-                    : location.pathname.startsWith("/pms/settings")
-                      ? "settings"
-                      : "overview";
+                : location.pathname.startsWith("/pms/operations/maintenance") ||
+                    location.pathname.startsWith("/pms/operations/vendors")
+                  ? "maintenance"
+                  : location.pathname.startsWith("/pms/finance/records")
+                    ? "accounting"
+                    : location.pathname.startsWith("/pms/administration/import-export")
+                      ? "importExport"
+                      : location.pathname.startsWith("/pms/administration/staff-access")
+                        ? "staff"
+                        : location.pathname.startsWith("/pms/reports")
+                          ? "reports"
+                          : location.pathname.startsWith("/pms/administration/settings")
+                            ? "settings"
+                            : "overview";
 
   const permissionKeys = overview?.workspace.member.permissionKeys;
   const canViewInventory = hasPmsPermission(permissionKeys, "INVENTORY_VIEW");
@@ -1560,7 +1544,79 @@ export default function PmsPortal() {
     ? { eyebrow: copy.importExport, title: copy.importExportTitle, description: copy.importExportDescription }
     : section === "staff"
       ? { eyebrow: copy.accessControls, title: copy.staffTitle, description: copy.staffDescription }
-      : { eyebrow: copy.eyebrow, title: copy.portal, description: copy.portalText };
+      : section === "properties" || section === "propertyDetail"
+        ? {
+            eyebrow: language === "ar" ? "المحفظة" : "Portfolio",
+            title: copy.properties,
+            description: language === "ar"
+              ? "إدارة العقارات الخاصة ونطاقها وربطها الاختياري بالسوق العام."
+              : "Manage private properties, their scope, and optional marketplace links.",
+          }
+        : section === "units"
+          ? {
+              eyebrow: language === "ar" ? "المحفظة" : "Portfolio",
+              title: copy.units,
+              description: language === "ar"
+                ? "إدارة الوحدات وحالة الإشغال وربطها بالعقارات المسموح بها."
+                : "Manage units, occupancy state, and their permitted property placement.",
+            }
+          : section === "tenants"
+            ? {
+                eyebrow: language === "ar" ? "الإيجارات" : "Leasing",
+                title: copy.tenants,
+                description: language === "ar"
+                  ? "إدارة سجلات المستأجرين والوصول إلى البوابة ضمن نطاق الشركة والعقار."
+                  : "Manage tenant records and portal access within company and property scope.",
+              }
+            : section === "rentals" || section === "leaseDetail"
+              ? {
+                  eyebrow: language === "ar" ? "الإيجارات" : "Leasing",
+                  title: language === "ar" ? "العقود وجداول الإيجار" : "Leases and rent schedules",
+                  description: language === "ar"
+                    ? "إدارة دورة العقد والاستحقاقات وقوائم الانتقال والتجديد."
+                    : "Manage lease lifecycle, rent schedules, move checklists, and renewals.",
+                }
+              : section === "documents"
+                ? {
+                    eyebrow: language === "ar" ? "العمليات" : "Operations",
+                    title: copy.documents,
+                    description: language === "ar"
+                      ? "إدارة المستندات الخاصة والمرفقات والتنبيهات ضمن صلاحيات العقار."
+                      : "Manage private documents, attachments, and alerts within property scope.",
+                  }
+                : section === "maintenance"
+                  ? {
+                      eyebrow: language === "ar" ? "العمليات" : "Operations",
+                      title: language === "ar" ? "الصيانة والمورّدون" : "Maintenance and vendors",
+                      description: language === "ar"
+                        ? "إدارة أوامر العمل والمورّدين والعروض والتقدم التشغيلي."
+                        : "Manage work orders, vendors, quotes, and operational progress.",
+                    }
+                  : section === "accounting"
+                    ? {
+                        eyebrow: language === "ar" ? "المالية" : "Finance",
+                        title: language === "ar" ? "السجلات المالية" : "Finance records",
+                        description: language === "ar"
+                          ? "راجع التحصيلات وقيود السجل وكشوف المالك دون خلط العملات."
+                          : "Review collections, ledger records, and owner statements without combining currencies.",
+                      }
+                    : section === "reports"
+                      ? {
+                          eyebrow: copy.reports,
+                          title: copy.reports,
+                          description: language === "ar"
+                            ? "تقارير تشغيلية ومالية تحافظ على نطاق الشركة والعقار والعملات."
+                            : "Operational and financial reporting that preserves company, property, and currency scope.",
+                        }
+                      : section === "settings"
+                        ? {
+                            eyebrow: language === "ar" ? "الإدارة" : "Administration",
+                            title: copy.settings,
+                            description: language === "ar"
+                              ? "إدارة القوالب والسياسات والتواصل وإعدادات مساحة العمل."
+                              : "Manage templates, policies, communications, and workspace settings.",
+                          }
+                        : { eyebrow: copy.eyebrow, title: copy.portal, description: copy.portalText };
 
   const isOperationalSubpage = section === "importExport" || section === "staff";
   const requiredSectionPermission = getPmsSectionPermission(section);
@@ -2051,15 +2107,6 @@ export default function PmsPortal() {
     overview,
   ]);
 
-  const statusLabel =
-    overview?.workspace.entitlement.status === "ACTIVE"
-      ? copy.active
-      : overview?.workspace.entitlement.status === "TRIAL"
-        ? copy.trial
-        : overview?.workspace.entitlement.status === "SUSPENDED"
-          ? copy.suspended
-          : copy.expired;
-
   function handleMapInput(value: string) {
     const parsed = parseCoordinatesFromMapInput(value);
     setPropertyForm((current) => ({
@@ -2336,7 +2383,7 @@ export default function PmsPortal() {
       setPropertyForm(emptyPropertyForm);
       setSuccess(copy.saved);
       navigate(
-        `/pms/properties/${response.property.id}?companyId=${overview.workspace.company.id}`,
+        `/pms/portfolio/properties/${response.property.id}?companyId=${overview.workspace.company.id}`,
       );
     } catch (saveError) {
       console.error(saveError);
@@ -2541,7 +2588,7 @@ export default function PmsPortal() {
       setLeaseForm(emptyLeaseForm);
       setSuccess(copy.saved);
       navigate(
-        `/pms/rentals/${response.lease.id}?companyId=${overview.workspace.company.id}`,
+        `/pms/leasing/leases/${response.lease.id}?companyId=${overview.workspace.company.id}`,
       );
     } catch (saveError) {
       console.error(saveError);
@@ -3020,7 +3067,7 @@ export default function PmsPortal() {
         title: `${activeLease.title} renewal`,
       });
       setSuccess(copy.saved);
-      navigate(`/pms/rentals/${response.lease.id}?companyId=${overview.workspace.company.id}`);
+      navigate(`/pms/leasing/leases/${response.lease.id}?companyId=${overview.workspace.company.id}`);
     } catch (saveError) {
       console.error(saveError);
       setError(
@@ -3075,60 +3122,10 @@ export default function PmsPortal() {
   }
 
   return (
-    <section className="pms-portal" aria-labelledby="pms-title">
-      <aside className="pms-sidebar" aria-label={copy.portal}>
-        <NavLink className="pms-sidebar__brand" to="/pms/overview">
-          <span>lux</span>
-          <strong>PMS</strong>
-        </NavLink>
-
-        <nav className="pms-sidebar__nav">
-          {pmsNavigationGroups.map((group) => {
-            const items = pmsNavigation.filter(
-              (item) =>
-                item.group === group &&
-                (!item.permission ||
-                  overview?.workspace.member.permissionKeys.includes(item.permission)) &&
-                ((item.key !== "importExport" && item.key !== "staff") ||
-                  overview?.workspace.member.propertyScope.allProperties),
-            );
-
-            if (items.length === 0) return null;
-
-            const groupLabel = {
-              workspace: language === "ar" ? "مساحة العمل" : "Workspace",
-              leasing: language === "ar" ? "الإيجارات" : "Leasing",
-              operations: language === "ar" ? "العمليات" : "Operations",
-              control: language === "ar" ? "المالية والتحكم" : "Finance & control",
-            }[group];
-
-            return (
-              <div key={group} className="pms-sidebar__group">
-                <span className="pms-sidebar__group-label">{groupLabel}</span>
-                {items.map((item) => {
-                  const Icon = item.icon;
-                  const label = copy[item.key];
-
-                  return (
-                    <NavLink
-                      key={item.key}
-                      to={item.to}
-                      className={({ isActive }) =>
-                        cn("pms-sidebar__link", isActive && "pms-sidebar__link--active")
-                      }
-                    >
-                      <Icon size={18} aria-hidden="true" />
-                      <span>{label}</span>
-                    </NavLink>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </nav>
-      </aside>
-
-      <div className={cn("pms-main", isOperationalSubpage && "pms-main--compact")}>
+    <section
+      className={cn("pms-route-content", isOperationalSubpage && "pms-main--compact")}
+      aria-labelledby="pms-title"
+    >
         <header className="pms-header">
           <div>
             <p className="eyebrow">{sectionMeta.eyebrow}</p>
@@ -3136,48 +3133,7 @@ export default function PmsPortal() {
             <p>{sectionMeta.description}</p>
           </div>
 
-          {overview ? (
-            <div className="pms-company-card">
-              <span>{copy.company}</span>
-              <strong>
-                {getCompanyName(overview.workspace.company, language)}
-              </strong>
-              <small>
-                {copy.role}:{" "}
-                {getRoleLabel(overview.workspace.member.role, language)}
-              </small>
-              <small>
-                {overview.workspace.member.propertyScope.allProperties
-                  ? language === "ar"
-                    ? "كل العقارات"
-                    : "All properties"
-                  : language === "ar"
-                    ? `${overview.workspace.member.propertyScope.propertyIds.length} عقارات محددة`
-                    : `${overview.workspace.member.propertyScope.propertyIds.length} assigned properties`}
-              </small>
-              <em>{statusLabel}</em>
-            </div>
-          ) : null}
         </header>
-
-        {overview && overview.companies.length > 1 ? (
-          <label className="pms-company-switcher">
-            {copy.switchCompany}
-            <select
-              value={overview.workspace.company.id}
-              onChange={(event) => {
-                setSearchParams({ companyId: event.target.value });
-              }}
-            >
-              {overview.companies.map((workspace) => (
-                <option key={workspace.company.id} value={workspace.company.id}>
-                  {getCompanyName(workspace.company, language)} ·{" "}
-                  {getRoleLabel(workspace.role, language)}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
 
         {loading ? (
           <div className="pms-loading" role="status">
@@ -3435,7 +3391,7 @@ export default function PmsPortal() {
                   <div className="pms-empty-state-list">
                     {overview.emptyStates.properties ? (
                       <Link
-                        to={`/pms/properties?companyId=${overview.workspace.company.id}`}
+                        to={`/pms/portfolio/properties?companyId=${overview.workspace.company.id}`}
                       >
                         <Building2 size={18} aria-hidden="true" />
                         <span>{copy.emptyProperties}</span>
@@ -3531,7 +3487,7 @@ export default function PmsPortal() {
                         </small>
                         <Link
                           className="button-link button-link--secondary"
-                          to={`/pms/properties/${property.id}?companyId=${property.companyId}`}
+                          to={`/pms/portfolio/properties/${property.id}?companyId=${property.companyId}`}
                         >
                           {copy.view}
                         </Link>
@@ -4580,7 +4536,6 @@ export default function PmsPortal() {
             ) : null}
           </div>
         ) : null}
-      </div>
     </section>
   );
 }
@@ -5365,7 +5320,7 @@ function LeaseTable({
                   <td>
                     <Link
                       className="button-link button-link--secondary"
-                      to={`/pms/rentals/${lease.id}?companyId=${lease.companyId}`}
+                      to={`/pms/leasing/leases/${lease.id}?companyId=${lease.companyId}`}
                     >
                       {copy.view}
                     </Link>

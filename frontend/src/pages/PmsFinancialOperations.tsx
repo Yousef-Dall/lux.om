@@ -64,15 +64,14 @@ export default function PmsFinancialOperations() {
     return result;
   }, {}), [charges]);
 
-  if (loading) return <section className="pms-portal"><PortalLoading label="Loading financial operations…" /></section>;
-  if (error) return <section className="pms-portal"><PortalError message={error} /></section>;
+  if (loading) return <section className="pms-route-content"><PortalLoading label="Loading financial operations…" /></section>;
+  if (error) return <section className="pms-route-content"><PortalError message={error} /></section>;
 
   return (
-    <section className="pms-portal" aria-labelledby="financial-operations-title">
-      <div className="pms-main">
+    <section className="pms-route-content" aria-labelledby="financial-operations-title">
         <header className="pms-header">
           <div><p className="eyebrow">PMS financial control</p><h1 id="financial-operations-title">Charges, allocations, deposits, and owner payouts</h1><p>Structured balances are grouped by currency. Closed periods protect posted financial history.</p></div>
-          <Link className="button-link button-link--secondary" to={`/pms/accounting${companyId ? `?companyId=${companyId}` : ''}`}>Legacy accounting</Link>
+          <Link className="button-link button-link--secondary" to={`/pms/finance/records${companyId ? `?companyId=${companyId}` : ''}`}>Finance records</Link>
         </header>
 
         <section className="pms-metric-grid" aria-label="Financial summary">
@@ -101,7 +100,6 @@ export default function PmsFinancialOperations() {
             {payouts.length === 0 ? <PortalEmpty title="No payout batches" message="Approved manual payout records will appear here; no bank transfer is claimed without evidence." /> : payouts.slice(0, 20).map((payout) => <article key={payout.id} className="pms-list-card"><div><strong>{payout.payoutNumber}</strong><span>{payout.status}</span></div><b>{money(payout.payoutAmount, payout.currency)}</b></article>)}
           </PortalPanel>
         </div>
-      </div>
     </section>
   );
 }
