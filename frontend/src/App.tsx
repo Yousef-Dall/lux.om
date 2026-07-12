@@ -1032,7 +1032,9 @@ export default function App() {
             <Route path="operations/documents" element={<PmsPortal />} />
 
             <Route path="finance" element={<PmsLegacyRedirect to="/pms/finance/overview" />} />
-            <Route path="finance/overview" element={<PmsFinancialOperations />} />
+            <Route path="finance/overview" element={<PmsFinancialOperations section="overview" />} />
+            <Route path="finance/charges" element={<PmsFinancialOperations section="charges" />} />
+            <Route path="finance/payments" element={<PmsFinancialOperations section="payments" />} />
             <Route path="finance/records" element={<PmsPortal />} />
 
             <Route path="reports" element={<PmsPortal />} />

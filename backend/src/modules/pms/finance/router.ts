@@ -22,7 +22,9 @@ import { assertFinancialPeriodOpen } from './periods';
 import { assertPositiveMoney, assertSameCurrency, money } from './money';
 import {
   allocatePayment,
+  allocatePaymentBatch,
   getPaymentAvailability,
+  lockFinanceRows,
   paymentBalanceResponse,
   postDepositTransaction,
   postPaymentAdjustment,
@@ -95,6 +97,18 @@ const allocationSchema = z.object({
   amount: z.coerce.number().positive().max(1_000_000_000),
   idempotencyKey: z.string().trim().min(8).max(200),
 });
+const allocationBatchSchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  idempotencyKey: z.string().trim().min(8).max(160),
+  allocations: z.array(z.object({
+    chargeId: z.string().trim().min(1),
+    amount: z.coerce.number().positive().max(1_000_000_000),
+  })).min(1).max(100),
+});
+const financeListPagination = {
+  take: z.coerce.number().int().min(1).max(100).default(25),
+  skip: z.coerce.number().int().min(0).default(0),
+};
 const reverseSchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   reason: z.string().trim().min(3).max(1000),
@@ -189,34 +203,183 @@ function chargeResponse(charge: Record<string, unknown>) {
   return charge;
 }
 
+type ChargeSortField = 'dueDate' | 'createdAt' | 'updatedAt' | 'chargeNumber' | 'balanceAmount' | 'status';
+type PaymentSortField = 'paidAt' | 'createdAt' | 'updatedAt' | 'amount' | 'receiptNumber' | 'status';
+type SortDirection = 'asc' | 'desc';
+
+function chargeOrderBy(sortBy: ChargeSortField, direction: SortDirection): Prisma.PmsChargeOrderByWithRelationInput[] {
+  switch (sortBy) {
+    case 'createdAt': return [{ createdAt: direction }, { id: 'desc' }];
+    case 'updatedAt': return [{ updatedAt: direction }, { id: 'desc' }];
+    case 'chargeNumber': return [{ chargeNumber: direction }, { id: 'desc' }];
+    case 'balanceAmount': return [{ balanceAmount: direction }, { id: 'desc' }];
+    case 'status': return [{ status: direction }, { id: 'desc' }];
+    default: return [{ dueDate: direction }, { id: 'desc' }];
+  }
+}
+
+function paymentOrderBy(sortBy: PaymentSortField, direction: SortDirection): Prisma.PmsRentPaymentOrderByWithRelationInput[] {
+  switch (sortBy) {
+    case 'createdAt': return [{ createdAt: direction }, { id: 'desc' }];
+    case 'updatedAt': return [{ updatedAt: direction }, { id: 'desc' }];
+    case 'amount': return [{ amount: direction }, { id: 'desc' }];
+    case 'receiptNumber': return [{ receiptNumber: direction }, { id: 'desc' }];
+    case 'status': return [{ status: direction }, { id: 'desc' }];
+    default: return [{ paidAt: direction }, { id: 'desc' }];
+  }
+}
+
+const chargeListInclude = {
+  property: { select: { id: true, name: true } },
+  unit: { select: { id: true, unitNumber: true } },
+  tenant: { select: { id: true, fullName: true } },
+  _count: { select: { allocations: true, adjustments: true, creditNotes: true } },
+} satisfies Prisma.PmsChargeInclude;
+
+const paymentListInclude = {
+  property: { select: { id: true, name: true } },
+  unit: { select: { id: true, unitNumber: true } },
+  tenant: { select: { id: true, fullName: true } },
+  lease: { select: { id: true, title: true } },
+  allocations: {
+    select: { id: true, amount: true, status: true, chargeId: true },
+    orderBy: { createdAt: 'asc' as const },
+  },
+  adjustments: {
+    select: { id: true, amount: true, status: true, type: true },
+    orderBy: { createdAt: 'asc' as const },
+  },
+  securityDepositTransactions: {
+    where: { status: 'POSTED' as const, type: 'COLLECTION' as const },
+    select: { amount: true },
+  },
+} satisfies Prisma.PmsRentPaymentInclude;
+
+function paymentListResponse(payment: Prisma.PmsRentPaymentGetPayload<{ include: typeof paymentListInclude }>) {
+  const allocatedAmount = payment.allocations
+    .filter((allocation) => allocation.status === 'ACTIVE')
+    .reduce((sum, allocation) => sum.plus(allocation.amount), new Prisma.Decimal(0));
+  const adjustedAmount = payment.adjustments
+    .filter((adjustment) => adjustment.status === 'POSTED')
+    .reduce((sum, adjustment) => sum.plus(adjustment.amount), new Prisma.Decimal(0));
+  const depositAllocatedAmount = payment.securityDepositTransactions
+    .reduce((sum, transaction) => sum.plus(transaction.amount), new Prisma.Decimal(0));
+  const availableAmount = Prisma.Decimal.max(
+    new Prisma.Decimal(0),
+    payment.amount.minus(adjustedAmount).minus(allocatedAmount).minus(depositAllocatedAmount),
+  );
+  return {
+    ...payment,
+    allocatedAmount: allocatedAmount.toString(),
+    adjustedAmount: adjustedAmount.toString(),
+    depositAllocatedAmount: depositAllocatedAmount.toString(),
+    availableAmount: availableAmount.toString(),
+  };
+}
+
 pmsFinanceRouter.get('/charges', requireAuth(), async (req, res, next) => {
   try {
     const query = companyQuery.extend({
       propertyId: z.string().trim().min(1).optional(),
       status: z.enum(['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'VOID']).optional(),
+      openOnly: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
       tenantId: z.string().trim().min(1).optional(),
+      currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(),
+      search: z.string().trim().max(160).optional(),
+      dueFrom: z.coerce.date().optional(),
+      dueTo: z.coerce.date().optional(),
+      sortBy: z.enum(['dueDate', 'createdAt', 'updatedAt', 'chargeNumber', 'balanceAmount', 'status']).default('dueDate'),
+      direction: z.enum(['asc', 'desc']).default('desc'),
+      ...financeListPagination,
     }).parse(req.query);
     const access = await requirePmsRouteAccess(req, query.companyId);
     assertCanViewPmsAccounting(access.member);
     if (query.propertyId) assertPmsPropertyScope(access, query.propertyId);
-    const charges = await prisma.pmsCharge.findMany({
-      where: {
-        companyId: access.company.id,
-        ...propertyScopeWhere(access),
-        ...(query.propertyId ? { propertyId: query.propertyId } : {}),
-        ...(query.status ? { status: query.status } : {}),
-        ...(query.tenantId ? { tenantId: query.tenantId } : {}),
-      },
+    const where: Prisma.PmsChargeWhereInput = {
+      companyId: access.company.id,
+      ...propertyScopeWhere(access),
+      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.openOnly ? { status: { in: ['ISSUED', 'PARTIALLY_PAID'] }, balanceAmount: { gt: 0 } } : query.status ? { status: query.status } : {}),
+      ...(query.tenantId ? { tenantId: query.tenantId } : {}),
+      ...(query.currency ? { currency: query.currency } : {}),
+      ...((query.dueFrom || query.dueTo) ? {
+        dueDate: {
+          ...(query.dueFrom ? { gte: query.dueFrom } : {}),
+          ...(query.dueTo ? { lte: query.dueTo } : {}),
+        },
+      } : {}),
+      ...(query.search ? {
+        OR: [
+          { chargeNumber: { contains: query.search, mode: 'insensitive' } },
+          { notes: { contains: query.search, mode: 'insensitive' } },
+          { property: { name: { contains: query.search, mode: 'insensitive' } } },
+          { unit: { unitNumber: { contains: query.search, mode: 'insensitive' } } },
+          { tenant: { fullName: { contains: query.search, mode: 'insensitive' } } },
+        ],
+      } : {}),
+    };
+    const [charges, total, totalsByCurrency] = await prisma.$transaction([
+      prisma.pmsCharge.findMany({
+        where,
+        include: chargeListInclude,
+        orderBy: chargeOrderBy(query.sortBy, query.direction),
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsCharge.count({ where }),
+      prisma.pmsCharge.groupBy({
+        by: ['currency'],
+        where,
+        _sum: { totalAmount: true, paidAmount: true, creditedAmount: true, balanceAmount: true },
+        _count: { _all: true },
+        orderBy: { currency: 'asc' },
+      }),
+    ]);
+    res.json({
+      charges: charges.map(chargeResponse),
+      pagination: { take: query.take, skip: query.skip, count: charges.length, total },
+      totalsByCurrency: totalsByCurrency.map((item) => ({
+        currency: item.currency,
+        count: item._count._all,
+        totalAmount: item._sum.totalAmount?.toString() ?? '0',
+        paidAmount: item._sum.paidAmount?.toString() ?? '0',
+        creditedAmount: item._sum.creditedAmount?.toString() ?? '0',
+        balanceAmount: item._sum.balanceAmount?.toString() ?? '0',
+      })),
+    });
+  } catch (error) { next(error); }
+});
+
+pmsFinanceRouter.get('/charges/:id', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParams.parse(req.params);
+    const query = companyQuery.parse(req.query);
+    const access = await requirePmsRouteAccess(req, query.companyId);
+    assertCanViewPmsAccounting(access.member);
+    const charge = await prisma.pmsCharge.findFirst({
+      where: { id, companyId: access.company.id },
       include: {
         property: { select: { id: true, name: true } },
         unit: { select: { id: true, unitNumber: true } },
         tenant: { select: { id: true, fullName: true } },
+        lease: { select: { id: true, title: true, currency: true } },
         lines: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] },
+        adjustments: { include: { createdBy: { select: { id: true, name: true } }, reversedBy: { select: { id: true, name: true } } }, orderBy: { createdAt: 'asc' } },
+        creditNotes: { include: { createdBy: { select: { id: true, name: true } }, approvedBy: { select: { id: true, name: true } } }, orderBy: { createdAt: 'asc' } },
+        allocations: {
+          include: {
+            payment: { select: { id: true, receiptNumber: true, paidAt: true, amount: true, method: true } },
+            createdBy: { select: { id: true, name: true } },
+            reversedBy: { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+        documents: { select: { id: true, title: true, type: true, status: true, createdAt: true } },
       },
-      orderBy: [{ dueDate: 'desc' }, { createdAt: 'desc' }],
-      take: 500,
     });
-    res.json({ charges: charges.map(chargeResponse) });
+    if (!charge) throw new AppError(404, 'Charge not found.');
+    assertPmsPropertyScope(access, charge.propertyId);
+    res.json({ charge });
   } catch (error) { next(error); }
 });
 
@@ -266,6 +429,90 @@ pmsFinanceRouter.post('/charges', requireAuth(), async (req, res, next) => {
     });
     await audit(req, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsCharge', entityId: charge.id, action: 'PMS_CHARGE_CREATED', actorId: req.user!.id, afterMetadata: { chargeNumber: charge.chargeNumber, propertyId: charge.propertyId, totalAmount: charge.totalAmount.toString(), currency: charge.currency } });
     res.status(201).json({ charge });
+  } catch (error) { next(error); }
+});
+
+pmsFinanceRouter.patch('/charges/:id', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParams.parse(req.params);
+    const data = createChargeSchema.parse(req.body);
+    const access = await requirePmsRouteAccess(req, data.companyId);
+    assertCanManagePmsAccounting(access.member);
+    const current = await prisma.pmsCharge.findFirst({
+      where: { id, companyId: access.company.id },
+      include: { allocations: { where: { status: 'ACTIVE' } }, creditNotes: { where: { status: { not: 'VOID' } } } },
+    });
+    if (!current) throw new AppError(404, 'Charge not found.');
+    assertPmsPropertyScope(access, current.propertyId);
+    if (current.status !== 'DRAFT') throw new AppError(409, 'Only draft charges can be edited.');
+    if (current.allocations.length > 0 || current.creditNotes.length > 0) {
+      throw new AppError(409, 'Draft charge cannot be edited after allocations or credit notes exist.');
+    }
+    const links = await assertPmsScopeLinks({
+      access,
+      propertyId: data.propertyId,
+      unitId: data.unitId,
+      leaseId: data.leaseId,
+      tenantId: data.tenantId,
+    });
+    if (links.lease) assertSameCurrency(data.currency, links.lease.currency);
+    if (data.servicePeriodStart && data.servicePeriodEnd && data.servicePeriodEnd < data.servicePeriodStart) {
+      throw new AppError(400, 'Service period end must not be before its start.');
+    }
+    const charge = await prisma.$transaction(async (tx) => {
+      await lockFinanceRows(tx, 'PmsCharge', [current.id]);
+      const locked = await tx.pmsCharge.findUnique({
+        where: { id: current.id },
+        include: { allocations: { where: { status: 'ACTIVE' } }, creditNotes: { where: { status: { not: 'VOID' } } } },
+      });
+      if (!locked || locked.companyId !== access.company.id) throw new AppError(404, 'Charge not found.');
+      if (locked.status !== 'DRAFT') throw new AppError(409, 'Only draft charges can be edited.');
+      if (locked.allocations.length > 0 || locked.creditNotes.length > 0) {
+        throw new AppError(409, 'Draft charge cannot be edited after allocations or credit notes exist.');
+      }
+      await tx.pmsChargeLine.deleteMany({ where: { chargeId: current.id } });
+      await tx.pmsCharge.update({
+        where: { id: current.id },
+        data: {
+          propertyId: data.propertyId,
+          unitId: data.unitId ?? null,
+          leaseId: data.leaseId ?? null,
+          tenantId: data.tenantId ?? null,
+          currency: data.currency,
+          dueDate: data.dueDate,
+          servicePeriodStart: data.servicePeriodStart ?? null,
+          servicePeriodEnd: data.servicePeriodEnd ?? null,
+          notes: data.notes ?? null,
+          lines: {
+            create: data.lines.map((line, position) => ({
+              companyId: access.company.id,
+              category: line.category,
+              description: line.description,
+              quantity: money(line.quantity),
+              unitAmount: money(line.unitAmount),
+              amount: money(line.quantity).mul(money(line.unitAmount)),
+              position,
+              servicePeriodStart: line.servicePeriodStart ?? null,
+              servicePeriodEnd: line.servicePeriodEnd ?? null,
+              metadata: line.metadata as Prisma.InputJsonValue | undefined,
+            })),
+          },
+        },
+      });
+      return recomputeCharge(tx, current.id);
+    });
+    await audit(req, {
+      companyId: access.company.id,
+      domain: DomainAuditDomain.PMS,
+      entityType: 'PmsCharge',
+      entityId: current.id,
+      action: 'PMS_CHARGE_DRAFT_UPDATED',
+      actorId: req.user!.id,
+      changedFields: ['propertyId', 'unitId', 'leaseId', 'tenantId', 'currency', 'dueDate', 'servicePeriodStart', 'servicePeriodEnd', 'notes', 'lines'],
+      beforeMetadata: { propertyId: current.propertyId, currency: current.currency, dueDate: current.dueDate.toISOString() },
+      afterMetadata: { propertyId: charge.propertyId, currency: charge.currency, dueDate: charge.dueDate.toISOString(), lineCount: data.lines.length },
+    });
+    res.json({ charge });
   } catch (error) { next(error); }
 });
 
@@ -397,6 +644,120 @@ pmsFinanceRouter.post('/credit-notes/:id/transition', requireAuth(), async (req,
   } catch (error) { next(error); }
 });
 
+pmsFinanceRouter.get('/payments', requireAuth(), async (req, res, next) => {
+  try {
+    const query = companyQuery.extend({
+      propertyId: z.string().trim().min(1).optional(),
+      tenantId: z.string().trim().min(1).optional(),
+      status: z.enum(['PENDING', 'CONFIRMED', 'FAILED', 'CANCELLED', 'REFUNDED']).optional(),
+      currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(),
+      search: z.string().trim().max(160).optional(),
+      paidFrom: z.coerce.date().optional(),
+      paidTo: z.coerce.date().optional(),
+      sortBy: z.enum(['paidAt', 'createdAt', 'updatedAt', 'amount', 'receiptNumber', 'status']).default('paidAt'),
+      direction: z.enum(['asc', 'desc']).default('desc'),
+      ...financeListPagination,
+    }).parse(req.query);
+    const access = await requirePmsRouteAccess(req, query.companyId);
+    assertCanViewPmsAccounting(access.member);
+    if (query.propertyId) assertPmsPropertyScope(access, query.propertyId);
+    const where: Prisma.PmsRentPaymentWhereInput = {
+      companyId: access.company.id,
+      ...propertyScopeWhere(access),
+      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.tenantId ? { tenantId: query.tenantId } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.currency ? { currency: query.currency } : {}),
+      ...((query.paidFrom || query.paidTo) ? {
+        paidAt: {
+          ...(query.paidFrom ? { gte: query.paidFrom } : {}),
+          ...(query.paidTo ? { lte: query.paidTo } : {}),
+        },
+      } : {}),
+      ...(query.search ? {
+        OR: [
+          { receiptNumber: { contains: query.search, mode: 'insensitive' } },
+          { referenceNumber: { contains: query.search, mode: 'insensitive' } },
+          { notes: { contains: query.search, mode: 'insensitive' } },
+          { property: { name: { contains: query.search, mode: 'insensitive' } } },
+          { unit: { unitNumber: { contains: query.search, mode: 'insensitive' } } },
+          { tenant: { fullName: { contains: query.search, mode: 'insensitive' } } },
+        ],
+      } : {}),
+    };
+    const [payments, total, totalsByCurrency] = await prisma.$transaction([
+      prisma.pmsRentPayment.findMany({
+        where,
+        include: paymentListInclude,
+        orderBy: paymentOrderBy(query.sortBy, query.direction),
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsRentPayment.count({ where }),
+      prisma.pmsRentPayment.groupBy({
+        by: ['currency'],
+        where,
+        _sum: { amount: true },
+        _count: { _all: true },
+        orderBy: { currency: 'asc' },
+      }),
+    ]);
+    res.json({
+      payments: payments.map(paymentListResponse),
+      pagination: { take: query.take, skip: query.skip, count: payments.length, total },
+      totalsByCurrency: totalsByCurrency.map((item) => ({
+        currency: item.currency,
+        count: item._count._all,
+        recordedAmount: item._sum.amount?.toString() ?? '0',
+      })),
+    });
+  } catch (error) { next(error); }
+});
+
+pmsFinanceRouter.get('/payments/:id', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParams.parse(req.params);
+    const query = companyQuery.parse(req.query);
+    const access = await requirePmsRouteAccess(req, query.companyId);
+    assertCanViewPmsAccounting(access.member);
+    const payment = await prisma.pmsRentPayment.findFirst({
+      where: { id, companyId: access.company.id },
+      include: {
+        property: { select: { id: true, name: true } },
+        unit: { select: { id: true, unitNumber: true } },
+        tenant: { select: { id: true, fullName: true } },
+        lease: { select: { id: true, title: true, currency: true } },
+        recordedBy: { select: { id: true, name: true, email: true } },
+        allocations: {
+          include: {
+            charge: { select: { id: true, chargeNumber: true, status: true, dueDate: true, totalAmount: true, balanceAmount: true } },
+            createdBy: { select: { id: true, name: true } },
+            reversedBy: { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+        adjustments: {
+          include: { createdBy: { select: { id: true, name: true } }, reversedBy: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+        securityDepositTransactions: {
+          include: { account: { select: { id: true, status: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+        reconciliationItems: {
+          select: { id: true, status: true, source: true, externalReference: true, transactionDate: true, matchedAt: true },
+          orderBy: { transactionDate: 'asc' },
+        },
+      },
+    });
+    if (!payment) throw new AppError(404, 'Payment not found.');
+    assertPmsPropertyScope(access, payment.propertyId);
+    const availability = await getPaymentAvailability(prisma, payment.id);
+    res.json({ payment, balance: paymentBalanceResponse(availability) });
+  } catch (error) { next(error); }
+});
+
+
 pmsFinanceRouter.post('/payments', requireAuth(), async (req, res, next) => {
   try {
     const data = createPaymentSchema.parse(req.body);
@@ -496,6 +857,46 @@ pmsFinanceRouter.get('/payments/:id/balance', requireAuth(), async (req, res, ne
     if (availability.payment.companyId !== access.company.id) throw new AppError(404, 'Payment not found.');
     assertPmsPropertyScope(access, availability.payment.propertyId);
     res.json({ balance: paymentBalanceResponse(availability) });
+  } catch (error) { next(error); }
+});
+
+pmsFinanceRouter.post('/payments/:id/allocations/batch', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParams.parse(req.params);
+    const data = allocationBatchSchema.parse(req.body);
+    const access = await requirePmsRouteAccess(req, data.companyId);
+    assertCanManagePmsAccounting(access.member);
+    const [payment, charges] = await Promise.all([
+      prisma.pmsRentPayment.findFirst({ where: { id, companyId: access.company.id }, select: { propertyId: true } }),
+      prisma.pmsCharge.findMany({
+        where: { id: { in: data.allocations.map((allocation) => allocation.chargeId) }, companyId: access.company.id },
+        select: { id: true, propertyId: true },
+      }),
+    ]);
+    if (!payment || charges.length !== new Set(data.allocations.map((allocation) => allocation.chargeId)).size) {
+      throw new AppError(404, 'Payment or charge not found.');
+    }
+    assertPmsPropertyScope(access, payment.propertyId);
+    charges.forEach((charge) => assertPmsPropertyScope(access, charge.propertyId));
+    const result = await allocatePaymentBatch({
+      companyId: access.company.id,
+      paymentId: id,
+      allocations: data.allocations,
+      idempotencyKey: data.idempotencyKey,
+      actorId: req.user!.id,
+    });
+    for (const allocation of result.allocations) {
+      await audit(req, {
+        companyId: access.company.id,
+        domain: DomainAuditDomain.PMS,
+        entityType: 'PmsPaymentAllocation',
+        entityId: allocation.id,
+        action: result.idempotent ? 'PMS_PAYMENT_ALLOCATION_IDEMPOTENT_REPLAY' : 'PMS_PAYMENT_ALLOCATED',
+        actorId: req.user!.id,
+        afterMetadata: { paymentId: id, chargeId: allocation.chargeId, amount: allocation.amount.toString(), batch: true },
+      });
+    }
+    res.status(result.idempotent ? 200 : 201).json(result);
   } catch (error) { next(error); }
 });
 

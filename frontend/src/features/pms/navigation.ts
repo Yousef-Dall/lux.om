@@ -2,6 +2,7 @@ import {
   BarChart3,
   Building2,
   ClipboardList,
+  CreditCard,
   FileInput,
   FileText,
   Gauge,
@@ -31,6 +32,8 @@ export type PmsNavigationKey =
   | 'assetsInspections'
   | 'documents'
   | 'financeOverview'
+  | 'financeCharges'
+  | 'financePayments'
   | 'financeRecords'
   | 'reports'
   | 'staffAccess'
@@ -66,6 +69,8 @@ export const pmsNavigation: readonly PmsNavigationItem[] = [
   { to: '/pms/operations/assets-inspections', key: 'assetsInspections', group: 'operations', icon: PackageSearch, permission: 'MAINTENANCE_VIEW' },
   { to: '/pms/operations/documents', key: 'documents', group: 'operations', icon: FileText, permission: 'DOCUMENTS_VIEW' },
   { to: '/pms/finance/overview', key: 'financeOverview', group: 'finance', icon: Landmark, permission: 'ACCOUNTING_VIEW' },
+  { to: '/pms/finance/charges', key: 'financeCharges', group: 'finance', icon: ReceiptText, permission: 'ACCOUNTING_VIEW' },
+  { to: '/pms/finance/payments', key: 'financePayments', group: 'finance', icon: CreditCard, permission: 'ACCOUNTING_VIEW' },
   { to: '/pms/finance/records', key: 'financeRecords', group: 'finance', icon: ReceiptText, permission: 'ACCOUNTING_VIEW' },
   { to: '/pms/reports', key: 'reports', group: 'reports', icon: BarChart3, permission: 'REPORTS_VIEW' },
   { to: '/pms/administration/staff-access', key: 'staffAccess', group: 'administration', icon: UserCog, permission: 'STAFF_MANAGE', requiresWorkspaceWideAccess: true },

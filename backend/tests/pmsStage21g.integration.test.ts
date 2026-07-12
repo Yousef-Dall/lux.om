@@ -108,6 +108,207 @@ describe('PMS Stage 21G financial and portal operations', () => {
     expect(balance.body.balance).toMatchObject({ allocatedAmount: '40', refundedOrChargedBackAmount: '30', availableAmount: '30' });
   });
 
+  it('supports paginated finance browsing, editable drafts, and atomic multi-charge allocations', async () => {
+    const fixture = await createFixture();
+    const draft = await request(app)
+      .post('/api/pms/accounting/charges')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({
+        companyId: fixture.company.id,
+        propertyId: fixture.propertyA.id,
+        unitId: fixture.unitA.id,
+        leaseId: fixture.leaseA.id,
+        tenantId: fixture.tenantA.id,
+        currency: 'OMR',
+        dueDate: '2026-09-01',
+        notes: 'Initial draft',
+        lines: [
+          { category: 'RENT', description: 'September rent', quantity: 1, unitAmount: 90 },
+          { category: 'UTILITIES', description: 'Water estimate', quantity: 1, unitAmount: 10 },
+        ],
+      })
+      .expect(201);
+
+    const updated = await request(app)
+      .patch(`/api/pms/accounting/charges/${draft.body.charge.id}`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({
+        companyId: fixture.company.id,
+        propertyId: fixture.propertyA.id,
+        unitId: fixture.unitA.id,
+        leaseId: fixture.leaseA.id,
+        tenantId: fixture.tenantA.id,
+        currency: 'OMR',
+        dueDate: '2026-09-05',
+        notes: 'Reviewed draft',
+        lines: [
+          { category: 'RENT', description: 'September rent', quantity: 1, unitAmount: 100 },
+          { category: 'SERVICE_CHARGE', description: 'Shared services', quantity: 2, unitAmount: 5 },
+        ],
+      })
+      .expect(200);
+    expect(updated.body.charge).toMatchObject({ status: 'DRAFT', totalAmount: '110', balanceAmount: '110', notes: 'Reviewed draft' });
+    expect(updated.body.charge.lines).toHaveLength(2);
+
+    await request(app)
+      .post(`/api/pms/accounting/charges/${draft.body.charge.id}/issue`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id })
+      .expect(200);
+    const secondChargeId = await createIssuedCharge(fixture, 40);
+
+    const chargePage = await request(app)
+      .get(`/api/pms/accounting/charges?companyId=${fixture.company.id}&take=1&skip=0&status=ISSUED&search=CHG-`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200);
+    expect(chargePage.body.pagination).toMatchObject({ take: 1, skip: 0, count: 1, total: 2 });
+    expect(chargePage.body.totalsByCurrency).toEqual([
+      expect.objectContaining({ currency: 'OMR', count: 2, balanceAmount: '150' }),
+    ]);
+
+    const detail = await request(app)
+      .get(`/api/pms/accounting/charges/${draft.body.charge.id}?companyId=${fixture.company.id}`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200);
+    expect(detail.body.charge.lines.map((line: { description: string }) => line.description)).toEqual([
+      'September rent',
+      'Shared services',
+    ]);
+
+    const payment = await request(app)
+      .post('/api/pms/accounting/payments')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({
+        companyId: fixture.company.id,
+        propertyId: fixture.propertyA.id,
+        unitId: fixture.unitA.id,
+        leaseId: fixture.leaseA.id,
+        tenantId: fixture.tenantA.id,
+        amount: 150,
+        currency: 'OMR',
+        method: 'BANK_TRANSFER',
+        paidAt: '2026-09-01',
+        referenceNumber: 'BANK-STAGE21I-E',
+        idempotencyKey: 'stage21i-e-payment-001',
+      })
+      .expect(201);
+
+    const paymentPage = await request(app)
+      .get(`/api/pms/accounting/payments?companyId=${fixture.company.id}&take=1&search=BANK-STAGE21I-E`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200);
+    expect(paymentPage.body.pagination).toMatchObject({ take: 1, count: 1, total: 1 });
+    expect(paymentPage.body.totalsByCurrency).toEqual([
+      expect.objectContaining({ currency: 'OMR', count: 1, recordedAmount: '150' }),
+    ]);
+    expect(paymentPage.body.payments[0]).toMatchObject({ availableAmount: '150', allocatedAmount: '0' });
+
+    const batchPayload = {
+      companyId: fixture.company.id,
+      idempotencyKey: 'stage21i-e-allocation-batch',
+      allocations: [
+        { chargeId: draft.body.charge.id, amount: 110 },
+        { chargeId: secondChargeId, amount: 40 },
+      ],
+    };
+    await request(app)
+      .post(`/api/pms/accounting/payments/${payment.body.payment.id}/allocations/batch`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send(batchPayload)
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.idempotent).toBe(false);
+        expect(body.allocations).toHaveLength(2);
+      });
+    await request(app)
+      .post(`/api/pms/accounting/payments/${payment.body.payment.id}/allocations/batch`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send(batchPayload)
+      .expect(200)
+      .expect(({ body }) => expect(body.idempotent).toBe(true));
+    await request(app)
+      .post(`/api/pms/accounting/payments/${payment.body.payment.id}/allocations/batch`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({
+        ...batchPayload,
+        allocations: [...batchPayload.allocations].reverse(),
+      })
+      .expect(409);
+
+    const paymentDetail = await request(app)
+      .get(`/api/pms/accounting/payments/${payment.body.payment.id}?companyId=${fixture.company.id}`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200);
+    expect(paymentDetail.body.balance).toMatchObject({ allocatedAmount: '150', availableAmount: '0' });
+    expect(paymentDetail.body.payment.allocations).toHaveLength(2);
+
+    const overflowPayment = await request(app)
+      .post('/api/pms/accounting/payments')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({
+        companyId: fixture.company.id,
+        propertyId: fixture.propertyA.id,
+        unitId: fixture.unitA.id,
+        leaseId: fixture.leaseA.id,
+        tenantId: fixture.tenantA.id,
+        amount: 50,
+        currency: 'OMR',
+        method: 'CASH',
+        paidAt: '2026-09-02',
+        idempotencyKey: 'stage21i-e-payment-overflow',
+      })
+      .expect(201);
+    await request(app)
+      .post(`/api/pms/accounting/payments/${overflowPayment.body.payment.id}/allocations/batch`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({
+        companyId: fixture.company.id,
+        idempotencyKey: 'stage21i-e-overflow-batch',
+        allocations: [
+          { chargeId: draft.body.charge.id, amount: 30 },
+          { chargeId: secondChargeId, amount: 30 },
+        ],
+      })
+      .expect(409);
+    expect(await prisma.pmsPaymentAllocation.count({ where: { paymentId: overflowPayment.body.payment.id } })).toBe(0);
+
+    const concurrentChargeId = await createIssuedCharge(fixture, 20);
+    const concurrentPayment = await request(app)
+      .post('/api/pms/accounting/payments')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({
+        companyId: fixture.company.id,
+        propertyId: fixture.propertyA.id,
+        unitId: fixture.unitA.id,
+        leaseId: fixture.leaseA.id,
+        tenantId: fixture.tenantA.id,
+        amount: 20,
+        currency: 'OMR',
+        method: 'CASH',
+        paidAt: '2026-09-03',
+        idempotencyKey: 'stage21i-e-payment-concurrent',
+      })
+      .expect(201);
+    const concurrentBatch = {
+      companyId: fixture.company.id,
+      idempotencyKey: 'stage21i-e-concurrent-batch',
+      allocations: [{ chargeId: concurrentChargeId, amount: 20 }],
+    };
+    const concurrentResponses = await Promise.all([
+      request(app)
+        .post(`/api/pms/accounting/payments/${concurrentPayment.body.payment.id}/allocations/batch`)
+        .set('Authorization', `Bearer ${fixture.managerToken}`)
+        .send(concurrentBatch),
+      request(app)
+        .post(`/api/pms/accounting/payments/${concurrentPayment.body.payment.id}/allocations/batch`)
+        .set('Authorization', `Bearer ${fixture.managerToken}`)
+        .send(concurrentBatch),
+    ]);
+    expect(concurrentResponses.map((response) => response.status).sort()).toEqual([200, 201]);
+    expect(await prisma.pmsPaymentAllocation.count({ where: { paymentId: concurrentPayment.body.payment.id } })).toBe(1);
+  });
+
+
   it('keeps deposits as liabilities and requires approval before deductions, refunds, or conversion to income', async () => {
     const fixture = await createFixture();
     const account = await request(app).post('/api/pms/accounting/deposits').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, leaseId: fixture.leaseA.id, expectedAmount: 200 }).expect(201);

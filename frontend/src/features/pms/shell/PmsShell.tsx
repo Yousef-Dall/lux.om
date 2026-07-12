@@ -5,6 +5,7 @@ import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'reac
 import { useAuth } from '../../../auth/AuthContext';
 import { useLanguage } from '../../../i18n/LanguageContext';
 import { cn } from '../../../utils/format';
+import { resolvePmsWorkspace, type PmsWorkspaceAccess } from '../access';
 import {
   canViewPmsNavigationItem,
   pmsNavigation,
@@ -13,13 +14,7 @@ import {
   type PmsNavigationKey
 } from '../navigation';
 
-type PmsWorkspace = NonNullable<ReturnType<typeof useAuth>['user']>['pmsAccess'] extends infer Access
-  ? Access extends { workspaces: Array<infer Workspace> }
-    ? Workspace
-    : never
-  : never;
-
-function companyName(workspace: PmsWorkspace, language: 'en' | 'ar') {
+function companyName(workspace: PmsWorkspaceAccess, language: 'en' | 'ar') {
   return language === 'ar'
     ? workspace.company.nameAr || workspace.company.nameEn
     : workspace.company.nameEn || workspace.company.nameAr || '';
@@ -51,8 +46,7 @@ export default function PmsShell() {
   const [searchParams] = useSearchParams();
   const workspaces = user?.pmsAccess?.workspaces ?? [];
   const requestedCompanyId = searchParams.get('companyId');
-  const activeWorkspace =
-    workspaces.find((workspace) => workspace.company.id === requestedCompanyId) ?? workspaces[0];
+  const activeWorkspace = resolvePmsWorkspace(workspaces, requestedCompanyId);
 
   const copy = language === 'ar'
     ? {
@@ -87,6 +81,8 @@ export default function PmsShell() {
           assetsInspections: 'الأصول والصيانة الوقائية والفحوصات',
           documents: 'المستندات',
           financeOverview: 'نظرة مالية',
+          financeCharges: 'المطالبات',
+          financePayments: 'الدفعات والتخصيصات',
           financeRecords: 'السجلات المالية',
           reports: 'التقارير',
           staffAccess: 'الموظفون والصلاحيات',
@@ -126,6 +122,8 @@ export default function PmsShell() {
           assetsInspections: 'Assets, preventive maintenance, and inspections',
           documents: 'Documents',
           financeOverview: 'Financial overview',
+          financeCharges: 'Charges',
+          financePayments: 'Payments and allocations',
           financeRecords: 'Finance records',
           reports: 'Reports',
           staffAccess: 'Staff and access',

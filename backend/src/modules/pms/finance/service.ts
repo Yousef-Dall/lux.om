@@ -23,14 +23,14 @@ export async function lockFinanceRows(
   table: 'PmsCharge' | 'PmsRentPayment' | 'PmsSecurityDepositAccount',
   ids: string[],
 ) {
-  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  const uniqueIds = [...new Set(ids.filter(Boolean))].sort();
   if (uniqueIds.length === 0) return;
   if (table === 'PmsCharge') {
-    await tx.$queryRaw`SELECT id FROM "PmsCharge" WHERE id IN (${Prisma.join(uniqueIds)}) FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM "PmsCharge" WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR UPDATE`;
   } else if (table === 'PmsRentPayment') {
-    await tx.$queryRaw`SELECT id FROM "PmsRentPayment" WHERE id IN (${Prisma.join(uniqueIds)}) FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM "PmsRentPayment" WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR UPDATE`;
   } else {
-    await tx.$queryRaw`SELECT id FROM "PmsSecurityDepositAccount" WHERE id IN (${Prisma.join(uniqueIds)}) FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM "PmsSecurityDepositAccount" WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR UPDATE`;
   }
 }
 
@@ -139,6 +139,9 @@ export async function allocatePayment(input: {
           throw new AppError(409, 'Only issued charges can receive allocations.');
         }
         assertSameCurrency(availability.payment.currency, charge.currency);
+        if (!charge.tenantId || charge.tenantId !== availability.payment.tenantId) {
+          throw new AppError(409, 'Payment and charge must belong to the same tenant.');
+        }
         if (requestedAmount.greaterThan(availability.available)) {
           throw new AppError(409, 'Allocation exceeds the payment available balance.');
         }
@@ -179,6 +182,159 @@ export async function allocatePayment(input: {
     }
     if (isSerializableConflict(error)) {
       throw new AppError(409, 'The payment changed concurrently. Retry the allocation.');
+    }
+    throw error;
+  }
+}
+
+export async function allocatePaymentBatch(input: {
+  companyId: string;
+  paymentId: string;
+  allocations: Array<{ chargeId: string; amount: Prisma.Decimal.Value }>;
+  idempotencyKey: string;
+  actorId: string;
+}) {
+  if (input.allocations.length === 0) throw new AppError(400, 'At least one allocation is required.');
+  const normalized = input.allocations.map((allocation, index) => ({
+    chargeId: allocation.chargeId,
+    amount: assertPositiveMoney(allocation.amount),
+    idempotencyKey: `${input.idempotencyKey}:${index}`,
+  }));
+  if (new Set(normalized.map((allocation) => allocation.chargeId)).size !== normalized.length) {
+    throw new AppError(400, 'Combine duplicate charge allocations before submitting the batch.');
+  }
+  const expectedKeys = normalized.map((allocation) => allocation.idempotencyKey);
+
+  try {
+    return await prisma.$transaction(
+      async (tx) => {
+        async function resolveReplay() {
+          const existing = await tx.pmsPaymentAllocation.findMany({
+            where: {
+              companyId: input.companyId,
+              idempotencyKey: { in: expectedKeys },
+            },
+            include: { charge: true, payment: true },
+            orderBy: { createdAt: 'asc' },
+          });
+          if (existing.length === 0) return null;
+          if (existing.length !== normalized.length) {
+            throw new AppError(409, 'Allocation batch is incomplete. Use a new idempotency key after reviewing the payment.');
+          }
+          const existingByKey = new Map(existing.map((allocation) => [allocation.idempotencyKey, allocation]));
+          const matchesRequest = normalized.every((allocation) => {
+            const replay = existingByKey.get(allocation.idempotencyKey);
+            return replay
+              && replay.paymentId === input.paymentId
+              && replay.chargeId === allocation.chargeId
+              && replay.amount.equals(allocation.amount);
+          });
+          if (!matchesRequest) {
+            throw new AppError(409, 'Allocation idempotency key was already used for a different batch.');
+          }
+          return { allocations: existing, idempotent: true as const };
+        }
+
+        const replay = await resolveReplay();
+        if (replay) return replay;
+
+        await lockFinanceRows(tx, 'PmsRentPayment', [input.paymentId]);
+        await lockFinanceRows(tx, 'PmsCharge', normalized.map((allocation) => allocation.chargeId));
+
+        // A concurrent identical request may have committed while this transaction waited for the row locks.
+        const lockedReplay = await resolveReplay();
+        if (lockedReplay) return lockedReplay;
+
+        const availability = await getPaymentAvailability(tx, input.paymentId);
+        if (availability.payment.companyId !== input.companyId) throw new AppError(404, 'Payment not found.');
+        if (availability.payment.status !== 'CONFIRMED') {
+          throw new AppError(409, 'Only confirmed payments can be allocated.');
+        }
+
+        const charges = await Promise.all(
+          normalized.map((allocation) => recomputeCharge(tx, allocation.chargeId)),
+        );
+        const chargeById = new Map(charges.map((charge) => [charge.id, charge]));
+        const requestedTotal = normalized.reduce((sum, allocation) => sum.plus(allocation.amount), ZERO);
+        if (requestedTotal.greaterThan(availability.available)) {
+          throw new AppError(409, 'Allocation batch exceeds the payment available balance.');
+        }
+
+        for (const allocation of normalized) {
+          const charge = chargeById.get(allocation.chargeId);
+          if (!charge || charge.companyId !== input.companyId) throw new AppError(404, 'Charge not found.');
+          if (charge.status === 'DRAFT' || charge.status === 'VOID') {
+            throw new AppError(409, 'Only issued charges can receive allocations.');
+          }
+          assertSameCurrency(availability.payment.currency, charge.currency);
+          if (!charge.tenantId || charge.tenantId !== availability.payment.tenantId) {
+            throw new AppError(409, 'Every charge in the batch must belong to the payment tenant.');
+          }
+          if (allocation.amount.greaterThan(charge.balanceAmount)) {
+            throw new AppError(409, `Allocation exceeds the outstanding balance for charge ${charge.chargeNumber}.`);
+          }
+        }
+
+        const periodChecks = new Map<string, { propertyId: string; currency: string }>();
+        for (const charge of charges) {
+          periodChecks.set(`${charge.propertyId}:${charge.currency}`, {
+            propertyId: charge.propertyId,
+            currency: charge.currency,
+          });
+        }
+        for (const period of periodChecks.values()) {
+          await assertFinancialPeriodOpen(tx, {
+            companyId: input.companyId,
+            propertyId: period.propertyId,
+            currency: period.currency,
+            transactionDate: availability.payment.paidAt ?? availability.payment.createdAt,
+          });
+        }
+
+        const allocations = [];
+        for (const allocation of normalized) {
+          const charge = chargeById.get(allocation.chargeId)!;
+          allocations.push(await tx.pmsPaymentAllocation.create({
+            data: {
+              companyId: input.companyId,
+              paymentId: input.paymentId,
+              chargeId: allocation.chargeId,
+              amount: allocation.amount,
+              currency: charge.currency,
+              idempotencyKey: allocation.idempotencyKey,
+              createdById: input.actorId,
+            },
+            include: { charge: true, payment: true },
+          }));
+        }
+        await Promise.all(charges.map((charge) => recomputeCharge(tx, charge.id)));
+        return { allocations, idempotent: false as const };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  } catch (error) {
+    if (
+      (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+      || isSerializableConflict(error)
+    ) {
+      const existing = await prisma.pmsPaymentAllocation.findMany({
+        where: { companyId: input.companyId, idempotencyKey: { in: expectedKeys } },
+        include: { charge: true, payment: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const existingByKey = new Map(existing.map((allocation) => [allocation.idempotencyKey, allocation]));
+      const matchesRequest = existing.length === normalized.length && normalized.every((allocation) => {
+        const replay = existingByKey.get(allocation.idempotencyKey);
+        return replay
+          && replay.paymentId === input.paymentId
+          && replay.chargeId === allocation.chargeId
+          && replay.amount.equals(allocation.amount);
+      });
+      if (matchesRequest) return { allocations: existing, idempotent: true as const };
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new AppError(409, 'Allocation idempotency key was already used for a different or incomplete batch.');
+      }
+      throw new AppError(409, 'The payment changed concurrently. Retry the allocation batch.');
     }
     throw error;
   }
@@ -244,6 +400,9 @@ export async function postPaymentAdjustment(input: {
       await lockFinanceRows(tx, 'PmsRentPayment', [input.paymentId]);
       const availability = await getPaymentAvailability(tx, input.paymentId);
       if (availability.payment.companyId !== input.companyId) throw new AppError(404, 'Payment not found.');
+      if (availability.payment.status !== 'CONFIRMED') {
+        throw new AppError(409, 'Only confirmed payments can be refunded or adjusted.');
+      }
       if (input.allocationId) {
         const allocation = await tx.pmsPaymentAllocation.findFirst({
           where: { id: input.allocationId, companyId: input.companyId, paymentId: input.paymentId },
