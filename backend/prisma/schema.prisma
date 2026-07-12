@@ -672,6 +672,11 @@ enum PmsReconciliationStatus {
   IGNORED
 }
 
+enum PmsReconciliationDirection {
+  CREDIT
+  DEBIT
+}
+
 enum PmsOwnerPayoutStatus {
   DRAFT
   APPROVED
@@ -3876,36 +3881,43 @@ model PmsFinancialPeriodEvent {
 }
 
 model PmsReconciliationItem {
-  id                String                  @id @default(cuid())
-  source            PmsReconciliationSource
-  status            PmsReconciliationStatus @default(UNMATCHED)
-  externalReference String
-  amount            Decimal                 @db.Decimal(14, 3)
-  currency          String                  @db.VarChar(3)
-  transactionDate   DateTime
-  payerReference    String?
-  metadata          Json?
-  matchedAt         DateTime?
-  matchReason       String?
-  companyId         String
-  company           DeveloperCompany        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  propertyId        String?
-  property          PmsProperty?            @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-  paymentId         String?
-  payment           PmsRentPayment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  duplicateOfId     String?
-  duplicateOf       PmsReconciliationItem?  @relation("PmsReconciliationDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
-  duplicates        PmsReconciliationItem[] @relation("PmsReconciliationDuplicates")
-  createdById       String?
-  createdBy         User?                   @relation("PmsReconciliationItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  matchedById       String?
-  matchedBy         User?                   @relation("PmsReconciliationItemMatchedBy", fields: [matchedById], references: [id], onDelete: SetNull)
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
+  id                 String                     @id @default(cuid())
+  source             PmsReconciliationSource
+  direction          PmsReconciliationDirection @default(CREDIT)
+  status             PmsReconciliationStatus    @default(UNMATCHED)
+  externalReference  String
+  amount             Decimal                    @db.Decimal(14, 3)
+  currency           String                     @db.VarChar(3)
+  transactionDate    DateTime
+  payerReference     String?
+  metadata           Json?
+  matchedAt          DateTime?
+  matchReason        String?
+  companyId          String
+  company            DeveloperCompany           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  propertyId         String?
+  property           PmsProperty?                @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  paymentId          String?
+  payment            PmsRentPayment?             @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  vendorInvoiceId    String?
+  vendorInvoice      PmsVendorInvoice?           @relation(fields: [vendorInvoiceId], references: [id], onDelete: SetNull)
+  ownerPayoutBatchId String?
+  ownerPayoutBatch   PmsOwnerPayoutBatch?        @relation(fields: [ownerPayoutBatchId], references: [id], onDelete: SetNull)
+  duplicateOfId      String?
+  duplicateOf        PmsReconciliationItem?       @relation("PmsReconciliationDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates         PmsReconciliationItem[]      @relation("PmsReconciliationDuplicates")
+  createdById        String?
+  createdBy          User?                       @relation("PmsReconciliationItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  matchedById        String?
+  matchedBy          User?                       @relation("PmsReconciliationItemMatchedBy", fields: [matchedById], references: [id], onDelete: SetNull)
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
 
   @@unique([companyId, source, externalReference])
-  @@index([companyId, status, transactionDate])
+  @@index([companyId, status, direction, transactionDate])
   @@index([paymentId])
+  @@index([vendorInvoiceId])
+  @@index([ownerPayoutBatchId])
   @@index([duplicateOfId])
 }
 
@@ -3965,6 +3977,7 @@ model PmsOwnerPayoutBatch {
   lines               PmsOwnerPayoutLine[]
   ledgerEntries       PmsAccountingLedgerEntry[]
   documents           PmsDocument[]
+  reconciliationItems PmsReconciliationItem[]
   createdAt           DateTime                   @default(now())
   updatedAt           DateTime                   @updatedAt
 
@@ -4049,6 +4062,7 @@ model PmsVendorInvoice {
   voidedBy              User?                  @relation("PmsVendorInvoiceVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
   documents             PmsDocument[]
   ledgerEntry           PmsAccountingLedgerEntry?
+  reconciliationItems   PmsReconciliationItem[]
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
 

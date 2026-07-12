@@ -20,7 +20,7 @@ export type FinanceTransaction = Prisma.TransactionClient;
 
 export async function lockFinanceRows(
   tx: FinanceTransaction,
-  table: 'PmsCharge' | 'PmsRentPayment' | 'PmsSecurityDepositAccount' | 'PmsReconciliationItem' | 'PmsFinancialPeriod',
+  table: 'PmsCharge' | 'PmsRentPayment' | 'PmsSecurityDepositAccount' | 'PmsReconciliationItem' | 'PmsFinancialPeriod' | 'PmsVendorInvoice' | 'PmsOwnerPayoutBatch',
   ids: string[],
 ) {
   const uniqueIds = [...new Set(ids.filter(Boolean))].sort();
@@ -33,6 +33,10 @@ export async function lockFinanceRows(
     await tx.$queryRaw`SELECT id FROM "PmsReconciliationItem" WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR UPDATE`;
   } else if (table === 'PmsFinancialPeriod') {
     await tx.$queryRaw`SELECT id FROM "PmsFinancialPeriod" WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR UPDATE`;
+  } else if (table === 'PmsVendorInvoice') {
+    await tx.$queryRaw`SELECT id FROM "PmsVendorInvoice" WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR UPDATE`;
+  } else if (table === 'PmsOwnerPayoutBatch') {
+    await tx.$queryRaw`SELECT id FROM "PmsOwnerPayoutBatch" WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR UPDATE`;
   } else {
     await tx.$queryRaw`SELECT id FROM "PmsSecurityDepositAccount" WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR UPDATE`;
   }

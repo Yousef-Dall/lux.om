@@ -132,6 +132,7 @@ const reconciliationListQuery = companyQuery.extend({
   search: z.string().trim().max(200).optional(),
   status: z.enum(['UNMATCHED', 'MATCHED', 'DUPLICATE', 'IGNORED']).optional(),
   source: z.enum(['BANK', 'PAYMENT_PROVIDER', 'CASHBOOK', 'MANUAL']).optional(),
+  reconciliationDirection: z.enum(['CREDIT', 'DEBIT']).optional(),
   currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(),
   propertyId: z.string().trim().min(1).optional(),
   transactionFrom: z.coerce.date().optional(),
@@ -186,6 +187,7 @@ const periodTransitionSchema = z.object({
 const reconciliationSchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   source: z.enum(['BANK', 'PAYMENT_PROVIDER', 'CASHBOOK', 'MANUAL']),
+  direction: z.enum(['CREDIT', 'DEBIT']).default('CREDIT'),
   externalReference: z.string().trim().min(1).max(300),
   amount: z.coerce.number().positive().max(1_000_000_000),
   currency: z.string().trim().length(3).transform((value) => value.toUpperCase()),
@@ -196,8 +198,19 @@ const reconciliationSchema = z.object({
 });
 const reconciliationMatchSchema = z.object({
   companyId: z.string().trim().min(1).optional(),
-  paymentId: z.string().trim().min(1),
+  paymentId: z.string().trim().min(1).optional(),
+  targetType: z.enum(['RENT_PAYMENT', 'VENDOR_INVOICE', 'OWNER_PAYOUT']).optional(),
+  targetId: z.string().trim().min(1).optional(),
   reason: z.string().trim().min(3).max(1000),
+}).superRefine((data, ctx) => {
+  const usesLegacyPayment = Boolean(data.paymentId);
+  const usesAnyTypedTarget = Boolean(data.targetType || data.targetId);
+  const usesCompleteTypedTarget = Boolean(data.targetType && data.targetId);
+  const validLegacyPayload = usesLegacyPayment && !usesAnyTypedTarget;
+  const validTypedPayload = !usesLegacyPayment && usesCompleteTypedTarget;
+  if (!validLegacyPayload && !validTypedPayload) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Provide either paymentId or targetType with targetId.' });
+  }
 });
 const reconciliationTransitionSchema = z.object({
   companyId: z.string().trim().min(1).optional(),
@@ -1357,6 +1370,7 @@ pmsFinanceRouter.get('/reconciliation', requireAuth(), async (req, res, next) =>
       ...(query.propertyId ? { propertyId: query.propertyId } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.source ? { source: query.source } : {}),
+      ...(query.reconciliationDirection ? { direction: query.reconciliationDirection } : {}),
       ...(query.currency ? { currency: query.currency } : {}),
       ...((query.transactionFrom || query.transactionTo) ? { transactionDate: { ...(query.transactionFrom ? { gte: query.transactionFrom } : {}), ...(query.transactionTo ? { lte: query.transactionTo } : {}) } } : {}),
       ...(query.search ? {
@@ -1364,6 +1378,10 @@ pmsFinanceRouter.get('/reconciliation', requireAuth(), async (req, res, next) =>
           { externalReference: { contains: query.search, mode: 'insensitive' } },
           { payerReference: { contains: query.search, mode: 'insensitive' } },
           { payment: { receiptNumber: { contains: query.search, mode: 'insensitive' } } },
+          { vendorInvoice: { invoiceNumber: { contains: query.search, mode: 'insensitive' } } },
+          { vendorInvoice: { paymentReference: { contains: query.search, mode: 'insensitive' } } },
+          { ownerPayoutBatch: { payoutNumber: { contains: query.search, mode: 'insensitive' } } },
+          { ownerPayoutBatch: { payoutReference: { contains: query.search, mode: 'insensitive' } } },
         ],
       } : {}),
     };
@@ -1373,6 +1391,8 @@ pmsFinanceRouter.get('/reconciliation', requireAuth(), async (req, res, next) =>
         include: {
           property: { select: { id: true, name: true } },
           payment: { select: { id: true, amount: true, currency: true, receiptNumber: true, paidAt: true, status: true } },
+          vendorInvoice: { select: { id: true, invoiceNumber: true, paidAmount: true, currency: true, paidAt: true, status: true, paymentReference: true, propertyId: true } },
+          ownerPayoutBatch: { select: { id: true, payoutNumber: true, payoutAmount: true, currency: true, paidAt: true, status: true, payoutReference: true } },
           duplicateOf: { select: { id: true, externalReference: true } },
           createdBy: { select: { id: true, name: true } },
           matchedBy: { select: { id: true, name: true } },
@@ -1401,9 +1421,9 @@ pmsFinanceRouter.post('/reconciliation', requireAuth(), async (req, res, next) =
     assertCanManagePmsAccounting(access.member);
     if (data.propertyId) assertPmsPropertyScope(access, data.propertyId);
     else if (!access.member.propertyScope.allProperties) throw new AppError(403, 'Company-wide reconciliation items require access to all properties.');
-    const duplicate = await prisma.pmsReconciliationItem.findFirst({ where: { companyId: access.company.id, currency: data.currency, amount: money(data.amount), transactionDate: data.transactionDate, payerReference: data.payerReference ?? null }, orderBy: { createdAt: 'asc' } });
-    const item = await prisma.pmsReconciliationItem.create({ data: { companyId: access.company.id, propertyId: data.propertyId ?? null, source: data.source, externalReference: data.externalReference, amount: money(data.amount), currency: data.currency, transactionDate: data.transactionDate, payerReference: data.payerReference ?? null, metadata: data.metadata as Prisma.InputJsonValue | undefined, status: duplicate ? 'DUPLICATE' : 'UNMATCHED', duplicateOfId: duplicate?.id ?? null, createdById: req.user!.id } });
-    await audit(req, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsReconciliationItem', entityId: item.id, action: duplicate ? 'PMS_RECONCILIATION_DUPLICATE_DETECTED' : 'PMS_RECONCILIATION_ITEM_IMPORTED', actorId: req.user!.id, afterMetadata: { source: item.source, externalReference: item.externalReference, amount: item.amount.toString(), currency: item.currency, duplicateOfId: item.duplicateOfId } });
+    const duplicate = await prisma.pmsReconciliationItem.findFirst({ where: { companyId: access.company.id, propertyId: data.propertyId ?? null, source: data.source, direction: data.direction, currency: data.currency, amount: money(data.amount), transactionDate: data.transactionDate, payerReference: data.payerReference ?? null }, orderBy: { createdAt: 'asc' } });
+    const item = await prisma.pmsReconciliationItem.create({ data: { companyId: access.company.id, propertyId: data.propertyId ?? null, source: data.source, direction: data.direction, externalReference: data.externalReference, amount: money(data.amount), currency: data.currency, transactionDate: data.transactionDate, payerReference: data.payerReference ?? null, metadata: data.metadata as Prisma.InputJsonValue | undefined, status: duplicate ? 'DUPLICATE' : 'UNMATCHED', duplicateOfId: duplicate?.id ?? null, createdById: req.user!.id } });
+    await audit(req, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsReconciliationItem', entityId: item.id, action: duplicate ? 'PMS_RECONCILIATION_DUPLICATE_DETECTED' : 'PMS_RECONCILIATION_ITEM_IMPORTED', actorId: req.user!.id, afterMetadata: { source: item.source, direction: item.direction, externalReference: item.externalReference, amount: item.amount.toString(), currency: item.currency, duplicateOfId: item.duplicateOfId } });
     res.status(201).json({ item });
   } catch (error) { next(error); }
 });
@@ -1414,33 +1434,123 @@ pmsFinanceRouter.post('/reconciliation/:id/match', requireAuth(), async (req, re
     const data = reconciliationMatchSchema.parse(req.body);
     const access = await requirePmsRouteAccess(req, data.companyId);
     assertCanManagePmsAccounting(access.member);
+    const targetType = data.paymentId ? 'RENT_PAYMENT' : data.targetType!;
+    const targetId = data.paymentId ?? data.targetId!;
+
     const updated = await prisma.$transaction(async (tx) => {
       await lockFinanceRows(tx, 'PmsReconciliationItem', [id]);
-      await lockFinanceRows(tx, 'PmsRentPayment', [data.paymentId]);
-      const [item, payment] = await Promise.all([
-        tx.pmsReconciliationItem.findFirst({ where: { id, companyId: access.company.id } }),
-        tx.pmsRentPayment.findFirst({ where: { id: data.paymentId, companyId: access.company.id } }),
-      ]);
-      if (!item || !payment) throw new AppError(404, 'Reconciliation item or payment not found.');
-      const existingMatch = await tx.pmsReconciliationItem.findFirst({
-        where: { companyId: access.company.id, paymentId: payment.id, status: 'MATCHED', id: { not: item.id } },
-        select: { id: true, externalReference: true },
-      });
-      if (existingMatch) throw new AppError(409, `Payment is already matched to reconciliation item ${existingMatch.externalReference}.`);
-      if (item.status === 'MATCHED' && item.paymentId === payment.id) return item;
+      if (targetType === 'RENT_PAYMENT') await lockFinanceRows(tx, 'PmsRentPayment', [targetId]);
+      else if (targetType === 'VENDOR_INVOICE') await lockFinanceRows(tx, 'PmsVendorInvoice', [targetId]);
+      else await lockFinanceRows(tx, 'PmsOwnerPayoutBatch', [targetId]);
+
+      const item = await tx.pmsReconciliationItem.findFirst({ where: { id, companyId: access.company.id } });
+      if (!item) throw new AppError(404, 'Reconciliation item not found.');
       if (item.status === 'DUPLICATE' || item.status === 'IGNORED') throw new AppError(409, `Cannot match a reconciliation item in ${item.status} status.`);
       if (item.propertyId) assertPmsPropertyScope(access, item.propertyId);
       else if (!access.member.propertyScope.allProperties) throw new AppError(403, 'Company-wide reconciliation items require access to all properties.');
-      assertPmsPropertyScope(access, payment.propertyId);
-      assertSameCurrency(item.currency, payment.currency);
-      if (!item.amount.equals(payment.amount)) throw new AppError(409, 'Reconciliation amount must equal the payment amount.');
-      return tx.pmsReconciliationItem.update({ where: { id }, data: { status: 'MATCHED', paymentId: payment.id, matchedAt: new Date(), matchedById: req.user!.id, matchReason: data.reason } });
+
+      if (targetType === 'RENT_PAYMENT') {
+        const payment = await tx.pmsRentPayment.findFirst({ where: { id: targetId, companyId: access.company.id } });
+        if (!payment) throw new AppError(404, 'Rent payment not found.');
+        if (item.status === 'MATCHED' && item.paymentId === payment.id) return item;
+        if (item.status === 'MATCHED') throw new AppError(409, 'Reconciliation item is already matched.');
+        if (item.direction !== 'CREDIT') throw new AppError(409, 'Outgoing reconciliation items cannot be matched to rent payments.');
+        if (payment.status !== 'CONFIRMED') throw new AppError(409, 'Only confirmed rent payments can be reconciled.');
+        assertPmsPropertyScope(access, payment.propertyId);
+        if (item.propertyId && item.propertyId !== payment.propertyId) throw new AppError(409, 'Reconciliation property must match the rent payment property.');
+        assertSameCurrency(item.currency, payment.currency);
+        if (!item.amount.equals(payment.amount)) throw new AppError(409, 'Reconciliation amount must equal the payment amount.');
+        const existingMatch = await tx.pmsReconciliationItem.findFirst({
+          where: { companyId: access.company.id, paymentId: payment.id, status: 'MATCHED', id: { not: item.id } },
+          select: { id: true, externalReference: true },
+        });
+        if (existingMatch) throw new AppError(409, `Payment is already matched to reconciliation item ${existingMatch.externalReference}.`);
+        return tx.pmsReconciliationItem.update({
+          where: { id },
+          data: {
+            status: 'MATCHED',
+            paymentId: payment.id,
+            vendorInvoiceId: null,
+            ownerPayoutBatchId: null,
+            matchedAt: new Date(),
+            matchedById: req.user!.id,
+            matchReason: data.reason,
+          },
+        });
+      }
+
+      if (targetType === 'VENDOR_INVOICE') {
+        const invoice = await tx.pmsVendorInvoice.findFirst({ where: { id: targetId, companyId: access.company.id } });
+        if (!invoice) throw new AppError(404, 'Vendor invoice not found.');
+        if (item.status === 'MATCHED' && item.vendorInvoiceId === invoice.id) return item;
+        if (item.status === 'MATCHED') throw new AppError(409, 'Reconciliation item is already matched.');
+        if (item.direction !== 'DEBIT') throw new AppError(409, 'Incoming reconciliation items cannot be matched to vendor payments.');
+        if (invoice.status !== 'PAID' || !invoice.paidAmount.greaterThan(0)) throw new AppError(409, 'Only paid vendor invoices can be reconciled.');
+        assertPmsPropertyScope(access, invoice.propertyId);
+        if (!item.propertyId || item.propertyId !== invoice.propertyId) throw new AppError(409, 'Vendor-payment reconciliation must use the invoice property.');
+        assertSameCurrency(item.currency, invoice.currency);
+        if (!item.amount.equals(invoice.paidAmount)) throw new AppError(409, 'Reconciliation amount must equal the paid vendor invoice amount.');
+        const existingMatch = await tx.pmsReconciliationItem.findFirst({
+          where: { companyId: access.company.id, vendorInvoiceId: invoice.id, status: 'MATCHED', id: { not: item.id } },
+          select: { id: true, externalReference: true },
+        });
+        if (existingMatch) throw new AppError(409, `Vendor invoice is already matched to reconciliation item ${existingMatch.externalReference}.`);
+        return tx.pmsReconciliationItem.update({
+          where: { id },
+          data: {
+            status: 'MATCHED',
+            paymentId: null,
+            vendorInvoiceId: invoice.id,
+            ownerPayoutBatchId: null,
+            matchedAt: new Date(),
+            matchedById: req.user!.id,
+            matchReason: data.reason,
+          },
+        });
+      }
+
+      const payout = await tx.pmsOwnerPayoutBatch.findFirst({ where: { id: targetId, companyId: access.company.id } });
+      if (!payout) throw new AppError(404, 'Owner payout not found.');
+      if (item.status === 'MATCHED' && item.ownerPayoutBatchId === payout.id) return item;
+      if (item.status === 'MATCHED') throw new AppError(409, 'Reconciliation item is already matched.');
+      if (item.direction !== 'DEBIT') throw new AppError(409, 'Incoming reconciliation items cannot be matched to owner payouts.');
+      if (item.propertyId) throw new AppError(409, 'Owner-payout reconciliation must be company-wide.');
+      if (!access.member.propertyScope.allProperties) throw new AppError(403, 'Owner-payout reconciliation requires access to all properties.');
+      if (payout.status !== 'PAID_MANUAL' || !payout.payoutAmount.greaterThan(0)) throw new AppError(409, 'Only paid owner payouts can be reconciled.');
+      assertSameCurrency(item.currency, payout.currency);
+      if (!item.amount.equals(payout.payoutAmount)) throw new AppError(409, 'Reconciliation amount must equal the owner payout amount.');
+      const existingMatch = await tx.pmsReconciliationItem.findFirst({
+        where: { companyId: access.company.id, ownerPayoutBatchId: payout.id, status: 'MATCHED', id: { not: item.id } },
+        select: { id: true, externalReference: true },
+      });
+      if (existingMatch) throw new AppError(409, `Owner payout is already matched to reconciliation item ${existingMatch.externalReference}.`);
+      return tx.pmsReconciliationItem.update({
+        where: { id },
+        data: {
+          status: 'MATCHED',
+          paymentId: null,
+          vendorInvoiceId: null,
+          ownerPayoutBatchId: payout.id,
+          matchedAt: new Date(),
+          matchedById: req.user!.id,
+          matchReason: data.reason,
+        },
+      });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-    await audit(req, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsReconciliationItem', entityId: id, action: 'PMS_RECONCILIATION_MATCHED', actorId: req.user!.id, afterMetadata: { paymentId: data.paymentId, reason: data.reason } });
+
+    await audit(req, {
+      companyId: access.company.id,
+      domain: DomainAuditDomain.PMS,
+      entityType: 'PmsReconciliationItem',
+      entityId: id,
+      action: 'PMS_RECONCILIATION_MATCHED',
+      actorId: req.user!.id,
+      afterMetadata: { targetType, targetId, reason: data.reason },
+    });
     res.json({ item: updated });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
-      return next(new AppError(409, 'The reconciliation item or payment changed concurrently. Reload and retry.'));
+    if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) {
+      return next(new AppError(409, 'The reconciliation item or target changed concurrently or is already matched. Reload and retry.'));
     }
     next(error);
   }
@@ -1466,6 +1576,8 @@ pmsFinanceRouter.post('/reconciliation/:id/transition', requireAuth(), async (re
         data: {
           status: nextStatus,
           paymentId: null,
+          vendorInvoiceId: null,
+          ownerPayoutBatchId: null,
           matchedAt: null,
           matchedById: null,
           matchReason: data.reason,

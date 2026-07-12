@@ -50,9 +50,11 @@ Period lifecycle:
 
 A closed period can return to `OPEN` only through `REOPEN` with a reason. Every transition creates `PmsFinancialPeriodEvent`. Posting helpers check both property-specific and company-wide periods. A partial unique database index prevents duplicate company-wide periods where `propertyId` is null.
 
-## Reconciliation
+## Treasury reconciliation
 
-`PmsReconciliationItem` stores bank, payment-provider, cashbook, or manual references. Company/source/reference is unique. Items may be unmatched, matched, duplicate, or ignored. Matching verifies currency, amount, company, and property scope against a real payment, and one payment cannot be matched to multiple active reconciliation items. Duplicate detection remains explicit and auditable.
+`PmsReconciliationItem` stores bank, payment-provider, cashbook, or manual references with an explicit `CREDIT` or `DEBIT` direction. Company/source/reference remains unique. Items may be unmatched, matched, duplicate, or ignored.
+
+Supported exact-match targets are confirmed rent payments for credits, paid vendor invoices for property-scoped debits, and manually paid owner payouts for company-wide debits. Matching verifies company, property scope, currency, amount, target status, and one-time use in a serializable transaction. Matched rows and their target links are immutable and protected by database constraints, partial unique indexes, and triggers. Duplicate detection includes direction and remains explicit and auditable. See `docs/pms-treasury-reconciliation.md`.
 
 ## Owner payout foundation
 

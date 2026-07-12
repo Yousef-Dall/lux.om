@@ -225,6 +225,8 @@ The job is idempotent per maintenance plan and due date. Do not build a second s
 
 Financial operations must remain currency-separated. Closed periods reject posting until an authorized user reopens the period with a reason. Issued charges, posted allocations, deposit transactions, and published statements are corrected through explicit reversal, credit, void, or revision workflows rather than direct mutation.
 
+Treasury reconciliation must remain direction-aware: credits may match confirmed rent payments, property debits may match paid vendor invoices, and company-wide debits may match paid owner payouts. Review unmatched and duplicate lines daily. Investigate any migration preflight failure rather than bypassing the target-cardinality or uniqueness safeguards. See `docs/pms-treasury-reconciliation.md`.
+
 Owner and vendor portals require explicit grants. Verify property and vendor assignment, private-document access, quote separation, no cross-company leakage, and tenant-data minimization before release. See `docs/pms-owner-vendor-portals.md` and `docs/pms-assets-inspections.md`.
 
 Targeted Stage 21G validation:

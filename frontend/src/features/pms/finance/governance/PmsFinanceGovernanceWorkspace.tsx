@@ -15,7 +15,9 @@ import {
   listPmsDeposits,
   listPmsFinancialPeriods,
   listPmsPayments,
+  listPmsOwnerPayouts,
   listPmsReconciliationItems,
+  listPmsVendorInvoices,
   matchPmsReconciliationItem,
   transitionPmsDepositTransaction,
   transitionPmsFinancialPeriod,
@@ -28,10 +30,14 @@ import {
   type PmsFinancePagination,
   type PmsFinancialPeriod,
   type PmsFinancialPeriodReadiness,
+  type PmsOwnerPayout,
   type PmsPayment,
+  type PmsReconciliationDirection,
   type PmsReconciliationItem,
   type PmsReconciliationSource,
   type PmsReconciliationStatus,
+  type PmsReconciliationTargetType,
+  type PmsVendorInvoice,
 } from '../../../../api/pmsAdvanced';
 import { useAuth } from '../../../../auth/AuthContext';
 import AccessibleDialog from '../../../../components/AccessibleDialog';
@@ -329,24 +335,312 @@ function PeriodWorkspace({ allowCompanyWide, canManage, companyId, language, tok
 }
 
 function ReconciliationCreateDialog({ allowCompanyWide, companyId, language, onClose, onSaved, open, token }: { allowCompanyWide: boolean; companyId: string; language: 'en' | 'ar'; onClose: () => void; onSaved: () => void; open: boolean; token: string }) {
-  const copy = governanceCopy[language]; const firstRef = useRef<HTMLInputElement>(null); const [properties, setProperties] = useState<PmsProperty[]>([]); const [source, setSource] = useState<PmsReconciliationSource>('BANK'); const [reference, setReference] = useState(''); const [payer, setPayer] = useState(''); const [amount, setAmount] = useState(''); const [currency, setCurrency] = useState('OMR'); const [date, setDate] = useState(''); const [propertyId, setPropertyId] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
-  useEffect(() => { if (open) void listPmsProperties(token, { companyId, take: 100, skip: 0 }).then((result) => { setProperties(result.properties); if (!allowCompanyWide && result.properties[0]) setPropertyId((current) => current || result.properties[0]!.id); }).catch((loadError) => setError(apiMessage(loadError, copy.error))); }, [allowCompanyWide, companyId, copy.error, open, token]);
-  async function submit(event: FormEvent) { event.preventDefault(); const numericAmount = Number(amount); if (!reference.trim() || !date || !Number.isFinite(numericAmount) || numericAmount <= 0) return setError(copy.formError); setBusy(true); setError(''); try { await createPmsReconciliationItem(token, { companyId, source, externalReference: reference.trim(), amount: numericAmount, currency: currency.toUpperCase(), transactionDate: date, propertyId: propertyId || null, payerReference: payer.trim() || null }); onSaved(); onClose(); } catch (submitError) { setError(apiMessage(submitError, copy.error)); } finally { setBusy(false); } }
-  return <AccessibleDialog closeLabel={copy.close} description={copy.reconciliationDescription} initialFocusRef={firstRef} onClose={onClose} open={open} title={copy.createReconciliation}><form className="pms-finance-form" onSubmit={submit}>{error ? <p className="pms-finance-form__error" role="alert">{error}</p> : null}<label>{copy.externalReference}<input ref={firstRef} required value={reference} onChange={(event) => setReference(event.target.value)} /></label><label>{copy.source}<select value={source} onChange={(event) => setSource(event.target.value as PmsReconciliationSource)}>{(['BANK', 'PAYMENT_PROVIDER', 'CASHBOOK', 'MANUAL'] as const).map((value) => <option key={value} value={value}>{governanceEnumLabel(value, language)}</option>)}</select></label><label>{copy.amount}<input min="0.001" required step="0.001" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} /></label><label>{copy.currency}<input maxLength={3} required value={currency} onChange={(event) => setCurrency(event.target.value)} /></label><label>{copy.transactionDate}<input required type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label><label>{copy.property}<select required={!allowCompanyWide} value={propertyId} onChange={(event) => setPropertyId(event.target.value)}>{allowCompanyWide ? <option value="">{copy.companyWide}</option> : null}{properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label><label className="pms-finance-form__wide">{copy.payerReference}<input value={payer} onChange={(event) => setPayer(event.target.value)} /></label><div className="pms-finance-inline-actions"><button className="button-link button-link--primary" disabled={busy} type="submit">{copy.save}</button><button onClick={onClose} type="button">{copy.cancel}</button></div></form></AccessibleDialog>;
+  const copy = governanceCopy[language];
+  const firstRef = useRef<HTMLInputElement>(null);
+  const [properties, setProperties] = useState<PmsProperty[]>([]);
+  const [source, setSource] = useState<PmsReconciliationSource>('BANK');
+  const [direction, setDirection] = useState<PmsReconciliationDirection>('CREDIT');
+  const [reference, setReference] = useState('');
+  const [counterparty, setCounterparty] = useState('');
+  const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState('OMR');
+  const [date, setDate] = useState('');
+  const [propertyId, setPropertyId] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    void listPmsProperties(token, { companyId, take: 100, skip: 0 })
+      .then((result) => {
+        setProperties(result.properties);
+        if (!allowCompanyWide && result.properties[0]) setPropertyId((current) => current || result.properties[0]!.id);
+      })
+      .catch((loadError) => setError(apiMessage(loadError, copy.error)));
+  }, [allowCompanyWide, companyId, copy.error, open, token]);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const numericAmount = Number(amount);
+    if (!reference.trim() || !date || !Number.isFinite(numericAmount) || numericAmount <= 0) return setError(copy.formError);
+    setBusy(true);
+    setError('');
+    try {
+      await createPmsReconciliationItem(token, {
+        companyId,
+        source,
+        direction,
+        externalReference: reference.trim(),
+        amount: numericAmount,
+        currency: currency.toUpperCase(),
+        transactionDate: date,
+        propertyId: propertyId || null,
+        payerReference: counterparty.trim() || null,
+      });
+      onSaved();
+      onClose();
+      setReference('');
+      setCounterparty('');
+      setAmount('');
+      setDate('');
+    } catch (submitError) {
+      setError(apiMessage(submitError, copy.error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <AccessibleDialog closeLabel={copy.close} description={copy.reconciliationDescription} initialFocusRef={firstRef} onClose={onClose} open={open} title={copy.createReconciliation}>
+      <form className="pms-finance-form" onSubmit={submit}>
+        {error ? <p className="pms-finance-form__error" role="alert">{error}</p> : null}
+        <label>{copy.externalReference}<input ref={firstRef} required value={reference} onChange={(event) => setReference(event.target.value)} /></label>
+        <label>{copy.direction}<select value={direction} onChange={(event) => setDirection(event.target.value as PmsReconciliationDirection)}><option value="CREDIT">{copy.credit}</option><option value="DEBIT">{copy.debit}</option></select></label>
+        <label>{copy.source}<select value={source} onChange={(event) => setSource(event.target.value as PmsReconciliationSource)}>{(['BANK', 'PAYMENT_PROVIDER', 'CASHBOOK', 'MANUAL'] as const).map((value) => <option key={value} value={value}>{governanceEnumLabel(value, language)}</option>)}</select></label>
+        <label>{copy.amount}<input min="0.001" required step="0.001" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+        <label>{copy.currency}<input maxLength={3} required value={currency} onChange={(event) => setCurrency(event.target.value)} /></label>
+        <label>{copy.transactionDate}<input required type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+        <label>{copy.property}<select required={!allowCompanyWide} value={propertyId} onChange={(event) => setPropertyId(event.target.value)}>{allowCompanyWide ? <option value="">{copy.companyWide}</option> : null}{properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>
+        <label className="pms-finance-form__wide">{copy.counterpartyReference}<input value={counterparty} onChange={(event) => setCounterparty(event.target.value)} /></label>
+        <p className="pms-finance-permission-note">{direction === 'CREDIT' ? copy.creditHint : propertyId ? copy.vendorDebitHint : copy.ownerDebitHint}</p>
+        <div className="pms-finance-inline-actions"><button className="button-link button-link--primary" disabled={busy} type="submit">{copy.save}</button><button onClick={onClose} type="button">{copy.cancel}</button></div>
+      </form>
+    </AccessibleDialog>
+  );
 }
 
 function ReconciliationActionDialog({ companyId, item, language, onClose, onSaved, open, token }: { companyId: string; item: PmsReconciliationItem | null; language: 'en' | 'ar'; onClose: () => void; onSaved: () => void; open: boolean; token: string }) {
-  const copy = governanceCopy[language]; const reasonRef = useRef<HTMLTextAreaElement>(null); const [payments, setPayments] = useState<PmsPayment[]>([]); const [paymentId, setPaymentId] = useState(''); const [reason, setReason] = useState(''); const [action, setAction] = useState<'MATCH' | 'IGNORE' | 'RESTORE_UNMATCHED'>('MATCH'); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
-  useEffect(() => { if (!open || !item) return; setAction(item.status === 'IGNORED' ? 'RESTORE_UNMATCHED' : item.status === 'UNMATCHED' ? 'MATCH' : 'MATCH'); setReason(''); setPaymentId(''); if (item.status === 'UNMATCHED') void listPmsPayments(token, { companyId, propertyId: item.propertyId ?? undefined, status: 'CONFIRMED', currency: item.currency, take: 100, skip: 0 }).then((result) => setPayments(result.payments.filter((payment) => payment.amount === item.amount))).catch((loadError) => setError(apiMessage(loadError, copy.error))); }, [companyId, copy.error, item, open, token]);
-  async function submit(event: FormEvent) { event.preventDefault(); if (!item || reason.trim().length < 3) return setError(copy.formError); if (action === 'MATCH' && !paymentId) return setError(copy.formError); setBusy(true); setError(''); try { if (action === 'MATCH') await matchPmsReconciliationItem(token, item.id, { companyId, paymentId, reason: reason.trim() }); else await transitionPmsReconciliationItem(token, item.id, { companyId, action, reason: reason.trim() }); onSaved(); onClose(); } catch (submitError) { setError(apiMessage(submitError, copy.error)); } finally { setBusy(false); } }
-  return <AccessibleDialog closeLabel={copy.close} description={copy.reconciliationDescription} initialFocusRef={reasonRef} onClose={onClose} open={open} title={action === 'MATCH' ? copy.matchPayment : action === 'IGNORE' ? copy.ignore : copy.restore}>{error ? <p className="pms-finance-form__error" role="alert">{error}</p> : null}{item ? <form className="pms-finance-form" onSubmit={submit}><div className="pms-finance-detail__summary"><div><span>{copy.externalReference}</span><strong>{item.externalReference}</strong></div><div><span>{copy.amount}</span><strong>{formatFinanceMoney(item.amount, item.currency, language)}</strong></div></div>{item.status === 'UNMATCHED' ? <label>{copy.actions}<select value={action} onChange={(event) => setAction(event.target.value as 'MATCH' | 'IGNORE')}><option value="MATCH">{copy.matchPayment}</option><option value="IGNORE">{copy.ignore}</option></select></label> : null}{action === 'MATCH' ? <label>{copy.payment}<select required value={paymentId} onChange={(event) => setPaymentId(event.target.value)}><option value="">{copy.payment}</option>{payments.map((payment) => <option key={payment.id} value={payment.id}>{payment.receiptNumber ?? payment.id} · {formatFinanceDate(payment.paidAt, language)}</option>)}</select></label> : null}<label className="pms-finance-form__wide">{copy.reason}<textarea ref={reasonRef} required value={reason} onChange={(event) => setReason(event.target.value)} /></label><p className="pms-finance-permission-note"><AlertTriangle aria-hidden="true" size={17} /> {copy.destructiveWarning}</p><div className="pms-finance-inline-actions"><button className="button-link button-link--primary" disabled={busy} type="submit">{action === 'MATCH' ? copy.matchPayment : action === 'IGNORE' ? copy.ignore : copy.restore}</button><button onClick={onClose} type="button">{copy.cancel}</button></div></form> : null}</AccessibleDialog>;
+  const copy = governanceCopy[language];
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const [payments, setPayments] = useState<PmsPayment[]>([]);
+  const [vendorInvoices, setVendorInvoices] = useState<PmsVendorInvoice[]>([]);
+  const [ownerPayouts, setOwnerPayouts] = useState<PmsOwnerPayout[]>([]);
+  const [targetType, setTargetType] = useState<PmsReconciliationTargetType>('RENT_PAYMENT');
+  const [targetId, setTargetId] = useState('');
+  const [reason, setReason] = useState('');
+  const [action, setAction] = useState<'MATCH' | 'IGNORE' | 'RESTORE_UNMATCHED'>('MATCH');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open || !item) return;
+    setAction(item.status === 'IGNORED' ? 'RESTORE_UNMATCHED' : 'MATCH');
+    setReason('');
+    setTargetId('');
+    setPayments([]);
+    setVendorInvoices([]);
+    setOwnerPayouts([]);
+    setError('');
+
+    if (item.status !== 'UNMATCHED') return;
+    if (item.direction === 'CREDIT') {
+      setTargetType('RENT_PAYMENT');
+      void listPmsPayments(token, {
+        companyId,
+        propertyId: item.propertyId ?? undefined,
+        status: 'CONFIRMED',
+        currency: item.currency,
+        take: 100,
+        skip: 0,
+      })
+        .then((result) => setPayments(result.payments.filter((payment) => Number(payment.amount) === Number(item.amount))))
+        .catch((loadError) => setError(apiMessage(loadError, copy.error)));
+      return;
+    }
+
+    if (item.propertyId) {
+      setTargetType('VENDOR_INVOICE');
+      void listPmsVendorInvoices(token, {
+        companyId,
+        propertyId: item.propertyId,
+        status: 'PAID',
+        currency: item.currency,
+        take: 100,
+        skip: 0,
+      })
+        .then((result) => setVendorInvoices(result.invoices.filter((invoice) => Number(invoice.paidAmount) === Number(item.amount))))
+        .catch((loadError) => setError(apiMessage(loadError, copy.error)));
+      return;
+    }
+
+    setTargetType('OWNER_PAYOUT');
+    void listPmsOwnerPayouts(token, {
+      companyId,
+      status: 'PAID_MANUAL',
+      currency: item.currency,
+      take: 100,
+      skip: 0,
+    })
+      .then((result) => setOwnerPayouts(result.batches.filter((payout) => Number(payout.payoutAmount) === Number(item.amount))))
+      .catch((loadError) => setError(apiMessage(loadError, copy.error)));
+  }, [companyId, copy.error, item, open, token]);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!item || reason.trim().length < 3) return setError(copy.formError);
+    if (action === 'MATCH' && !targetId) return setError(copy.formError);
+    setBusy(true);
+    setError('');
+    try {
+      if (action === 'MATCH') {
+        await matchPmsReconciliationItem(token, item.id, {
+          companyId,
+          targetType,
+          targetId,
+          reason: reason.trim(),
+        });
+      } else {
+        await transitionPmsReconciliationItem(token, item.id, { companyId, action, reason: reason.trim() });
+      }
+      onSaved();
+      onClose();
+    } catch (submitError) {
+      setError(apiMessage(submitError, copy.error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const targetLabel = targetType === 'RENT_PAYMENT'
+    ? copy.rentPayment
+    : targetType === 'VENDOR_INVOICE'
+      ? copy.vendorInvoice
+      : copy.ownerPayout;
+
+  return (
+    <AccessibleDialog closeLabel={copy.close} description={copy.reconciliationDescription} initialFocusRef={reasonRef} onClose={onClose} open={open} title={action === 'MATCH' ? copy.matchTransaction : action === 'IGNORE' ? copy.ignore : copy.restore}>
+      {error ? <p className="pms-finance-form__error" role="alert">{error}</p> : null}
+      {item ? (
+        <form className="pms-finance-form" onSubmit={submit}>
+          <div className="pms-finance-detail__summary">
+            <div><span>{copy.externalReference}</span><strong>{item.externalReference}</strong></div>
+            <div><span>{copy.direction}</span><strong>{governanceEnumLabel(item.direction, language)}</strong></div>
+            <div><span>{copy.amount}</span><strong>{formatFinanceMoney(item.amount, item.currency, language)}</strong></div>
+          </div>
+          {item.status === 'UNMATCHED' ? <label>{copy.actions}<select value={action} onChange={(event) => setAction(event.target.value as 'MATCH' | 'IGNORE')}><option value="MATCH">{copy.matchTransaction}</option><option value="IGNORE">{copy.ignore}</option></select></label> : null}
+          {action === 'MATCH' ? (
+            <>
+              <label>{copy.targetType}<select value={targetType} onChange={(event) => { setTargetType(event.target.value as PmsReconciliationTargetType); setTargetId(''); }} disabled>
+                {item.direction === 'CREDIT' ? <option value="RENT_PAYMENT">{copy.rentPayment}</option> : item.propertyId ? <option value="VENDOR_INVOICE">{copy.vendorInvoice}</option> : <option value="OWNER_PAYOUT">{copy.ownerPayout}</option>}
+              </select></label>
+              <label>{targetLabel}<select required value={targetId} onChange={(event) => setTargetId(event.target.value)}>
+                <option value="">{copy.selectTarget}</option>
+                {payments.map((payment) => <option key={payment.id} value={payment.id}>{payment.receiptNumber ?? payment.id} · {formatFinanceDate(payment.paidAt, language)}</option>)}
+                {vendorInvoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.invoiceNumber} · {invoice.paymentReference ?? copy.noReference}</option>)}
+                {ownerPayouts.map((payout) => <option key={payout.id} value={payout.id}>{payout.payoutNumber} · {payout.payoutReference ?? copy.noReference}</option>)}
+              </select></label>
+            </>
+          ) : null}
+          <label className="pms-finance-form__wide">{copy.reason}<textarea ref={reasonRef} required value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+          <p className="pms-finance-permission-note"><AlertTriangle aria-hidden="true" size={17} /> {copy.destructiveWarning}</p>
+          <div className="pms-finance-inline-actions"><button className="button-link button-link--primary" disabled={busy} type="submit">{action === 'MATCH' ? copy.matchTransaction : action === 'IGNORE' ? copy.ignore : copy.restore}</button><button onClick={onClose} type="button">{copy.cancel}</button></div>
+        </form>
+      ) : null}
+    </AccessibleDialog>
+  );
 }
 
 function ReconciliationWorkspace({ allowCompanyWide, canManage, companyId, language, token }: { allowCompanyWide: boolean; canManage: boolean; companyId: string; language: 'en' | 'ar'; token: string }) {
-  const copy = governanceCopy[language]; const { searchParams, replaceQuery } = useGovernanceSearchParams(); const page = Math.max(1, Number(searchParams.get('page') ?? 1) || 1); const query = searchParams.get('q') ?? ''; const status = (searchParams.get('status') ?? '') as PmsReconciliationStatus | ''; const source = (searchParams.get('source') ?? '') as PmsReconciliationSource | ''; const currency = searchParams.get('currency') ?? '';
-  const [searchInput, setSearchInput] = useState(query); const [items, setItems] = useState<PmsReconciliationItem[]>([]); const [pagination, setPagination] = useState<PmsFinancePagination | null>(null); const [statusTotals, setStatusTotals] = useState<Array<{ status: PmsReconciliationStatus; count: number }>>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [refresh, setRefresh] = useState(0); const [createOpen, setCreateOpen] = useState(false); const [selected, setSelected] = useState<PmsReconciliationItem | null>(null);
-  useEffect(() => setSearchInput(query), [query]); useEffect(() => { const controller = new AbortController(); setLoading(true); setError(''); void listPmsReconciliationItems(token, { companyId, search: query || undefined, status: status || undefined, source: source || undefined, currency: currency || undefined, take: PAGE_SIZE, skip: (page - 1) * PAGE_SIZE, signal: controller.signal }).then((result) => { setItems(result.items); setPagination(result.pagination); setStatusTotals(result.totalsByStatus); }).catch((loadError) => { if (!(loadError instanceof DOMException && loadError.name === 'AbortError')) setError(apiMessage(loadError, copy.error)); }).finally(() => { if (!controller.signal.aborted) setLoading(false); }); return () => controller.abort(); }, [companyId, copy.error, currency, page, query, refresh, source, status, token]); const reload = () => setRefresh((value) => value + 1);
-  return <><div className="pms-finance-toolbar"><form className="pms-finance-filters" onSubmit={(event) => { event.preventDefault(); replaceQuery({ q: searchInput.trim() || null, page: null }); }}><label>{copy.search}<input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} /></label><label>{copy.status}<select value={status} onChange={(event) => replaceQuery({ status: event.target.value || null, page: null })}><option value="">{copy.all}</option>{(['UNMATCHED', 'MATCHED', 'DUPLICATE', 'IGNORED'] as const).map((value) => <option key={value} value={value}>{governanceEnumLabel(value, language)}</option>)}</select></label><label>{copy.source}<select value={source} onChange={(event) => replaceQuery({ source: event.target.value || null, page: null })}><option value="">{copy.all}</option>{(['BANK', 'PAYMENT_PROVIDER', 'CASHBOOK', 'MANUAL'] as const).map((value) => <option key={value} value={value}>{governanceEnumLabel(value, language)}</option>)}</select></label><button type="submit">{copy.filter}</button></form>{canManage ? <button className="button-link button-link--primary" onClick={() => setCreateOpen(true)} type="button"><Plus aria-hidden="true" size={17} />{copy.createReconciliation}</button> : null}</div>{!canManage ? <p className="pms-finance-permission-note">{copy.permissionDenied}</p> : null}<div className="pms-finance-currency-summary">{statusTotals.map((total) => <article key={total.status}><span>{governanceEnumLabel(total.status, language)}</span><strong>{total.count}</strong></article>)}</div>{error ? <div className="pms-finance-state pms-finance-state--error" role="alert">{error}</div> : null}{loading ? <div className="pms-finance-state">{copy.loading}</div> : items.length ? <div className="pms-table-wrap"><table className="pms-finance-table"><caption>{copy.reconciliationTitle}</caption><thead><tr><th>{copy.externalReference}</th><th>{copy.source}</th><th>{copy.amount}</th><th>{copy.transactionDate}</th><th>{copy.status}</th><th>{copy.actions}</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.externalReference}</strong><small>{item.payerReference ?? '—'}{item.duplicateOf ? ` · ${copy.duplicateOf}: ${item.duplicateOf.externalReference}` : ''}</small></td><td>{governanceEnumLabel(item.source, language)}</td><td>{formatFinanceMoney(item.amount, item.currency, language)}</td><td>{formatFinanceDate(item.transactionDate, language)}</td><td><span className={`pms-finance-status pms-finance-status--${item.status.toLowerCase()}`}>{governanceEnumLabel(item.status, language)}</span>{item.payment ? <small>{copy.matchedPayment}: {item.payment.receiptNumber ?? item.payment.id}</small> : null}</td><td>{canManage && (item.status === 'UNMATCHED' || item.status === 'IGNORED') ? <button onClick={() => setSelected(item)} type="button">{item.status === 'IGNORED' ? copy.restore : copy.actions}</button> : '—'}</td></tr>)}</tbody></table></div> : <div className="pms-finance-state">{copy.noRecords}</div>}<PaginationControls language={language} onPage={(next) => replaceQuery({ page: next === 1 ? null : String(next) })} page={page} pagination={pagination} /><ReconciliationCreateDialog allowCompanyWide={allowCompanyWide} companyId={companyId} language={language} onClose={() => setCreateOpen(false)} onSaved={reload} open={createOpen} token={token} /><ReconciliationActionDialog companyId={companyId} item={selected} language={language} onClose={() => setSelected(null)} onSaved={reload} open={Boolean(selected)} token={token} /></>;
+  const copy = governanceCopy[language];
+  const { searchParams, replaceQuery } = useGovernanceSearchParams();
+  const page = Math.max(1, Number(searchParams.get('page') ?? 1) || 1);
+  const query = searchParams.get('q') ?? '';
+  const status = (searchParams.get('status') ?? '') as PmsReconciliationStatus | '';
+  const source = (searchParams.get('source') ?? '') as PmsReconciliationSource | '';
+  const flow = (searchParams.get('flow') ?? '') as PmsReconciliationDirection | '';
+  const currency = searchParams.get('currency') ?? '';
+  const [searchInput, setSearchInput] = useState(query);
+  const [items, setItems] = useState<PmsReconciliationItem[]>([]);
+  const [pagination, setPagination] = useState<PmsFinancePagination | null>(null);
+  const [statusTotals, setStatusTotals] = useState<Array<{ status: PmsReconciliationStatus; count: number }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [refresh, setRefresh] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [selected, setSelected] = useState<PmsReconciliationItem | null>(null);
+
+  useEffect(() => setSearchInput(query), [query]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError('');
+    void listPmsReconciliationItems(token, {
+      companyId,
+      search: query || undefined,
+      status: status || undefined,
+      source: source || undefined,
+      reconciliationDirection: flow || undefined,
+      currency: currency || undefined,
+      take: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
+      signal: controller.signal,
+    })
+      .then((result) => {
+        setItems(result.items);
+        setPagination(result.pagination);
+        setStatusTotals(result.totalsByStatus);
+      })
+      .catch((loadError) => {
+        if (!(loadError instanceof DOMException && loadError.name === 'AbortError')) setError(apiMessage(loadError, copy.error));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [companyId, copy.error, currency, flow, page, query, refresh, source, status, token]);
+
+  const reload = () => setRefresh((value) => value + 1);
+  const matchedTarget = (item: PmsReconciliationItem) => {
+    if (item.payment) return `${copy.rentPayment}: ${item.payment.receiptNumber ?? item.payment.id}`;
+    if (item.vendorInvoice) return `${copy.vendorInvoice}: ${item.vendorInvoice.invoiceNumber}`;
+    if (item.ownerPayoutBatch) return `${copy.ownerPayout}: ${item.ownerPayoutBatch.payoutNumber}`;
+    return null;
+  };
+
+  return (
+    <>
+      <div className="pms-finance-toolbar">
+        <form className="pms-finance-filters" onSubmit={(event) => { event.preventDefault(); replaceQuery({ q: searchInput.trim() || null, page: null }); }}>
+          <label>{copy.search}<input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} /></label>
+          <label>{copy.status}<select value={status} onChange={(event) => replaceQuery({ status: event.target.value || null, page: null })}><option value="">{copy.all}</option>{(['UNMATCHED', 'MATCHED', 'DUPLICATE', 'IGNORED'] as const).map((value) => <option key={value} value={value}>{governanceEnumLabel(value, language)}</option>)}</select></label>
+          <label>{copy.direction}<select value={flow} onChange={(event) => replaceQuery({ flow: event.target.value || null, page: null })}><option value="">{copy.all}</option><option value="CREDIT">{copy.credit}</option><option value="DEBIT">{copy.debit}</option></select></label>
+          <label>{copy.source}<select value={source} onChange={(event) => replaceQuery({ source: event.target.value || null, page: null })}><option value="">{copy.all}</option>{(['BANK', 'PAYMENT_PROVIDER', 'CASHBOOK', 'MANUAL'] as const).map((value) => <option key={value} value={value}>{governanceEnumLabel(value, language)}</option>)}</select></label>
+          <button type="submit">{copy.filter}</button>
+        </form>
+        {canManage ? <button className="button-link button-link--primary" onClick={() => setCreateOpen(true)} type="button"><Plus aria-hidden="true" size={17} />{copy.createReconciliation}</button> : null}
+      </div>
+      {!canManage ? <p className="pms-finance-permission-note">{copy.permissionDenied}</p> : null}
+      <div className="pms-finance-currency-summary">{statusTotals.map((total) => <article key={total.status}><span>{governanceEnumLabel(total.status, language)}</span><strong>{total.count}</strong></article>)}</div>
+      {error ? <div className="pms-finance-state pms-finance-state--error" role="alert">{error}</div> : null}
+      {loading ? <div className="pms-finance-state">{copy.loading}</div> : items.length ? (
+        <div className="pms-table-wrap">
+          <table className="pms-finance-table">
+            <caption>{copy.reconciliationTitle}</caption>
+            <thead><tr><th>{copy.externalReference}</th><th>{copy.direction}</th><th>{copy.source}</th><th>{copy.amount}</th><th>{copy.transactionDate}</th><th>{copy.status}</th><th>{copy.actions}</th></tr></thead>
+            <tbody>
+              {items.map((item) => {
+                const target = matchedTarget(item);
+                return (
+                  <tr key={item.id}>
+                    <td><strong>{item.externalReference}</strong><small>{item.payerReference ?? '—'}{item.duplicateOf ? ` · ${copy.duplicateOf}: ${item.duplicateOf.externalReference}` : ''}</small></td>
+                    <td><span className={`pms-finance-status pms-finance-status--${item.direction.toLowerCase()}`}>{governanceEnumLabel(item.direction, language)}</span></td>
+                    <td>{governanceEnumLabel(item.source, language)}</td>
+                    <td>{formatFinanceMoney(item.amount, item.currency, language)}</td>
+                    <td>{formatFinanceDate(item.transactionDate, language)}</td>
+                    <td><span className={`pms-finance-status pms-finance-status--${item.status.toLowerCase()}`}>{governanceEnumLabel(item.status, language)}</span>{target ? <small>{target}</small> : null}</td>
+                    <td>{canManage && (item.status === 'UNMATCHED' || item.status === 'IGNORED') ? <button onClick={() => setSelected(item)} type="button">{item.status === 'IGNORED' ? copy.restore : copy.actions}</button> : '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : <div className="pms-finance-state">{copy.noRecords}</div>}
+      <PaginationControls language={language} onPage={(next) => replaceQuery({ page: next === 1 ? null : String(next) })} page={page} pagination={pagination} />
+      <ReconciliationCreateDialog allowCompanyWide={allowCompanyWide} companyId={companyId} language={language} onClose={() => setCreateOpen(false)} onSaved={reload} open={createOpen} token={token} />
+      <ReconciliationActionDialog companyId={companyId} item={selected} language={language} onClose={() => setSelected(null)} onSaved={reload} open={Boolean(selected)} token={token} />
+    </>
+  );
 }
 
 export default function PmsFinanceGovernanceWorkspace({ section }: { section: PmsFinanceGovernanceSection }) {

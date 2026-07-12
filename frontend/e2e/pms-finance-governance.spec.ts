@@ -28,7 +28,16 @@ const reviewingPeriod = {
 };
 
 const reconciliation = {
-  id: reconciliationId, source: 'BANK', status: 'UNMATCHED', externalReference: 'BANK-GOV-001', amount: '200', currency: 'OMR', transactionDate: '2026-07-10T00:00:00.000Z', payerReference: 'Governance Tenant', propertyId, property: { id: propertyId, name: 'Governance Residences' }, createdAt: '2026-07-10T00:00:00.000Z', updatedAt: '2026-07-10T00:00:00.000Z',
+  id: reconciliationId, source: 'BANK', direction: 'CREDIT', status: 'UNMATCHED', externalReference: 'BANK-GOV-001', amount: '200', currency: 'OMR', transactionDate: '2026-07-10T00:00:00.000Z', payerReference: 'Governance Tenant', propertyId, property: { id: propertyId, name: 'Governance Residences' }, createdAt: '2026-07-10T00:00:00.000Z', updatedAt: '2026-07-10T00:00:00.000Z',
+};
+
+
+const paidVendorInvoice = {
+  id: 'invoice-governance', invoiceNumber: 'INV-GOV-001', status: 'PAID', issueDate: '2026-07-01T00:00:00.000Z', dueDate: '2026-07-10T00:00:00.000Z', currency: 'OMR', subtotalAmount: '100', taxAmount: '3', totalAmount: '103', approvedAmount: '103', paidAmount: '103', paidAt: '2026-07-12T00:00:00.000Z', paymentReference: 'BANK-AP-GOV', companyId, propertyId, vendorId: 'vendor-governance', workOrderId: 'work-order-governance', property: { id: propertyId, name: 'Governance Residences' }, vendor: { id: 'vendor-governance', name: 'Governance Vendor' }, workOrder: { id: 'work-order-governance', title: 'Valve repair', status: 'COMPLETED', currency: 'OMR' }, documents: [], ledgerEntries: [], createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+};
+
+const paidOwnerPayout = {
+  id: 'payout-governance', payoutNumber: 'PO-GOV-001', status: 'PAID_MANUAL', grossAmount: '80', managementFeeAmount: '5', reservedAmount: '2', payoutAmount: '73', currency: 'OMR', periodStart: '2026-06-01T00:00:00.000Z', periodEnd: '2026-06-30T23:59:59.000Z', payoutReference: 'BANK-OWNER-GOV', paidAt: '2026-07-03T00:00:00.000Z', ownerUserId: 'owner-governance', ownerUser: { id: 'owner-governance', name: 'Governance Owner', email: 'owner@lux.test' }, lines: [], documents: [], createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-03T00:00:00.000Z',
 };
 
 async function authenticate(page: Page, permissions = ['ACCOUNTING_VIEW', 'ACCOUNTING_MANAGE', 'RENT_MANAGE'], allProperties = true) {
@@ -41,8 +50,9 @@ async function fulfill(route: Route, body: unknown, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function mockGovernanceApi(page: Page, callbacks: { depositTransaction?: (body: Record<string, unknown>) => void; depositTransition?: (body: Record<string, unknown>) => void; periodTransition?: (body: Record<string, unknown>) => void; reconciliationMatch?: (body: Record<string, unknown>) => void; depositList?: (url: URL) => void } = {}) {
+async function mockGovernanceApi(page: Page, callbacks: { depositTransaction?: (body: Record<string, unknown>) => void; depositTransition?: (body: Record<string, unknown>) => void; periodTransition?: (body: Record<string, unknown>) => void; reconciliationMatch?: (body: Record<string, unknown>) => void; depositList?: (url: URL) => void; reconciliationItem?: Record<string, unknown> } = {}) {
   let transactions: Record<string, unknown>[] = [];
+  const activeReconciliation = callbacks.reconciliationItem ?? reconciliation;
   await page.route('**/api/pms/**', async (route) => {
     const request = route.request(); const url = new URL(request.url()); const path = url.pathname; const method = request.method();
     if (path === '/api/pms/leases' && method === 'GET') return fulfill(route, { workspace: {}, leases: [lease], pagination: { take: 100, skip: 0, count: 1, total: 1 } });
@@ -56,9 +66,10 @@ async function mockGovernanceApi(page: Page, callbacks: { depositTransaction?: (
     if (path === '/api/pms/accounting/periods' && method === 'GET') return fulfill(route, { periods: [reviewingPeriod], pagination: { take: 25, skip: 0, count: 1, total: 1 } });
     if (path === `/api/pms/accounting/periods/${periodId}/readiness` && method === 'GET') return fulfill(route, { period: reviewingPeriod, readiness: { canClose: false, reconciliationExceptions: 1, pendingDepositTransactions: 1 } });
     if (path === `/api/pms/accounting/periods/${periodId}/transition` && method === 'POST') { const body = request.postDataJSON() as Record<string, unknown>; callbacks.periodTransition?.(body); return fulfill(route, { period: { ...reviewingPeriod, status: body.action === 'CLOSE' ? 'CLOSED' : 'OPEN' } }); }
-    if (path === '/api/pms/accounting/reconciliation' && method === 'GET') return fulfill(route, { items: [reconciliation], pagination: { take: 25, skip: 0, count: 1, total: 1 }, totalsByStatus: [{ status: 'UNMATCHED', count: 1 }], totalsByCurrency: [{ currency: 'OMR', count: 1, amount: '200' }] });
-    if (path === `/api/pms/accounting/reconciliation/${reconciliationId}/match` && method === 'POST') { const body = request.postDataJSON() as Record<string, unknown>; callbacks.reconciliationMatch?.(body); return fulfill(route, { item: { ...reconciliation, status: 'MATCHED', paymentId: payment.id, payment } }); }
-    if (path === '/api/pms/accounting/owner-payouts') return fulfill(route, { batches: [] });
+    if (path === '/api/pms/accounting/reconciliation' && method === 'GET') return fulfill(route, { items: [activeReconciliation], pagination: { take: 25, skip: 0, count: 1, total: 1 }, totalsByStatus: [{ status: 'UNMATCHED', count: 1 }], totalsByCurrency: [{ currency: 'OMR', count: 1, amount: String(activeReconciliation.amount ?? '0') }] });
+    if (path.startsWith('/api/pms/accounting/reconciliation/') && path.endsWith('/match') && method === 'POST') { const body = request.postDataJSON() as Record<string, unknown>; callbacks.reconciliationMatch?.(body); return fulfill(route, { item: { ...activeReconciliation, status: 'MATCHED' } }); }
+    if (path === '/api/pms/accounting/vendor-invoices' && method === 'GET') return fulfill(route, { invoices: [paidVendorInvoice], pagination: { take: 100, skip: 0, count: 1, total: 1 }, totalsByStatus: [{ status: 'PAID', count: 1 }], totalsByCurrency: [{ currency: 'OMR', count: 1, totalAmount: '103', approvedAmount: '103', paidAmount: '103' }], overdueCount: 0, vendors: [], properties: [], workOrders: [] });
+    if (path === '/api/pms/accounting/owner-payouts' && method === 'GET') return fulfill(route, { batches: [paidOwnerPayout], pagination: { take: 100, skip: 0, count: 1, total: 1 }, totalsByStatus: [{ status: 'PAID_MANUAL', count: 1 }], totalsByCurrency: [{ currency: 'OMR', count: 1, payoutAmount: '73' }], ownerAccesses: [] });
     return fulfill(route, { message: `Unhandled governance mock: ${method} ${path}` }, 404);
   });
 }
@@ -114,11 +125,45 @@ test('reconciliation matches one confirmed equal-currency payment with an explic
   await authenticate(page); await mockGovernanceApi(page, { reconciliationMatch: (body) => { matchBody = body; } });
   await page.goto(`/pms/finance/reconciliation?companyId=${companyId}`);
   await page.getByRole('button', { name: 'Actions', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Match payment', exact: true });
-  await dialog.getByRole('combobox', { name: 'Payment', exact: true }).selectOption(payment.id);
+  const dialog = page.getByRole('dialog', { name: 'Match transaction', exact: true });
+  await dialog.getByRole('combobox', { name: 'Rent payment', exact: true }).selectOption(payment.id);
   await dialog.getByLabel('Reason').fill('Bank reference and amount verified');
-  await dialog.getByRole('button', { name: 'Match payment', exact: true }).click();
-  await expect.poll(() => matchBody).toMatchObject({ companyId, paymentId: payment.id, reason: 'Bank reference and amount verified' });
+  await dialog.getByRole('button', { name: 'Match transaction', exact: true }).click();
+  await expect.poll(() => matchBody).toMatchObject({ companyId, targetType: 'RENT_PAYMENT', targetId: payment.id, reason: 'Bank reference and amount verified' });
+});
+
+test('property debit reconciliation matches a paid vendor invoice', async ({ page }) => {
+  let matchBody: Record<string, unknown> | undefined;
+  await authenticate(page);
+  await mockGovernanceApi(page, {
+    reconciliationItem: { ...reconciliation, id: 'reconciliation-vendor', direction: 'DEBIT', amount: '103', externalReference: 'BANK-AP-GOV', payerReference: 'Governance Vendor' },
+    reconciliationMatch: (body) => { matchBody = body; },
+  });
+  await page.goto(`/pms/finance/reconciliation?companyId=${companyId}`);
+  await page.getByRole('button', { name: 'Actions', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Match transaction', exact: true });
+  await expect(dialog.getByRole('combobox', { name: 'Match target', exact: true })).toHaveValue('VENDOR_INVOICE');
+  await dialog.getByRole('combobox', { name: 'Vendor invoice', exact: true }).selectOption(paidVendorInvoice.id);
+  await dialog.getByLabel('Reason').fill('Bank debit and supplier payment reference verified');
+  await dialog.getByRole('button', { name: 'Match transaction', exact: true }).click();
+  await expect.poll(() => matchBody).toMatchObject({ companyId, targetType: 'VENDOR_INVOICE', targetId: paidVendorInvoice.id, reason: 'Bank debit and supplier payment reference verified' });
+});
+
+test('company-wide debit reconciliation matches a paid owner payout', async ({ page }) => {
+  let matchBody: Record<string, unknown> | undefined;
+  await authenticate(page);
+  await mockGovernanceApi(page, {
+    reconciliationItem: { ...reconciliation, id: 'reconciliation-owner', direction: 'DEBIT', amount: '73', propertyId: null, property: null, externalReference: 'BANK-OWNER-GOV', payerReference: 'Governance Owner' },
+    reconciliationMatch: (body) => { matchBody = body; },
+  });
+  await page.goto(`/pms/finance/reconciliation?companyId=${companyId}`);
+  await page.getByRole('button', { name: 'Actions', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Match transaction', exact: true });
+  await expect(dialog.getByRole('combobox', { name: 'Match target', exact: true })).toHaveValue('OWNER_PAYOUT');
+  await dialog.getByRole('combobox', { name: 'Owner payout', exact: true }).selectOption(paidOwnerPayout.id);
+  await dialog.getByLabel('Reason').fill('Bank debit and owner payout reference verified');
+  await dialog.getByRole('button', { name: 'Match transaction', exact: true }).click();
+  await expect.poll(() => matchBody).toMatchObject({ companyId, targetType: 'OWNER_PAYOUT', targetId: paidOwnerPayout.id, reason: 'Bank debit and owner payout reference verified' });
 });
 
 test('accounting viewers cannot mutate deposit, period, or reconciliation records', async ({ page }) => {

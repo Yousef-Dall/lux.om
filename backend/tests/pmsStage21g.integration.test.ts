@@ -752,6 +752,35 @@ describe('PMS Stage 21G financial and portal operations', () => {
       .expect(200);
     expect(paid.body.batch).toMatchObject({ status: 'PAID_MANUAL', payoutReference: 'BANK-SETTLED-21G', paidBy: { id: fixture.checker.id } });
 
+    const payoutBankLine = await request(app)
+      .post('/api/pms/accounting/reconciliation')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, source: 'BANK', direction: 'DEBIT', externalReference: 'BANK-OWNER-PAYOUT-21I-I', amount: Number(paid.body.batch.payoutAmount), currency: 'OMR', transactionDate: '2026-07-03', payerReference: 'OWNER-PAYOUT-SETTLEMENT' })
+      .expect(201);
+    expect(payoutBankLine.body.item).toMatchObject({ direction: 'DEBIT', status: 'UNMATCHED', propertyId: null });
+    const reconciledPayout = await request(app)
+      .post(`/api/pms/accounting/reconciliation/${payoutBankLine.body.item.id}/match`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, targetType: 'OWNER_PAYOUT', targetId: payoutId, reason: 'Bank debit reference and settled payout amount verified' })
+      .expect(200);
+    expect(reconciledPayout.body.item).toMatchObject({ status: 'MATCHED', direction: 'DEBIT', ownerPayoutBatchId: payoutId });
+    await expect(prisma.pmsReconciliationItem.update({ where: { id: payoutBankLine.body.item.id }, data: { amount: 1 } })).rejects.toThrow(/immutable/i);
+    const duplicatePayoutLine = await request(app)
+      .post('/api/pms/accounting/reconciliation')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, source: 'BANK', direction: 'DEBIT', externalReference: 'BANK-OWNER-PAYOUT-21I-I-DUP', amount: Number(paid.body.batch.payoutAmount), currency: 'OMR', transactionDate: '2026-07-04', payerReference: 'OWNER-PAYOUT-SECOND-LINE' })
+      .expect(201);
+    await request(app)
+      .post(`/api/pms/accounting/reconciliation/${duplicatePayoutLine.body.item.id}/match`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, targetType: 'OWNER_PAYOUT', targetId: payoutId, reason: 'Attempt duplicate payout reconciliation' })
+      .expect(409);
+    const payoutReconciliationList = await request(app)
+      .get(`/api/pms/accounting/reconciliation?companyId=${fixture.company.id}&reconciliationDirection=DEBIT&search=${encodeURIComponent(paid.body.batch.payoutNumber)}`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200);
+    expect(payoutReconciliationList.body.items).toEqual([expect.objectContaining({ id: payoutBankLine.body.item.id, ownerPayoutBatch: expect.objectContaining({ id: payoutId }) })]);
+
     await expect(prisma.pmsOwnerPayoutLine.update({ where: { id: paid.body.batch.lines[0].id }, data: { netAmount: 1 } })).rejects.toThrow(/immutable/i);
 
     const ownerOverview = await request(app).get('/api/owner/overview').set('Authorization', `Bearer ${fixture.ownerToken}`).expect(200);
@@ -919,6 +948,58 @@ describe('PMS Stage 21G financial and portal operations', () => {
       .send({ companyId: fixture.company.id, action: 'RECORD_PAID', evidenceDocumentId: paidEvidence.body.document.id, paymentReference: 'AP-PAID-21H', paymentMethodNote: 'Bank settlement confirmed', providerConfirmed: true, paidAt: '2026-07-13T12:00:00.000Z' })
       .expect(200);
     expect(paid.body.invoice).toMatchObject({ status: 'PAID', paidAmount: '103', paymentReference: 'AP-PAID-21H', paidBy: { id: fixture.checker.id } });
+
+    const vendorBankLine = await request(app)
+      .post('/api/pms/accounting/reconciliation')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, source: 'BANK', direction: 'DEBIT', externalReference: 'BANK-VENDOR-INVOICE-21I-I', amount: 103, currency: 'OMR', transactionDate: '2026-07-13', payerReference: 'SUPPLIER-001' })
+      .expect(201);
+    const reconciledInvoice = await request(app)
+      .post(`/api/pms/accounting/reconciliation/${vendorBankLine.body.item.id}/match`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, targetType: 'VENDOR_INVOICE', targetId: invoiceId, reason: 'Bank debit and vendor settlement reference verified' })
+      .expect(200);
+    expect(reconciledInvoice.body.item).toMatchObject({ status: 'MATCHED', direction: 'DEBIT', vendorInvoiceId: invoiceId });
+    await expect(prisma.pmsReconciliationItem.create({
+      data: {
+        companyId: fixture.company.id,
+        propertyId: fixture.propertyA.id,
+        source: 'BANK',
+        direction: 'DEBIT',
+        status: 'MATCHED',
+        externalReference: 'DIRECT-INVALID-VENDOR-MATCH-21I-I',
+        amount: 102,
+        currency: 'OMR',
+        transactionDate: new Date('2026-07-13T13:00:00.000Z'),
+        payerReference: 'SUPPLIER-001',
+        vendorInvoiceId: invoiceId,
+        matchedAt: new Date('2026-07-13T13:01:00.000Z'),
+        matchedById: fixture.manager.id,
+        matchReason: 'Direct mismatch must be rejected',
+        createdById: fixture.manager.id,
+      },
+    })).rejects.toThrow(/match company, property, currency, and amount/i);
+    const wrongDirectionLine = await request(app)
+      .post('/api/pms/accounting/reconciliation')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, source: 'BANK', direction: 'CREDIT', externalReference: 'BANK-VENDOR-WRONG-DIRECTION-21I-I', amount: 103, currency: 'OMR', transactionDate: '2026-07-14', payerReference: 'SUPPLIER-001' })
+      .expect(201);
+    await request(app)
+      .post(`/api/pms/accounting/reconciliation/${wrongDirectionLine.body.item.id}/match`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, targetType: 'VENDOR_INVOICE', targetId: invoiceId, reason: 'Invalid incoming line for outgoing invoice' })
+      .expect(409);
+    const duplicateVendorLine = await request(app)
+      .post('/api/pms/accounting/reconciliation')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, source: 'BANK', direction: 'DEBIT', externalReference: 'BANK-VENDOR-INVOICE-21I-I-DUP', amount: 103, currency: 'OMR', transactionDate: '2026-07-15', payerReference: 'SUPPLIER-001-DUP' })
+      .expect(201);
+    await request(app)
+      .post(`/api/pms/accounting/reconciliation/${duplicateVendorLine.body.item.id}/match`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, targetType: 'VENDOR_INVOICE', targetId: invoiceId, reason: 'Attempt duplicate vendor invoice reconciliation' })
+      .expect(409);
+
     const ledgerEntry = await prisma.pmsAccountingLedgerEntry.findFirstOrThrow({ where: { vendorInvoiceId: invoiceId, source: 'VENDOR_INVOICE' } });
     expect(await prisma.pmsAccountingLedgerEntry.count({ where: { vendorInvoiceId: invoiceId, source: 'VENDOR_INVOICE' } })).toBe(1);
     await expect(prisma.pmsVendorInvoice.update({ where: { id: invoiceId }, data: { paymentReference: 'DIRECT-DB-EDIT' } })).rejects.toThrow(/immutable/i);

@@ -6,7 +6,7 @@ Stage 21G adds an incremental financial subledger and collaboration layer around
 
 Backend modules:
 
-- `modules/pms/finance`: structured charges, allocations, payment adjustments, deposits, periods, reconciliation, owner payouts, and legacy compatibility.
+- `modules/pms/finance`: structured charges, allocations, payment adjustments, deposits, periods, direction-aware treasury reconciliation, owner payouts, and legacy compatibility.
 - `modules/pms/assets`: private property and unit asset register and asset history.
 - `modules/pms/maintenance`: preventive-maintenance plans and idempotent work-order generation.
 - `modules/pms/inspections`: templates, structured results, defects, comparisons, and defect-to-work-order conversion.
@@ -24,6 +24,8 @@ Issued charges are immutable except through explicit adjustments, credit notes, 
 `PmsSecurityDepositAccount` is a liability account. Collection increases liability. Refund, deduction, and conversion requests require an explicit transaction workflow. Conversion to income requires an approved linked issued charge, cannot exceed its outstanding balance, settles that charge when posted, and does not happen merely because a deposit was collected.
 
 `PmsFinancialPeriod` protects posting dates. Closed periods block charge, payment, allocation, adjustment, deposit, and manual ledger postings. Payout workflow records remain separate from bank settlement and reference already published statement periods. Reopening requires a reason and records an event.
+
+Treasury reconciliation records external cash movement evidence without initiating transfers. Credits match confirmed rent receipts. Property-scoped debits match paid vendor invoices, and company-wide debits match manually paid owner payouts. Every match is exact-currency, exact-amount, scope checked, one-to-one, and immutable.
 
 ## Portal boundary
 
@@ -45,5 +47,6 @@ Published owner statements remain immutable snapshots. Stage 21G payout and stat
 - Use serializable transactions and row locks for balance-changing operations.
 - Use caller-provided idempotency keys for external or retryable financial writes.
 - Never mark a payout paid without explicit manual evidence or a future real payout-provider integration.
+- Never reconcile a cash movement to more than one target or use debit targets on credits and vice versa.
 - Never expose private PMS files through static upload paths.
 - Never widen property scope in a portal or extracted module.

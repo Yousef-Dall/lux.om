@@ -286,9 +286,12 @@ export type PmsDepositAccount = {
 };
 export type PmsReconciliationStatus = 'UNMATCHED' | 'MATCHED' | 'DUPLICATE' | 'IGNORED';
 export type PmsReconciliationSource = 'BANK' | 'PAYMENT_PROVIDER' | 'CASHBOOK' | 'MANUAL';
+export type PmsReconciliationDirection = 'CREDIT' | 'DEBIT';
+export type PmsReconciliationTargetType = 'RENT_PAYMENT' | 'VENDOR_INVOICE' | 'OWNER_PAYOUT';
 export type PmsReconciliationItem = {
   id: string;
   source: PmsReconciliationSource;
+  direction: PmsReconciliationDirection;
   status: PmsReconciliationStatus;
   externalReference: string;
   amount: string;
@@ -301,6 +304,10 @@ export type PmsReconciliationItem = {
   property?: { id: string; name: string } | null;
   paymentId?: string | null;
   payment?: { id: string; amount: string; currency: string; receiptNumber?: string | null; paidAt?: string | null; status: PmsPaymentStatus } | null;
+  vendorInvoiceId?: string | null;
+  vendorInvoice?: { id: string; invoiceNumber: string; paidAmount: string; currency: string; paidAt?: string | null; status: PmsVendorInvoiceStatus; paymentReference?: string | null; propertyId: string } | null;
+  ownerPayoutBatchId?: string | null;
+  ownerPayoutBatch?: { id: string; payoutNumber: string; payoutAmount: string; currency: string; paidAt?: string | null; status: PmsOwnerPayoutStatus; payoutReference?: string | null } | null;
   duplicateOfId?: string | null;
   duplicateOf?: { id: string; externalReference: string } | null;
   createdBy?: { id: string; name: string } | null;
@@ -657,6 +664,7 @@ export function listPmsReconciliationItems(token: string, params: {
   search?: string;
   status?: PmsReconciliationStatus;
   source?: PmsReconciliationSource;
+  reconciliationDirection?: PmsReconciliationDirection;
   currency?: string;
   propertyId?: string;
   transactionFrom?: string;
@@ -678,6 +686,7 @@ export function listPmsReconciliationItems(token: string, params: {
 export function createPmsReconciliationItem(token: string, payload: {
   companyId: string;
   source: PmsReconciliationSource;
+  direction: PmsReconciliationDirection;
   externalReference: string;
   amount: number;
   currency: string;
@@ -687,7 +696,13 @@ export function createPmsReconciliationItem(token: string, payload: {
 }) {
   return apiClient.post<{ item: PmsReconciliationItem }>('/api/pms/accounting/reconciliation', payload, { token });
 }
-export function matchPmsReconciliationItem(token: string, itemId: string, payload: { companyId: string; paymentId: string; reason: string }) {
+export function matchPmsReconciliationItem(token: string, itemId: string, payload: {
+  companyId: string;
+  reason: string;
+  paymentId?: string;
+  targetType?: PmsReconciliationTargetType;
+  targetId?: string;
+}) {
   return apiClient.post<{ item: PmsReconciliationItem }>(`/api/pms/accounting/reconciliation/${itemId}/match`, payload, { token });
 }
 export function transitionPmsReconciliationItem(token: string, itemId: string, payload: { companyId: string; action: 'IGNORE' | 'RESTORE_UNMATCHED'; reason: string }) {

@@ -21471,6 +21471,7 @@ transition: none;
   background: #fff8ee;
 }
 
+.pms-finance-status--credit,
 .pms-finance-status--held,
 .pms-finance-status--open,
 .pms-finance-status--matched,
@@ -21488,6 +21489,7 @@ transition: none;
   color: #7b5600;
 }
 
+.pms-finance-status--debit,
 .pms-finance-status--partially_refunded,
 .pms-finance-status--duplicate {
   background: #fff0e4;
