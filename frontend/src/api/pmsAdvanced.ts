@@ -213,22 +213,100 @@ export type PmsPaymentPayload = {
   idempotencyKey: string;
 };
 
+export type PmsFinancialPeriodStatus = 'OPEN' | 'REVIEWING' | 'CLOSED';
+export type PmsFinancialPeriodEvent = {
+  id: string;
+  fromStatus?: PmsFinancialPeriodStatus | null;
+  toStatus: PmsFinancialPeriodStatus;
+  reason?: string | null;
+  createdAt: string;
+  createdBy?: { id: string; name: string } | null;
+};
 export type PmsFinancialPeriod = {
   id: string;
-  status: 'OPEN' | 'REVIEWING' | 'CLOSED';
+  status: PmsFinancialPeriodStatus;
   periodStart: string;
   periodEnd: string;
   currency: string;
+  propertyId?: string | null;
   property?: { id: string; name: string } | null;
+  closeReason?: string | null;
+  closedAt?: string | null;
+  reopenedAt?: string | null;
+  reopenReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: { id: string; name: string } | null;
+  updatedBy?: { id: string; name: string } | null;
+  events?: PmsFinancialPeriodEvent[];
 };
+export type PmsFinancialPeriodReadiness = {
+  canClose: boolean;
+  reconciliationExceptions: number;
+  pendingDepositTransactions: number;
+};
+export type PmsDepositTransactionType = 'COLLECTION' | 'DEDUCTION' | 'REFUND' | 'CONVERSION_TO_INCOME' | 'ADJUSTMENT';
+export type PmsDepositTransactionStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'POSTED' | 'VOID';
+export type PmsDepositTransaction = {
+  id: string;
+  type: PmsDepositTransactionType;
+  status: PmsDepositTransactionStatus;
+  amount: string;
+  currency: string;
+  reason?: string | null;
+  approvedAt?: string | null;
+  postedAt?: string | null;
+  voidedAt?: string | null;
+  createdAt: string;
+  payment?: { id: string; receiptNumber?: string | null; amount: string; currency: string; paidAt?: string | null } | null;
+  charge?: { id: string; chargeNumber: string; status: PmsChargeStatus; totalAmount: string; balanceAmount: string; currency: string } | null;
+  createdBy?: { id: string; name: string } | null;
+  approvedBy?: { id: string; name: string } | null;
+  documents?: Array<{ id: string; title: string; type: string; status: string; createdAt: string }>;
+};
+export type PmsDepositAccountStatus = 'EXPECTED' | 'HELD' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'CLOSED';
 export type PmsDepositAccount = {
   id: string;
-  status: string;
+  status: PmsDepositAccountStatus;
   expectedAmount: string;
   liabilityBalance: string;
   currency: string;
+  propertyId: string;
   property: { id: string; name: string };
+  unitId: string;
   unit: { id: string; unitNumber: string };
+  leaseId: string;
+  lease?: { id: string; title?: string | null; status?: string; startDate?: string; endDate?: string } | null;
+  tenantId: string;
+  tenant?: { id: string; fullName: string } | null;
+  transactions?: PmsDepositTransaction[];
+  _count?: { transactions: number };
+  createdAt: string;
+  updatedAt: string;
+};
+export type PmsReconciliationStatus = 'UNMATCHED' | 'MATCHED' | 'DUPLICATE' | 'IGNORED';
+export type PmsReconciliationSource = 'BANK' | 'PAYMENT_PROVIDER' | 'CASHBOOK' | 'MANUAL';
+export type PmsReconciliationItem = {
+  id: string;
+  source: PmsReconciliationSource;
+  status: PmsReconciliationStatus;
+  externalReference: string;
+  amount: string;
+  currency: string;
+  transactionDate: string;
+  payerReference?: string | null;
+  matchReason?: string | null;
+  matchedAt?: string | null;
+  propertyId?: string | null;
+  property?: { id: string; name: string } | null;
+  paymentId?: string | null;
+  payment?: { id: string; amount: string; currency: string; receiptNumber?: string | null; paidAt?: string | null; status: PmsPaymentStatus } | null;
+  duplicateOfId?: string | null;
+  duplicateOf?: { id: string; externalReference: string } | null;
+  createdBy?: { id: string; name: string } | null;
+  matchedBy?: { id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
 };
 export type PmsOwnerPayout = {
   id: string;
@@ -365,11 +443,108 @@ export function adjustPmsPayment(token: string, paymentId: string, payload: { co
   return apiClient.post<{ adjustment: PmsPaymentAdjustment; idempotent: boolean }>(`/api/pms/accounting/payments/${paymentId}/adjustments`, payload, { token });
 }
 
-export async function listPmsDeposits(token: string, companyId?: string) {
-  return apiClient.get<{ accounts: PmsDepositAccount[] }>('/api/pms/accounting/deposits', { token, params: companyParams(companyId) });
+export function listPmsDeposits(token: string, params: {
+  companyId?: string;
+  search?: string;
+  status?: PmsDepositAccountStatus;
+  currency?: string;
+  propertyId?: string;
+  sortBy?: 'updatedAt' | 'createdAt' | 'expectedAmount' | 'liabilityBalance' | 'status';
+  direction?: 'asc' | 'desc';
+  take?: number;
+  skip?: number;
+  signal?: AbortSignal;
+} = {}) {
+  const { signal, ...query } = params;
+  return apiClient.get<{
+    accounts: PmsDepositAccount[];
+    pagination: PmsFinancePagination;
+    totalsByCurrency: Array<{ currency: string; count: number; expectedAmount: string; liabilityBalance: string }>;
+  }>('/api/pms/accounting/deposits', { token, params: query, signal });
 }
-export async function listPmsFinancialPeriods(token: string, companyId?: string) {
-  return apiClient.get<{ periods: PmsFinancialPeriod[] }>('/api/pms/accounting/periods', { token, params: companyParams(companyId) });
+export function getPmsDeposit(token: string, accountId: string, companyId?: string, signal?: AbortSignal) {
+  return apiClient.get<{ account: PmsDepositAccount }>(`/api/pms/accounting/deposits/${accountId}`, { token, params: companyParams(companyId), signal });
+}
+export function createPmsDepositAccount(token: string, payload: { companyId: string; leaseId: string; expectedAmount: number }) {
+  return apiClient.post<{ account: PmsDepositAccount }>('/api/pms/accounting/deposits', payload, { token });
+}
+export function createPmsDepositTransaction(token: string, accountId: string, payload: {
+  companyId: string;
+  type: PmsDepositTransactionType;
+  amount: number;
+  reason?: string | null;
+  idempotencyKey: string;
+  paymentId?: string | null;
+  chargeId?: string | null;
+}) {
+  return apiClient.post<{ transaction: PmsDepositTransaction; idempotent: boolean }>(`/api/pms/accounting/deposits/${accountId}/transactions`, payload, { token });
+}
+export function transitionPmsDepositTransaction(token: string, accountId: string, transactionId: string, payload: { companyId: string; action: 'APPROVE' | 'POST' | 'VOID'; reason?: string }) {
+  return apiClient.post<{ transaction: PmsDepositTransaction }>(`/api/pms/accounting/deposits/${accountId}/transactions/${transactionId}/transition`, payload, { token });
+}
+export function listPmsFinancialPeriods(token: string, params: {
+  companyId?: string;
+  status?: PmsFinancialPeriodStatus;
+  currency?: string;
+  propertyId?: string;
+  sortBy?: 'periodStart' | 'periodEnd' | 'createdAt' | 'status';
+  direction?: 'asc' | 'desc';
+  take?: number;
+  skip?: number;
+  signal?: AbortSignal;
+} = {}) {
+  const { signal, ...query } = params;
+  return apiClient.get<{ periods: PmsFinancialPeriod[]; pagination: PmsFinancePagination }>('/api/pms/accounting/periods', { token, params: query, signal });
+}
+export function getPmsFinancialPeriodReadiness(token: string, periodId: string, companyId?: string, signal?: AbortSignal) {
+  return apiClient.get<{ period: PmsFinancialPeriod; readiness: PmsFinancialPeriodReadiness }>(`/api/pms/accounting/periods/${periodId}/readiness`, { token, params: companyParams(companyId), signal });
+}
+export function createPmsFinancialPeriod(token: string, payload: { companyId: string; propertyId?: string | null; currency: string; periodStart: string; periodEnd: string }) {
+  return apiClient.post<{ period: PmsFinancialPeriod }>('/api/pms/accounting/periods', payload, { token });
+}
+export function transitionPmsFinancialPeriod(token: string, periodId: string, payload: { companyId: string; action: 'REVIEW' | 'CLOSE' | 'REOPEN'; reason: string }) {
+  return apiClient.post<{ period: PmsFinancialPeriod }>(`/api/pms/accounting/periods/${periodId}/transition`, payload, { token });
+}
+export function listPmsReconciliationItems(token: string, params: {
+  companyId?: string;
+  search?: string;
+  status?: PmsReconciliationStatus;
+  source?: PmsReconciliationSource;
+  currency?: string;
+  propertyId?: string;
+  transactionFrom?: string;
+  transactionTo?: string;
+  sortBy?: 'transactionDate' | 'createdAt' | 'amount' | 'status' | 'externalReference';
+  direction?: 'asc' | 'desc';
+  take?: number;
+  skip?: number;
+  signal?: AbortSignal;
+} = {}) {
+  const { signal, ...query } = params;
+  return apiClient.get<{
+    items: PmsReconciliationItem[];
+    pagination: PmsFinancePagination;
+    totalsByStatus: Array<{ status: PmsReconciliationStatus; count: number }>;
+    totalsByCurrency: Array<{ currency: string; count: number; amount: string }>;
+  }>('/api/pms/accounting/reconciliation', { token, params: query, signal });
+}
+export function createPmsReconciliationItem(token: string, payload: {
+  companyId: string;
+  source: PmsReconciliationSource;
+  externalReference: string;
+  amount: number;
+  currency: string;
+  transactionDate: string;
+  propertyId?: string | null;
+  payerReference?: string | null;
+}) {
+  return apiClient.post<{ item: PmsReconciliationItem }>('/api/pms/accounting/reconciliation', payload, { token });
+}
+export function matchPmsReconciliationItem(token: string, itemId: string, payload: { companyId: string; paymentId: string; reason: string }) {
+  return apiClient.post<{ item: PmsReconciliationItem }>(`/api/pms/accounting/reconciliation/${itemId}/match`, payload, { token });
+}
+export function transitionPmsReconciliationItem(token: string, itemId: string, payload: { companyId: string; action: 'IGNORE' | 'RESTORE_UNMATCHED'; reason: string }) {
+  return apiClient.post<{ item: PmsReconciliationItem }>(`/api/pms/accounting/reconciliation/${itemId}/transition`, payload, { token });
 }
 export async function listPmsOwnerPayouts(token: string, companyId?: string) {
   return apiClient.get<{ batches: PmsOwnerPayout[] }>('/api/pms/accounting/owner-payouts', { token, params: companyParams(companyId) });

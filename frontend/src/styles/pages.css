@@ -21421,3 +21421,102 @@ transition: none;
     transition: none;
   }
 }
+
+/* Stage 21I-F: PMS deposit, period, and reconciliation governance */
+.pms-governance-workspace .pms-finance-section-nav {
+  max-width: 100%;
+}
+
+.pms-governance-transaction-form,
+.pms-governance-inline-review {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #d9dde5);
+  border-radius: 0.9rem;
+  background: var(--surface-muted, #f8f9fb);
+}
+
+.pms-governance-inline-review > p,
+.pms-finance-permission-note:has(svg) {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pms-governance-readiness {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid;
+  border-radius: 0.9rem;
+}
+
+.pms-governance-readiness h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.pms-governance-readiness p {
+  margin: 0;
+}
+
+.pms-governance-readiness--ready {
+  border-color: #8bbf9b;
+  background: #f0faf3;
+}
+
+.pms-governance-readiness--blocked {
+  border-color: #d5a36c;
+  background: #fff8ee;
+}
+
+.pms-finance-status--held,
+.pms-finance-status--open,
+.pms-finance-status--matched,
+.pms-finance-status--posted,
+.pms-finance-status--approved {
+  background: #e8f6ed;
+  color: #176536;
+}
+
+.pms-finance-status--expected,
+.pms-finance-status--reviewing,
+.pms-finance-status--unmatched,
+.pms-finance-status--pending_approval {
+  background: #fff4d6;
+  color: #7b5600;
+}
+
+.pms-finance-status--partially_refunded,
+.pms-finance-status--duplicate {
+  background: #fff0e4;
+  color: #8b4c12;
+}
+
+.pms-finance-status--closed,
+.pms-finance-status--ignored {
+  background: #eef0f4;
+  color: #4f5868;
+}
+
+@media (max-width: 760px) {
+  .pms-governance-workspace .pms-finance-section-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pms-governance-workspace .pms-finance-section-nav a {
+    min-width: 0;
+    text-align: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pms-governance-workspace *,
+  .accessible-dialog * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

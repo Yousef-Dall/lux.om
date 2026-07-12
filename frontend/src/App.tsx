@@ -1035,6 +1035,9 @@ export default function App() {
             <Route path="finance/overview" element={<PmsFinancialOperations section="overview" />} />
             <Route path="finance/charges" element={<PmsFinancialOperations section="charges" />} />
             <Route path="finance/payments" element={<PmsFinancialOperations section="payments" />} />
+            <Route path="finance/deposits" element={<PmsFinancialOperations section="deposits" />} />
+            <Route path="finance/periods" element={<PmsFinancialOperations section="periods" />} />
+            <Route path="finance/reconciliation" element={<PmsFinancialOperations section="reconciliation" />} />
             <Route path="finance/records" element={<PmsPortal />} />
 
             <Route path="reports" element={<PmsPortal />} />

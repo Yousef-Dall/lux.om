@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Building2,
+  CalendarRange,
   ClipboardList,
   CreditCard,
   FileInput,
@@ -10,6 +11,7 @@ import {
   Landmark,
   PackageSearch,
   ReceiptText,
+  Scale,
   Settings,
   UserCog,
   UserRoundCheck,
@@ -34,6 +36,9 @@ export type PmsNavigationKey =
   | 'financeOverview'
   | 'financeCharges'
   | 'financePayments'
+  | 'financeDeposits'
+  | 'financePeriods'
+  | 'financeReconciliation'
   | 'financeRecords'
   | 'reports'
   | 'staffAccess'
@@ -71,6 +76,9 @@ export const pmsNavigation: readonly PmsNavigationItem[] = [
   { to: '/pms/finance/overview', key: 'financeOverview', group: 'finance', icon: Landmark, permission: 'ACCOUNTING_VIEW' },
   { to: '/pms/finance/charges', key: 'financeCharges', group: 'finance', icon: ReceiptText, permission: 'ACCOUNTING_VIEW' },
   { to: '/pms/finance/payments', key: 'financePayments', group: 'finance', icon: CreditCard, permission: 'ACCOUNTING_VIEW' },
+  { to: '/pms/finance/deposits', key: 'financeDeposits', group: 'finance', icon: Landmark, permission: 'ACCOUNTING_VIEW' },
+  { to: '/pms/finance/periods', key: 'financePeriods', group: 'finance', icon: CalendarRange, permission: 'ACCOUNTING_VIEW' },
+  { to: '/pms/finance/reconciliation', key: 'financeReconciliation', group: 'finance', icon: Scale, permission: 'ACCOUNTING_VIEW' },
   { to: '/pms/finance/records', key: 'financeRecords', group: 'finance', icon: ReceiptText, permission: 'ACCOUNTING_VIEW' },
   { to: '/pms/reports', key: 'reports', group: 'reports', icon: BarChart3, permission: 'REPORTS_VIEW' },
   { to: '/pms/administration/staff-access', key: 'staffAccess', group: 'administration', icon: UserCog, permission: 'STAFF_MANAGE', requiresWorkspaceWideAccess: true },

@@ -109,6 +109,35 @@ const financeListPagination = {
   take: z.coerce.number().int().min(1).max(100).default(25),
   skip: z.coerce.number().int().min(0).default(0),
 };
+const depositListQuery = companyQuery.extend({
+  ...financeListPagination,
+  search: z.string().trim().max(200).optional(),
+  status: z.enum(['EXPECTED', 'HELD', 'PARTIALLY_REFUNDED', 'REFUNDED', 'CLOSED']).optional(),
+  currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+  sortBy: z.enum(['updatedAt', 'createdAt', 'expectedAmount', 'liabilityBalance', 'status']).default('updatedAt'),
+  direction: z.enum(['asc', 'desc']).default('desc'),
+});
+const periodListQuery = companyQuery.extend({
+  ...financeListPagination,
+  status: z.enum(['OPEN', 'REVIEWING', 'CLOSED']).optional(),
+  currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+  sortBy: z.enum(['periodStart', 'periodEnd', 'createdAt', 'status']).default('periodStart'),
+  direction: z.enum(['asc', 'desc']).default('desc'),
+});
+const reconciliationListQuery = companyQuery.extend({
+  ...financeListPagination,
+  search: z.string().trim().max(200).optional(),
+  status: z.enum(['UNMATCHED', 'MATCHED', 'DUPLICATE', 'IGNORED']).optional(),
+  source: z.enum(['BANK', 'PAYMENT_PROVIDER', 'CASHBOOK', 'MANUAL']).optional(),
+  currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(),
+  propertyId: z.string().trim().min(1).optional(),
+  transactionFrom: z.coerce.date().optional(),
+  transactionTo: z.coerce.date().optional(),
+  sortBy: z.enum(['transactionDate', 'createdAt', 'amount', 'status', 'externalReference']).default('transactionDate'),
+  direction: z.enum(['asc', 'desc']).default('desc'),
+});
 const reverseSchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   reason: z.string().trim().min(3).max(1000),
@@ -167,6 +196,11 @@ const reconciliationSchema = z.object({
 const reconciliationMatchSchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   paymentId: z.string().trim().min(1),
+  reason: z.string().trim().min(3).max(1000),
+});
+const reconciliationTransitionSchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  action: z.enum(['IGNORE', 'RESTORE_UNMATCHED']),
   reason: z.string().trim().min(3).max(1000),
 });
 const payoutSchema = z.object({
@@ -277,6 +311,80 @@ function paymentListResponse(payment: Prisma.PmsRentPaymentGetPayload<{ include:
   };
 }
 
+const depositListInclude = {
+  property: { select: { id: true, name: true } },
+  unit: { select: { id: true, unitNumber: true } },
+  lease: { select: { id: true, title: true, status: true } },
+  tenant: { select: { id: true, fullName: true } },
+  transactions: {
+    orderBy: { createdAt: 'desc' as const },
+    take: 5,
+    select: { id: true, type: true, status: true, amount: true, currency: true, reason: true, createdAt: true },
+  },
+  _count: { select: { transactions: true } },
+} satisfies Prisma.PmsSecurityDepositAccountInclude;
+
+function depositOrderBy(sortBy: z.infer<typeof depositListQuery>['sortBy'], direction: SortDirection): Prisma.PmsSecurityDepositAccountOrderByWithRelationInput[] {
+  if (sortBy === 'createdAt') return [{ createdAt: direction }, { id: 'desc' }];
+  if (sortBy === 'expectedAmount') return [{ expectedAmount: direction }, { id: 'desc' }];
+  if (sortBy === 'liabilityBalance') return [{ liabilityBalance: direction }, { id: 'desc' }];
+  if (sortBy === 'status') return [{ status: direction }, { id: 'desc' }];
+  return [{ updatedAt: direction }, { id: 'desc' }];
+}
+
+function periodOrderBy(sortBy: z.infer<typeof periodListQuery>['sortBy'], direction: SortDirection): Prisma.PmsFinancialPeriodOrderByWithRelationInput[] {
+  if (sortBy === 'periodEnd') return [{ periodEnd: direction }, { id: 'desc' }];
+  if (sortBy === 'createdAt') return [{ createdAt: direction }, { id: 'desc' }];
+  if (sortBy === 'status') return [{ status: direction }, { id: 'desc' }];
+  return [{ periodStart: direction }, { id: 'desc' }];
+}
+
+function reconciliationOrderBy(sortBy: z.infer<typeof reconciliationListQuery>['sortBy'], direction: SortDirection): Prisma.PmsReconciliationItemOrderByWithRelationInput[] {
+  if (sortBy === 'createdAt') return [{ createdAt: direction }, { id: 'desc' }];
+  if (sortBy === 'amount') return [{ amount: direction }, { id: 'desc' }];
+  if (sortBy === 'status') return [{ status: direction }, { id: 'desc' }];
+  if (sortBy === 'externalReference') return [{ externalReference: direction }, { id: 'desc' }];
+  return [{ transactionDate: direction }, { id: 'desc' }];
+}
+
+async function getFinancialPeriodReadiness(
+  period: {
+    companyId: string;
+    propertyId: string | null;
+    currency: string;
+    periodStart: Date;
+    periodEnd: Date;
+  },
+  client: Pick<Prisma.TransactionClient, 'pmsReconciliationItem' | 'pmsSecurityDepositTransaction'> = prisma,
+) {
+  const propertyFilter = period.propertyId ? { propertyId: period.propertyId } : {};
+  const [reconciliationExceptions, pendingDepositTransactions] = await Promise.all([
+    client.pmsReconciliationItem.count({
+      where: {
+        companyId: period.companyId,
+        currency: period.currency,
+        status: { in: ['UNMATCHED', 'DUPLICATE'] },
+        transactionDate: { gte: period.periodStart, lte: period.periodEnd },
+        ...propertyFilter,
+      },
+    }),
+    client.pmsSecurityDepositTransaction.count({
+      where: {
+        companyId: period.companyId,
+        currency: period.currency,
+        status: { in: ['PENDING_APPROVAL', 'APPROVED'] },
+        createdAt: { gte: period.periodStart, lte: period.periodEnd },
+        ...(period.propertyId ? { account: { propertyId: period.propertyId } } : {}),
+      },
+    }),
+  ]);
+  return {
+    canClose: reconciliationExceptions === 0 && pendingDepositTransactions === 0,
+    reconciliationExceptions,
+    pendingDepositTransactions,
+  };
+}
+
 pmsFinanceRouter.get('/charges', requireAuth(), async (req, res, next) => {
   try {
     const query = companyQuery.extend({
@@ -357,7 +465,7 @@ pmsFinanceRouter.get('/charges/:id', requireAuth(), async (req, res, next) => {
     const access = await requirePmsRouteAccess(req, query.companyId);
     assertCanViewPmsAccounting(access.member);
     const charge = await prisma.pmsCharge.findFirst({
-      where: { id, companyId: access.company.id },
+      where: { id, companyId: access.company.id, ...propertyScopeWhere(access) },
       include: {
         property: { select: { id: true, name: true } },
         unit: { select: { id: true, unitNumber: true } },
@@ -721,7 +829,7 @@ pmsFinanceRouter.get('/payments/:id', requireAuth(), async (req, res, next) => {
     const access = await requirePmsRouteAccess(req, query.companyId);
     assertCanViewPmsAccounting(access.member);
     const payment = await prisma.pmsRentPayment.findFirst({
-      where: { id, companyId: access.company.id },
+      where: { id, companyId: access.company.id, ...propertyScopeWhere(access) },
       include: {
         property: { select: { id: true, name: true } },
         unit: { select: { id: true, unitNumber: true } },
@@ -951,15 +1059,83 @@ pmsFinanceRouter.post('/payments/:id/adjustments', requireAuth(), async (req, re
 
 pmsFinanceRouter.get('/deposits', requireAuth(), async (req, res, next) => {
   try {
+    const query = depositListQuery.parse(req.query);
+    const access = await requirePmsRouteAccess(req, query.companyId);
+    assertCanViewPmsAccounting(access.member);
+    if (query.propertyId) assertPmsPropertyScope(access, query.propertyId);
+    const where: Prisma.PmsSecurityDepositAccountWhereInput = {
+      companyId: access.company.id,
+      ...propertyScopeWhere(access),
+      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.currency ? { currency: query.currency } : {}),
+      ...(query.search ? {
+        OR: [
+          { property: { name: { contains: query.search, mode: 'insensitive' } } },
+          { unit: { unitNumber: { contains: query.search, mode: 'insensitive' } } },
+          { tenant: { fullName: { contains: query.search, mode: 'insensitive' } } },
+          { lease: { title: { contains: query.search, mode: 'insensitive' } } },
+        ],
+      } : {}),
+    };
+    const [accounts, total, grouped] = await Promise.all([
+      prisma.pmsSecurityDepositAccount.findMany({
+        where,
+        include: depositListInclude,
+        orderBy: depositOrderBy(query.sortBy, query.direction),
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsSecurityDepositAccount.count({ where }),
+      prisma.pmsSecurityDepositAccount.groupBy({
+        by: ['currency'],
+        where,
+        _count: { _all: true },
+        _sum: { expectedAmount: true, liabilityBalance: true },
+        orderBy: { currency: 'asc' },
+      }),
+    ]);
+    res.json({
+      accounts,
+      pagination: { take: query.take, skip: query.skip, count: accounts.length, total },
+      totalsByCurrency: grouped.map((item) => ({
+        currency: item.currency,
+        count: item._count._all,
+        expectedAmount: item._sum.expectedAmount?.toString() ?? '0',
+        liabilityBalance: item._sum.liabilityBalance?.toString() ?? '0',
+      })),
+    });
+  } catch (error) { next(error); }
+});
+
+pmsFinanceRouter.get('/deposits/:id', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParams.parse(req.params);
     const query = companyQuery.parse(req.query);
     const access = await requirePmsRouteAccess(req, query.companyId);
     assertCanViewPmsAccounting(access.member);
-    const accounts = await prisma.pmsSecurityDepositAccount.findMany({
-      where: { companyId: access.company.id, ...propertyScopeWhere(access) },
-      include: { property: { select: { id: true, name: true } }, unit: { select: { id: true, unitNumber: true } }, tenant: { select: { id: true, fullName: true } }, transactions: { orderBy: { createdAt: 'desc' } } },
-      orderBy: { updatedAt: 'desc' },
+    const account = await prisma.pmsSecurityDepositAccount.findFirst({
+      where: { id, companyId: access.company.id, ...propertyScopeWhere(access) },
+      include: {
+        property: { select: { id: true, name: true } },
+        unit: { select: { id: true, unitNumber: true } },
+        lease: { select: { id: true, title: true, status: true, startDate: true, endDate: true } },
+        tenant: { select: { id: true, fullName: true } },
+        transactions: {
+          include: {
+            payment: { select: { id: true, receiptNumber: true, amount: true, currency: true, paidAt: true } },
+            charge: { select: { id: true, chargeNumber: true, status: true, totalAmount: true, balanceAmount: true, currency: true } },
+            createdBy: { select: { id: true, name: true } },
+            approvedBy: { select: { id: true, name: true } },
+            documents: { select: { id: true, title: true, type: true, status: true, createdAt: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
     });
-    res.json({ accounts });
+    if (!account) throw new AppError(404, 'Security deposit account not found.');
+    assertPmsPropertyScope(access, account.propertyId);
+    res.json({ account });
   } catch (error) { next(error); }
 });
 
@@ -1013,11 +1189,62 @@ pmsFinanceRouter.post('/deposits/:id/transactions/:transactionId/transition', re
 
 pmsFinanceRouter.get('/periods', requireAuth(), async (req, res, next) => {
   try {
+    const query = periodListQuery.parse(req.query);
+    const access = await requirePmsRouteAccess(req, query.companyId);
+    assertCanViewPmsAccounting(access.member);
+    if (query.propertyId) assertPmsPropertyScope(access, query.propertyId);
+    const scope = access.member.propertyScope.allProperties
+      ? {}
+      : { propertyId: { in: access.member.propertyScope.propertyIds } };
+    const where: Prisma.PmsFinancialPeriodWhereInput = {
+      companyId: access.company.id,
+      ...scope,
+      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.currency ? { currency: query.currency } : {}),
+    };
+    const [periods, total] = await Promise.all([
+      prisma.pmsFinancialPeriod.findMany({
+        where,
+        include: {
+          property: { select: { id: true, name: true } },
+          createdBy: { select: { id: true, name: true } },
+          updatedBy: { select: { id: true, name: true } },
+          events: {
+            include: { createdBy: { select: { id: true, name: true } } },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+          },
+        },
+        orderBy: periodOrderBy(query.sortBy, query.direction),
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsFinancialPeriod.count({ where }),
+    ]);
+    res.json({ periods, pagination: { take: query.take, skip: query.skip, count: periods.length, total } });
+  } catch (error) { next(error); }
+});
+
+pmsFinanceRouter.get('/periods/:id/readiness', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParams.parse(req.params);
     const query = companyQuery.parse(req.query);
     const access = await requirePmsRouteAccess(req, query.companyId);
     assertCanViewPmsAccounting(access.member);
-    const periods = await prisma.pmsFinancialPeriod.findMany({ where: { companyId: access.company.id, OR: [{ propertyId: null }, ...(access.member.propertyScope.allProperties ? [] : [{ propertyId: { in: access.member.propertyScope.propertyIds } }])] }, include: { property: { select: { id: true, name: true } }, events: { orderBy: { createdAt: 'desc' }, take: 20 } }, orderBy: [{ periodStart: 'desc' }, { createdAt: 'desc' }] });
-    res.json({ periods });
+    const period = await prisma.pmsFinancialPeriod.findFirst({
+      where: {
+        id,
+        companyId: access.company.id,
+        ...(access.member.propertyScope.allProperties
+          ? {}
+          : { propertyId: { in: access.member.propertyScope.propertyIds } }),
+      },
+      include: { property: { select: { id: true, name: true } }, events: { include: { createdBy: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' } } },
+    });
+    if (!period) throw new AppError(404, 'Financial period not found.');
+    if (period.propertyId) assertPmsPropertyScope(access, period.propertyId);
+    res.json({ period, readiness: await getFinancialPeriodReadiness(period) });
   } catch (error) { next(error); }
 });
 
@@ -1028,6 +1255,7 @@ pmsFinanceRouter.post('/periods', requireAuth(), async (req, res, next) => {
     assertCanManagePmsAccounting(access.member);
     if (data.periodEnd < data.periodStart) throw new AppError(400, 'Period end must not be before its start.');
     if (data.propertyId) assertPmsPropertyScope(access, data.propertyId);
+    else if (!access.member.propertyScope.allProperties) throw new AppError(403, 'Company-wide financial periods require access to all properties.');
     const overlap = await prisma.pmsFinancialPeriod.findFirst({ where: { companyId: access.company.id, currency: data.currency, propertyId: data.propertyId ?? null, periodStart: { lte: data.periodEnd }, periodEnd: { gte: data.periodStart } } });
     if (overlap) throw new AppError(409, 'A financial period already overlaps this range.');
     const period = await prisma.pmsFinancialPeriod.create({ data: { companyId: access.company.id, propertyId: data.propertyId ?? null, currency: data.currency, periodStart: data.periodStart, periodEnd: data.periodEnd, createdById: req.user!.id, updatedById: req.user!.id, events: { create: { companyId: access.company.id, toStatus: 'OPEN', reason: 'Period created', createdById: req.user!.id } } }, include: { events: true } });
@@ -1042,30 +1270,113 @@ pmsFinanceRouter.post('/periods/:id/transition', requireAuth(), async (req, res,
     const data = periodTransitionSchema.parse(req.body);
     const access = await requirePmsRouteAccess(req, data.companyId);
     assertCanManagePmsAccounting(access.member);
-    const current = await prisma.pmsFinancialPeriod.findFirst({ where: { id, companyId: access.company.id } });
-    if (!current) throw new AppError(404, 'Financial period not found.');
-    if (current.propertyId) assertPmsPropertyScope(access, current.propertyId);
-    const nextStatus = data.action === 'REVIEW' ? 'REVIEWING' : data.action === 'CLOSE' ? 'CLOSED' : 'OPEN';
-    const allowed = (current.status === 'OPEN' && nextStatus === 'REVIEWING') || (current.status === 'REVIEWING' && nextStatus === 'CLOSED') || (current.status === 'CLOSED' && nextStatus === 'OPEN');
-    if (!allowed) throw new AppError(409, `Cannot move financial period from ${current.status} to ${nextStatus}.`);
     const now = new Date();
-    const period = await prisma.$transaction(async (tx) => {
-      const updated = await tx.pmsFinancialPeriod.update({ where: { id }, data: { status: nextStatus, updatedById: req.user!.id, ...(nextStatus === 'CLOSED' ? { closedAt: now, closeReason: data.reason } : {}), ...(data.action === 'REOPEN' ? { reopenedAt: now, reopenReason: data.reason } : {}) } });
-      await tx.pmsFinancialPeriodEvent.create({ data: { companyId: access.company.id, periodId: id, fromStatus: current.status, toStatus: nextStatus, reason: data.reason, createdById: req.user!.id } });
-      return updated;
+    const result = await prisma.$transaction(async (tx) => {
+      await lockFinanceRows(tx, 'PmsFinancialPeriod', [id]);
+      const current = await tx.pmsFinancialPeriod.findFirst({ where: { id, companyId: access.company.id } });
+      if (!current) throw new AppError(404, 'Financial period not found.');
+      if (current.propertyId) assertPmsPropertyScope(access, current.propertyId);
+      else if (!access.member.propertyScope.allProperties) throw new AppError(403, 'Company-wide financial periods require access to all properties.');
+      const nextStatus = data.action === 'REVIEW' ? 'REVIEWING' : data.action === 'CLOSE' ? 'CLOSED' : 'OPEN';
+      const allowed = (current.status === 'OPEN' && nextStatus === 'REVIEWING')
+        || (current.status === 'REVIEWING' && nextStatus === 'CLOSED')
+        || (current.status === 'CLOSED' && nextStatus === 'OPEN');
+      if (!allowed) throw new AppError(409, `Cannot move financial period from ${current.status} to ${nextStatus}.`);
+      if (data.action === 'CLOSE') {
+        const readiness = await getFinancialPeriodReadiness(current, tx);
+        if (!readiness.canClose) {
+          throw new AppError(409, `Financial period has ${readiness.reconciliationExceptions} reconciliation exception(s) and ${readiness.pendingDepositTransactions} pending deposit transaction(s).`);
+        }
+      }
+      const period = await tx.pmsFinancialPeriod.update({
+        where: { id },
+        data: {
+          status: nextStatus,
+          updatedById: req.user!.id,
+          ...(nextStatus === 'CLOSED' ? { closedAt: now, closeReason: data.reason } : {}),
+          ...(data.action === 'REOPEN' ? { reopenedAt: now, reopenReason: data.reason, closedAt: null, closeReason: null } : {}),
+        },
+      });
+      await tx.pmsFinancialPeriodEvent.create({
+        data: {
+          companyId: access.company.id,
+          periodId: id,
+          fromStatus: current.status,
+          toStatus: nextStatus,
+          reason: data.reason,
+          createdById: req.user!.id,
+        },
+      });
+      return { period, fromStatus: current.status, toStatus: nextStatus };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    await audit(req, {
+      companyId: access.company.id,
+      domain: DomainAuditDomain.PMS,
+      entityType: 'PmsFinancialPeriod',
+      entityId: id,
+      action: `PMS_FINANCIAL_PERIOD_${data.action}`,
+      actorId: req.user!.id,
+      changedFields: ['status'],
+      metadata: { reason: data.reason, fromStatus: result.fromStatus, toStatus: result.toStatus },
     });
-    await audit(req, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsFinancialPeriod', entityId: id, action: `PMS_FINANCIAL_PERIOD_${data.action}`, actorId: req.user!.id, changedFields: ['status'], metadata: { reason: data.reason, fromStatus: current.status, toStatus: nextStatus } });
-    res.json({ period });
-  } catch (error) { next(error); }
+    res.json({ period: result.period });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+      return next(new AppError(409, 'The financial period changed concurrently. Reload and retry the transition.'));
+    }
+    next(error);
+  }
 });
 
 pmsFinanceRouter.get('/reconciliation', requireAuth(), async (req, res, next) => {
   try {
-    const query = companyQuery.extend({ status: z.enum(['UNMATCHED', 'MATCHED', 'DUPLICATE', 'IGNORED']).optional() }).parse(req.query);
+    const query = reconciliationListQuery.parse(req.query);
     const access = await requirePmsRouteAccess(req, query.companyId);
     assertCanViewPmsAccounting(access.member);
-    const items = await prisma.pmsReconciliationItem.findMany({ where: { companyId: access.company.id, ...(query.status ? { status: query.status } : {}), OR: [{ propertyId: null }, ...(access.member.propertyScope.allProperties ? [] : [{ propertyId: { in: access.member.propertyScope.propertyIds } }])] }, include: { payment: { select: { id: true, amount: true, currency: true, receiptNumber: true } }, duplicateOf: { select: { id: true, externalReference: true } } }, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] });
-    res.json({ items });
+    if (query.propertyId) assertPmsPropertyScope(access, query.propertyId);
+    const scope = access.member.propertyScope.allProperties
+      ? {}
+      : { propertyId: { in: access.member.propertyScope.propertyIds } };
+    const where: Prisma.PmsReconciliationItemWhereInput = {
+      companyId: access.company.id,
+      ...scope,
+      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.source ? { source: query.source } : {}),
+      ...(query.currency ? { currency: query.currency } : {}),
+      ...((query.transactionFrom || query.transactionTo) ? { transactionDate: { ...(query.transactionFrom ? { gte: query.transactionFrom } : {}), ...(query.transactionTo ? { lte: query.transactionTo } : {}) } } : {}),
+      ...(query.search ? {
+        OR: [
+          { externalReference: { contains: query.search, mode: 'insensitive' } },
+          { payerReference: { contains: query.search, mode: 'insensitive' } },
+          { payment: { receiptNumber: { contains: query.search, mode: 'insensitive' } } },
+        ],
+      } : {}),
+    };
+    const [items, total, statusTotals, currencyTotals] = await Promise.all([
+      prisma.pmsReconciliationItem.findMany({
+        where,
+        include: {
+          property: { select: { id: true, name: true } },
+          payment: { select: { id: true, amount: true, currency: true, receiptNumber: true, paidAt: true, status: true } },
+          duplicateOf: { select: { id: true, externalReference: true } },
+          createdBy: { select: { id: true, name: true } },
+          matchedBy: { select: { id: true, name: true } },
+        },
+        orderBy: reconciliationOrderBy(query.sortBy, query.direction),
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsReconciliationItem.count({ where }),
+      prisma.pmsReconciliationItem.groupBy({ by: ['status'], where, _count: { _all: true }, orderBy: { status: 'asc' } }),
+      prisma.pmsReconciliationItem.groupBy({ by: ['currency'], where, _count: { _all: true }, _sum: { amount: true }, orderBy: { currency: 'asc' } }),
+    ]);
+    res.json({
+      items,
+      pagination: { take: query.take, skip: query.skip, count: items.length, total },
+      totalsByStatus: statusTotals.map((item) => ({ status: item.status, count: item._count._all })),
+      totalsByCurrency: currencyTotals.map((item) => ({ currency: item.currency, count: item._count._all, amount: item._sum.amount?.toString() ?? '0' })),
+    });
   } catch (error) { next(error); }
 });
 
@@ -1075,6 +1386,7 @@ pmsFinanceRouter.post('/reconciliation', requireAuth(), async (req, res, next) =
     const access = await requirePmsRouteAccess(req, data.companyId);
     assertCanManagePmsAccounting(access.member);
     if (data.propertyId) assertPmsPropertyScope(access, data.propertyId);
+    else if (!access.member.propertyScope.allProperties) throw new AppError(403, 'Company-wide reconciliation items require access to all properties.');
     const duplicate = await prisma.pmsReconciliationItem.findFirst({ where: { companyId: access.company.id, currency: data.currency, amount: money(data.amount), transactionDate: data.transactionDate, payerReference: data.payerReference ?? null }, orderBy: { createdAt: 'asc' } });
     const item = await prisma.pmsReconciliationItem.create({ data: { companyId: access.company.id, propertyId: data.propertyId ?? null, source: data.source, externalReference: data.externalReference, amount: money(data.amount), currency: data.currency, transactionDate: data.transactionDate, payerReference: data.payerReference ?? null, metadata: data.metadata as Prisma.InputJsonValue | undefined, status: duplicate ? 'DUPLICATE' : 'UNMATCHED', duplicateOfId: duplicate?.id ?? null, createdById: req.user!.id } });
     await audit(req, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsReconciliationItem', entityId: item.id, action: duplicate ? 'PMS_RECONCILIATION_DUPLICATE_DETECTED' : 'PMS_RECONCILIATION_ITEM_IMPORTED', actorId: req.user!.id, afterMetadata: { source: item.source, externalReference: item.externalReference, amount: item.amount.toString(), currency: item.currency, duplicateOfId: item.duplicateOfId } });
@@ -1088,26 +1400,82 @@ pmsFinanceRouter.post('/reconciliation/:id/match', requireAuth(), async (req, re
     const data = reconciliationMatchSchema.parse(req.body);
     const access = await requirePmsRouteAccess(req, data.companyId);
     assertCanManagePmsAccounting(access.member);
-    const [item, payment] = await Promise.all([
-      prisma.pmsReconciliationItem.findFirst({ where: { id, companyId: access.company.id } }),
-      prisma.pmsRentPayment.findFirst({ where: { id: data.paymentId, companyId: access.company.id } }),
-    ]);
-    if (!item || !payment) throw new AppError(404, 'Reconciliation item or payment not found.');
-    const existingMatch = await prisma.pmsReconciliationItem.findFirst({
-      where: { companyId: access.company.id, paymentId: payment.id, status: 'MATCHED', id: { not: item.id } },
-      select: { id: true, externalReference: true },
-    });
-    if (existingMatch) throw new AppError(409, `Payment is already matched to reconciliation item ${existingMatch.externalReference}.`);
-    if (item.status === 'MATCHED' && item.paymentId === payment.id) return res.json({ item });
-    if (item.status === 'DUPLICATE' || item.status === 'IGNORED') throw new AppError(409, `Cannot match a reconciliation item in ${item.status} status.`);
-    if (item.propertyId) assertPmsPropertyScope(access, item.propertyId);
-    assertPmsPropertyScope(access, payment.propertyId);
-    assertSameCurrency(item.currency, payment.currency);
-    if (!item.amount.equals(payment.amount)) throw new AppError(409, 'Reconciliation amount must equal the payment amount.');
-    const updated = await prisma.pmsReconciliationItem.update({ where: { id }, data: { status: 'MATCHED', paymentId: payment.id, matchedAt: new Date(), matchedById: req.user!.id, matchReason: data.reason } });
-    await audit(req, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsReconciliationItem', entityId: id, action: 'PMS_RECONCILIATION_MATCHED', actorId: req.user!.id, afterMetadata: { paymentId: payment.id, reason: data.reason } });
+    const updated = await prisma.$transaction(async (tx) => {
+      await lockFinanceRows(tx, 'PmsReconciliationItem', [id]);
+      await lockFinanceRows(tx, 'PmsRentPayment', [data.paymentId]);
+      const [item, payment] = await Promise.all([
+        tx.pmsReconciliationItem.findFirst({ where: { id, companyId: access.company.id } }),
+        tx.pmsRentPayment.findFirst({ where: { id: data.paymentId, companyId: access.company.id } }),
+      ]);
+      if (!item || !payment) throw new AppError(404, 'Reconciliation item or payment not found.');
+      const existingMatch = await tx.pmsReconciliationItem.findFirst({
+        where: { companyId: access.company.id, paymentId: payment.id, status: 'MATCHED', id: { not: item.id } },
+        select: { id: true, externalReference: true },
+      });
+      if (existingMatch) throw new AppError(409, `Payment is already matched to reconciliation item ${existingMatch.externalReference}.`);
+      if (item.status === 'MATCHED' && item.paymentId === payment.id) return item;
+      if (item.status === 'DUPLICATE' || item.status === 'IGNORED') throw new AppError(409, `Cannot match a reconciliation item in ${item.status} status.`);
+      if (item.propertyId) assertPmsPropertyScope(access, item.propertyId);
+      else if (!access.member.propertyScope.allProperties) throw new AppError(403, 'Company-wide reconciliation items require access to all properties.');
+      assertPmsPropertyScope(access, payment.propertyId);
+      assertSameCurrency(item.currency, payment.currency);
+      if (!item.amount.equals(payment.amount)) throw new AppError(409, 'Reconciliation amount must equal the payment amount.');
+      return tx.pmsReconciliationItem.update({ where: { id }, data: { status: 'MATCHED', paymentId: payment.id, matchedAt: new Date(), matchedById: req.user!.id, matchReason: data.reason } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    await audit(req, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsReconciliationItem', entityId: id, action: 'PMS_RECONCILIATION_MATCHED', actorId: req.user!.id, afterMetadata: { paymentId: data.paymentId, reason: data.reason } });
     res.json({ item: updated });
-  } catch (error) { next(error); }
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+      return next(new AppError(409, 'The reconciliation item or payment changed concurrently. Reload and retry.'));
+    }
+    next(error);
+  }
+});
+
+pmsFinanceRouter.post('/reconciliation/:id/transition', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParams.parse(req.params);
+    const data = reconciliationTransitionSchema.parse(req.body);
+    const access = await requirePmsRouteAccess(req, data.companyId);
+    assertCanManagePmsAccounting(access.member);
+    const result = await prisma.$transaction(async (tx) => {
+      await lockFinanceRows(tx, 'PmsReconciliationItem', [id]);
+      const current = await tx.pmsReconciliationItem.findFirst({ where: { id, companyId: access.company.id } });
+      if (!current) throw new AppError(404, 'Reconciliation item not found.');
+      if (current.propertyId) assertPmsPropertyScope(access, current.propertyId);
+      else if (!access.member.propertyScope.allProperties) throw new AppError(403, 'Company-wide reconciliation items require access to all properties.');
+      if (data.action === 'IGNORE' && current.status !== 'UNMATCHED') throw new AppError(409, 'Only unmatched reconciliation items can be ignored.');
+      if (data.action === 'RESTORE_UNMATCHED' && current.status !== 'IGNORED') throw new AppError(409, 'Only ignored reconciliation items can be restored.');
+      const nextStatus = data.action === 'IGNORE' ? 'IGNORED' : 'UNMATCHED';
+      const item = await tx.pmsReconciliationItem.update({
+        where: { id },
+        data: {
+          status: nextStatus,
+          paymentId: null,
+          matchedAt: null,
+          matchedById: null,
+          matchReason: data.reason,
+        },
+      });
+      return { item, fromStatus: current.status, toStatus: nextStatus };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    await audit(req, {
+      companyId: access.company.id,
+      domain: DomainAuditDomain.PMS,
+      entityType: 'PmsReconciliationItem',
+      entityId: id,
+      action: `PMS_RECONCILIATION_${data.action}`,
+      actorId: req.user!.id,
+      changedFields: ['status'],
+      metadata: { fromStatus: result.fromStatus, toStatus: result.toStatus, reason: data.reason },
+    });
+    res.json({ item: result.item });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+      return next(new AppError(409, 'The reconciliation item changed concurrently. Reload and retry.'));
+    }
+    next(error);
+  }
 });
 
 pmsFinanceRouter.get('/owner-payouts', requireAuth(), async (req, res, next) => {

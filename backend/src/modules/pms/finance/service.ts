@@ -20,7 +20,7 @@ export type FinanceTransaction = Prisma.TransactionClient;
 
 export async function lockFinanceRows(
   tx: FinanceTransaction,
-  table: 'PmsCharge' | 'PmsRentPayment' | 'PmsSecurityDepositAccount',
+  table: 'PmsCharge' | 'PmsRentPayment' | 'PmsSecurityDepositAccount' | 'PmsReconciliationItem' | 'PmsFinancialPeriod',
   ids: string[],
 ) {
   const uniqueIds = [...new Set(ids.filter(Boolean))].sort();
@@ -29,6 +29,10 @@ export async function lockFinanceRows(
     await tx.$queryRaw`SELECT id FROM "PmsCharge" WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR UPDATE`;
   } else if (table === 'PmsRentPayment') {
     await tx.$queryRaw`SELECT id FROM "PmsRentPayment" WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR UPDATE`;
+  } else if (table === 'PmsReconciliationItem') {
+    await tx.$queryRaw`SELECT id FROM "PmsReconciliationItem" WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR UPDATE`;
+  } else if (table === 'PmsFinancialPeriod') {
+    await tx.$queryRaw`SELECT id FROM "PmsFinancialPeriod" WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR UPDATE`;
   } else {
     await tx.$queryRaw`SELECT id FROM "PmsSecurityDepositAccount" WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR UPDATE`;
   }
@@ -667,9 +671,10 @@ export async function transitionDepositTransaction(input: {
       let linkedChargeId: string | null = null;
       if (current.type === 'CONVERSION_TO_INCOME') {
         if (!current.chargeId) throw new AppError(409, 'Deposit conversion requires a linked issued charge.');
-        linkedChargeId = current.chargeId;
-        await lockFinanceRows(tx, 'PmsCharge', [linkedChargeId]);
-        const charge = await recomputeCharge(tx, linkedChargeId);
+        const conversionChargeId = current.chargeId;
+        linkedChargeId = conversionChargeId;
+        await lockFinanceRows(tx, 'PmsCharge', [conversionChargeId]);
+        const charge = await recomputeCharge(tx, conversionChargeId);
         if (charge.companyId !== input.companyId || charge.propertyId !== account.propertyId || charge.currency !== account.currency || charge.status === 'DRAFT' || charge.status === 'VOID') {
           throw new AppError(409, 'Linked deposit charge is no longer eligible for conversion.');
         }

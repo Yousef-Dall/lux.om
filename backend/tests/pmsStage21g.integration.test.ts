@@ -376,6 +376,156 @@ describe('PMS Stage 21G financial and portal operations', () => {
     await request(app).get('/api/vendor/work-orders').set('Authorization', `Bearer ${fixture.ownerToken}`).expect(403);
   });
 
+  it('governs deposit liabilities, reconciliation exceptions, and financial-period closing', async () => {
+    const fixture = await createFixture();
+    const accountResponse = await request(app)
+      .post('/api/pms/accounting/deposits')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, leaseId: fixture.leaseA.id, expectedAmount: 200 })
+      .expect(201);
+    const accountId = accountResponse.body.account.id as string;
+    const depositPayment = await request(app)
+      .post('/api/pms/accounting/payments')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, unitId: fixture.unitA.id, leaseId: fixture.leaseA.id, tenantId: fixture.tenantA.id, amount: 200, currency: 'OMR', method: 'BANK_TRANSFER', paidAt: '2026-07-10', idempotencyKey: 'stage21i-f-deposit-payment' })
+      .expect(201);
+    await request(app)
+      .post(`/api/pms/accounting/deposits/${accountId}/transactions`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, type: 'COLLECTION', amount: 200, reason: 'Security deposit received', idempotencyKey: 'stage21i-f-deposit-collection', paymentId: depositPayment.body.payment.id })
+      .expect(201);
+    const deduction = await request(app)
+      .post(`/api/pms/accounting/deposits/${accountId}/transactions`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, type: 'DEDUCTION', amount: 20, reason: 'Repair deduction awaiting approval', idempotencyKey: 'stage21i-f-deposit-deduction' })
+      .expect(201);
+    expect(deduction.body.transaction.status).toBe('PENDING_APPROVAL');
+
+    const reconciliation = await request(app)
+      .post('/api/pms/accounting/reconciliation')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, source: 'BANK', externalReference: 'BANK-21I-F-001', amount: 200, currency: 'OMR', transactionDate: '2026-07-10', payerReference: 'TENANT-21I-F' })
+      .expect(201);
+
+    const createdPeriod = await request(app)
+      .post('/api/pms/accounting/periods')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, currency: 'OMR', periodStart: '2026-07-01', periodEnd: '2026-07-31T23:59:59.999Z' })
+      .expect(201);
+    const periodId = createdPeriod.body.period.id as string;
+    await request(app)
+      .post(`/api/pms/accounting/periods/${periodId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'REVIEW', reason: 'Begin month-end review' })
+      .expect(200);
+
+    const readiness = await request(app)
+      .get(`/api/pms/accounting/periods/${periodId}/readiness?companyId=${fixture.company.id}`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200);
+    expect(readiness.body.readiness).toEqual({ canClose: false, reconciliationExceptions: 1, pendingDepositTransactions: 1 });
+    await request(app)
+      .post(`/api/pms/accounting/periods/${periodId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'CLOSE', reason: 'Attempt close with blockers' })
+      .expect(409);
+
+    await request(app)
+      .post(`/api/pms/accounting/reconciliation/${reconciliation.body.item.id}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'IGNORE', reason: 'Verified external non-rent transfer' })
+      .expect(200)
+      .expect(({ body }) => expect(body.item.status).toBe('IGNORED'));
+    await request(app)
+      .post(`/api/pms/accounting/deposits/${accountId}/transactions/${deduction.body.transaction.id}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'APPROVE', reason: 'Repair evidence reviewed' })
+      .expect(200);
+    await request(app)
+      .post(`/api/pms/accounting/deposits/${accountId}/transactions/${deduction.body.transaction.id}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'POST', reason: 'Post approved repair deduction' })
+      .expect(200);
+
+    const readyToClose = await request(app)
+      .get(`/api/pms/accounting/periods/${periodId}/readiness?companyId=${fixture.company.id}`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200);
+    expect(readyToClose.body.readiness).toEqual({ canClose: true, reconciliationExceptions: 0, pendingDepositTransactions: 0 });
+    await request(app)
+      .post(`/api/pms/accounting/periods/${periodId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'CLOSE', reason: 'All month-end exceptions resolved' })
+      .expect(200)
+      .expect(({ body }) => expect(body.period.status).toBe('CLOSED'));
+    await request(app)
+      .post(`/api/pms/accounting/periods/${periodId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'REOPEN', reason: 'Approved correction required' })
+      .expect(200)
+      .expect(({ body }) => expect(body.period.status).toBe('OPEN'));
+
+    const depositList = await request(app)
+      .get(`/api/pms/accounting/deposits?companyId=${fixture.company.id}&status=PARTIALLY_REFUNDED&take=1&skip=0`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200);
+    expect(depositList.body.pagination).toMatchObject({ take: 1, skip: 0, count: 1, total: 1 });
+    expect(depositList.body.totalsByCurrency).toEqual([expect.objectContaining({ currency: 'OMR', liabilityBalance: '180' })]);
+    const reconciliationList = await request(app)
+      .get(`/api/pms/accounting/reconciliation?companyId=${fixture.company.id}&status=IGNORED&take=1&skip=0`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200);
+    expect(reconciliationList.body.pagination).toMatchObject({ take: 1, skip: 0, count: 1, total: 1 });
+    expect(reconciliationList.body.totalsByStatus).toEqual([{ status: 'IGNORED', count: 1 }]);
+
+    const outsideScopeAccount = await request(app)
+      .post('/api/pms/accounting/deposits')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, leaseId: fixture.leaseB.id, expectedAmount: 150 })
+      .expect(201);
+    const scopedDeposits = await request(app)
+      .get(`/api/pms/accounting/deposits?companyId=${fixture.company.id}`)
+      .set('Authorization', `Bearer ${fixture.scopedToken}`)
+      .expect(200);
+    expect(scopedDeposits.body.accounts.map((account: { propertyId: string }) => account.propertyId)).toEqual([fixture.propertyA.id]);
+    await request(app)
+      .get(`/api/pms/accounting/deposits/${outsideScopeAccount.body.account.id}?companyId=${fixture.company.id}`)
+      .set('Authorization', `Bearer ${fixture.scopedToken}`)
+      .expect(404);
+
+    await request(app)
+      .post('/api/pms/accounting/periods')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, currency: 'OMR', periodStart: '2026-08-01', periodEnd: '2026-08-31T23:59:59.999Z' })
+      .expect(201);
+    const scopedPeriods = await request(app)
+      .get(`/api/pms/accounting/periods?companyId=${fixture.company.id}`)
+      .set('Authorization', `Bearer ${fixture.scopedToken}`)
+      .expect(200);
+    expect(scopedPeriods.body.periods.every((period: { propertyId: string | null }) => period.propertyId === fixture.propertyA.id)).toBe(true);
+    await request(app)
+      .post('/api/pms/accounting/periods')
+      .set('Authorization', `Bearer ${fixture.scopedToken}`)
+      .send({ companyId: fixture.company.id, currency: 'OMR', periodStart: '2026-09-01', periodEnd: '2026-09-30T23:59:59.999Z' })
+      .expect(403);
+
+    await request(app)
+      .post('/api/pms/accounting/reconciliation')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, source: 'BANK', externalReference: 'BANK-21I-F-GLOBAL', amount: 75, currency: 'OMR', transactionDate: '2026-07-12', payerReference: 'GLOBAL-TRANSFER' })
+      .expect(201);
+    const scopedReconciliation = await request(app)
+      .get(`/api/pms/accounting/reconciliation?companyId=${fixture.company.id}`)
+      .set('Authorization', `Bearer ${fixture.scopedToken}`)
+      .expect(200);
+    expect(scopedReconciliation.body.items.every((item: { propertyId: string | null }) => item.propertyId === fixture.propertyA.id)).toBe(true);
+    await request(app)
+      .post('/api/pms/accounting/reconciliation')
+      .set('Authorization', `Bearer ${fixture.scopedToken}`)
+      .send({ companyId: fixture.company.id, source: 'BANK', externalReference: 'BANK-21I-F-SCOPED-GLOBAL', amount: 50, currency: 'OMR', transactionDate: '2026-07-12' })
+      .expect(403);
+  });
+
   it('prevents duplicate payment reconciliation and reusing published statements across active payouts', async () => {
     const fixture = await createFixture();
     const payment = await request(app).post('/api/pms/accounting/payments').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, unitId: fixture.unitA.id, leaseId: fixture.leaseA.id, tenantId: fixture.tenantA.id, amount: 50, currency: 'OMR', method: 'BANK_TRANSFER', paidAt: '2026-06-30', idempotencyKey: 'stage21g-reconcile-payment' }).expect(201);

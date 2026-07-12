@@ -60,8 +60,8 @@ async function authenticate(page: Page, hasPmsAccess = true) {
 async function mockOperationalPages(page: Page) {
   await page.route('**/api/pms/accounting/charges**', (route) => route.fulfill({ json: { charges: [], pagination: { total: 0, take: 25, skip: 0, count: 0 }, totalsByCurrency: [] } }));
   await page.route('**/api/pms/accounting/payments**', (route) => route.fulfill({ json: { payments: [], pagination: { total: 0, take: 25, skip: 0, count: 0 }, totalsByCurrency: [] } }));
-  await page.route('**/api/pms/accounting/deposits**', (route) => route.fulfill({ json: { accounts: [] } }));
-  await page.route('**/api/pms/accounting/periods**', (route) => route.fulfill({ json: { periods: [] } }));
+  await page.route('**/api/pms/accounting/deposits**', (route) => route.fulfill({ json: { accounts: [], pagination: { total: 0, take: 25, skip: 0, count: 0 }, totalsByCurrency: [] } }));
+  await page.route('**/api/pms/accounting/periods**', (route) => route.fulfill({ json: { periods: [], pagination: { total: 0, take: 25, skip: 0, count: 0 } } }));
   await page.route('**/api/pms/accounting/owner-payouts**', (route) => route.fulfill({ json: { batches: [] } }));
   await page.route('**/api/pms/assets**', (route) => route.fulfill({ json: { assets: [] } }));
   await page.route('**/api/pms/preventive-maintenance/plans**', (route) => route.fulfill({ json: { plans: [] } }));
@@ -83,6 +83,12 @@ test('PMS renders a persistent permission-aware information architecture', async
   );
   await expect(navigation.getByRole('link', { name: 'Leases and rent schedules', exact: true })).toBeVisible();
   await expect(navigation.getByRole('link', { name: 'Financial overview', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(navigation.getByRole('link', { name: 'Deposits', exact: true })).toHaveAttribute(
+    'href',
+    '/pms/finance/deposits?companyId=company-pms-all'
+  );
+  await expect(navigation.getByRole('link', { name: 'Financial periods', exact: true })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: 'Reconciliation', exact: true })).toBeVisible();
   await expect(navigation.getByRole('link', { name: 'Staff and access', exact: true })).toBeVisible();
   await expect(page.getByText('Owner · All properties')).toBeVisible();
 });
