@@ -32,6 +32,15 @@ const reconciliation = {
 };
 
 
+const treasuryImportPreview = {
+  headers: ['externalReference', 'amount', 'currency', 'transactionDate'],
+  totalRows: 3,
+  validRows: [{ rowNumber: 2, status: 'VALID', errors: [], data: { source: 'BANK', direction: 'CREDIT', externalReference: 'BANK-IMPORT-001', amount: 200, currency: 'OMR', transactionDate: '2026-07-10T00:00:00.000Z', propertyId, payerReference: 'Governance Tenant' } }],
+  duplicateRows: [{ rowNumber: 3, status: 'DUPLICATE', errors: [], duplicateReason: 'DUPLICATE_IN_FILE', data: { source: 'BANK', direction: 'CREDIT', externalReference: 'BANK-IMPORT-001', amount: 200, currency: 'OMR', transactionDate: '2026-07-10T00:00:00.000Z', propertyId, payerReference: null } }],
+  invalidRows: [{ rowNumber: 4, status: 'INVALID', errors: ['Currency must be a three-letter code.'], data: null }],
+  contentHash: 'hash-governance',
+};
+
 const paidVendorInvoice = {
   id: 'invoice-governance', invoiceNumber: 'INV-GOV-001', status: 'PAID', issueDate: '2026-07-01T00:00:00.000Z', dueDate: '2026-07-10T00:00:00.000Z', currency: 'OMR', subtotalAmount: '100', taxAmount: '3', totalAmount: '103', approvedAmount: '103', paidAmount: '103', paidAt: '2026-07-12T00:00:00.000Z', paymentReference: 'BANK-AP-GOV', companyId, propertyId, vendorId: 'vendor-governance', workOrderId: 'work-order-governance', property: { id: propertyId, name: 'Governance Residences' }, vendor: { id: 'vendor-governance', name: 'Governance Vendor' }, workOrder: { id: 'work-order-governance', title: 'Valve repair', status: 'COMPLETED', currency: 'OMR' }, documents: [], ledgerEntries: [], createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
 };
@@ -50,7 +59,7 @@ async function fulfill(route: Route, body: unknown, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function mockGovernanceApi(page: Page, callbacks: { depositTransaction?: (body: Record<string, unknown>) => void; depositTransition?: (body: Record<string, unknown>) => void; periodTransition?: (body: Record<string, unknown>) => void; reconciliationMatch?: (body: Record<string, unknown>) => void; depositList?: (url: URL) => void; reconciliationItem?: Record<string, unknown> } = {}) {
+async function mockGovernanceApi(page: Page, callbacks: { depositTransaction?: (body: Record<string, unknown>) => void; depositTransition?: (body: Record<string, unknown>) => void; periodTransition?: (body: Record<string, unknown>) => void; reconciliationMatch?: (body: Record<string, unknown>) => void; treasuryPreview?: (body: Record<string, unknown>) => void; treasuryCommit?: (body: Record<string, unknown>) => void; depositList?: (url: URL) => void; reconciliationItem?: Record<string, unknown> } = {}) {
   let transactions: Record<string, unknown>[] = [];
   const activeReconciliation = callbacks.reconciliationItem ?? reconciliation;
   await page.route('**/api/pms/**', async (route) => {
@@ -67,6 +76,8 @@ async function mockGovernanceApi(page: Page, callbacks: { depositTransaction?: (
     if (path === `/api/pms/accounting/periods/${periodId}/readiness` && method === 'GET') return fulfill(route, { period: reviewingPeriod, readiness: { canClose: false, reconciliationExceptions: 1, pendingDepositTransactions: 1 } });
     if (path === `/api/pms/accounting/periods/${periodId}/transition` && method === 'POST') { const body = request.postDataJSON() as Record<string, unknown>; callbacks.periodTransition?.(body); return fulfill(route, { period: { ...reviewingPeriod, status: body.action === 'CLOSE' ? 'CLOSED' : 'OPEN' } }); }
     if (path === '/api/pms/accounting/reconciliation' && method === 'GET') return fulfill(route, { items: [activeReconciliation], pagination: { take: 25, skip: 0, count: 1, total: 1 }, totalsByStatus: [{ status: 'UNMATCHED', count: 1 }], totalsByCurrency: [{ currency: 'OMR', count: 1, amount: String(activeReconciliation.amount ?? '0') }] });
+    if (path === '/api/pms/accounting/reconciliation/imports/preview' && method === 'POST') { const body = request.postDataJSON() as Record<string, unknown>; callbacks.treasuryPreview?.(body); return fulfill(route, { preview: treasuryImportPreview }); }
+    if (path === '/api/pms/accounting/reconciliation/imports/commit' && method === 'POST') { const body = request.postDataJSON() as Record<string, unknown>; callbacks.treasuryCommit?.(body); return fulfill(route, { preview: treasuryImportPreview, batch: { id: 'treasury-batch-governance', source: 'BANK', filename: 'bank-july.csv', accountReference: 'OMR-OPERATING', status: 'PARTIAL', totalRows: 3, importedRows: 1, duplicateRows: 1, failedRows: 1, itemCount: 1, createdAt: '2026-07-13T00:00:00.000Z', updatedAt: '2026-07-13T00:00:00.000Z' } }, 201); }
     if (path.startsWith('/api/pms/accounting/reconciliation/') && path.endsWith('/match') && method === 'POST') { const body = request.postDataJSON() as Record<string, unknown>; callbacks.reconciliationMatch?.(body); return fulfill(route, { item: { ...activeReconciliation, status: 'MATCHED' } }); }
     if (path === '/api/pms/accounting/vendor-invoices' && method === 'GET') return fulfill(route, { invoices: [paidVendorInvoice], pagination: { take: 100, skip: 0, count: 1, total: 1 }, totalsByStatus: [{ status: 'PAID', count: 1 }], totalsByCurrency: [{ currency: 'OMR', count: 1, totalAmount: '103', approvedAmount: '103', paidAmount: '103' }], overdueCount: 0, vendors: [], properties: [], workOrders: [] });
     if (path === '/api/pms/accounting/owner-payouts' && method === 'GET') return fulfill(route, { batches: [paidOwnerPayout], pagination: { take: 100, skip: 0, count: 1, total: 1 }, totalsByStatus: [{ status: 'PAID_MANUAL', count: 1 }], totalsByCurrency: [{ currency: 'OMR', count: 1, payoutAmount: '73' }], ownerAccesses: [] });
@@ -118,6 +129,31 @@ test('financial period close readiness exposes blockers and disables unsafe clos
   await expect(dialog.getByText(/Reconciliation exceptions:/)).toContainText('1');
   await expect(dialog.getByRole('button', { name: 'Close period', exact: true })).toBeDisabled();
   await expect(dialog.getByText('Month-end review')).toBeVisible();
+});
+
+test('treasury statement import previews exceptions and commits only validated rows', async ({ page }) => {
+  let previewBody: Record<string, unknown> | undefined;
+  let commitBody: Record<string, unknown> | undefined;
+  await authenticate(page);
+  await mockGovernanceApi(page, { treasuryPreview: (body) => { previewBody = body; }, treasuryCommit: (body) => { commitBody = body; } });
+  await page.goto(`/pms/finance/reconciliation?companyId=${companyId}`);
+  await page.getByRole('button', { name: 'Import statement', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Import statement', exact: true });
+  await dialog.getByLabel('Account reference').fill('OMR-OPERATING');
+  await dialog.getByLabel('CSV statement').setInputFiles({
+    name: 'bank-july.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('externalReference,amount,currency,transactionDate,propertyId\nBANK-IMPORT-001,200,OMR,2026-07-10,property-governance'),
+  });
+  await dialog.getByRole('button', { name: 'Preview import', exact: true }).click();
+  await expect.poll(() => previewBody).toMatchObject({ companyId, source: 'BANK', accountReference: 'OMR-OPERATING', filename: 'bank-july.csv' });
+  await expect(dialog.getByText('Valid rows', { exact: true }).locator('..')).toContainText('1');
+  await expect(dialog.getByText('Duplicate rows', { exact: true }).locator('..')).toContainText('1');
+  await expect(dialog.getByText('Invalid rows', { exact: true }).locator('..')).toContainText('1');
+  await dialog.getByRole('button', { name: 'Commit import', exact: true }).click();
+  await expect.poll(() => commitBody).toMatchObject({ companyId, source: 'BANK', accountReference: 'OMR-OPERATING', filename: 'bank-july.csv' });
+  await expect(dialog.getByText('Statement import completed')).toBeVisible();
+  await expect(dialog.getByText(/treasury-batch-governance/)).toBeVisible();
 });
 
 test('reconciliation matches one confirmed equal-currency payment with an explicit reason', async ({ page }) => {
@@ -173,6 +209,7 @@ test('accounting viewers cannot mutate deposit, period, or reconciliation record
   await expect(page.getByText('Accounting management permission is required for this action.')).toBeVisible();
   await page.goto(`/pms/finance/reconciliation?companyId=${companyId}`);
   await expect(page.getByRole('button', { name: 'Add reconciliation item', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Import statement', exact: true })).toHaveCount(0);
 });
 
 
@@ -183,4 +220,6 @@ test('property-scoped finance managers cannot create company-wide controlled rec
   const dialog = page.getByRole('dialog', { name: 'Open financial period', exact: true });
   await expect(dialog.getByRole('option', { name: 'Company-wide', exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('combobox', { name: 'Scope', exact: true })).toHaveValue(propertyId);
+  await page.goto(`/pms/finance/reconciliation?companyId=${companyId}`);
+  await expect(page.getByRole('button', { name: 'Import statement', exact: true })).toHaveCount(0);
 });

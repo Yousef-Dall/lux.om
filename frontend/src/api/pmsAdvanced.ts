@@ -310,8 +310,50 @@ export type PmsReconciliationItem = {
   ownerPayoutBatch?: { id: string; payoutNumber: string; payoutAmount: string; currency: string; paidAt?: string | null; status: PmsOwnerPayoutStatus; payoutReference?: string | null } | null;
   duplicateOfId?: string | null;
   duplicateOf?: { id: string; externalReference: string } | null;
+  importBatchId?: string | null;
+  importRowNumber?: number | null;
+  importBatch?: { id: string; filename?: string | null; accountReference?: string | null; source: PmsReconciliationSource; createdAt: string } | null;
   createdBy?: { id: string; name: string } | null;
   matchedBy?: { id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export type PmsTreasuryImportRow = {
+  rowNumber: number;
+  status: 'VALID' | 'DUPLICATE' | 'INVALID';
+  errors: string[];
+  duplicateReason?: 'EXISTING_REFERENCE' | 'DUPLICATE_IN_FILE';
+  data?: {
+    source: PmsReconciliationSource;
+    direction: PmsReconciliationDirection;
+    externalReference: string;
+    amount: number;
+    currency: string;
+    transactionDate: string;
+    propertyId?: string | null;
+    payerReference?: string | null;
+  } | null;
+};
+export type PmsTreasuryImportPreview = {
+  headers: string[];
+  totalRows: number;
+  validRows: PmsTreasuryImportRow[];
+  duplicateRows: PmsTreasuryImportRow[];
+  invalidRows: PmsTreasuryImportRow[];
+  contentHash: string;
+};
+export type PmsTreasuryImportBatch = {
+  id: string;
+  source: PmsReconciliationSource;
+  filename?: string | null;
+  accountReference?: string | null;
+  status: 'COMMITTED' | 'PARTIAL' | 'FAILED';
+  totalRows: number;
+  importedRows: number;
+  duplicateRows: number;
+  failedRows: number;
+  itemCount: number;
+  createdBy?: { id: string; name: string; email: string } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -682,6 +724,35 @@ export function listPmsReconciliationItems(token: string, params: {
     totalsByStatus: Array<{ status: PmsReconciliationStatus; count: number }>;
     totalsByCurrency: Array<{ currency: string; count: number; amount: string }>;
   }>('/api/pms/accounting/reconciliation', { token, params: query, signal });
+}
+export function previewPmsTreasuryImport(token: string, payload: {
+  companyId: string;
+  source: Exclude<PmsReconciliationSource, 'MANUAL'>;
+  accountReference?: string | null;
+  filename?: string | null;
+  csvText: string;
+}) {
+  return apiClient.post<{ preview: PmsTreasuryImportPreview }>('/api/pms/accounting/reconciliation/imports/preview', payload, { token });
+}
+export function commitPmsTreasuryImport(token: string, payload: {
+  companyId: string;
+  source: Exclude<PmsReconciliationSource, 'MANUAL'>;
+  accountReference?: string | null;
+  filename?: string | null;
+  csvText: string;
+}) {
+  return apiClient.post<{ preview: PmsTreasuryImportPreview; batch: PmsTreasuryImportBatch }>('/api/pms/accounting/reconciliation/imports/commit', payload, { token });
+}
+export function listPmsTreasuryImportBatches(token: string, params: {
+  companyId?: string;
+  source?: Exclude<PmsReconciliationSource, 'MANUAL'>;
+  status?: 'COMMITTED' | 'PARTIAL' | 'FAILED';
+  take?: number;
+  skip?: number;
+  signal?: AbortSignal;
+} = {}) {
+  const { signal, ...query } = params;
+  return apiClient.get<{ batches: PmsTreasuryImportBatch[]; pagination: PmsFinancePagination }>('/api/pms/accounting/reconciliation/import-batches', { token, params: query, signal });
 }
 export function createPmsReconciliationItem(token: string, payload: {
   companyId: string;

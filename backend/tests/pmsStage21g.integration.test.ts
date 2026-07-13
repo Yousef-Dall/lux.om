@@ -1024,6 +1024,71 @@ describe('PMS Stage 21G financial and portal operations', () => {
     await expect(prisma.pmsVendorInvoice.update({ where: { id: draftToVoid.body.invoice.id }, data: { notes: 'Direct edit' } })).rejects.toThrow(/immutable/i);
   });
 
+  it('previews and commits treasury statement imports with immutable batch provenance and duplicate protection', async () => {
+    const fixture = await createFixture();
+    await request(app)
+      .post('/api/pms/accounting/reconciliation')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, source: 'BANK', direction: 'CREDIT', externalReference: 'BANK-IMPORT-EXISTING', amount: 25, currency: 'OMR', transactionDate: '2026-07-01', payerReference: 'Existing line' })
+      .expect(201);
+
+    const csvText = [
+      'externalReference,direction,amount,currency,transactionDate,propertyCode,payerReference',
+      'BANK-IMPORT-NEW-001,CREDIT,50,OMR,2026-07-10,21G-A,Private Tenant A',
+      'BANK-IMPORT-NEW-002,,-73,OMR,2026-07-11,,Owner transfer',
+      'BANK-IMPORT-EXISTING,CREDIT,25,OMR,2026-07-01,21G-A,Existing line',
+      'BANK-IMPORT-NEW-001,CREDIT,50,OMR,2026-07-10,21G-A,Duplicate in file',
+      'BANK-IMPORT-BAD,CREDIT,10,XX,2026-07-12,21G-A,Bad currency',
+      'BANK-IMPORT-CONFLICT,CREDIT,-10,OMR,2026-07-12,21G-A,Conflicting direction',
+    ].join('\n');
+    const payload = { companyId: fixture.company.id, source: 'BANK', accountReference: 'OMR-OPERATING', filename: 'july-bank.csv', csvText };
+
+    await request(app)
+      .post('/api/pms/accounting/reconciliation/imports/preview')
+      .set('Authorization', `Bearer ${fixture.scopedToken}`)
+      .send(payload)
+      .expect(403);
+
+    const preview = await request(app)
+      .post('/api/pms/accounting/reconciliation/imports/preview')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send(payload)
+      .expect(200);
+    expect(preview.body.preview).toMatchObject({ totalRows: 6 });
+    expect(preview.body.preview.validRows).toHaveLength(2);
+    expect(preview.body.preview.duplicateRows).toHaveLength(2);
+    expect(preview.body.preview.invalidRows).toHaveLength(2);
+    expect(preview.body.preview.duplicateRows.map((row: { duplicateReason: string }) => row.duplicateReason).sort()).toEqual(['DUPLICATE_IN_FILE', 'EXISTING_REFERENCE']);
+
+    const committed = await request(app)
+      .post('/api/pms/accounting/reconciliation/imports/commit')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send(payload)
+      .expect(201);
+    expect(committed.body.batch).toMatchObject({ source: 'BANK', status: 'PARTIAL', totalRows: 6, importedRows: 2, duplicateRows: 2, failedRows: 2, itemCount: 2 });
+    const batchId = committed.body.batch.id as string;
+    const importedItems = await prisma.pmsReconciliationItem.findMany({ where: { importBatchId: batchId }, orderBy: { importRowNumber: 'asc' } });
+    expect(importedItems).toHaveLength(2);
+    expect(importedItems.map((item) => ({ reference: item.externalReference, direction: item.direction, amount: item.amount.toString(), propertyId: item.propertyId, row: item.importRowNumber }))).toEqual([
+      { reference: 'BANK-IMPORT-NEW-001', direction: 'CREDIT', amount: '50', propertyId: fixture.propertyA.id, row: 2 },
+      { reference: 'BANK-IMPORT-NEW-002', direction: 'DEBIT', amount: '73', propertyId: null, row: 3 },
+    ]);
+
+    await request(app)
+      .post('/api/pms/accounting/reconciliation/imports/commit')
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send(payload)
+      .expect(409);
+    const history = await request(app)
+      .get(`/api/pms/accounting/reconciliation/import-batches?companyId=${fixture.company.id}`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200);
+    expect(history.body.batches).toEqual([expect.objectContaining({ id: batchId, filename: 'july-bank.csv', itemCount: 2 })]);
+
+    await expect(prisma.pmsReconciliationItem.update({ where: { id: importedItems[0]!.id }, data: { importRowNumber: 99 } })).rejects.toThrow(/provenance is immutable/i);
+    await expect(prisma.pmsTreasuryImportBatch.update({ where: { id: batchId }, data: { filename: 'edited.csv' } })).rejects.toThrow(/immutable/i);
+  });
+
   it('scopes assets, generates preventive work orders idempotently, and converts inspection defects once', async () => {
     const fixture = await createFixture();
     const asset = await request(app).post('/api/pms/assets').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, unitId: fixture.unitA.id, assetCode: 'HVAC-A-101', name: 'Main HVAC', category: 'HVAC', serviceIntervalDays: 30, nextServiceDate: '2026-07-01', vendorId: fixture.vendor.id, currency: 'OMR' }).expect(201);

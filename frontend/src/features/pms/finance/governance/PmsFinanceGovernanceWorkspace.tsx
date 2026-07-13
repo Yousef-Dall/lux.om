@@ -1,10 +1,11 @@
-import { AlertTriangle, Plus, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Plus, ShieldCheck, Upload } from 'lucide-react';
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { ApiError } from '../../../../api/client';
 import { listPmsLeases, listPmsProperties, type PmsLease, type PmsProperty } from '../../../../api/pms';
 import {
+  commitPmsTreasuryImport,
   createPmsDepositAccount,
   createPmsDepositTransaction,
   createPmsFinancialPeriod,
@@ -19,6 +20,7 @@ import {
   listPmsReconciliationItems,
   listPmsVendorInvoices,
   matchPmsReconciliationItem,
+  previewPmsTreasuryImport,
   transitionPmsDepositTransaction,
   transitionPmsFinancialPeriod,
   transitionPmsReconciliationItem,
@@ -37,6 +39,8 @@ import {
   type PmsReconciliationSource,
   type PmsReconciliationStatus,
   type PmsReconciliationTargetType,
+  type PmsTreasuryImportBatch,
+  type PmsTreasuryImportPreview,
   type PmsVendorInvoice,
 } from '../../../../api/pmsAdvanced';
 import { useAuth } from '../../../../auth/AuthContext';
@@ -540,6 +544,118 @@ function ReconciliationActionDialog({ companyId, item, language, onClose, onSave
   );
 }
 
+function TreasuryImportDialog({ companyId, language, onClose, onSaved, open, token }: { companyId: string; language: 'en' | 'ar'; onClose: () => void; onSaved: () => void; open: boolean; token: string }) {
+  const copy = governanceCopy[language];
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [source, setSource] = useState<Exclude<PmsReconciliationSource, 'MANUAL'>>('BANK');
+  const [accountReference, setAccountReference] = useState('');
+  const [filename, setFilename] = useState('');
+  const [csvText, setCsvText] = useState('');
+  const [preview, setPreview] = useState<PmsTreasuryImportPreview | null>(null);
+  const [batch, setBatch] = useState<PmsTreasuryImportBatch | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setError('');
+    setBatch(null);
+  }, [open]);
+
+  function resetPreview() {
+    setPreview(null);
+    setBatch(null);
+    setError('');
+  }
+
+  async function readFile(file: File | undefined) {
+    resetPreview();
+    if (!file) {
+      setFilename('');
+      setCsvText('');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setError(copy.importTooLarge);
+      setFilename('');
+      setCsvText('');
+      return;
+    }
+    setFilename(file.name);
+    setCsvText(await file.text());
+  }
+
+  const payload = () => ({
+    companyId,
+    source,
+    accountReference: accountReference.trim() || null,
+    filename: filename || null,
+    csvText,
+  });
+
+  async function runPreview() {
+    if (!csvText.trim()) return setError(copy.selectCsv);
+    setBusy(true);
+    setError('');
+    setBatch(null);
+    try {
+      const result = await previewPmsTreasuryImport(token, payload());
+      setPreview(result.preview);
+    } catch (previewError) {
+      setError(apiMessage(previewError, copy.error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function commitImport() {
+    if (!preview || preview.validRows.length === 0) return setError(copy.noValidImportRows);
+    setBusy(true);
+    setError('');
+    try {
+      const result = await commitPmsTreasuryImport(token, payload());
+      setPreview(result.preview);
+      setBatch(result.batch);
+      onSaved();
+    } catch (commitError) {
+      setError(apiMessage(commitError, copy.error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const exceptionRows = preview ? [...preview.invalidRows, ...preview.duplicateRows].slice(0, 10) : [];
+
+  return (
+    <AccessibleDialog closeLabel={copy.close} description={copy.importStatementDescription} initialFocusRef={fileRef} onClose={onClose} open={open} size="large" title={copy.importStatement}>
+      <div className="pms-finance-detail">
+        {error ? <p className="pms-finance-form__error" role="alert">{error}</p> : null}
+        {batch ? <section className="pms-governance-readiness pms-governance-readiness--ready"><h3><ShieldCheck aria-hidden="true" size={19} /> {copy.importComplete}</h3><p>{copy.batch}: <strong>{batch.id}</strong> · {governanceEnumLabel(batch.status, language)}</p></section> : null}
+        <div className="pms-finance-form">
+          <label>{copy.source}<select value={source} onChange={(event) => { setSource(event.target.value as Exclude<PmsReconciliationSource, 'MANUAL'>); resetPreview(); }}>{(['BANK', 'PAYMENT_PROVIDER', 'CASHBOOK'] as const).map((value) => <option key={value} value={value}>{governanceEnumLabel(value, language)}</option>)}</select></label>
+          <label>{copy.accountReference}<input value={accountReference} onChange={(event) => { setAccountReference(event.target.value); resetPreview(); }} /></label>
+          <label className="pms-finance-form__wide">{copy.csvFile}<input accept=".csv,text/csv" ref={fileRef} type="file" onChange={(event) => void readFile(event.target.files?.[0])} /></label>
+          <p className="pms-finance-permission-note pms-finance-form__wide">{copy.importFormatHint}</p>
+        </div>
+        <div className="pms-finance-inline-actions">
+          <button disabled={busy || !csvText} onClick={() => void runPreview()} type="button">{copy.previewImport}</button>
+          <button className="button-link button-link--primary" disabled={busy || !preview || preview.validRows.length === 0 || Boolean(batch)} onClick={() => void commitImport()} type="button">{copy.commitImport}</button>
+          <button onClick={onClose} type="button">{copy.cancel}</button>
+        </div>
+        {preview ? <>
+          <div className="pms-finance-currency-summary">
+            <article><span>{copy.totalRows}</span><strong>{preview.totalRows}</strong></article>
+            <article><span>{copy.validRows}</span><strong>{preview.validRows.length}</strong></article>
+            <article><span>{copy.duplicateRows}</span><strong>{preview.duplicateRows.length}</strong></article>
+            <article><span>{copy.invalidRows}</span><strong>{preview.invalidRows.length}</strong></article>
+          </div>
+          {exceptionRows.length ? <div className="pms-table-wrap"><table className="pms-finance-table"><caption>{copy.importExceptions}</caption><thead><tr><th>{copy.row}</th><th>{copy.status}</th><th>{copy.externalReference}</th><th>{copy.reason}</th></tr></thead><tbody>{exceptionRows.map((row) => <tr key={`${row.rowNumber}-${row.status}`}><td>{row.rowNumber}</td><td>{governanceEnumLabel(row.status, language)}</td><td>{row.data?.externalReference ?? '—'}</td><td>{row.errors.join(' ') || (row.duplicateReason === 'EXISTING_REFERENCE' ? copy.existingReference : copy.duplicateInFile)}</td></tr>)}</tbody></table></div> : <p className="pms-finance-permission-note">{copy.noImportExceptions}</p>}
+        </> : null}
+      </div>
+    </AccessibleDialog>
+  );
+}
+
 function ReconciliationWorkspace({ allowCompanyWide, canManage, companyId, language, token }: { allowCompanyWide: boolean; canManage: boolean; companyId: string; language: 'en' | 'ar'; token: string }) {
   const copy = governanceCopy[language];
   const { searchParams, replaceQuery } = useGovernanceSearchParams();
@@ -557,6 +673,7 @@ function ReconciliationWorkspace({ allowCompanyWide, canManage, companyId, langu
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [selected, setSelected] = useState<PmsReconciliationItem | null>(null);
 
   useEffect(() => setSearchInput(query), [query]);
@@ -607,7 +724,7 @@ function ReconciliationWorkspace({ allowCompanyWide, canManage, companyId, langu
           <label>{copy.source}<select value={source} onChange={(event) => replaceQuery({ source: event.target.value || null, page: null })}><option value="">{copy.all}</option>{(['BANK', 'PAYMENT_PROVIDER', 'CASHBOOK', 'MANUAL'] as const).map((value) => <option key={value} value={value}>{governanceEnumLabel(value, language)}</option>)}</select></label>
           <button type="submit">{copy.filter}</button>
         </form>
-        {canManage ? <button className="button-link button-link--primary" onClick={() => setCreateOpen(true)} type="button"><Plus aria-hidden="true" size={17} />{copy.createReconciliation}</button> : null}
+        {canManage ? <div className="pms-finance-inline-actions">{allowCompanyWide ? <button onClick={() => setImportOpen(true)} type="button"><Upload aria-hidden="true" size={17} />{copy.importStatement}</button> : null}<button className="button-link button-link--primary" onClick={() => setCreateOpen(true)} type="button"><Plus aria-hidden="true" size={17} />{copy.createReconciliation}</button></div> : null}
       </div>
       {!canManage ? <p className="pms-finance-permission-note">{copy.permissionDenied}</p> : null}
       <div className="pms-finance-currency-summary">{statusTotals.map((total) => <article key={total.status}><span>{governanceEnumLabel(total.status, language)}</span><strong>{total.count}</strong></article>)}</div>
@@ -622,7 +739,7 @@ function ReconciliationWorkspace({ allowCompanyWide, canManage, companyId, langu
                 const target = matchedTarget(item);
                 return (
                   <tr key={item.id}>
-                    <td><strong>{item.externalReference}</strong><small>{item.payerReference ?? '—'}{item.duplicateOf ? ` · ${copy.duplicateOf}: ${item.duplicateOf.externalReference}` : ''}</small></td>
+                    <td><strong>{item.externalReference}</strong><small>{item.payerReference ?? '—'}{item.duplicateOf ? ` · ${copy.duplicateOf}: ${item.duplicateOf.externalReference}` : ''}{item.importBatch ? ` · ${copy.batch}: ${item.importBatch.filename ?? item.importBatch.id} #${item.importRowNumber ?? '—'}` : ''}</small></td>
                     <td><span className={`pms-finance-status pms-finance-status--${item.direction.toLowerCase()}`}>{governanceEnumLabel(item.direction, language)}</span></td>
                     <td>{governanceEnumLabel(item.source, language)}</td>
                     <td>{formatFinanceMoney(item.amount, item.currency, language)}</td>
@@ -638,6 +755,7 @@ function ReconciliationWorkspace({ allowCompanyWide, canManage, companyId, langu
       ) : <div className="pms-finance-state">{copy.noRecords}</div>}
       <PaginationControls language={language} onPage={(next) => replaceQuery({ page: next === 1 ? null : String(next) })} page={page} pagination={pagination} />
       <ReconciliationCreateDialog allowCompanyWide={allowCompanyWide} companyId={companyId} language={language} onClose={() => setCreateOpen(false)} onSaved={reload} open={createOpen} token={token} />
+      <TreasuryImportDialog companyId={companyId} language={language} onClose={() => setImportOpen(false)} onSaved={reload} open={importOpen} token={token} />
       <ReconciliationActionDialog companyId={companyId} item={selected} language={language} onClose={() => setSelected(null)} onSaved={reload} open={Boolean(selected)} token={token} />
     </>
   );

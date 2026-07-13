@@ -20,6 +20,7 @@ import {
   requirePmsRouteAccess,
 } from '../shared/routeAccess';
 import { assertFinancialPeriodOpen } from './periods';
+import { buildTreasuryImportPreview } from './treasuryImports';
 import { assertPositiveMoney, assertSameCurrency, money } from './money';
 import {
   allocatePayment,
@@ -216,6 +217,18 @@ const reconciliationTransitionSchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   action: z.enum(['IGNORE', 'RESTORE_UNMATCHED']),
   reason: z.string().trim().min(3).max(1000),
+});
+const treasuryImportSchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  source: z.enum(['BANK', 'PAYMENT_PROVIDER', 'CASHBOOK']),
+  accountReference: z.string().trim().max(200).nullable().optional(),
+  filename: z.string().trim().max(255).nullable().optional(),
+  csvText: z.string().min(1).max(2 * 1024 * 1024),
+});
+const treasuryImportBatchListQuery = companyQuery.extend({
+  ...financeListPagination,
+  status: z.enum(['COMMITTED', 'PARTIAL', 'FAILED']).optional(),
+  source: z.enum(['BANK', 'PAYMENT_PROVIDER', 'CASHBOOK']).optional(),
 });
 const payoutListQuery = companyQuery.extend({
   ...financeListPagination,
@@ -1355,6 +1368,140 @@ pmsFinanceRouter.post('/periods/:id/transition', requireAuth(), async (req, res,
   }
 });
 
+const treasuryImportBatchInclude = {
+  createdBy: { select: { id: true, name: true, email: true } },
+  _count: { select: { items: true } },
+} satisfies Prisma.PmsTreasuryImportBatchInclude;
+
+function treasuryImportBatchResponse(batch: Prisma.PmsTreasuryImportBatchGetPayload<{ include: typeof treasuryImportBatchInclude }>) {
+  return {
+    id: batch.id,
+    source: batch.source,
+    filename: batch.filename,
+    accountReference: batch.accountReference,
+    status: batch.status,
+    totalRows: batch.totalRows,
+    importedRows: batch.importedRows,
+    duplicateRows: batch.duplicateRows,
+    failedRows: batch.failedRows,
+    metadata: batch.metadata,
+    createdBy: batch.createdBy,
+    itemCount: batch._count.items,
+    createdAt: batch.createdAt,
+    updatedAt: batch.updatedAt,
+  };
+}
+
+pmsFinanceRouter.get('/reconciliation/import-batches', requireAuth(), async (req, res, next) => {
+  try {
+    const query = treasuryImportBatchListQuery.parse(req.query);
+    const access = await requirePmsRouteAccess(req, query.companyId);
+    assertCanViewPmsAccounting(access.member);
+    if (!access.member.propertyScope.allProperties) throw new AppError(403, 'Treasury import history requires access to all properties.');
+    const where: Prisma.PmsTreasuryImportBatchWhereInput = {
+      companyId: access.company.id,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.source ? { source: query.source } : {}),
+    };
+    const [batches, total] = await prisma.$transaction([
+      prisma.pmsTreasuryImportBatch.findMany({ where, include: treasuryImportBatchInclude, orderBy: { createdAt: 'desc' }, take: query.take, skip: query.skip }),
+      prisma.pmsTreasuryImportBatch.count({ where }),
+    ]);
+    res.json({ batches: batches.map(treasuryImportBatchResponse), pagination: { take: query.take, skip: query.skip, count: batches.length, total } });
+  } catch (error) { next(error); }
+});
+
+pmsFinanceRouter.post('/reconciliation/imports/preview', requireAuth(), async (req, res, next) => {
+  try {
+    const data = treasuryImportSchema.parse(req.body);
+    const access = await requirePmsRouteAccess(req, data.companyId);
+    assertCanManagePmsAccounting(access.member);
+    if (!access.member.propertyScope.allProperties) throw new AppError(403, 'Treasury statement imports require access to all properties.');
+    const preview = await buildTreasuryImportPreview({ companyId: access.company.id, source: data.source, accountReference: data.accountReference, csvText: data.csvText });
+    res.json({ preview });
+  } catch (error) { next(error); }
+});
+
+pmsFinanceRouter.post('/reconciliation/imports/commit', requireAuth(), async (req, res, next) => {
+  try {
+    const data = treasuryImportSchema.parse(req.body);
+    const access = await requirePmsRouteAccess(req, data.companyId);
+    assertCanManagePmsAccounting(access.member);
+    if (!access.member.propertyScope.allProperties) throw new AppError(403, 'Treasury statement imports require access to all properties.');
+    const preview = await buildTreasuryImportPreview({ companyId: access.company.id, source: data.source, accountReference: data.accountReference, csvText: data.csvText });
+    const existingBatch = await prisma.pmsTreasuryImportBatch.findUnique({
+      where: { companyId_source_contentHash: { companyId: access.company.id, source: data.source, contentHash: preview.contentHash } },
+      include: treasuryImportBatchInclude,
+    });
+    if (existingBatch) throw new AppError(409, `This treasury statement was already imported in batch ${existingBatch.id}.`);
+
+    const status = preview.validRows.length === 0 ? 'FAILED' : (preview.duplicateRows.length || preview.invalidRows.length ? 'PARTIAL' : 'COMMITTED');
+    const batch = await prisma.$transaction(async (tx) => {
+      const created = await tx.pmsTreasuryImportBatch.create({
+        data: {
+          companyId: access.company.id,
+          source: data.source,
+          filename: data.filename || null,
+          accountReference: data.accountReference || null,
+          contentHash: preview.contentHash,
+          status,
+          totalRows: preview.totalRows,
+          importedRows: preview.validRows.length,
+          duplicateRows: preview.duplicateRows.length,
+          failedRows: preview.invalidRows.length,
+          createdById: req.user!.id,
+          metadata: {
+            headers: preview.headers,
+            duplicateRows: preview.duplicateRows,
+            invalidRows: preview.invalidRows,
+          } as unknown as Prisma.InputJsonObject,
+        },
+        include: treasuryImportBatchInclude,
+      });
+      if (preview.validRows.length) {
+        await tx.pmsReconciliationItem.createMany({
+          data: preview.validRows.map((row) => ({
+            companyId: access.company.id,
+            source: data.source,
+            direction: row.data!.direction,
+            status: 'UNMATCHED',
+            externalReference: row.data!.externalReference,
+            amount: row.data!.amount,
+            currency: row.data!.currency,
+            transactionDate: new Date(row.data!.transactionDate),
+            propertyId: row.data!.propertyId,
+            payerReference: row.data!.payerReference,
+            metadata: row.data!.metadata as Prisma.InputJsonObject,
+            importBatchId: created.id,
+            importRowNumber: row.rowNumber,
+            createdById: req.user!.id,
+          })),
+        });
+      }
+      return tx.pmsTreasuryImportBatch.findUniqueOrThrow({ where: { id: created.id }, include: treasuryImportBatchInclude });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    await audit(req, {
+      companyId: access.company.id,
+      domain: DomainAuditDomain.PMS,
+      entityType: 'PmsTreasuryImportBatch',
+      entityId: batch.id,
+      action: 'PMS_TREASURY_STATEMENT_IMPORTED',
+      actorId: req.user!.id,
+      afterMetadata: { source: data.source, filename: data.filename || null, accountReference: data.accountReference || null, status, totalRows: preview.totalRows, importedRows: preview.validRows.length, duplicateRows: preview.duplicateRows.length, failedRows: preview.invalidRows.length },
+    });
+
+    const response = { preview, batch: treasuryImportBatchResponse(batch) };
+    if (preview.validRows.length === 0) return res.status(400).json({ ...response, message: 'No valid treasury rows were imported.' });
+    res.status(201).json(response);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2002' || error.code === 'P2034')) {
+      return next(new AppError(409, 'The statement or one of its external references was imported concurrently. Reload and review import history.'));
+    }
+    next(error);
+  }
+});
+
 pmsFinanceRouter.get('/reconciliation', requireAuth(), async (req, res, next) => {
   try {
     const query = reconciliationListQuery.parse(req.query);
@@ -1382,6 +1529,8 @@ pmsFinanceRouter.get('/reconciliation', requireAuth(), async (req, res, next) =>
           { vendorInvoice: { paymentReference: { contains: query.search, mode: 'insensitive' } } },
           { ownerPayoutBatch: { payoutNumber: { contains: query.search, mode: 'insensitive' } } },
           { ownerPayoutBatch: { payoutReference: { contains: query.search, mode: 'insensitive' } } },
+          { importBatch: { filename: { contains: query.search, mode: 'insensitive' } } },
+          { importBatch: { accountReference: { contains: query.search, mode: 'insensitive' } } },
         ],
       } : {}),
     };
@@ -1394,6 +1543,7 @@ pmsFinanceRouter.get('/reconciliation', requireAuth(), async (req, res, next) =>
           vendorInvoice: { select: { id: true, invoiceNumber: true, paidAmount: true, currency: true, paidAt: true, status: true, paymentReference: true, propertyId: true } },
           ownerPayoutBatch: { select: { id: true, payoutNumber: true, payoutAmount: true, currency: true, paidAt: true, status: true, payoutReference: true } },
           duplicateOf: { select: { id: true, externalReference: true } },
+          importBatch: { select: { id: true, filename: true, accountReference: true, source: true, createdAt: true } },
           createdBy: { select: { id: true, name: true } },
           matchedBy: { select: { id: true, name: true } },
         },

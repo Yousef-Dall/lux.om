@@ -46,3 +46,6 @@ If migration preflight fails, stop deployment and repair the reported legacy rec
 6. Treat the matched record as permanent. Corrections require a governed operational process rather than direct database edits.
 
 A `MATCHED` status confirms an operator-controlled record association. It is not independent confirmation from a bank API unless a future provider integration supplies authenticated settlement data.
+## Statement imports
+
+Workspace-wide accounting managers can preview and commit CSV statements through the reconciliation import endpoints. Imports are duplicate-safe at both file and external-reference level, create only unmatched reconciliation items, and preserve immutable batch/row provenance. See `docs/pms-treasury-statement-imports.md` for the CSV contract and operational controls.

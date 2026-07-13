@@ -1089,6 +1089,7 @@ model User {
   pmsCommunicationLogsCreated       PmsCommunicationLog[]      @relation("PmsCommunicationLogCreatedBy")
   pmsCommunicationLogsSent          PmsCommunicationLog[]      @relation("PmsCommunicationLogSentBy")
   pmsImportBatchesCreated           PmsImportBatch[]           @relation("PmsImportBatchCreatedBy")
+  pmsTreasuryImportBatchesCreated   PmsTreasuryImportBatch[]   @relation("PmsTreasuryImportBatchCreatedBy")
   pmsPoliciesCreated                PmsPolicy[]                @relation("PmsPolicyCreatedBy")
   pmsPoliciesUpdated                PmsPolicy[]                @relation("PmsPolicyUpdatedBy")
   pmsInspectionsCreated             PmsInspection[]            @relation("PmsInspectionCreatedBy")
@@ -1291,6 +1292,7 @@ model DeveloperCompany {
   pmsCommunicationTemplates      PmsCommunicationTemplate[]
   pmsCommunicationLogs           PmsCommunicationLog[]
   pmsImportBatches               PmsImportBatch[]
+  pmsTreasuryImportBatches       PmsTreasuryImportBatch[]
   pmsPolicies                    PmsPolicy[]
   pmsInspections                 PmsInspection[]
   pmsDocuments                   PmsDocument[]
@@ -3906,6 +3908,9 @@ model PmsReconciliationItem {
   duplicateOfId      String?
   duplicateOf        PmsReconciliationItem?       @relation("PmsReconciliationDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
   duplicates         PmsReconciliationItem[]      @relation("PmsReconciliationDuplicates")
+  importBatchId      String?
+  importBatch        PmsTreasuryImportBatch?       @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
+  importRowNumber    Int?
   createdById        String?
   createdBy          User?                       @relation("PmsReconciliationItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   matchedById        String?
@@ -3919,6 +3924,34 @@ model PmsReconciliationItem {
   @@index([vendorInvoiceId])
   @@index([ownerPayoutBatchId])
   @@index([duplicateOfId])
+  @@index([importBatchId])
+  @@unique([importBatchId, importRowNumber])
+}
+
+model PmsTreasuryImportBatch {
+  id               String                  @id @default(cuid())
+  source           PmsReconciliationSource
+  filename         String?
+  accountReference String?
+  contentHash      String
+  status           PmsImportStatus
+  totalRows        Int                     @default(0)
+  importedRows     Int                     @default(0)
+  duplicateRows    Int                     @default(0)
+  failedRows       Int                     @default(0)
+  metadata         Json?
+  companyId        String
+  company          DeveloperCompany        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdById      String?
+  createdBy        User?                   @relation("PmsTreasuryImportBatchCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items            PmsReconciliationItem[]
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@unique([companyId, source, contentHash])
+  @@index([companyId, createdAt])
+  @@index([companyId, status, createdAt])
+  @@index([createdById])
 }
 
 model PmsOwnerPortalAccess {

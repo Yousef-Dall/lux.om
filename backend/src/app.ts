@@ -104,6 +104,7 @@ const CORS_ALLOWED_HEADERS = [
 ];
 const CORS_EXPOSED_HEADERS = ['RateLimit', 'RateLimit-Policy', 'Retry-After'];
 const API_JSON_BODY_LIMIT = '1mb';
+const TREASURY_IMPORT_JSON_BODY_LIMIT = '5mb';
 const API_FORM_BODY_LIMIT = '32kb';
 const BODY_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
@@ -430,12 +431,21 @@ export function createApp() {
   );
 
   app.use(requireSupportedApiContentType);
-  app.use(
-    express.json({
-      limit: API_JSON_BODY_LIMIT,
-      type: ['application/json', 'application/*+json']
-    })
-  );
+  const apiJsonParser = express.json({
+    limit: API_JSON_BODY_LIMIT,
+    type: ['application/json', 'application/*+json']
+  });
+  const treasuryImportJsonParser = express.json({
+    limit: TREASURY_IMPORT_JSON_BODY_LIMIT,
+    type: ['application/json', 'application/*+json']
+  });
+  app.use((req, res, next) => {
+    const isTreasuryImport = req.method === 'POST' && (
+      req.path === '/api/pms/accounting/reconciliation/imports/preview'
+      || req.path === '/api/pms/accounting/reconciliation/imports/commit'
+    );
+    return (isTreasuryImport ? treasuryImportJsonParser : apiJsonParser)(req, res, next);
+  });
   app.use(
     express.urlencoded({
       extended: false,
