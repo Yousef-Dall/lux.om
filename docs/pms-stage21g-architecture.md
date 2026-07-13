@@ -25,7 +25,7 @@ Issued charges are immutable except through explicit adjustments, credit notes, 
 
 `PmsFinancialPeriod` protects posting dates. Closed periods block charge, payment, allocation, adjustment, deposit, and manual ledger postings. Payout workflow records remain separate from bank settlement and reference already published statement periods. Reopening requires a reason and records an event.
 
-Treasury reconciliation records external cash movement evidence without initiating transfers. Credits match confirmed rent receipts. Property-scoped debits match paid vendor invoices, and company-wide debits match manually paid owner payouts. Every match is exact-currency, exact-amount, scope checked, one-to-one, and immutable.
+Treasury reconciliation records external cash movement evidence without initiating transfers. Credits match confirmed rent receipts. Property-scoped debits match paid vendor invoices, and company-wide debits match manually paid owner payouts. Every match is exact-currency, exact-amount, scope checked, one-to-one, and immutable. Workspace-wide statement imports add previewed CSV ingestion, file/reference duplicate protection, and immutable source-batch provenance without auto-matching or posting ledger entries.
 
 ## Portal boundary
 
