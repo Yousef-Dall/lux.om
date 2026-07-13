@@ -20,6 +20,7 @@ type AccessibleDialogProps = {
   onClose: () => void;
   size?: 'medium' | 'large';
   initialFocusRef?: React.RefObject<HTMLElement | null>;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
 };
 
 export default function AccessibleDialog({
@@ -30,7 +31,8 @@ export default function AccessibleDialog({
   children,
   onClose,
   size = 'medium',
-  initialFocusRef
+  initialFocusRef,
+  returnFocusRef
 }: AccessibleDialogProps) {
   const titleId = useId();
   const descriptionId = useId();
@@ -120,9 +122,11 @@ export default function AccessibleDialog({
         if (previousAriaHidden == null) applicationRoot.removeAttribute('aria-hidden');
         else applicationRoot.setAttribute('aria-hidden', previousAriaHidden);
       }
-      previouslyFocused?.focus();
+      const explicitReturnTarget = returnFocusRef?.current;
+      if (explicitReturnTarget?.isConnected) explicitReturnTarget.focus();
+      else if (previouslyFocused?.isConnected) previouslyFocused.focus();
     };
-  }, [initialFocusRef, open]);
+  }, [initialFocusRef, open, returnFocusRef]);
 
   if (!open) return null;
 

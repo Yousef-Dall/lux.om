@@ -20966,6 +20966,139 @@ transition: none;
   }
 }
 
+/* Stage 21I-M: accessible CRM deal-stage transitions */
+.crm-deal-transition {
+  display: grid;
+  gap: 1rem;
+}
+
+.crm-deal-transition__summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: .8rem;
+  align-items: center;
+}
+
+.crm-deal-transition__summary article {
+  display: grid;
+  gap: .2rem;
+  min-width: 0;
+  padding: .9rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: .8rem;
+  background: var(--background-subtle);
+}
+
+.crm-deal-transition__summary span,
+.crm-deal-transition__summary small,
+.crm-deal-transition label small {
+  color: var(--text-muted);
+}
+
+.crm-deal-transition__summary strong {
+  overflow-wrap: anywhere;
+}
+
+.crm-deal-transition__notice {
+  display: flex;
+  gap: .75rem;
+  align-items: flex-start;
+  padding: .9rem 1rem;
+  border: 1px solid color-mix(in srgb, #2563eb 34%, var(--border-color));
+  border-radius: .8rem;
+  background: color-mix(in srgb, #dbeafe 55%, var(--surface-color));
+}
+
+.crm-deal-transition__notice--danger {
+  border-color: color-mix(in srgb, #b42318 40%, var(--border-color));
+  background: color-mix(in srgb, #fee2e2 58%, var(--surface-color));
+}
+
+.crm-deal-transition__notice svg {
+  flex: 0 0 auto;
+  margin-top: .1rem;
+}
+
+.crm-deal-transition__notice p {
+  margin: .25rem 0 0;
+}
+
+.crm-deal-transition label {
+  display: grid;
+  gap: .4rem;
+  font-weight: 700;
+}
+
+.crm-deal-transition textarea {
+  width: 100%;
+  min-height: 6.5rem;
+  resize: vertical;
+  padding: .7rem .8rem;
+  border: 1px solid var(--border-color);
+  border-radius: .7rem;
+  background: var(--surface-color);
+  color: var(--text-color);
+  font: inherit;
+}
+
+.crm-deal-transition textarea:focus {
+  border-color: var(--focus-ring, #2563eb);
+  outline: 3px solid color-mix(in srgb, var(--focus-ring, #2563eb) 25%, transparent);
+}
+
+.crm-deal-transition__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .7rem;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.crm-deal-transition__actions > button:not(.button-link) {
+  min-height: 2.65rem;
+  padding: .55rem .9rem;
+  border: 1px solid var(--border-color);
+  border-radius: .7rem;
+  background: var(--surface-color);
+  color: var(--text-color);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.crm-deal-transition__actions button:disabled {
+  cursor: not-allowed;
+  opacity: .6;
+}
+
+[dir='rtl'] .crm-deal-transition__summary > svg {
+  transform: scaleX(-1);
+}
+
+@media (max-width: 560px) {
+  .crm-deal-transition__summary {
+    grid-template-columns: 1fr;
+  }
+
+  .crm-deal-transition__summary > svg {
+    justify-self: center;
+    transform: rotate(90deg);
+  }
+
+  [dir='rtl'] .crm-deal-transition__summary > svg {
+    transform: rotate(90deg);
+  }
+
+  .crm-deal-transition__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .crm-deal-transition__actions button {
+    width: 100%;
+  }
+}
+
 /* Stage 21I-E: PMS charge and payment allocation workflows */
 .accessible-dialog__backdrop {
   position: fixed;
@@ -21812,4 +21945,130 @@ transition: none;
 .pms-governance-close-pack code {
   overflow-wrap: anywhere;
   font-size: 0.8rem;
+}
+
+
+/* Stage 21I-L — governed financial close reports */
+.pms-close-reports {
+  margin-top: 1rem;
+}
+
+.pms-close-reports__header,
+.pms-close-report__title,
+.pms-close-reports__pagination {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.pms-close-reports__filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.pms-close-reports__filters label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 700;
+}
+
+.pms-close-reports__filters input,
+.pms-close-reports__filters select {
+  min-height: 2.75rem;
+}
+
+.pms-close-reports__pagination {
+  justify-content: flex-end;
+  margin-top: 0.9rem;
+}
+
+.pms-close-report {
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  margin-top: 1.25rem;
+  padding: 1rem;
+}
+
+.pms-close-report__title > div {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.pms-close-report__title h3,
+.pms-close-report__title p {
+  margin: 0;
+}
+
+.pms-close-report__integrity {
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0.35rem 0.65rem;
+}
+
+.pms-close-report__integrity--verified {
+  background: color-mix(in srgb, var(--success-color, #12805c) 14%, transparent);
+  color: var(--success-color, #12805c);
+}
+
+.pms-close-report__integrity--hash_mismatch,
+.pms-close-report__integrity--invalid_snapshot,
+.pms-close-report__integrity--unsupported_version {
+  background: color-mix(in srgb, var(--danger-color, #b42318) 12%, transparent);
+  color: var(--danger-color, #b42318);
+}
+
+.pms-close-report__hash {
+  display: grid;
+  gap: 0.35rem;
+  overflow-wrap: anywhere;
+}
+
+.pms-close-report__hash code {
+  background: var(--surface-muted, #f5f5f5);
+  border-radius: 0.5rem;
+  padding: 0.65rem;
+}
+
+.pms-close-report__groups {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 1rem;
+}
+
+.pms-close-report__group h4 {
+  margin-bottom: 0.55rem;
+}
+
+.pms-close-report__record-grid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pms-close-report__record-grid div {
+  background: var(--surface-muted, #f5f5f5);
+  border-radius: 0.75rem;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.75rem;
+}
+
+@media (max-width: 800px) {
+  .pms-close-reports__header,
+  .pms-close-report__title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pms-close-reports__filters,
+  .pms-close-report__groups,
+  .pms-close-report__record-grid {
+    grid-template-columns: 1fr;
+  }
 }

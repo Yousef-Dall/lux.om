@@ -98,12 +98,21 @@ async function authenticate(page: Page, crmAccess: Record<string, unknown> = { h
   await mockNotificationsApi(page);
 }
 
-async function mockRevenueOperations(page: Page, requests: string[] = []) {
-  await page.route(crmApiPattern, (route) => {
+async function mockRevenueOperations(
+  page: Page,
+  requests: string[] = [],
+  transitionBodies: Array<Record<string, unknown>> = [],
+  dealRows: typeof deals = deals
+) {
+  await page.route(crmApiPattern, async (route) => {
     const url = new URL(route.request().url());
     requests.push(`${route.request().method()} ${url.pathname}${url.search}`);
+    if (route.request().method() === 'POST' && /\/api\/crm\/deals\/[^/]+\/transition$/.test(url.pathname)) {
+      transitionBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+      return route.fulfill({ json: { deal: dealRows.find((deal) => url.pathname.includes(deal.id)) ?? dealRows[0] } });
+    }
     if (url.pathname.endsWith('/api/crm/accounts')) return route.fulfill({ json: { accounts: [account], pagination: { total: 1, take: 100, skip: 0, count: 1 } } });
-    if (url.pathname.endsWith('/api/crm/deals')) return route.fulfill({ json: { deals, pagination: { total: 2, take: 200, skip: 0, count: 2 } } });
+    if (url.pathname.endsWith('/api/crm/deals')) return route.fulfill({ json: { deals: dealRows, pagination: { total: dealRows.length, take: 200, skip: 0, count: dealRows.length } } });
     if (url.pathname.endsWith('/api/crm/pipelines')) return route.fulfill({ json: { pipelines: [pipeline] } });
     if (url.pathname.endsWith('/api/crm/analytics/forecast')) return route.fulfill({ json: forecast });
     if (url.pathname.endsWith('/api/crm/communication-policy')) return route.fulfill({ json: { policy: { workspaceId: workspace.workspaceId, timezone: 'Asia/Muscat', quietHoursStart: 1200, quietHoursEnd: 480, hourlyRateLimit: 50, retentionDays: 365 } } });
@@ -158,4 +167,89 @@ test('CRM revenue operations remains usable on a narrow mobile viewport', async 
   await expect(page.getByRole('heading', { name: 'OMR' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'USD' })).toBeVisible();
   await expect(page.locator('body')).not.toHaveCSS('overflow-x', 'scroll');
+});
+
+test('deal stage transitions require an accessible review dialog before committing', async ({ page }) => {
+  await authenticate(page);
+  const requests: string[] = [];
+  const transitionBodies: Array<Record<string, unknown>> = [];
+  await mockRevenueOperations(page, requests, transitionBodies);
+
+  await page.goto('/crm/deals');
+  const stageSelect = page.getByRole('combobox', { name: 'Move Enterprise onboarding' });
+  await stageSelect.selectOption('stage-lost');
+
+  const dialog = page.getByRole('dialog', { name: 'Move Enterprise onboarding to Lost' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel(/Lost reason/)).toBeFocused();
+  await expect(dialog.getByText('Current stage')).toBeVisible();
+  await expect(dialog.getByText('Target stage')).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(stageSelect).toBeFocused();
+
+  await stageSelect.selectOption('stage-lost');
+  await dialog.getByLabel('Transition note').fill('Commercial review completed');
+  await dialog.getByLabel(/Lost reason/).fill('Budget was not approved');
+  await dialog.getByRole('button', { name: 'Confirm stage transition' }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText('Enterprise onboarding moved to Lost.')).toBeVisible();
+  expect(transitionBodies).toEqual([{
+    stageId: 'stage-lost',
+    reason: 'Commercial review completed',
+    lostReason: 'Budget was not approved'
+  }]);
+  expect(requests.some((request) => request === 'POST /api/crm/deals/deal-omr/transition')).toBe(true);
+});
+
+test('closed deals can only reopen through an open stage with an audit reason', async ({ page }) => {
+  await authenticate(page);
+  const transitionBodies: Array<Record<string, unknown>> = [];
+  const closedDeal = {
+    ...deals[0],
+    stageId: 'stage-won',
+    stage: pipeline.stages[1],
+    outcome: 'WON',
+    probability: 100,
+    forecastCategory: 'CLOSED',
+    wonAt: '2026-07-12T10:00:00.000Z',
+    closedAt: '2026-07-12T10:00:00.000Z',
+    wonReason: 'Signed initial agreement'
+  };
+  await mockRevenueOperations(page, [], transitionBodies, [closedDeal, deals[1]]);
+
+  await page.goto('/crm/deals');
+  const stageSelect = page.getByRole('combobox', { name: 'Move Enterprise onboarding' });
+  await expect(stageSelect.getByRole('option', { name: 'Lost' })).toBeDisabled();
+  await stageSelect.selectOption('stage-open');
+
+  const dialog = page.getByRole('dialog', { name: 'Move Enterprise onboarding to Qualified' });
+  await expect(dialog.getByText('This transition reopens the deal')).toBeVisible();
+  await expect(dialog.getByLabel(/Transition note/)).toBeFocused();
+  await dialog.getByLabel(/Transition note/).fill('Renewal discussion reopened the opportunity');
+  await dialog.getByRole('button', { name: 'Confirm stage transition' }).click();
+
+  await expect(dialog).toBeHidden();
+  expect(transitionBodies).toEqual([{
+    stageId: 'stage-open',
+    reason: 'Renewal discussion reopened the opportunity'
+  }]);
+});
+
+test('deal stage transition dialog renders Arabic copy in RTL mode', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('lux-language', 'ar'));
+  await authenticate(page);
+  await mockRevenueOperations(page);
+
+  await page.goto('/crm/deals');
+  await page.getByRole('combobox', { name: 'Move Enterprise onboarding' }).selectOption('stage-lost');
+
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+  const dialog = page.getByRole('dialog', { name: 'نقل Enterprise onboarding إلى Lost' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel(/سبب الخسارة/)).toBeFocused();
+  await expect(dialog.getByText('المرحلة الحالية')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'تأكيد تغيير المرحلة' })).toBeVisible();
 });

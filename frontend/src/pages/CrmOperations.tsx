@@ -15,7 +15,7 @@ import {
   UserRound,
   UsersRound
 } from 'lucide-react';
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
@@ -52,8 +52,12 @@ import {
   type CrmScoreSnapshot
 } from '../api/crmAdvanced';
 import { useAuth } from '../auth/AuthContext';
+import CrmDealStageTransitionDialog, {
+  type CrmDealTransitionValues
+} from '../features/crm/deals/CrmDealStageTransitionDialog';
 import { WorkspaceSelector, type CrmWorkspaceChoice } from '../features/crm/WorkspaceSelector';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useLanguage } from '../i18n/LanguageContext';
 
 type Tab = 'accounts' | 'deals' | 'pipelines' | 'forecast' | 'governance';
 
@@ -103,6 +107,7 @@ function workspaceChoices(access: CrmWorkspaceAccess | null | undefined): CrmWor
 
 export default function CrmOperations({ section }: { section: CrmOperationsSection }) {
   const { token, crmAccess: access } = useAuth();
+  const { language } = useLanguage();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const { accountId, contactId, dealId } = useParams<{ accountId?: string; contactId?: string; dealId?: string }>();
@@ -128,6 +133,13 @@ export default function CrmOperations({ section }: { section: CrmOperationsSecti
   const [showDealForm, setShowDealForm] = useState(false);
   const [showContactForm, setShowContactForm] = useState(false);
   const [showPipelineForm, setShowPipelineForm] = useState(false);
+  const [pendingDealTransition, setPendingDealTransition] = useState<{
+    deal: CrmDeal;
+    targetStage: CrmPipeline['stages'][number];
+  } | null>(null);
+  const [transitionBusy, setTransitionBusy] = useState(false);
+  const [transitionError, setTransitionError] = useState('');
+  const dealTransitionTriggerRef = useRef<HTMLSelectElement>(null);
   const [communicationPolicy, setCommunicationPolicy] = useState<CrmCommunicationPolicy | null>(null);
   const activeChoice = choices.find((item) => item.workspaceId === workspaceId);
   const canManage = Boolean(activeChoice?.canManage);
@@ -374,19 +386,35 @@ export default function CrmOperations({ section }: { section: CrmOperationsSecti
     } catch (cause) { setError(message(cause)); }
   }
 
-  async function moveDeal(deal: CrmDeal, stageId: string) {
-    if (!token) return;
+  function requestDealTransition(deal: CrmDeal, stageId: string, trigger: HTMLSelectElement) {
     const pipeline = pipelines.find((item) => item.id === deal.pipelineId);
     const target = pipeline?.stages.find((stage) => stage.id === stageId);
     if (!target || target.id === deal.stageId) return;
-    const lostReason = target.type === 'LOST' ? window.prompt('Lost reason (required)')?.trim() : undefined;
-    if (target.type === 'LOST' && !lostReason) return;
-    const wonReason = target.type === 'WON' ? window.prompt('Won reason or commercial outcome (optional)')?.trim() || undefined : undefined;
+    dealTransitionTriggerRef.current = trigger;
+    setTransitionError('');
+    setPendingDealTransition({ deal, targetStage: target });
+  }
+
+  async function confirmDealTransition(values: CrmDealTransitionValues) {
+    if (!token || !pendingDealTransition || transitionBusy) return;
+    const { deal, targetStage } = pendingDealTransition;
+    setTransitionBusy(true);
+    setTransitionError('');
     try {
-      await transitionCrmDeal(token, deal.id, stageId, { reason: 'Pipeline board transition', lostReason, wonReason });
+      await transitionCrmDeal(token, deal.id, targetStage.id, {
+        reason: values.reason ?? 'Pipeline board transition',
+        lostReason: values.lostReason,
+        wonReason: values.wonReason
+      });
+      setPendingDealTransition(null);
+      setSuccess(language === 'ar' ? `تم نقل ${deal.name} إلى ${targetStage.name}.` : `${deal.name} moved to ${targetStage.name}.`);
       await load();
       if (selectedDeal?.id === deal.id) await selectDeal(deal.id);
-    } catch (cause) { setError(message(cause)); }
+    } catch (cause) {
+      setTransitionError(message(cause));
+    } finally {
+      setTransitionBusy(false);
+    }
   }
 
   async function runMerge(candidate: CrmDuplicateCandidate) {
@@ -461,7 +489,7 @@ export default function CrmOperations({ section }: { section: CrmOperationsSecti
 
         {section === 'accounts' ? <section className="crm-operations__grid"><div className="crm-operations__panel"><header><div><p className="eyebrow"><Building2 size={15} /> External relationships</p><h2>Accounts</h2></div>{canManage ? <button className="button-link button-link--primary" type="button" onClick={() => setShowAccountForm(true)}><Plus size={15} /> Account</button> : null}</header>{accounts.length === 0 ? <div className="crm-empty"><Building2 /><h3>No accounts yet</h3></div> : <div className="crm-operations__list">{accounts.map((account) => <button type="button" key={account.id} onClick={() => void selectAccount(account.id)}><span><strong>{account.name}</strong><small>{account.type.replaceAll('_', ' ')}</small></span><span>{account._count.contacts} contacts · {account._count.deals} deals</span></button>)}</div>}</div><div className="crm-operations__panel">{selectedAccount ? <><header><div><p className="eyebrow">Account detail</p><h2>{selectedAccount.name}</h2></div></header><p>{selectedAccount.legalName || selectedAccount.registrationNumber || 'No registered business metadata.'}</p><h3>Contacts</h3>{canManage ? <button className="button-link button-link--ghost" type="button" onClick={() => setShowContactForm((value) => !value)}><Plus size={14} /> Add contact</button> : null}{showContactForm ? <form className="crm-inline-form" onSubmit={submitAccountContact}><input name="fullName" placeholder="Full name" required /><input name="email" type="email" placeholder="Email" /><input name="phone" placeholder="Phone" /><button type="submit">Save contact</button></form> : null}{selectedAccount.contacts.length === 0 ? <p>No contacts linked.</p> : selectedAccount.contacts.map((contact) => <button className="crm-contact-row" type="button" key={contact.id} onClick={() => void selectContact(contact.id)}><UserRound size={16} /><span><strong>{contact.fullName}</strong><small>{contact.email || contact.phone || 'No channel'}</small></span></button>)}<h3>Deals</h3>{selectedAccount.deals.map((deal) => <button className="crm-contact-row" type="button" key={deal.id} onClick={() => void selectDeal(deal.id)}><Columns3 size={16} /><span><strong>{deal.name}</strong><small>{deal.stage.name} · {money(deal.expectedValue, deal.currency)}</small></span></button>)}</> : <div className="crm-empty"><Building2 /><h3>Select an account</h3></div>}</div></section> : null}
 
-        {tab === 'deals' ? <section className="crm-operations__panel"><header><div><p className="eyebrow"><Columns3 size={15} /> Opportunity pipeline</p><h2>Deals</h2></div>{canManage ? <button className="button-link button-link--primary" type="button" onClick={() => setShowDealForm(true)}><Plus size={15} /> Deal</button> : null}</header>{pipelines.map((pipeline) => <div key={pipeline.id} className="crm-deal-board"><h3>{pipeline.name}</h3><div>{pipeline.stages.map((stage) => <section key={stage.id} className="crm-deal-column"><header><strong>{stage.name}</strong><span>{deals.filter((deal) => deal.pipelineId === pipeline.id && deal.stageId === stage.id && !deal.archivedAt).length}</span></header>{deals.filter((deal) => deal.pipelineId === pipeline.id && deal.stageId === stage.id && !deal.archivedAt).map((deal) => <article key={deal.id}><button type="button" onClick={() => void selectDeal(deal.id)}><strong>{deal.name}</strong><small>{deal.account.name}</small><span>{money(deal.expectedValue, deal.currency)} · {deal.probability}%</span></button>{canManage && deal.outcome === 'OPEN' ? <select aria-label={`Move ${deal.name}`} value={deal.stageId} onChange={(event) => void moveDeal(deal, event.target.value)}>{pipeline.stages.map((target) => <option key={target.id} value={target.id}>{target.name}</option>)}</select> : null}</article>)}</section>)}</div></div>)}{selectedDeal ? <aside className="crm-deal-detail"><header><h3>{selectedDeal.name}</h3><button type="button" onClick={() => setSelectedDeal(null)}>×</button></header><p>{selectedDeal.account.name} · {selectedDeal.pipeline.name} / {selectedDeal.stage.name}</p><strong>{money(selectedDeal.expectedValue, selectedDeal.currency)} · weighted {money(Number(selectedDeal.expectedValue ?? 0) * selectedDeal.probability / 100, selectedDeal.currency)}</strong><p>Outcome: {selectedDeal.outcome} · reopened {selectedDeal.reopenedCount}</p><h4>Immutable stage history</h4>{selectedDeal.stageHistory?.map((history) => <p key={history.id}><Clock3 size={14} /> {history.fromStage?.name || 'Created'} → {history.toStage.name} · {new Date(history.changedAt).toLocaleString()}</p>)}{canManage ? <button className="button-link button-link--ghost" type="button" onClick={() => void archiveCrmDeal(token!, selectedDeal.id, !selectedDeal.archivedAt).then(load)}>{selectedDeal.archivedAt ? 'Restore deal' : 'Archive deal'}</button> : null}</aside> : null}</section> : null}
+        {tab === 'deals' ? <section className="crm-operations__panel"><header><div><p className="eyebrow"><Columns3 size={15} /> Opportunity pipeline</p><h2>Deals</h2></div>{canManage ? <button className="button-link button-link--primary" type="button" onClick={() => setShowDealForm(true)}><Plus size={15} /> Deal</button> : null}</header>{pipelines.map((pipeline) => <div key={pipeline.id} className="crm-deal-board"><h3>{pipeline.name}</h3><div>{pipeline.stages.map((stage) => <section key={stage.id} className="crm-deal-column"><header><strong>{stage.name}</strong><span>{deals.filter((deal) => deal.pipelineId === pipeline.id && deal.stageId === stage.id && !deal.archivedAt).length}</span></header>{deals.filter((deal) => deal.pipelineId === pipeline.id && deal.stageId === stage.id && !deal.archivedAt).map((deal) => <article key={deal.id}><button type="button" onClick={() => void selectDeal(deal.id)}><strong>{deal.name}</strong><small>{deal.account.name}</small><span>{money(deal.expectedValue, deal.currency)} · {deal.probability}%</span></button>{canManage && !deal.archivedAt ? <select aria-label={`Move ${deal.name}`} value={deal.stageId} onChange={(event) => requestDealTransition(deal, event.target.value, event.currentTarget)}>{pipeline.stages.map((target) => <option disabled={deal.outcome !== 'OPEN' && target.type !== 'OPEN' && target.id !== deal.stageId} key={target.id} value={target.id}>{target.name}</option>)}</select> : null}</article>)}</section>)}</div></div>)}{selectedDeal ? <aside className="crm-deal-detail"><header><h3>{selectedDeal.name}</h3><button type="button" onClick={() => setSelectedDeal(null)}>×</button></header><p>{selectedDeal.account.name} · {selectedDeal.pipeline.name} / {selectedDeal.stage.name}</p><strong>{money(selectedDeal.expectedValue, selectedDeal.currency)} · weighted {money(Number(selectedDeal.expectedValue ?? 0) * selectedDeal.probability / 100, selectedDeal.currency)}</strong><p>Outcome: {selectedDeal.outcome} · reopened {selectedDeal.reopenedCount}</p><h4>Immutable stage history</h4>{selectedDeal.stageHistory?.map((history) => <p key={history.id}><Clock3 size={14} /> {history.fromStage?.name || 'Created'} → {history.toStage.name} · {new Date(history.changedAt).toLocaleString()}</p>)}{canManage ? <button className="button-link button-link--ghost" type="button" onClick={() => void archiveCrmDeal(token!, selectedDeal.id, !selectedDeal.archivedAt).then(load)}>{selectedDeal.archivedAt ? 'Restore deal' : 'Archive deal'}</button> : null}</aside> : null}</section> : null}
 
         {tab === 'pipelines' ? <section><header className="crm-section-actions"><div><p className="eyebrow">Workspace configuration</p><h2>Configurable pipelines</h2></div>{canConfigure ? <button className="button-link button-link--primary" type="button" onClick={() => setShowPipelineForm(true)}><Plus size={15} /> Pipeline</button> : null}</header><div className="crm-operations__grid">{pipelines.map((pipeline) => <article className="crm-operations__panel" key={pipeline.id}><header><div><p className="eyebrow">{pipeline.isDefault ? 'Default pipeline' : 'Workspace pipeline'}</p><h2>{pipeline.name}</h2></div><span>{pipeline._count.deals} deals</span></header>{pipeline.stages.map((stage) => canConfigure ? <form className="crm-stage-editor" key={stage.id} onSubmit={(event) => void submitStage(event, stage)}><span>{stage.position}</span><input name="name" defaultValue={stage.name} aria-label={`${pipeline.name} ${stage.name} name`} /><select value={stage.type} disabled aria-label={`${stage.name} classification`}><option>{stage.type}</option></select><input name="defaultProbability" type="number" min="0" max="100" defaultValue={stage.defaultProbability} aria-label={`${stage.name} probability`} /><input name="slaHours" type="number" min="1" defaultValue={stage.slaHours ?? ''} placeholder="SLA hours" aria-label={`${stage.name} SLA`} /><button type="submit">Save</button></form> : <div className="crm-stage-row" key={stage.id}><span>{stage.position}</span><strong>{stage.name}</strong><small>{stage.type} · {stage.defaultProbability}% · SLA {stage.slaHours ?? '—'}h</small></div>)}</article>)}</div></section> : null}
 
@@ -482,6 +510,22 @@ export default function CrmOperations({ section }: { section: CrmOperationsSecti
       {showPipelineForm ? <div className="crm-modal-backdrop"><form className="crm-modal" onSubmit={submitPipeline}><header><h2>Create configurable pipeline</h2><button type="button" onClick={() => setShowPipelineForm(false)}>×</button></header><div className="crm-form-grid"><label><span>Name</span><input name="name" required /></label><label><span>Description</span><input name="description" /></label><label><span><input name="isDefault" type="checkbox" /> Make default</span></label></div><p>The pipeline starts with configurable Discovery, Qualified, Proposal, Won, and Lost stages.</p><button className="button-link button-link--primary" type="submit">Create pipeline</button></form></div> : null}
 
       {showDealForm ? <div className="crm-modal-backdrop"><form className="crm-modal" onSubmit={submitDeal}><header><h2>Create deal</h2><button type="button" onClick={() => setShowDealForm(false)}>×</button></header><div className="crm-form-grid"><label><span>Name</span><input name="name" required /></label><label><span>Account</span><select name="accountId" required>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label><label><span>Pipeline</span><select name="pipelineId" defaultValue={defaultPipeline?.id}>{pipelines.map((pipeline) => <option key={pipeline.id} value={pipeline.id}>{pipeline.name}</option>)}</select></label><label><span>Stage</span><select name="stageId" defaultValue={defaultPipeline?.stages[0]?.id}>{defaultPipeline?.stages.filter((stage) => stage.type === 'OPEN').map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}</select></label><label><span>Expected value</span><input name="expectedValue" type="number" min="0" step="0.001" /></label><label><span>Currency</span><input name="currency" defaultValue="OMR" pattern="[A-Za-z]{3}" /></label></div><button className="button-link button-link--primary" type="submit">Create deal</button></form></div> : null}
+
+      <CrmDealStageTransitionDialog
+        busy={transitionBusy}
+        deal={pendingDealTransition?.deal ?? null}
+        error={transitionError}
+        language={language}
+        onClose={() => {
+          if (transitionBusy) return;
+          setPendingDealTransition(null);
+          setTransitionError('');
+        }}
+        onConfirm={confirmDealTransition}
+        open={Boolean(pendingDealTransition)}
+        returnFocusRef={dealTransitionTriggerRef}
+        targetStage={pendingDealTransition?.targetStage ?? null}
+      />
     </section>
   );
 }
