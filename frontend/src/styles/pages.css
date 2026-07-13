@@ -22761,3 +22761,449 @@ transition: none;
     justify-content: space-between;
   }
 }
+
+/* Stage 21I-P: operational preventive-maintenance plans */
+.pms-plan-register {
+  display: grid;
+  gap: 1rem;
+  margin-block: 1.25rem;
+  padding: clamp(1rem, 2vw, 1.5rem);
+  border: 1px solid var(--border-color);
+  border-radius: 1.4rem;
+  background: var(--surface-color);
+  color: var(--text-color);
+  box-shadow: 0 18px 48px rgb(15 23 42 / 12%);
+}
+
+.pms-plan-register__header,
+.pms-plan-register__header-actions,
+.pms-plan-filters__actions,
+.pms-plan-row-actions,
+.pms-plan-pagination,
+.pms-plan-form__actions,
+.pms-plan-detail__actions {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  flex-wrap: wrap;
+}
+
+.pms-plan-register__header {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.pms-plan-register__header h2,
+.pms-plan-register__header p {
+  margin: 0;
+}
+
+.pms-plan-register__header p:not(.eyebrow) {
+  max-width: 56rem;
+  margin-top: .35rem;
+  color: var(--text-muted);
+}
+
+.pms-plan-register__permission {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: .9rem;
+}
+
+.pms-plan-register__notice {
+  margin: 0;
+  padding: .75rem .9rem;
+  border: 1px solid rgb(22 163 74 / 30%);
+  border-radius: .8rem;
+  background: rgb(220 252 231 / 65%);
+  color: #166534;
+}
+
+.pms-plan-filters {
+  display: grid;
+  grid-template-columns: minmax(16rem, 2fr) repeat(3, minmax(10rem, 1fr));
+  gap: .8rem;
+  align-items: end;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  background: var(--background-subtle);
+}
+
+.pms-plan-filters label,
+.pms-plan-form label,
+.pms-plan-generate label {
+  display: grid;
+  gap: .4rem;
+  min-width: 0;
+  font-size: .84rem;
+  font-weight: 700;
+}
+
+.pms-plan-filters input,
+.pms-plan-filters select,
+.pms-plan-form input,
+.pms-plan-form select,
+.pms-plan-form textarea,
+.pms-plan-generate input {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: .75rem;
+  background: var(--surface-color);
+  color: var(--text-color);
+}
+
+.pms-plan-filters__search > div {
+  position: relative;
+}
+
+.pms-plan-filters__search svg {
+  position: absolute;
+  inset-inline-start: .8rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.pms-plan-filters__search input {
+  padding-inline-start: 2.25rem;
+}
+
+.pms-plan-filters__check {
+  display: flex !important;
+  align-items: center;
+  align-self: center;
+  gap: .55rem !important;
+}
+
+.pms-plan-filters__check input {
+  width: 1.1rem;
+  min-height: auto;
+  height: 1.1rem;
+}
+
+.pms-plan-filters__actions {
+  grid-column: 1 / -1;
+}
+
+.pms-plan-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.pms-plan-summary > div {
+  display: grid;
+  gap: .25rem;
+  padding: .8rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: .85rem;
+  background: var(--background-subtle);
+}
+
+.pms-plan-summary span {
+  color: var(--text-muted);
+  font-size: .8rem;
+}
+
+.pms-plan-summary strong {
+  font-size: 1.3rem;
+}
+
+.pms-plan-register__state {
+  padding: 1rem;
+  border-radius: .9rem;
+  background: var(--background-subtle);
+  color: var(--text-muted);
+}
+
+.pms-plan-register__state--error,
+.pms-plan-form__error {
+  border: 1px solid rgb(185 28 28 / 35%);
+  background: rgb(254 226 226 / 70%);
+  color: #991b1b;
+}
+
+.pms-plan-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+}
+
+.pms-plan-table {
+  width: 100%;
+  min-width: 72rem;
+  border-collapse: collapse;
+}
+
+.pms-plan-table caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.pms-plan-table th,
+.pms-plan-table td {
+  padding: .85rem .9rem;
+  border-bottom: 1px solid var(--border-color);
+  text-align: start;
+  vertical-align: top;
+}
+
+.pms-plan-table th {
+  background: var(--background-subtle);
+  color: var(--text-muted);
+  font-size: .76rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.pms-plan-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.pms-plan-table td small,
+.pms-plan-table td strong {
+  display: block;
+}
+
+.pms-plan-table td small {
+  margin-top: .25rem;
+  color: var(--text-muted);
+}
+
+.pms-plan-status {
+  display: inline-flex;
+  padding: .28rem .5rem;
+  border-radius: 999px;
+  background: var(--background-subtle);
+  font-size: .74rem;
+  font-weight: 800;
+}
+
+.pms-plan-status--active { color: #166534; background: #dcfce7; }
+.pms-plan-status--paused { color: #92400e; background: #fef3c7; }
+.pms-plan-status--completed { color: #1d4ed8; background: #dbeafe; }
+.pms-plan-status--cancelled { color: #475569; background: #e2e8f0; }
+
+.pms-plan-row-actions button,
+.pms-plan-pagination button {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 2.25rem;
+  padding: .4rem .65rem;
+  border: 1px solid var(--border-color);
+  border-radius: .65rem;
+  background: var(--surface-color);
+  color: var(--text-color);
+  cursor: pointer;
+}
+
+.pms-plan-row-actions button:focus-visible,
+.pms-plan-pagination button:focus-visible,
+.pms-plan-filters input:focus-visible,
+.pms-plan-filters select:focus-visible,
+.pms-plan-form input:focus-visible,
+.pms-plan-form select:focus-visible,
+.pms-plan-form textarea:focus-visible,
+.pms-plan-generate input:focus-visible {
+  outline: 3px solid var(--focus-ring, #2563eb);
+  outline-offset: 2px;
+}
+
+.pms-plan-pagination {
+  justify-content: flex-end;
+}
+
+.pms-plan-pagination span {
+  min-width: 8rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.pms-plan-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.pms-plan-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .9rem;
+}
+
+.pms-plan-form__wide,
+.pms-plan-form__actions,
+.pms-plan-form__error,
+.pms-plan-form__context {
+  grid-column: 1 / -1;
+}
+
+.pms-plan-form__error {
+  margin: 0;
+  padding: .75rem;
+  border-radius: .75rem;
+}
+
+.pms-plan-form__context {
+  align-self: end;
+  margin: 0 0 .65rem;
+  color: var(--text-muted);
+  font-size: .86rem;
+}
+
+.pms-plan-form__actions {
+  justify-content: flex-end;
+  padding-top: .4rem;
+}
+
+.pms-plan-detail,
+.pms-plan-generate {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.pms-plan-detail__summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.pms-plan-detail__summary > div {
+  display: grid;
+  gap: .25rem;
+  padding: .85rem;
+  border: 1px solid var(--border-color);
+  border-radius: .8rem;
+  background: var(--background-subtle);
+}
+
+.pms-plan-detail__summary span {
+  color: var(--text-muted);
+  font-size: .78rem;
+}
+
+.pms-plan-detail h3 {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  margin-bottom: .65rem;
+}
+
+.pms-plan-history {
+  display: grid;
+  gap: .65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pms-plan-history li {
+  padding: .8rem;
+  border-inline-start: 3px solid var(--border-color);
+  background: var(--background-subtle);
+}
+
+.pms-plan-history li > div {
+  display: flex;
+  justify-content: space-between;
+  gap: .7rem;
+}
+
+.pms-plan-history p {
+  margin: .25rem 0 0;
+  color: var(--text-muted);
+  font-size: .86rem;
+}
+
+@media (max-width: 1100px) {
+  .pms-plan-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pms-plan-filters__search {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .pms-plan-register__header,
+  .pms-plan-register__header-actions,
+  .pms-plan-form__actions,
+  .pms-plan-detail__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pms-plan-register__header .button-link,
+  .pms-plan-register__header-actions,
+  .pms-plan-register__header-actions .button-link,
+  .pms-plan-form__actions .button-link,
+  .pms-plan-detail__actions .button-link {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .pms-plan-filters,
+  .pms-plan-summary,
+  .pms-plan-form,
+  .pms-plan-detail__summary {
+    grid-template-columns: 1fr;
+  }
+
+  .pms-plan-filters__search,
+  .pms-plan-filters__actions,
+  .pms-plan-form__wide,
+  .pms-plan-form__actions,
+  .pms-plan-form__error,
+  .pms-plan-form__context {
+    grid-column: 1;
+  }
+
+  .pms-plan-table,
+  .pms-plan-table tbody,
+  .pms-plan-table tr,
+  .pms-plan-table td {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .pms-plan-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .pms-plan-table tr {
+    padding: .75rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .pms-plan-table td {
+    display: grid;
+    grid-template-columns: minmax(7rem, .7fr) 1fr;
+    gap: .6rem;
+    padding: .45rem 0;
+    border: 0;
+  }
+
+  .pms-plan-table td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: .78rem;
+    font-weight: 800;
+  }
+
+  .pms-plan-pagination {
+    justify-content: space-between;
+  }
+}

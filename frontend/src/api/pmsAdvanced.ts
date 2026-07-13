@@ -658,15 +658,66 @@ export type PmsAssetPayload = {
   notes?: string | null;
 };
 export type PmsAssetPagination = { take: number; skip: number; count: number; total: number };
+export type PmsMaintenancePlanStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
+export type PmsMaintenancePriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type PmsPreventiveWorkOrder = {
+  id: string;
+  title: string;
+  status: 'OPEN' | 'IN_PROGRESS' | 'WAITING_VENDOR' | 'RESOLVED' | 'CANCELLED';
+  priority: PmsMaintenancePriority;
+  targetDate?: string | null;
+  scheduledFor?: string | null;
+  resolvedAt?: string | null;
+  cost?: string | null;
+  currency: string;
+  preventiveGenerationKey?: string | null;
+  createdAt: string;
+};
 export type PmsMaintenancePlan = {
   id: string;
   title: string;
-  status: string;
+  description?: string | null;
+  status: PmsMaintenancePlanStatus;
   nextServiceDate: string;
   intervalDays?: number | null;
+  lastGeneratedAt?: string | null;
+  checklist: string[];
+  slaHours?: number | null;
+  priority: PmsMaintenancePriority;
+  estimatedCost?: string | null;
+  currency: string;
+  propertyId: string;
   property: { id: string; name: string };
-  asset?: { id: string; assetCode: string; name: string } | null;
+  unitId?: string | null;
+  unit?: { id: string; unitNumber: string } | null;
+  assetId?: string | null;
+  asset?: { id: string; assetCode: string; name: string; propertyId: string; unitId?: string | null } | null;
+  vendorId?: string | null;
+  vendor?: { id: string; name: string; trade?: string | null; active: boolean } | null;
+  workOrders: PmsPreventiveWorkOrder[];
+  _count: { workOrders: number };
+  createdAt: string;
+  updatedAt: string;
 };
+export type PmsMaintenancePlanPayload = {
+  companyId: string;
+  propertyId: string;
+  unitId?: string | null;
+  assetId?: string | null;
+  vendorId?: string | null;
+  title: string;
+  description?: string | null;
+  status: PmsMaintenancePlanStatus;
+  intervalDays?: number | null;
+  nextServiceDate: string;
+  checklist: string[];
+  slaHours?: number | null;
+  priority: PmsMaintenancePriority;
+  estimatedCost?: number | null;
+  currency: string;
+};
+export type PmsMaintenancePlanPagination = { take: number; skip: number; count: number; total: number };
+export type PmsMaintenancePlanSummary = { active: number; due: number };
 export type PmsInspectionRun = {
   id: string;
   title: string;
@@ -1098,8 +1149,39 @@ export function createPmsAssetEvent(token: string, assetId: string, payload: {
 }) {
   return apiClient.post<{ event: PmsAssetEvent }>(`/api/pms/assets/${assetId}/events`, payload, { token });
 }
-export async function listPmsMaintenancePlans(token: string, companyId?: string) {
-  return apiClient.get<{ plans: PmsMaintenancePlan[] }>('/api/pms/preventive-maintenance/plans', { token, params: companyParams(companyId) });
+export function listPmsMaintenancePlans(token: string, params: {
+  companyId?: string;
+  propertyId?: string;
+  assetId?: string;
+  vendorId?: string;
+  status?: PmsMaintenancePlanStatus;
+  dueOnly?: boolean;
+  dueBefore?: string;
+  search?: string;
+  sortBy?: 'nextServiceDate' | 'title' | 'status' | 'priority' | 'updatedAt' | 'createdAt';
+  direction?: 'asc' | 'desc';
+  take?: number;
+  skip?: number;
+  signal?: AbortSignal;
+} = {}) {
+  const { signal, ...query } = params;
+  return apiClient.get<{ plans: PmsMaintenancePlan[]; pagination: PmsMaintenancePlanPagination; summary: PmsMaintenancePlanSummary }>(
+    '/api/pms/preventive-maintenance/plans',
+    { token, params: query, signal },
+  );
+}
+export function createPmsMaintenancePlan(token: string, payload: PmsMaintenancePlanPayload) {
+  return apiClient.post<{ plan: PmsMaintenancePlan }>('/api/pms/preventive-maintenance/plans', payload, { token });
+}
+export function updatePmsMaintenancePlan(token: string, planId: string, payload: Partial<PmsMaintenancePlanPayload>) {
+  return apiClient.patch<{ plan: PmsMaintenancePlan }>(`/api/pms/preventive-maintenance/plans/${planId}`, payload, { token });
+}
+export function generateDuePmsMaintenanceWorkOrders(token: string, payload: { companyId: string; asOf?: string }) {
+  return apiClient.post<{ generated: Array<{ planId: string; workOrderId: string; idempotent: boolean }> }>(
+    '/api/pms/preventive-maintenance/generate-due',
+    payload,
+    { token },
+  );
 }
 export async function listPmsInspectionRuns(token: string, companyId?: string) {
   return apiClient.get<{ inspections: PmsInspectionRun[] }>('/api/pms/structured-inspections/runs', { token, params: companyParams(companyId) });

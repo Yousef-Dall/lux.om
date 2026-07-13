@@ -6,7 +6,6 @@ import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
 import { clearIntegrationTestDatabase } from './integration/clearDatabase';
 import { signToken } from '../src/middleware/auth';
-import { generateDuePreventiveWorkOrders } from '../src/modules/pms/maintenance/preventive';
 import { getPrivatePmsDocumentRoot } from '../src/storage/privatePmsDocumentStorage';
 
 const app = createApp();
@@ -1266,11 +1265,21 @@ describe('PMS Stage 21G financial and portal operations', () => {
     await request(app).get(`/api/pms/assets?companyId=${fixture.company.id}&propertyId=${fixture.propertyB.id}`).set('Authorization', `Bearer ${fixture.scopedToken}`).expect(403);
     await request(app).get(`/api/pms/assets?companyId=${fixture.otherCompany.id}`).set('Authorization', `Bearer ${fixture.managerToken}`).expect(403);
 
-    const plan = await request(app).post('/api/pms/preventive-maintenance/plans').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, unitId: fixture.unitA.id, assetId: asset.body.asset.id, vendorId: fixture.vendor.id, title: 'Monthly HVAC service', nextServiceDate: '2026-07-01', intervalDays: 30, checklist: ['Inspect filter', 'Measure cooling'] }).expect(201);
-    const firstRun = await generateDuePreventiveWorkOrders({ asOf: new Date('2026-07-02'), companyId: fixture.company.id, actorId: fixture.manager.id });
-    const secondRun = await generateDuePreventiveWorkOrders({ asOf: new Date('2026-07-02'), companyId: fixture.company.id, actorId: fixture.manager.id });
-    expect(firstRun).toHaveLength(1);
-    expect(secondRun).toHaveLength(0);
+    const plan = await request(app).post('/api/pms/preventive-maintenance/plans').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, unitId: fixture.unitA.id, assetId: asset.body.asset.id, vendorId: fixture.vendor.id, title: 'Monthly HVAC service', nextServiceDate: '2026-07-01', intervalDays: 30, checklist: ['Inspect filter', 'Measure cooling'], priority: 'HIGH', slaHours: 24, estimatedCost: 45, currency: 'OMR' }).expect(201);
+    await request(app).post('/api/pms/preventive-maintenance/plans').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, propertyId: fixture.propertyB.id, title: 'Annual property safety service', nextServiceDate: '2026-12-01', checklist: ['Inspect alarms'], priority: 'MEDIUM', currency: 'OMR' }).expect(201);
+    await request(app).get(`/api/pms/preventive-maintenance/plans?companyId=${fixture.company.id}&take=1&skip=0&search=HVAC&status=ACTIVE&sortBy=priority&direction=desc`).set('Authorization', `Bearer ${maintenanceToken}`).expect(200).expect(({ body }) => {
+      expect(body.pagination).toMatchObject({ take: 1, skip: 0, count: 1, total: 1 });
+      expect(body.summary.active).toBe(2);
+      expect(body.plans[0]).toMatchObject({ id: plan.body.plan.id, priority: 'HIGH', property: { id: fixture.propertyA.id }, unit: { id: fixture.unitA.id }, asset: { id: asset.body.asset.id }, vendor: { id: fixture.vendor.id }, _count: { workOrders: 0 } });
+    });
+    await request(app).patch(`/api/pms/preventive-maintenance/plans/${plan.body.plan.id}`).set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, propertyId: fixture.propertyB.id }).expect(400);
+    await request(app).patch(`/api/pms/preventive-maintenance/plans/${plan.body.plan.id}`).set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, title: 'Monthly HVAC compliance service', intervalDays: 45, nextServiceDate: '2026-07-01' }).expect(200).expect(({ body }) => {
+      expect(body.plan).toMatchObject({ title: 'Monthly HVAC compliance service', intervalDays: 45, _count: { workOrders: 0 } });
+    });
+    const firstRun = await request(app).post('/api/pms/preventive-maintenance/generate-due').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, asOf: '2026-07-02' }).expect(200);
+    const secondRun = await request(app).post('/api/pms/preventive-maintenance/generate-due').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, asOf: '2026-07-02' }).expect(200);
+    expect(firstRun.body.generated).toHaveLength(1);
+    expect(secondRun.body.generated).toHaveLength(0);
     expect(await prisma.pmsWorkOrder.count({ where: { maintenancePlanId: plan.body.plan.id } })).toBe(1);
 
     const template = await request(app).post('/api/pms/structured-inspections/templates').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, name: 'Move-out condition', type: 'MOVE_OUT', sections: [{ title: 'HVAC', items: [{ label: 'Cooling condition', required: true, requiresPhotoOnFailure: false }] }] }).expect(201);

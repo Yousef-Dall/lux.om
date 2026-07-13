@@ -36,6 +36,14 @@ The authenticated asset register uses database-backed pagination, search, filter
 
 Inventory managers may register assets, edit identity and placement, change lifecycle status, and retire or dispose records. Maintenance managers may append service, repair, and warranty events without gaining permission to edit asset identity or perform retirement/disposal actions. Every mutation continues to create domain audit evidence and asset events remain append-only history.
 
-The register supports English and Arabic, RTL layouts, keyboard-operated dialogs, narrow mobile screens, localized dates, and permission-denied/read-only states. Preventive-plan authoring, mobile inspection execution, defect conversion, calendar/kanban planning, and attachment capture remain separate controlled Stage 21I batches.
+The register supports English and Arabic, RTL layouts, keyboard-operated dialogs, narrow mobile screens, localized dates, and permission-denied/read-only states. Mobile inspection execution, defect conversion, calendar/kanban planning, and attachment capture remain separate controlled Stage 21I batches.
+
+## Stage 21I preventive-maintenance workspace
+
+The preventive-plan register uses database-backed pagination, search, status/property/due filters, and deterministic sorting. API responses include visible-page metadata separately from scoped active and due totals so the UI never treats a truncated page as the complete schedule.
+
+Maintenance managers can create and edit one-time or interval plans, link only in-scope properties, units, assets, and active vendors, preview the next interval date, maintain a checklist and SLA, and inspect the latest generated work-order history. Property-scoped managers may edit plans in their scope but cannot run company-wide generation. The manual generation dialog calls the same idempotent service used by the durable job runner and reports only work orders actually created.
+
+The workspace supports English and Arabic, RTL and narrow layouts, keyboard-operated dialogs, URL-persisted filters, and read-only permission states. One-time plans complete after generation; interval plans advance from the locked due date. The UI does not claim offline support or fabricate generated work.
 
 Offline inspection execution is not implemented. Operators must remain connected while saving asset and inspection changes; offline queueing and conflict resolution are future capabilities and must not be implied by the current UI.

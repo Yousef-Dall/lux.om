@@ -58,8 +58,14 @@ async function mockAssetApi(page: Page, callbacks: {
     const method = request.method();
 
     if (path === '/api/pms/assets' && method === 'GET') {
-      callbacks.assetQuery?.(url);
-      return fulfillJson(route, { assets: [asset], pagination: { take: Number(url.searchParams.get('take') ?? 25), skip: Number(url.searchParams.get('skip') ?? 0), count: 1, total: 26 } });
+      const take = Number(url.searchParams.get('take') ?? 25);
+      const skip = Number(url.searchParams.get('skip') ?? 0);
+      const isRegisterRequest = take === 25;
+      if (isRegisterRequest) callbacks.assetQuery?.(url);
+      return fulfillJson(route, {
+        assets: [asset],
+        pagination: { take, skip, count: 1, total: isRegisterRequest ? 26 : 1 },
+      });
     }
     if (path === '/api/pms/assets' && method === 'POST') {
       const body = request.postDataJSON() as Record<string, unknown>;
@@ -74,7 +80,7 @@ async function mockAssetApi(page: Page, callbacks: {
     if (path === '/api/pms/properties' && method === 'GET') return fulfillJson(route, { workspace: {}, properties: [{ id: propertyId, name: 'Harbour Residences', code: 'HR', active: true, counts: { units: 1 }, createdAt: '', updatedAt: '' }], pagination: { take: 100, skip: 0, count: 1, total: 1 } });
     if (path === '/api/pms/units' && method === 'GET') return fulfillJson(route, { workspace: {}, units: [{ id: unitId, companyId, propertyId, property: { id: propertyId, companyId, name: 'Harbour Residences' }, unitNumber: 'A-101', status: 'OCCUPIED', occupancyStatus: 'OCCUPIED', operationalStatus: 'AVAILABLE', currency: 'OMR', createdAt: '', updatedAt: '' }], pagination: { take: 200, skip: 0, count: 1, total: 1 } });
     if (path === '/api/pms/vendors' && method === 'GET') return fulfillJson(route, { workspace: {}, vendors: [{ id: vendorId, companyId, name: 'Gulf HVAC Services', active: true, counts: { workOrders: 2 }, portalAccesses: [], createdAt: '', updatedAt: '' }], pagination: { take: 100, skip: 0, count: 1, total: 1 } });
-    if (path === '/api/pms/preventive-maintenance/plans' && method === 'GET') return fulfillJson(route, { plans: [{ id: 'plan-1', title: 'Quarterly HVAC service', status: 'ACTIVE', nextServiceDate: '2026-08-01T00:00:00.000Z', intervalDays: 90, property: { id: propertyId, name: 'Harbour Residences' }, asset: { id: asset.id, assetCode: asset.assetCode, name: asset.name } }] });
+    if (path === '/api/pms/preventive-maintenance/plans' && method === 'GET') return fulfillJson(route, { plans: [{ id: 'plan-1', title: 'Quarterly HVAC service', description: 'Quarterly service', status: 'ACTIVE', nextServiceDate: '2026-08-01T00:00:00.000Z', intervalDays: 90, lastGeneratedAt: null, checklist: ['Inspect filter'], slaHours: 48, priority: 'MEDIUM', estimatedCost: '120', currency: 'OMR', propertyId, property: { id: propertyId, name: 'Harbour Residences' }, unitId, unit: { id: unitId, unitNumber: 'A-101' }, assetId: asset.id, asset: { id: asset.id, assetCode: asset.assetCode, name: asset.name, propertyId, unitId }, vendorId, vendor: { id: vendorId, name: 'Gulf HVAC Services', trade: 'HVAC', active: true }, workOrders: [], _count: { workOrders: 0 }, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' }], pagination: { take: 25, skip: 0, count: 1, total: 1 }, summary: { active: 1, due: 0 } });
     if (path === '/api/pms/structured-inspections/runs' && method === 'GET') return fulfillJson(route, { inspections: [{ id: 'inspection-1', title: 'HVAC safety inspection', type: 'SAFETY', status: 'NEEDS_ACTION', property: { id: propertyId, name: 'Harbour Residences' }, unit: { id: unitId, unitNumber: 'A-101' }, defects: [{ id: 'defect-1', title: 'Filter replacement', severity: 'MEDIUM', status: 'OPEN' }] }] });
     return fulfillJson(route, { message: `Unhandled asset mock: ${method} ${path}` }, 404);
   });
@@ -88,18 +94,20 @@ test('asset register uses server pagination and persists browsing filters in the
   await page.goto(`/pms/operations/assets-inspections?companyId=${companyId}`);
   await expect(page.getByText(asset.assetCode, { exact: true })).toBeVisible();
   await expect(page.getByText('1–1 of 26', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  const assetNavigation = page.getByRole('navigation', { name: 'Asset register', exact: true });
+  await assetNavigation.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page).toHaveURL(/assetPage=2/);
   await expect.poll(() => queries.at(-1)?.searchParams.get('skip')).toBe('25');
 
-  await page.getByLabel('Search asset code, name, serial, property, unit, or vendor').fill('carrier');
-  await page.getByRole('combobox', { name: 'Status', exact: true }).selectOption('ACTIVE');
-  const dueCheckbox = page.getByRole('checkbox', { name: 'Warranty or service due' });
+  const assetFilters = page.getByRole('form', { name: 'Asset register filters' });
+  await assetFilters.getByLabel('Search asset code, name, serial, property, unit, or vendor').fill('carrier');
+  await assetFilters.getByRole('combobox', { name: 'Status', exact: true }).selectOption('ACTIVE');
+  const dueCheckbox = assetFilters.getByRole('checkbox', { name: 'Warranty or service due' });
   await dueCheckbox.focus();
   await page.keyboard.press('Space');
   await expect(page).toHaveURL(/assetDue=true/);
-  await expect(page.getByRole('checkbox', { name: 'Warranty or service due' })).toBeChecked();
-  await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
+  await expect(assetFilters.getByRole('checkbox', { name: 'Warranty or service due' })).toBeChecked();
+  await assetFilters.getByRole('button', { name: 'Apply filters', exact: true }).click();
   await expect(page).toHaveURL(/assetQ=carrier/);
   await expect(page).toHaveURL(/assetStatus=ACTIVE/);
   await expect(page).toHaveURL(/assetDue=true/);
