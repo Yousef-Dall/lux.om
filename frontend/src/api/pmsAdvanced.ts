@@ -597,17 +597,67 @@ export type PmsVendorInvoiceWorkOrderOption = {
 };
 
 
+export type PmsAssetStatus = 'ACTIVE' | 'OUT_OF_SERVICE' | 'RETIRED' | 'DISPOSED';
+export type PmsAssetEventType = 'CREATED' | 'UPDATED' | 'SERVICED' | 'REPAIRED' | 'WARRANTY_CLAIM' | 'RETIRED' | 'DISPOSED';
+export type PmsAssetEvent = {
+  id: string;
+  type: PmsAssetEventType;
+  occurredAt: string;
+  cost?: string | null;
+  currency?: string | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+};
 export type PmsAsset = {
   id: string;
+  companyId: string;
+  propertyId: string;
+  unitId?: string | null;
+  vendorId?: string | null;
   assetCode: string;
   name: string;
   category: string;
-  status: string;
+  manufacturer?: string | null;
+  model?: string | null;
+  serialNumber?: string | null;
+  installationDate?: string | null;
   warrantyExpiry?: string | null;
+  serviceIntervalDays?: number | null;
   nextServiceDate?: string | null;
+  status: PmsAssetStatus;
+  purchaseCost?: string | null;
+  currency: string;
+  notes?: string | null;
   property: { id: string; name: string };
   unit?: { id: string; unitNumber: string } | null;
+  vendor?: { id: string; name: string } | null;
+  events: PmsAssetEvent[];
+  _count: { workOrders: number; documents: number; maintenancePlans: number };
+  createdAt: string;
+  updatedAt: string;
 };
+export type PmsAssetPayload = {
+  companyId: string;
+  propertyId: string;
+  unitId?: string | null;
+  vendorId?: string | null;
+  assetCode: string;
+  name: string;
+  category: string;
+  manufacturer?: string | null;
+  model?: string | null;
+  serialNumber?: string | null;
+  installationDate?: string | null;
+  warrantyExpiry?: string | null;
+  serviceIntervalDays?: number | null;
+  nextServiceDate?: string | null;
+  status: PmsAssetStatus;
+  purchaseCost?: number | null;
+  currency: string;
+  notes?: string | null;
+};
+export type PmsAssetPagination = { take: number; skip: number; count: number; total: number };
 export type PmsMaintenancePlan = {
   id: string;
   title: string;
@@ -1014,8 +1064,39 @@ export function transitionPmsVendorInvoice(token: string, invoiceId: string, pay
   return apiClient.post<{ invoice: PmsVendorInvoice }>(`/api/pms/accounting/vendor-invoices/${invoiceId}/transition`, payload, { token });
 }
 
-export async function listPmsAssets(token: string, companyId?: string) {
-  return apiClient.get<{ assets: PmsAsset[] }>('/api/pms/assets', { token, params: companyParams(companyId) });
+export function listPmsAssets(token: string, params: {
+  companyId?: string;
+  propertyId?: string;
+  unitId?: string;
+  vendorId?: string;
+  status?: PmsAssetStatus;
+  dueOnly?: boolean;
+  search?: string;
+  sortBy?: 'updatedAt' | 'createdAt' | 'assetCode' | 'name' | 'status' | 'warrantyExpiry' | 'nextServiceDate';
+  direction?: 'asc' | 'desc';
+  take?: number;
+  skip?: number;
+  signal?: AbortSignal;
+} = {}) {
+  const { signal, ...query } = params;
+  return apiClient.get<{ assets: PmsAsset[]; pagination: PmsAssetPagination }>('/api/pms/assets', { token, params: query, signal });
+}
+export function createPmsAsset(token: string, payload: PmsAssetPayload) {
+  return apiClient.post<{ asset: PmsAsset }>('/api/pms/assets', payload, { token });
+}
+export function updatePmsAsset(token: string, assetId: string, payload: Partial<PmsAssetPayload>) {
+  return apiClient.patch<{ asset: PmsAsset }>(`/api/pms/assets/${assetId}`, payload, { token });
+}
+export function createPmsAssetEvent(token: string, assetId: string, payload: {
+  companyId: string;
+  type: Exclude<PmsAssetEventType, 'CREATED'>;
+  occurredAt: string;
+  cost?: number | null;
+  currency?: string | null;
+  notes?: string | null;
+  nextServiceDate?: string | null;
+}) {
+  return apiClient.post<{ event: PmsAssetEvent }>(`/api/pms/assets/${assetId}/events`, payload, { token });
 }
 export async function listPmsMaintenancePlans(token: string, companyId?: string) {
   return apiClient.get<{ plans: PmsMaintenancePlan[] }>('/api/pms/preventive-maintenance/plans', { token, params: companyParams(companyId) });

@@ -1,4 +1,4 @@
-import { DomainAuditDomain } from '@prisma/client';
+import { DomainAuditDomain, Prisma } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -6,20 +6,61 @@ import { recordDomainAuditEvent, requestAuditContext } from '../../../lib/domain
 import { prisma } from '../../../lib/prisma';
 import { requireAuth } from '../../../middleware/auth';
 import { AppError } from '../../../utils/http';
-import { assertCanManagePmsInventory } from '../access';
-import { assertCanViewPmsReports } from '../access/permissions';
+import {
+  assertCanManagePmsInventory,
+  assertCanManagePmsMaintenance,
+  assertCanViewPmsAssets,
+  canManagePmsInventory,
+} from '../access';
 import { assertPmsPropertyScope, assertPmsScopeLinks, propertyScopeWhere, requirePmsRouteAccess } from '../shared/routeAccess';
 import { money } from '../finance/money';
 
 export const pmsAssetsRouter = Router();
 
+const queryBoolean = z.preprocess((value) => {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1') return true;
+    if (normalized === 'false' || normalized === '0') return false;
+  }
+  return value;
+}, z.boolean());
+
 const querySchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   propertyId: z.string().trim().min(1).optional(),
+  unitId: z.string().trim().min(1).optional(),
+  vendorId: z.string().trim().min(1).optional(),
   status: z.enum(['ACTIVE', 'OUT_OF_SERVICE', 'RETIRED', 'DISPOSED']).optional(),
-  dueOnly: z.coerce.boolean().optional(),
+  dueOnly: queryBoolean.optional(),
+  search: z.string().trim().max(120).optional(),
+  sortBy: z.enum(['updatedAt', 'createdAt', 'assetCode', 'name', 'status', 'warrantyExpiry', 'nextServiceDate']).default('nextServiceDate'),
+  direction: z.enum(['asc', 'desc']).default('asc'),
+  take: z.coerce.number().int().min(1).max(100).default(25),
+  skip: z.coerce.number().int().min(0).default(0),
 });
 const idParams = z.object({ id: z.string().trim().min(1) });
+
+function assetOrderBy(query: z.infer<typeof querySchema>): Prisma.PmsAssetOrderByWithRelationInput[] {
+  const direction = query.direction;
+  switch (query.sortBy) {
+    case 'assetCode':
+      return [{ assetCode: direction }, { name: 'asc' }];
+    case 'name':
+      return [{ name: direction }, { assetCode: 'asc' }];
+    case 'status':
+      return [{ status: direction }, { name: 'asc' }];
+    case 'warrantyExpiry':
+      return [{ warrantyExpiry: { sort: direction, nulls: 'last' } }, { name: 'asc' }];
+    case 'nextServiceDate':
+      return [{ nextServiceDate: { sort: direction, nulls: 'last' } }, { name: 'asc' }];
+    case 'createdAt':
+      return [{ createdAt: direction }, { name: 'asc' }];
+    case 'updatedAt':
+    default:
+      return [{ updatedAt: direction }, { name: 'asc' }];
+  }
+}
 const assetSchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   propertyId: z.string().trim().min(1),
@@ -40,6 +81,14 @@ const assetSchema = z.object({
   currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).default('OMR'),
   notes: z.string().trim().max(3000).nullable().optional(),
 });
+const assetInclude = {
+  property: { select: { id: true, name: true } },
+  unit: { select: { id: true, unitNumber: true } },
+  vendor: { select: { id: true, name: true } },
+  events: { orderBy: { occurredAt: 'desc' as const }, take: 20 },
+  _count: { select: { workOrders: true, documents: true, maintenancePlans: true } },
+} satisfies Prisma.PmsAssetInclude;
+
 const eventSchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   type: z.enum(['UPDATED', 'SERVICED', 'REPAIRED', 'WARRANTY_CLAIM', 'RETIRED', 'DISPOSED']),
@@ -55,27 +104,46 @@ pmsAssetsRouter.get('/', requireAuth(), async (req, res, next) => {
   try {
     const query = querySchema.parse(req.query);
     const access = await requirePmsRouteAccess(req, query.companyId);
-    assertCanViewPmsReports(access.member);
+    assertCanViewPmsAssets(access.member);
     if (query.propertyId) assertPmsPropertyScope(access, query.propertyId);
     const now = new Date();
-    const assets = await prisma.pmsAsset.findMany({
-      where: {
-        companyId: access.company.id,
-        ...propertyScopeWhere(access),
-        ...(query.propertyId ? { propertyId: query.propertyId } : {}),
-        ...(query.status ? { status: query.status } : {}),
-        ...(query.dueOnly ? { OR: [{ warrantyExpiry: { lte: now } }, { nextServiceDate: { lte: now } }] } : {}),
-      },
-      include: {
-        property: { select: { id: true, name: true } },
-        unit: { select: { id: true, unitNumber: true } },
-        vendor: { select: { id: true, name: true } },
-        events: { orderBy: { occurredAt: 'desc' }, take: 20 },
-        _count: { select: { workOrders: true, documents: true, maintenancePlans: true } },
-      },
-      orderBy: [{ nextServiceDate: 'asc' }, { name: 'asc' }],
-    });
-    res.json({ assets });
+    const search = query.search?.trim();
+    const where: Prisma.PmsAssetWhereInput = {
+      companyId: access.company.id,
+      ...propertyScopeWhere(access),
+      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.unitId ? { unitId: query.unitId } : {}),
+      ...(query.vendorId ? { vendorId: query.vendorId } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.dueOnly ? { OR: [{ warrantyExpiry: { lte: now } }, { nextServiceDate: { lte: now } }] } : {}),
+      ...(search ? {
+        AND: [{
+          OR: [
+            { assetCode: { contains: search, mode: 'insensitive' as const } },
+            { name: { contains: search, mode: 'insensitive' as const } },
+            { category: { contains: search, mode: 'insensitive' as const } },
+            { manufacturer: { contains: search, mode: 'insensitive' as const } },
+            { model: { contains: search, mode: 'insensitive' as const } },
+            { serialNumber: { contains: search, mode: 'insensitive' as const } },
+            { property: { name: { contains: search, mode: 'insensitive' as const } } },
+            { unit: { unitNumber: { contains: search, mode: 'insensitive' as const } } },
+            { vendor: { name: { contains: search, mode: 'insensitive' as const } } },
+          ],
+        }],
+      } : {}),
+    };
+    const orderBy = assetOrderBy(query);
+    const [assets, total] = await prisma.$transaction([
+      prisma.pmsAsset.findMany({
+        where,
+        include: assetInclude,
+        orderBy,
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsAsset.count({ where }),
+    ]);
+    res.json({ assets, pagination: { take: query.take, skip: query.skip, count: assets.length, total } });
   } catch (error) { next(error); }
 });
 
@@ -113,7 +181,7 @@ pmsAssetsRouter.post('/', requireAuth(), async (req, res, next) => {
         updatedById: req.user!.id,
         events: { create: { companyId: access.company.id, type: 'CREATED', createdById: req.user!.id, notes: 'Asset registered.' } },
       },
-      include: { events: true },
+      include: assetInclude,
     });
     await recordDomainAuditEvent(prisma, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsAsset', entityId: asset.id, action: 'PMS_ASSET_CREATED', actorId: req.user!.id, afterMetadata: { propertyId: asset.propertyId, unitId: asset.unitId, assetCode: asset.assetCode, category: asset.category }, ...requestAuditContext(req) });
     res.status(201).json({ asset });
@@ -158,6 +226,7 @@ pmsAssetsRouter.patch('/:id', requireAuth(), async (req, res, next) => {
         updatedById: req.user!.id,
         events: { create: { companyId: access.company.id, type: 'UPDATED', createdById: req.user!.id, notes: 'Asset details updated.' } },
       },
+      include: assetInclude,
     });
     await recordDomainAuditEvent(prisma, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsAsset', entityId: id, action: 'PMS_ASSET_UPDATED', actorId: req.user!.id, beforeMetadata: current, afterMetadata: asset, ...requestAuditContext(req) });
     res.json({ asset });
@@ -169,7 +238,11 @@ pmsAssetsRouter.post('/:id/events', requireAuth(), async (req, res, next) => {
     const { id } = idParams.parse(req.params);
     const data = eventSchema.parse(req.body);
     const access = await requirePmsRouteAccess(req, data.companyId);
-    assertCanManagePmsInventory(access.member);
+    if (data.type === 'RETIRED' || data.type === 'DISPOSED') {
+      assertCanManagePmsInventory(access.member);
+    } else if (!canManagePmsInventory(access.member)) {
+      assertCanManagePmsMaintenance(access.member);
+    }
     const asset = await prisma.pmsAsset.findFirst({ where: { id, companyId: access.company.id } });
     if (!asset) throw new AppError(404, 'Asset not found.');
     assertPmsPropertyScope(access, asset.propertyId);

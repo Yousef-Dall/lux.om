@@ -1248,6 +1248,21 @@ describe('PMS Stage 21G financial and portal operations', () => {
   it('scopes assets, generates preventive work orders idempotently, and converts inspection defects once', async () => {
     const fixture = await createFixture();
     const asset = await request(app).post('/api/pms/assets').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, unitId: fixture.unitA.id, assetCode: 'HVAC-A-101', name: 'Main HVAC', category: 'HVAC', serviceIntervalDays: 30, nextServiceDate: '2026-07-01', vendorId: fixture.vendor.id, currency: 'OMR' }).expect(201);
+    await request(app).post('/api/pms/assets').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, assetCode: 'HVAC-A-102', name: 'Secondary HVAC', category: 'HVAC', nextServiceDate: '2026-08-01', currency: 'OMR' }).expect(201);
+
+    const maintenanceUser = await prisma.user.create({ data: { name: 'Stage 21G Maintenance', email: 'stage21g-maintenance@lux.test', password: 'test-password', role: 'USER', emailVerified: true } });
+    await prisma.pmsCompanyMember.create({ data: { companyId: fixture.company.id, userId: maintenanceUser.id, role: 'PMS_MAINTENANCE' } });
+    const maintenanceToken = signToken(maintenanceUser);
+    await request(app).get(`/api/pms/assets?companyId=${fixture.company.id}&take=1&skip=0&search=HVAC&sortBy=assetCode&direction=asc&dueOnly=false`).set('Authorization', `Bearer ${maintenanceToken}`).expect(200).expect(({ body }) => {
+      expect(body.pagination).toMatchObject({ take: 1, skip: 0, count: 1, total: 2 });
+      expect(body.assets[0]).toMatchObject({ assetCode: 'HVAC-A-101', property: { id: fixture.propertyA.id }, _count: { maintenancePlans: 0 } });
+    });
+    await request(app).get(`/api/pms/assets?companyId=${fixture.company.id}&search=Secondary`).set('Authorization', `Bearer ${fixture.managerToken}`).expect(200).expect(({ body }) => {
+      expect(body.pagination.total).toBe(1);
+      expect(body.assets[0]).toMatchObject({ assetCode: 'HVAC-A-102', name: 'Secondary HVAC' });
+    });
+    await request(app).post(`/api/pms/assets/${asset.body.asset.id}/events`).set('Authorization', `Bearer ${maintenanceToken}`).send({ companyId: fixture.company.id, type: 'SERVICED', occurredAt: '2026-07-03T08:00:00.000Z', cost: 25, currency: 'OMR', notes: 'Quarterly service completed.', nextServiceDate: '2026-08-01' }).expect(201);
+    await request(app).post(`/api/pms/assets/${asset.body.asset.id}/events`).set('Authorization', `Bearer ${maintenanceToken}`).send({ companyId: fixture.company.id, type: 'RETIRED', occurredAt: '2026-07-03T09:00:00.000Z', notes: 'Unsafe retirement attempt.' }).expect(403);
     await request(app).get(`/api/pms/assets?companyId=${fixture.company.id}&propertyId=${fixture.propertyB.id}`).set('Authorization', `Bearer ${fixture.scopedToken}`).expect(403);
     await request(app).get(`/api/pms/assets?companyId=${fixture.otherCompany.id}`).set('Authorization', `Bearer ${fixture.managerToken}`).expect(403);
 

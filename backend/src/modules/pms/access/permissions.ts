@@ -168,6 +168,22 @@ export function assertCanManageCrm(subject: PmsPermissionSubject) {
   );
 }
 
+export function canViewPmsAssets(subject: PmsPermissionSubject) {
+  return (
+    hasPmsPermission(subject, "INVENTORY_VIEW")
+    || hasPmsPermission(subject, "MAINTENANCE_VIEW")
+  );
+}
+
+export function assertCanViewPmsAssets(subject: PmsPermissionSubject) {
+  if (!canViewPmsAssets(subject)) {
+    throw new AppError(
+      403,
+      "Your PMS access cannot view asset records.",
+    );
+  }
+}
+
 export function canManagePmsInventory(subject: PmsPermissionSubject) {
   return hasPmsPermission(subject, "INVENTORY_MANAGE");
 }

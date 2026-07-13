@@ -29,3 +29,13 @@ A failed result may create a `PmsInspectionDefect`. Defect conversion to a work 
 Move-in and move-out comparison uses matching template item IDs and reports changed outcome or value. It does not overwrite either historical inspection.
 
 Signatures and acknowledgements are stored only when a real captured acknowledgement exists. The system must not fabricate a signature or infer consent from inspection completion.
+
+## Stage 21I asset workspace
+
+The authenticated asset register uses database-backed pagination, search, filters, and sorting. The visible page count is kept separate from the full scoped result total, and company/property access is applied to every query.
+
+Inventory managers may register assets, edit identity and placement, change lifecycle status, and retire or dispose records. Maintenance managers may append service, repair, and warranty events without gaining permission to edit asset identity or perform retirement/disposal actions. Every mutation continues to create domain audit evidence and asset events remain append-only history.
+
+The register supports English and Arabic, RTL layouts, keyboard-operated dialogs, narrow mobile screens, localized dates, and permission-denied/read-only states. Preventive-plan authoring, mobile inspection execution, defect conversion, calendar/kanban planning, and attachment capture remain separate controlled Stage 21I batches.
+
+Offline inspection execution is not implemented. Operators must remain connected while saving asset and inspection changes; offline queueing and conflict resolution are future capabilities and must not be implied by the current UI.

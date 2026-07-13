@@ -64,7 +64,7 @@ async function mockOperationalPages(page: Page) {
   await page.route('**/api/pms/accounting/periods**', (route) => route.fulfill({ json: { periods: [], pagination: { total: 0, take: 25, skip: 0, count: 0 } } }));
   await page.route('**/api/pms/accounting/owner-payouts**', (route) => route.fulfill({ json: { batches: [] } }));
   await page.route('**/api/pms/accounting/vendor-invoices**', (route) => route.fulfill({ json: { invoices: [], pagination: { total: 0, take: 25, skip: 0, count: 0 }, totalsByStatus: [], totalsByCurrency: [], overdueCount: 0, vendors: [], properties: [], workOrders: [] } }));
-  await page.route('**/api/pms/assets**', (route) => route.fulfill({ json: { assets: [] } }));
+  await page.route('**/api/pms/assets**', (route) => route.fulfill({ json: { assets: [], pagination: { take: 25, skip: 0, count: 0, total: 0 } } }));
   await page.route('**/api/pms/preventive-maintenance/plans**', (route) => route.fulfill({ json: { plans: [] } }));
   await page.route('**/api/pms/structured-inspections/runs**', (route) => route.fulfill({ json: { inspections: [] } }));
 }
