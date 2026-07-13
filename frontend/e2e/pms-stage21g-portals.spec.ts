@@ -137,8 +137,18 @@ test('vendor portal renders only explicitly assigned work and no tenant identity
     });
   });
 
+  const workOrdersResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/vendor/work-orders' && url.searchParams.get('accessId') === 'vendor-access-1' && response.ok();
+  }, { timeout: 15_000 });
+  const invoicesResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/vendor/invoices' && url.searchParams.get('accessId') === 'vendor-access-1' && response.ok();
+  }, { timeout: 15_000 });
+
   await page.goto('/vendor');
-  await expect(page.getByRole('heading', { name: 'Assigned work and invoices' })).toBeVisible();
+  await Promise.all([workOrdersResponse, invoicesResponse]);
+  await expect(page.getByRole('heading', { name: 'Assigned work and invoices', exact: true })).toBeVisible();
   await expect(page.getByText('Assigned HVAC repair')).toBeVisible();
   await expect(page.getByText('Unrelated work')).toHaveCount(0);
   await expect(page.getByText('Private Tenant A')).toHaveCount(0);

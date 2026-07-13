@@ -20,6 +20,10 @@ import {
   requirePmsRouteAccess,
 } from '../shared/routeAccess';
 import { assertFinancialPeriodOpen } from './periods';
+import {
+  buildFinancialPeriodCloseSnapshot,
+  getFinancialPeriodReadiness,
+} from './periodClose';
 import { buildTreasuryImportPreview } from './treasuryImports';
 import { assertPositiveMoney, assertSameCurrency, money } from './money';
 import {
@@ -387,43 +391,24 @@ function reconciliationOrderBy(sortBy: z.infer<typeof reconciliationListQuery>['
   return [{ transactionDate: direction }, { id: 'desc' }];
 }
 
-async function getFinancialPeriodReadiness(
-  period: {
-    companyId: string;
-    propertyId: string | null;
-    currency: string;
-    periodStart: Date;
-    periodEnd: Date;
-  },
-  client: Pick<Prisma.TransactionClient, 'pmsReconciliationItem' | 'pmsSecurityDepositTransaction'> = prisma,
-) {
-  const propertyFilter = period.propertyId ? { propertyId: period.propertyId } : {};
-  const [reconciliationExceptions, pendingDepositTransactions] = await Promise.all([
-    client.pmsReconciliationItem.count({
-      where: {
-        companyId: period.companyId,
-        currency: period.currency,
-        status: { in: ['UNMATCHED', 'DUPLICATE'] },
-        transactionDate: { gte: period.periodStart, lte: period.periodEnd },
-        ...propertyFilter,
-      },
-    }),
-    client.pmsSecurityDepositTransaction.count({
-      where: {
-        companyId: period.companyId,
-        currency: period.currency,
-        status: { in: ['PENDING_APPROVAL', 'APPROVED'] },
-        createdAt: { gte: period.periodStart, lte: period.periodEnd },
-        ...(period.propertyId ? { account: { propertyId: period.propertyId } } : {}),
-      },
-    }),
-  ]);
-  return {
-    canClose: reconciliationExceptions === 0 && pendingDepositTransactions === 0,
-    reconciliationExceptions,
-    pendingDepositTransactions,
-  };
-}
+const financialPeriodCloseSelect = {
+  id: true,
+  revision: true,
+  snapshotHash: true,
+  snapshotVersion: true,
+  reviewEventId: true,
+  reviewReason: true,
+  closeReason: true,
+  reviewedAt: true,
+  closedAt: true,
+  reopenedAt: true,
+  reopenReason: true,
+  reviewedBy: { select: { id: true, name: true } },
+  closedBy: { select: { id: true, name: true } },
+  reopenedBy: { select: { id: true, name: true } },
+} satisfies Prisma.PmsFinancialPeriodCloseSelect;
+
+
 
 pmsFinanceRouter.get('/charges', requireAuth(), async (req, res, next) => {
   try {
@@ -1255,6 +1240,11 @@ pmsFinanceRouter.get('/periods', requireAuth(), async (req, res, next) => {
             orderBy: { createdAt: 'desc' },
             take: 10,
           },
+          closes: {
+            select: financialPeriodCloseSelect,
+            orderBy: { revision: 'desc' },
+            take: 1,
+          },
         },
         orderBy: periodOrderBy(query.sortBy, query.direction),
         take: query.take,
@@ -1280,7 +1270,18 @@ pmsFinanceRouter.get('/periods/:id/readiness', requireAuth(), async (req, res, n
           ? {}
           : { propertyId: { in: access.member.propertyScope.propertyIds } }),
       },
-      include: { property: { select: { id: true, name: true } }, events: { include: { createdBy: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' } } },
+      include: {
+        property: { select: { id: true, name: true } },
+        events: {
+          include: { createdBy: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'desc' },
+        },
+        closes: {
+          select: financialPeriodCloseSelect,
+          orderBy: { revision: 'desc' },
+          take: 10,
+        },
+      },
     });
     if (!period) throw new AppError(404, 'Financial period not found.');
     if (period.propertyId) assertPmsPropertyScope(access, period.propertyId);
@@ -1317,27 +1318,119 @@ pmsFinanceRouter.post('/periods/:id/transition', requireAuth(), async (req, res,
       if (!current) throw new AppError(404, 'Financial period not found.');
       if (current.propertyId) assertPmsPropertyScope(access, current.propertyId);
       else if (!access.member.propertyScope.allProperties) throw new AppError(403, 'Company-wide financial periods require access to all properties.');
+
       const nextStatus = data.action === 'REVIEW' ? 'REVIEWING' : data.action === 'CLOSE' ? 'CLOSED' : 'OPEN';
       const allowed = (current.status === 'OPEN' && nextStatus === 'REVIEWING')
         || (current.status === 'REVIEWING' && nextStatus === 'CLOSED')
         || (current.status === 'CLOSED' && nextStatus === 'OPEN');
       if (!allowed) throw new AppError(409, `Cannot move financial period from ${current.status} to ${nextStatus}.`);
+
+      let closeRecord: Prisma.PmsFinancialPeriodCloseGetPayload<{ select: typeof financialPeriodCloseSelect }> | null = null;
       if (data.action === 'CLOSE') {
+        const reviewEvent = await tx.pmsFinancialPeriodEvent.findFirst({
+          where: { periodId: id, toStatus: 'REVIEWING', close: null },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        });
+        if (!reviewEvent?.createdById) {
+          throw new AppError(409, 'Financial period closure requires an identified reviewer.');
+        }
+        if (reviewEvent.createdById === req.user!.id) {
+          throw new AppError(409, 'The financial-period reviewer cannot close the same period. A second accounting manager is required.');
+        }
+
         const readiness = await getFinancialPeriodReadiness(current, tx);
         if (!readiness.canClose) {
-          throw new AppError(409, `Financial period has ${readiness.reconciliationExceptions} reconciliation exception(s) and ${readiness.pendingDepositTransactions} pending deposit transaction(s).`);
+          throw new AppError(
+            409,
+            `Financial period has ${readiness.blockerTotal} close blocker(s): `
+            + `${readiness.reconciliationExceptions} reconciliation exception(s), `
+            + `${readiness.pendingDepositTransactions} pending deposit transaction(s), `
+            + `${readiness.unallocatedPayments} unallocated payment(s), `
+            + `${readiness.unreconciledRentPayments} unreconciled rent payment(s), `
+            + `${readiness.unreconciledVendorPayments} unreconciled vendor payment(s), and `
+            + `${readiness.unreconciledOwnerPayouts} unreconciled owner payout(s).`,
+          );
         }
+
+        const { snapshot, snapshotHash } = await buildFinancialPeriodCloseSnapshot({
+          client: tx,
+          period: current,
+          readiness,
+          reviewEvent: {
+            id: reviewEvent.id,
+            reason: reviewEvent.reason,
+            createdAt: reviewEvent.createdAt,
+            createdById: reviewEvent.createdById,
+          },
+          closeReason: data.reason,
+          closedAt: now,
+          closedById: req.user!.id,
+        });
+        const latestClose = await tx.pmsFinancialPeriodClose.findFirst({
+          where: { periodId: id },
+          orderBy: { revision: 'desc' },
+          select: { revision: true },
+        });
+
+        await tx.pmsFinancialPeriod.update({
+          where: { id },
+          data: {
+            status: 'CLOSED',
+            updatedById: req.user!.id,
+            closedAt: now,
+            closeReason: data.reason,
+          },
+        });
+        closeRecord = await tx.pmsFinancialPeriodClose.create({
+          data: {
+            companyId: access.company.id,
+            periodId: id,
+            reviewEventId: reviewEvent.id,
+            revision: (latestClose?.revision ?? 0) + 1,
+            snapshot,
+            snapshotHash,
+            snapshotVersion: 1,
+            reviewReason: reviewEvent.reason ?? 'Financial period reviewed',
+            closeReason: data.reason,
+            reviewedAt: reviewEvent.createdAt,
+            reviewedById: reviewEvent.createdById,
+            closedAt: now,
+            closedById: req.user!.id,
+          },
+          select: financialPeriodCloseSelect,
+        });
+      } else if (data.action === 'REOPEN') {
+        const activeClose = await tx.pmsFinancialPeriodClose.findFirst({
+          where: { periodId: id, reopenedAt: null },
+          orderBy: { revision: 'desc' },
+          select: { id: true },
+        });
+        if (activeClose) {
+          closeRecord = await tx.pmsFinancialPeriodClose.update({
+            where: { id: activeClose.id },
+            data: { reopenedAt: now, reopenReason: data.reason, reopenedById: req.user!.id },
+            select: financialPeriodCloseSelect,
+          });
+        }
+        await tx.pmsFinancialPeriod.update({
+          where: { id },
+          data: {
+            status: 'OPEN',
+            updatedById: req.user!.id,
+            reopenedAt: now,
+            reopenReason: data.reason,
+            closedAt: null,
+            closeReason: null,
+          },
+        });
+      } else {
+        await tx.pmsFinancialPeriod.update({
+          where: { id },
+          data: { status: 'REVIEWING', updatedById: req.user!.id },
+        });
       }
-      const period = await tx.pmsFinancialPeriod.update({
-        where: { id },
-        data: {
-          status: nextStatus,
-          updatedById: req.user!.id,
-          ...(nextStatus === 'CLOSED' ? { closedAt: now, closeReason: data.reason } : {}),
-          ...(data.action === 'REOPEN' ? { reopenedAt: now, reopenReason: data.reason, closedAt: null, closeReason: null } : {}),
-        },
-      });
-      await tx.pmsFinancialPeriodEvent.create({
+
+      const event = await tx.pmsFinancialPeriodEvent.create({
         data: {
           companyId: access.company.id,
           periodId: id,
@@ -1347,8 +1440,24 @@ pmsFinanceRouter.post('/periods/:id/transition', requireAuth(), async (req, res,
           createdById: req.user!.id,
         },
       });
-      return { period, fromStatus: current.status, toStatus: nextStatus };
+      const period = await tx.pmsFinancialPeriod.findUniqueOrThrow({
+        where: { id },
+        include: {
+          property: { select: { id: true, name: true } },
+          events: {
+            include: { createdBy: { select: { id: true, name: true } } },
+            orderBy: { createdAt: 'desc' },
+          },
+          closes: {
+            select: financialPeriodCloseSelect,
+            orderBy: { revision: 'desc' },
+            take: 10,
+          },
+        },
+      });
+      return { period, closeRecord, event, fromStatus: current.status, toStatus: nextStatus };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
     await audit(req, {
       companyId: access.company.id,
       domain: DomainAuditDomain.PMS,
@@ -1357,9 +1466,17 @@ pmsFinanceRouter.post('/periods/:id/transition', requireAuth(), async (req, res,
       action: `PMS_FINANCIAL_PERIOD_${data.action}`,
       actorId: req.user!.id,
       changedFields: ['status'],
-      metadata: { reason: data.reason, fromStatus: result.fromStatus, toStatus: result.toStatus },
+      metadata: {
+        reason: data.reason,
+        fromStatus: result.fromStatus,
+        toStatus: result.toStatus,
+        closeId: result.closeRecord?.id,
+        closeRevision: result.closeRecord?.revision,
+        snapshotHash: result.closeRecord?.snapshotHash,
+        transitionEventId: result.event.id,
+      },
     });
-    res.json({ period: result.period });
+    res.json({ period: result.period, close: result.closeRecord });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
       return next(new AppError(409, 'The financial period changed concurrently. Reload and retry the transition.'));

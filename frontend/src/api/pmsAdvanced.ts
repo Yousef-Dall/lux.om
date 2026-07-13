@@ -222,6 +222,22 @@ export type PmsFinancialPeriodEvent = {
   createdAt: string;
   createdBy?: { id: string; name: string } | null;
 };
+export type PmsFinancialPeriodClose = {
+  id: string;
+  revision: number;
+  snapshotHash: string;
+  snapshotVersion: number;
+  reviewEventId: string;
+  reviewReason: string;
+  closeReason: string;
+  reviewedAt: string;
+  closedAt: string;
+  reopenedAt?: string | null;
+  reopenReason?: string | null;
+  reviewedBy: { id: string; name: string };
+  closedBy: { id: string; name: string };
+  reopenedBy?: { id: string; name: string } | null;
+};
 export type PmsFinancialPeriod = {
   id: string;
   status: PmsFinancialPeriodStatus;
@@ -239,11 +255,18 @@ export type PmsFinancialPeriod = {
   createdBy?: { id: string; name: string } | null;
   updatedBy?: { id: string; name: string } | null;
   events?: PmsFinancialPeriodEvent[];
+  closes?: PmsFinancialPeriodClose[];
 };
 export type PmsFinancialPeriodReadiness = {
   canClose: boolean;
+  blockerTotal: number;
   reconciliationExceptions: number;
   pendingDepositTransactions: number;
+  unallocatedPayments: number;
+  unallocatedAmount: string;
+  unreconciledRentPayments: number;
+  unreconciledVendorPayments: number;
+  unreconciledOwnerPayouts: number;
 };
 export type PmsDepositTransactionType = 'COLLECTION' | 'DEDUCTION' | 'REFUND' | 'CONVERSION_TO_INCOME' | 'ADJUSTMENT';
 export type PmsDepositTransactionStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'POSTED' | 'VOID';
@@ -699,7 +722,7 @@ export function createPmsFinancialPeriod(token: string, payload: { companyId: st
   return apiClient.post<{ period: PmsFinancialPeriod }>('/api/pms/accounting/periods', payload, { token });
 }
 export function transitionPmsFinancialPeriod(token: string, periodId: string, payload: { companyId: string; action: 'REVIEW' | 'CLOSE' | 'REOPEN'; reason: string }) {
-  return apiClient.post<{ period: PmsFinancialPeriod }>(`/api/pms/accounting/periods/${periodId}/transition`, payload, { token });
+  return apiClient.post<{ period: PmsFinancialPeriod; close?: PmsFinancialPeriodClose | null }>(`/api/pms/accounting/periods/${periodId}/transition`, payload, { token });
 }
 export function listPmsReconciliationItems(token: string, params: {
   companyId?: string;

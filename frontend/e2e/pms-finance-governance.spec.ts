@@ -24,7 +24,14 @@ const baseAccount = {
 };
 
 const reviewingPeriod = {
-  id: periodId, status: 'REVIEWING', periodStart: '2026-07-01T00:00:00.000Z', periodEnd: '2026-07-31T23:59:59.000Z', currency: 'OMR', propertyId, property: { id: propertyId, name: 'Governance Residences' }, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-10T00:00:00.000Z', events: [{ id: 'period-event', fromStatus: 'OPEN', toStatus: 'REVIEWING', reason: 'Month-end review', createdAt: '2026-07-10T00:00:00.000Z', createdBy: { id: 'manager', name: 'Finance Manager' } }],
+  id: periodId, status: 'REVIEWING', periodStart: '2026-07-01T00:00:00.000Z', periodEnd: '2026-07-31T23:59:59.000Z', currency: 'OMR', propertyId, property: { id: propertyId, name: 'Governance Residences' }, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-10T00:00:00.000Z',
+  events: [{ id: 'period-event', fromStatus: 'OPEN', toStatus: 'REVIEWING', reason: 'Month-end review', createdAt: '2026-07-10T00:00:00.000Z', createdBy: { id: 'manager', name: 'Finance Manager' } }],
+  closes: [{
+    id: 'close-pack-governance', revision: 1, snapshotHash: 'a'.repeat(64), snapshotVersion: 1, reviewEventId: 'review-event-governance',
+    reviewReason: 'Initial review', closeReason: 'Initial close', reviewedAt: '2026-07-08T00:00:00.000Z', closedAt: '2026-07-08T01:00:00.000Z',
+    reopenedAt: '2026-07-09T00:00:00.000Z', reopenReason: 'Approved correction', reviewedBy: { id: 'reviewer', name: 'Independent Reviewer' },
+    closedBy: { id: 'closer', name: 'Independent Closer' }, reopenedBy: { id: 'manager', name: 'Finance Manager' },
+  }],
 };
 
 const reconciliation = {
@@ -73,7 +80,7 @@ async function mockGovernanceApi(page: Page, callbacks: { depositTransaction?: (
     if (path === '/api/pms/accounting/payments' && method === 'GET') return fulfill(route, { payments: [payment], pagination: { take: 100, skip: 0, count: 1, total: 1 }, totalsByCurrency: [{ currency: 'OMR', count: 1, recordedAmount: '200' }] });
     if (path === '/api/pms/accounting/charges' && method === 'GET') return fulfill(route, { charges: [], pagination: { take: 100, skip: 0, count: 0, total: 0 }, totalsByCurrency: [] });
     if (path === '/api/pms/accounting/periods' && method === 'GET') return fulfill(route, { periods: [reviewingPeriod], pagination: { take: 25, skip: 0, count: 1, total: 1 } });
-    if (path === `/api/pms/accounting/periods/${periodId}/readiness` && method === 'GET') return fulfill(route, { period: reviewingPeriod, readiness: { canClose: false, reconciliationExceptions: 1, pendingDepositTransactions: 1 } });
+    if (path === `/api/pms/accounting/periods/${periodId}/readiness` && method === 'GET') return fulfill(route, { period: reviewingPeriod, readiness: { canClose: false, blockerTotal: 6, reconciliationExceptions: 1, pendingDepositTransactions: 1, unallocatedPayments: 1, unallocatedAmount: '200', unreconciledRentPayments: 1, unreconciledVendorPayments: 1, unreconciledOwnerPayouts: 1 } });
     if (path === `/api/pms/accounting/periods/${periodId}/transition` && method === 'POST') { const body = request.postDataJSON() as Record<string, unknown>; callbacks.periodTransition?.(body); return fulfill(route, { period: { ...reviewingPeriod, status: body.action === 'CLOSE' ? 'CLOSED' : 'OPEN' } }); }
     if (path === '/api/pms/accounting/reconciliation' && method === 'GET') return fulfill(route, { items: [activeReconciliation], pagination: { take: 25, skip: 0, count: 1, total: 1 }, totalsByStatus: [{ status: 'UNMATCHED', count: 1 }], totalsByCurrency: [{ currency: 'OMR', count: 1, amount: String(activeReconciliation.amount ?? '0') }] });
     if (path === '/api/pms/accounting/reconciliation/imports/preview' && method === 'POST') { const body = request.postDataJSON() as Record<string, unknown>; callbacks.treasuryPreview?.(body); return fulfill(route, { preview: treasuryImportPreview }); }
@@ -126,8 +133,15 @@ test('financial period close readiness exposes blockers and disables unsafe clos
   await page.getByRole('button', { name: 'View', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Financial periods', exact: true });
   await expect(dialog.getByText('Blocked')).toBeVisible();
-  await expect(dialog.getByText(/Reconciliation exceptions:/)).toContainText('1');
+  const readinessGrid = dialog.locator('.pms-governance-readiness__grid');
+  await expect(readinessGrid.locator('p').filter({ hasText: 'Reconciliation exceptions' })).toContainText('1');
+  await expect(readinessGrid.locator('p').filter({ hasText: 'Unallocated payments' })).toContainText('1');
+  await expect(readinessGrid.locator('p').filter({ hasText: 'Unreconciled vendor payments' })).toContainText('1');
+  await expect(dialog.getByText(/OMR.*200\.000/)).toBeVisible();
+  await expect(dialog.getByText('A different accounting manager must close the period after review.')).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Close period', exact: true })).toBeDisabled();
+  await expect(dialog.getByText('Immutable close pack #1')).toBeVisible();
+  await expect(dialog.getByText('a'.repeat(64))).toBeVisible();
   await expect(dialog.getByText('Month-end review')).toBeVisible();
 });
 

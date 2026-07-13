@@ -146,6 +146,14 @@ PMS reporting groups values by stored ISO-style three-letter currency. It never 
 
 For a mixed-currency workspace, operators must review each currency independently. Do not post a manual converted total unless the business has separately implemented a stored-rate conversion ledger with rate source, effective timestamp, and immutable history.
 
+### Financial-period close workflow
+
+Use `docs/pms-financial-period-close.md` for the complete control model. Before moving a period to review, confirm that statement imports are complete, every external cash target is matched, confirmed payments have no unexplained available balance, and deposit approvals are resolved.
+
+The reviewer and closer must be different `ACCOUNTING_MANAGE` users. Record the returned close revision and SHA-256 snapshot hash in the month-end evidence package. Reopening never rewrites that pack; it marks the revision reopened and a later close creates the next revision. Existing pre-Stage-21I-K closed periods may have no pack, but once reopened they must use the new workflow.
+
+During incident triage, do not bypass `PmsFinancialPeriodClose` triggers or manually update snapshot JSON/hash values. Investigate the source records, reopen through the API when correction is approved, and close again after readiness returns zero blockers.
+
 ### Owner statement workflow
 
 Owner statements are persistent currency-specific snapshots:

@@ -21776,3 +21776,40 @@ transition: none;
     grid-column: auto;
   }
 }
+
+.pms-governance-readiness__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.pms-governance-readiness__grid p {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, white 74%, transparent);
+}
+
+.pms-governance-readiness__grid strong {
+  font-size: 1.15rem;
+}
+
+.pms-governance-close-pack {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #d9dde5);
+  border-radius: 0.9rem;
+  background: var(--surface-muted, #f8f9fb);
+}
+
+.pms-governance-close-pack h3 {
+  margin-top: 0;
+}
+
+.pms-governance-close-pack code {
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+}

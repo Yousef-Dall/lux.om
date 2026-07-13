@@ -323,10 +323,110 @@ function PeriodDetailDialog({ companyId, language, onClose, onSaved, open, perio
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const load = useCallback(async () => { if (!periodId) return; setError(''); try { const result = await getPmsFinancialPeriodReadiness(token, periodId, companyId); setPeriod(result.period); setReadiness(result.readiness); } catch (loadError) { setError(apiMessage(loadError, copy.error)); } }, [companyId, copy.error, periodId, token]);
+  const load = useCallback(async () => {
+    if (!periodId) return;
+    setError('');
+    try {
+      const result = await getPmsFinancialPeriodReadiness(token, periodId, companyId);
+      setPeriod(result.period);
+      setReadiness(result.readiness);
+    } catch (loadError) {
+      setError(apiMessage(loadError, copy.error));
+    }
+  }, [companyId, copy.error, periodId, token]);
+
   useEffect(() => { if (open) void load(); }, [load, open]);
-  async function submit(event: FormEvent) { event.preventDefault(); if (!periodId || !action || reason.trim().length < 3) return setError(copy.formError); setBusy(true); setError(''); try { await transitionPmsFinancialPeriod(token, periodId, { companyId, action, reason: reason.trim() }); setAction(null); setReason(''); await load(); onSaved(); } catch (submitError) { setError(apiMessage(submitError, copy.error)); } finally { setBusy(false); } }
-  return <AccessibleDialog closeLabel={copy.close} description={copy.periodsDescription} initialFocusRef={action ? reasonRef : undefined} onClose={onClose} open={open} size="large" title={copy.periods}>{error ? <p className="pms-finance-form__error" role="alert">{error}</p> : null}{period ? <div className="pms-finance-detail"><div className="pms-finance-detail__summary"><div><span>{copy.scope}</span><strong>{period.property?.name ?? copy.companyWide}</strong></div><div><span>{copy.currency}</span><strong>{period.currency}</strong></div><div><span>{copy.periodStart}</span><strong>{formatFinanceDate(period.periodStart, language)}</strong></div><div><span>{copy.periodEnd}</span><strong>{formatFinanceDate(period.periodEnd, language)}</strong></div></div><section className={`pms-governance-readiness ${readiness?.canClose ? 'pms-governance-readiness--ready' : 'pms-governance-readiness--blocked'}`}><h3><ShieldCheck aria-hidden="true" size={19} /> {copy.readiness}: {readiness?.canClose ? copy.ready : copy.blocked}</h3><p>{copy.reconciliationExceptions}: <strong>{readiness?.reconciliationExceptions ?? 0}</strong> · {copy.pendingDeposits}: <strong>{readiness?.pendingDepositTransactions ?? 0}</strong></p></section><div className="pms-finance-inline-actions">{period.status === 'OPEN' ? <button onClick={() => setAction('REVIEW')} type="button">{copy.review}</button> : null}{period.status === 'REVIEWING' ? <button disabled={!readiness?.canClose} onClick={() => setAction('CLOSE')} type="button">{copy.closePeriod}</button> : null}{period.status === 'CLOSED' ? <button onClick={() => setAction('REOPEN')} type="button">{copy.reopen}</button> : null}</div>{action ? <form className="pms-finance-form pms-governance-inline-review" onSubmit={submit}><p><AlertTriangle aria-hidden="true" size={18} /> {copy.destructiveWarning}</p><label className="pms-finance-form__wide">{copy.reason}<textarea ref={reasonRef} required value={reason} onChange={(event) => setReason(event.target.value)} /></label><div className="pms-finance-inline-actions"><button className="button-link button-link--primary" disabled={busy} type="submit">{governanceEnumLabel(action, language)}</button><button onClick={() => { setAction(null); setReason(''); }} type="button">{copy.cancel}</button></div></form> : null}<h3>{copy.auditTimeline}</h3><div className="pms-finance-history-grid">{period.events?.map((event) => <article className="pms-finance-history-item" key={event.id}><strong>{governanceEnumLabel(event.toStatus, language)}</strong><p>{event.reason ?? '—'}</p><small>{formatFinanceDate(event.createdAt, language)} · {event.createdBy?.name ?? '—'}</small></article>)}</div></div> : <div className="pms-finance-state">{copy.loading}</div>}</AccessibleDialog>;
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!periodId || !action || reason.trim().length < 3) return setError(copy.formError);
+    setBusy(true);
+    setError('');
+    try {
+      await transitionPmsFinancialPeriod(token, periodId, { companyId, action, reason: reason.trim() });
+      setAction(null);
+      setReason('');
+      await load();
+      onSaved();
+    } catch (submitError) {
+      setError(apiMessage(submitError, copy.error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const latestClose = period?.closes?.[0] ?? null;
+  return (
+    <AccessibleDialog closeLabel={copy.close} description={copy.periodsDescription} initialFocusRef={action ? reasonRef : undefined} onClose={onClose} open={open} size="large" title={copy.periods}>
+      {error ? <p className="pms-finance-form__error" role="alert">{error}</p> : null}
+      {period ? (
+        <div className="pms-finance-detail">
+          <div className="pms-finance-detail__summary">
+            <div><span>{copy.scope}</span><strong>{period.property?.name ?? copy.companyWide}</strong></div>
+            <div><span>{copy.currency}</span><strong>{period.currency}</strong></div>
+            <div><span>{copy.periodStart}</span><strong>{formatFinanceDate(period.periodStart, language)}</strong></div>
+            <div><span>{copy.periodEnd}</span><strong>{formatFinanceDate(period.periodEnd, language)}</strong></div>
+          </div>
+
+          <section className={`pms-governance-readiness ${readiness?.canClose ? 'pms-governance-readiness--ready' : 'pms-governance-readiness--blocked'}`}>
+            <h3><ShieldCheck aria-hidden="true" size={19} /> {copy.readiness}: {readiness?.canClose ? copy.ready : copy.blocked}</h3>
+            <div className="pms-governance-readiness__grid">
+              <p>{copy.reconciliationExceptions}<strong>{readiness?.reconciliationExceptions ?? 0}</strong></p>
+              <p>{copy.pendingDeposits}<strong>{readiness?.pendingDepositTransactions ?? 0}</strong></p>
+              <p>{copy.unallocatedPayments}<strong>{readiness?.unallocatedPayments ?? 0}</strong></p>
+              <p>{copy.unreconciledRentPayments}<strong>{readiness?.unreconciledRentPayments ?? 0}</strong></p>
+              <p>{copy.unreconciledVendorPayments}<strong>{readiness?.unreconciledVendorPayments ?? 0}</strong></p>
+              <p>{copy.unreconciledOwnerPayouts}<strong>{readiness?.unreconciledOwnerPayouts ?? 0}</strong></p>
+            </div>
+            {(readiness?.unallocatedPayments ?? 0) > 0 ? <p>{copy.unallocatedAmount}: <strong>{formatFinanceMoney(readiness?.unallocatedAmount ?? '0', period.currency, language)}</strong></p> : null}
+          </section>
+
+          {period.status === 'REVIEWING' ? <p className="pms-finance-permission-note">{copy.independentCloseRequired}</p> : null}
+          <div className="pms-finance-inline-actions">
+            {period.status === 'OPEN' ? <button onClick={() => setAction('REVIEW')} type="button">{copy.review}</button> : null}
+            {period.status === 'REVIEWING' ? <button disabled={!readiness?.canClose} onClick={() => setAction('CLOSE')} type="button">{copy.closePeriod}</button> : null}
+            {period.status === 'CLOSED' ? <button onClick={() => setAction('REOPEN')} type="button">{copy.reopen}</button> : null}
+          </div>
+
+          {action ? (
+            <form className="pms-finance-form pms-governance-inline-review" onSubmit={submit}>
+              <p><AlertTriangle aria-hidden="true" size={18} /> {copy.destructiveWarning}</p>
+              <label className="pms-finance-form__wide">{copy.reason}<textarea ref={reasonRef} required value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+              <div className="pms-finance-inline-actions">
+                <button className="button-link button-link--primary" disabled={busy} type="submit">{governanceEnumLabel(action, language)}</button>
+                <button onClick={() => { setAction(null); setReason(''); }} type="button">{copy.cancel}</button>
+              </div>
+            </form>
+          ) : null}
+
+          {latestClose ? (
+            <section className="pms-governance-close-pack">
+              <h3>{copy.closePack} #{latestClose.revision}</h3>
+              <div className="pms-finance-detail__summary">
+                <div><span>{copy.reviewedBy}</span><strong>{latestClose.reviewedBy.name}</strong></div>
+                <div><span>{copy.closedBy}</span><strong>{latestClose.closedBy.name}</strong></div>
+                <div><span>{copy.closedDate}</span><strong>{formatFinanceDate(latestClose.closedAt, language)}</strong></div>
+                <div><span>{copy.closeStatus}</span><strong>{latestClose.reopenedAt ? copy.reopenedClose : copy.activeClose}</strong></div>
+              </div>
+              <p>{copy.snapshotHash}: <code>{latestClose.snapshotHash}</code></p>
+              {latestClose.reopenedAt ? <p>{copy.reopenedBy}: <strong>{latestClose.reopenedBy?.name ?? '—'}</strong> · {formatFinanceDate(latestClose.reopenedAt, language)}</p> : null}
+            </section>
+          ) : null}
+
+          <h3>{copy.auditTimeline}</h3>
+          <div className="pms-finance-history-grid">
+            {period.events?.map((event) => (
+              <article className="pms-finance-history-item" key={event.id}>
+                <strong>{governanceEnumLabel(event.toStatus, language)}</strong>
+                <p>{event.reason ?? '—'}</p>
+                <small>{formatFinanceDate(event.createdAt, language)} · {event.createdBy?.name ?? '—'}</small>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : <div className="pms-finance-state">{copy.loading}</div>}
+    </AccessibleDialog>
+  );
 }
 
 function PeriodWorkspace({ allowCompanyWide, canManage, companyId, language, token }: { allowCompanyWide: boolean; canManage: boolean; companyId: string; language: 'en' | 'ar'; token: string }) {

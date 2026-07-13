@@ -345,9 +345,37 @@ describe('PMS Stage 21G financial and portal operations', () => {
   it('protects closed financial periods and records reopen history', async () => {
     const fixture = await createFixture();
     const period = await request(app).post('/api/pms/accounting/periods').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, currency: 'OMR', periodStart: '2026-07-01', periodEnd: '2026-07-31' }).expect(201);
-    for (const [action, reason] of [['REVIEW', 'Month-end review'], ['CLOSE', 'Approved month close']] as const) {
-      await request(app).post(`/api/pms/accounting/periods/${period.body.period.id}/transition`).set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, action, reason }).expect(200);
-    }
+    await expect(prisma.pmsFinancialPeriod.update({
+      where: { id: period.body.period.id },
+      data: { status: 'CLOSED', closedAt: new Date(), closeReason: 'Direct database close' },
+    })).rejects.toThrow(/active close pack/i);
+    await request(app)
+      .post(`/api/pms/accounting/periods/${period.body.period.id}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'REVIEW', reason: 'Month-end review' })
+      .expect(200);
+    const closed = await request(app)
+      .post(`/api/pms/accounting/periods/${period.body.period.id}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ companyId: fixture.company.id, action: 'CLOSE', reason: 'Approved month close' })
+      .expect(200);
+    expect(closed.body.close).toMatchObject({
+      revision: 1,
+      reviewEventId: expect.any(String),
+      reviewedBy: { id: fixture.manager.id },
+      closedBy: { id: fixture.checker.id },
+    });
+    expect(closed.body.close.snapshotHash).toMatch(/^[0-9a-f]{64}$/);
+    const closePack = await prisma.pmsFinancialPeriodClose.findFirstOrThrow({ where: { periodId: period.body.period.id, reopenedAt: null } });
+    await expect(prisma.pmsFinancialPeriod.update({ where: { id: period.body.period.id }, data: { periodEnd: new Date('2026-08-01') } })).rejects.toThrow(/scope is immutable/i);
+    await expect(prisma.pmsFinancialPeriod.update({ where: { id: period.body.period.id }, data: { closeReason: 'Direct period edit' } })).rejects.toThrow(/evidence is immutable/i);
+    await expect(prisma.pmsFinancialPeriodEvent.update({ where: { id: closePack.reviewEventId }, data: { reason: 'Direct event edit' } })).rejects.toThrow(/review events are immutable/i);
+    await expect(prisma.pmsFinancialPeriodClose.update({ where: { id: closePack.id }, data: { closeReason: 'Direct edit' } })).rejects.toThrow(/immutable/i);
+    await expect(prisma.pmsFinancialPeriodClose.delete({ where: { id: closePack.id } })).rejects.toThrow(/cannot be deleted/i);
+    await expect(prisma.pmsFinancialPeriodClose.update({
+      where: { id: closePack.id },
+      data: { reopenedAt: new Date(), reopenReason: 'Direct database reopen', reopenedById: fixture.manager.id },
+    })).rejects.toThrow(/active close pack/i);
     await request(app).post('/api/pms/accounting/payments').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, unitId: fixture.unitA.id, leaseId: fixture.leaseA.id, tenantId: fixture.tenantA.id, amount: 10, currency: 'OMR', method: 'CASH', paidAt: '2026-07-15', idempotencyKey: 'stage21g-closed-period-payment' }).expect(409);
     await request(app).post(`/api/pms/accounting/periods/${period.body.period.id}/transition`).set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, action: 'REOPEN', reason: 'Approved correction ticket FIN-21G' }).expect(200);
     await request(app).post('/api/pms/accounting/payments').set('Authorization', `Bearer ${fixture.managerToken}`).send({ companyId: fixture.company.id, propertyId: fixture.propertyA.id, unitId: fixture.unitA.id, leaseId: fixture.leaseA.id, tenantId: fixture.tenantA.id, amount: 10, currency: 'OMR', method: 'CASH', paidAt: '2026-07-15', idempotencyKey: 'stage21g-reopened-period-payment' }).expect(201);
@@ -425,19 +453,29 @@ describe('PMS Stage 21G financial and portal operations', () => {
       .get(`/api/pms/accounting/periods/${periodId}/readiness?companyId=${fixture.company.id}`)
       .set('Authorization', `Bearer ${fixture.managerToken}`)
       .expect(200);
-    expect(readiness.body.readiness).toEqual({ canClose: false, reconciliationExceptions: 1, pendingDepositTransactions: 1 });
+    expect(readiness.body.readiness).toEqual({
+      canClose: false,
+      blockerTotal: 3,
+      reconciliationExceptions: 1,
+      pendingDepositTransactions: 1,
+      unallocatedPayments: 0,
+      unallocatedAmount: '0',
+      unreconciledRentPayments: 1,
+      unreconciledVendorPayments: 0,
+      unreconciledOwnerPayouts: 0,
+    });
     await request(app)
       .post(`/api/pms/accounting/periods/${periodId}/transition`)
-      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
       .send({ companyId: fixture.company.id, action: 'CLOSE', reason: 'Attempt close with blockers' })
       .expect(409);
 
     await request(app)
-      .post(`/api/pms/accounting/reconciliation/${reconciliation.body.item.id}/transition`)
+      .post(`/api/pms/accounting/reconciliation/${reconciliation.body.item.id}/match`)
       .set('Authorization', `Bearer ${fixture.managerToken}`)
-      .send({ companyId: fixture.company.id, action: 'IGNORE', reason: 'Verified external non-rent transfer' })
+      .send({ companyId: fixture.company.id, targetType: 'RENT_PAYMENT', targetId: depositPayment.body.payment.id, reason: 'Bank credit and deposit payment verified' })
       .expect(200)
-      .expect(({ body }) => expect(body.item.status).toBe('IGNORED'));
+      .expect(({ body }) => expect(body.item.status).toBe('MATCHED'));
     await request(app)
       .post(`/api/pms/accounting/deposits/${accountId}/transactions/${deduction.body.transaction.id}/transition`)
       .set('Authorization', `Bearer ${fixture.managerToken}`)
@@ -453,19 +491,62 @@ describe('PMS Stage 21G financial and portal operations', () => {
       .get(`/api/pms/accounting/periods/${periodId}/readiness?companyId=${fixture.company.id}`)
       .set('Authorization', `Bearer ${fixture.managerToken}`)
       .expect(200);
-    expect(readyToClose.body.readiness).toEqual({ canClose: true, reconciliationExceptions: 0, pendingDepositTransactions: 0 });
+    expect(readyToClose.body.readiness).toEqual({
+      canClose: true,
+      blockerTotal: 0,
+      reconciliationExceptions: 0,
+      pendingDepositTransactions: 0,
+      unallocatedPayments: 0,
+      unallocatedAmount: '0',
+      unreconciledRentPayments: 0,
+      unreconciledVendorPayments: 0,
+      unreconciledOwnerPayouts: 0,
+    });
     await request(app)
       .post(`/api/pms/accounting/periods/${periodId}/transition`)
       .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'CLOSE', reason: 'Reviewer cannot self-close' })
+      .expect(409);
+    const closedPeriod = await request(app)
+      .post(`/api/pms/accounting/periods/${periodId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
       .send({ companyId: fixture.company.id, action: 'CLOSE', reason: 'All month-end exceptions resolved' })
-      .expect(200)
-      .expect(({ body }) => expect(body.period.status).toBe('CLOSED'));
+      .expect(200);
+    expect(closedPeriod.body.period.status).toBe('CLOSED');
+    expect(closedPeriod.body.close).toMatchObject({
+      revision: 1,
+      reviewEventId: expect.any(String),
+      reviewedBy: { id: fixture.manager.id },
+      closedBy: { id: fixture.checker.id },
+    });
+    expect(closedPeriod.body.close.snapshotHash).toMatch(/^[0-9a-f]{64}$/);
+    const firstClose = await prisma.pmsFinancialPeriodClose.findFirstOrThrow({ where: { periodId, revision: 1 } });
+    expect(firstClose.snapshot).toMatchObject({
+      snapshotVersion: 1,
+      readiness: { canClose: true, blockerTotal: 0 },
+      period: { id: periodId, companyId: fixture.company.id, propertyId: fixture.propertyA.id, currency: 'OMR' },
+    });
     await request(app)
       .post(`/api/pms/accounting/periods/${periodId}/transition`)
       .set('Authorization', `Bearer ${fixture.managerToken}`)
       .send({ companyId: fixture.company.id, action: 'REOPEN', reason: 'Approved correction required' })
       .expect(200)
       .expect(({ body }) => expect(body.period.status).toBe('OPEN'));
+    expect(await prisma.pmsFinancialPeriodClose.count({ where: { periodId, reopenedAt: { not: null } } })).toBe(1);
+
+    await request(app)
+      .post(`/api/pms/accounting/periods/${periodId}/transition`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .send({ companyId: fixture.company.id, action: 'REVIEW', reason: 'Review corrected month close' })
+      .expect(200);
+    const reclosed = await request(app)
+      .post(`/api/pms/accounting/periods/${periodId}/transition`)
+      .set('Authorization', `Bearer ${fixture.checkerToken}`)
+      .send({ companyId: fixture.company.id, action: 'CLOSE', reason: 'Corrected month close approved' })
+      .expect(200);
+    expect(reclosed.body.close).toMatchObject({ revision: 2, reviewedBy: { id: fixture.manager.id }, closedBy: { id: fixture.checker.id } });
+    expect(await prisma.pmsFinancialPeriodClose.count({ where: { periodId } })).toBe(2);
+    expect(await prisma.pmsFinancialPeriodClose.count({ where: { periodId, reopenedAt: null } })).toBe(1);
 
     const depositList = await request(app)
       .get(`/api/pms/accounting/deposits?companyId=${fixture.company.id}&status=PARTIALLY_REFUNDED&take=1&skip=0`)
@@ -474,11 +555,11 @@ describe('PMS Stage 21G financial and portal operations', () => {
     expect(depositList.body.pagination).toMatchObject({ take: 1, skip: 0, count: 1, total: 1 });
     expect(depositList.body.totalsByCurrency).toEqual([expect.objectContaining({ currency: 'OMR', liabilityBalance: '180' })]);
     const reconciliationList = await request(app)
-      .get(`/api/pms/accounting/reconciliation?companyId=${fixture.company.id}&status=IGNORED&take=1&skip=0`)
+      .get(`/api/pms/accounting/reconciliation?companyId=${fixture.company.id}&status=MATCHED&take=1&skip=0`)
       .set('Authorization', `Bearer ${fixture.managerToken}`)
       .expect(200);
     expect(reconciliationList.body.pagination).toMatchObject({ take: 1, skip: 0, count: 1, total: 1 });
-    expect(reconciliationList.body.totalsByStatus).toEqual([{ status: 'IGNORED', count: 1 }]);
+    expect(reconciliationList.body.totalsByStatus).toEqual([{ status: 'MATCHED', count: 1 }]);
 
     const outsideScopeAccount = await request(app)
       .post('/api/pms/accounting/deposits')

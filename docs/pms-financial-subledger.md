@@ -50,6 +50,8 @@ Period lifecycle:
 
 A closed period can return to `OPEN` only through `REOPEN` with a reason. Every transition creates `PmsFinancialPeriodEvent`. Posting helpers check both property-specific and company-wide periods. A partial unique database index prevents duplicate company-wide periods where `propertyId` is null.
 
+Closure requires zero reconciliation exceptions, zero pending deposit transactions, zero unallocated confirmed payments, and complete incoming/outgoing treasury matching for confirmed rent payments, paid vendor invoices, and manually paid owner payouts in the period scope. The reviewer who moves a period to `REVIEWING` cannot close the same review cycle. Every successful close creates an immutable SHA-256-hashed `PmsFinancialPeriodClose` snapshot; reopening marks that revision as reopened and the next close creates a new revision. See `docs/pms-financial-period-close.md`.
+
 ## Treasury reconciliation
 
 `PmsReconciliationItem` stores bank, payment-provider, cashbook, or manual references with an explicit `CREDIT` or `DEBIT` direction. Company/source/reference remains unique. Items may be unmatched, matched, duplicate, or ignored.

@@ -1124,6 +1124,9 @@ model User {
   pmsFinancialPeriodsCreated             PmsFinancialPeriod[]            @relation("PmsFinancialPeriodCreatedBy")
   pmsFinancialPeriodsUpdated             PmsFinancialPeriod[]            @relation("PmsFinancialPeriodUpdatedBy")
   pmsFinancialPeriodEventsCreated        PmsFinancialPeriodEvent[]       @relation("PmsFinancialPeriodEventCreatedBy")
+  pmsFinancialPeriodClosesReviewed       PmsFinancialPeriodClose[]       @relation("PmsFinancialPeriodCloseReviewedBy")
+  pmsFinancialPeriodClosesClosed         PmsFinancialPeriodClose[]       @relation("PmsFinancialPeriodCloseClosedBy")
+  pmsFinancialPeriodClosesReopened       PmsFinancialPeriodClose[]       @relation("PmsFinancialPeriodCloseReopenedBy")
   pmsReconciliationItemsCreated          PmsReconciliationItem[]         @relation("PmsReconciliationItemCreatedBy")
   pmsReconciliationItemsMatched          PmsReconciliationItem[]         @relation("PmsReconciliationItemMatchedBy")
   pmsOwnerPayoutsOwned                   PmsOwnerPayoutBatch[]           @relation("PmsOwnerPayoutOwner")
@@ -1307,6 +1310,7 @@ model DeveloperCompany {
   pmsSecurityDepositTransactions PmsSecurityDepositTransaction[]
   pmsFinancialPeriods            PmsFinancialPeriod[]
   pmsFinancialPeriodEvents       PmsFinancialPeriodEvent[]
+  pmsFinancialPeriodCloses       PmsFinancialPeriodClose[]
   pmsReconciliationItems         PmsReconciliationItem[]
   pmsOwnerPortalAccesses         PmsOwnerPortalAccess[]
   pmsOwnerPayoutBatches          PmsOwnerPayoutBatch[]
@@ -3857,6 +3861,7 @@ model PmsFinancialPeriod {
   updatedById  String?
   updatedBy    User?                     @relation("PmsFinancialPeriodUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   events       PmsFinancialPeriodEvent[]
+  closes       PmsFinancialPeriodClose[]
   createdAt    DateTime                  @default(now())
   updatedAt    DateTime                  @updatedAt
 
@@ -3876,10 +3881,54 @@ model PmsFinancialPeriodEvent {
   period      PmsFinancialPeriod        @relation(fields: [periodId], references: [id], onDelete: Cascade)
   createdById String?
   createdBy   User?                     @relation("PmsFinancialPeriodEventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  close       PmsFinancialPeriodClose?
   createdAt   DateTime                  @default(now())
 
   @@index([companyId, createdAt])
   @@index([periodId, createdAt])
+}
+
+
+model PmsFinancialPeriodClose {
+  id              String   @id @default(cuid())
+  revision        Int
+  snapshot        Json
+  snapshotHash    String   @db.VarChar(64)
+  snapshotVersion Int      @default(1)
+  reviewReason    String
+  closeReason     String
+  reviewedAt      DateTime
+  closedAt        DateTime
+  reopenedAt      DateTime?
+  reopenReason    String?
+
+  companyId String
+  company   DeveloperCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  periodId String
+  period   PmsFinancialPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+
+  reviewEventId String                  @unique
+  reviewEvent   PmsFinancialPeriodEvent @relation(fields: [reviewEventId], references: [id], onDelete: Restrict)
+
+  reviewedById String
+  reviewedBy   User @relation("PmsFinancialPeriodCloseReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  closedById String
+  closedBy   User @relation("PmsFinancialPeriodCloseClosedBy", fields: [closedById], references: [id], onDelete: Restrict)
+
+  reopenedById String?
+  reopenedBy   User? @relation("PmsFinancialPeriodCloseReopenedBy", fields: [reopenedById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([periodId, revision])
+  @@index([companyId, closedAt])
+  @@index([periodId, closedAt])
+  @@index([reviewedById])
+  @@index([closedById])
+  @@index([reopenedById])
 }
 
 model PmsReconciliationItem {
