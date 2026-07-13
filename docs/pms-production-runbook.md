@@ -154,6 +154,8 @@ The reviewer and closer must be different `ACCOUNTING_MANAGE` users. Record the 
 
 During incident triage, do not bypass `PmsFinancialPeriodClose` triggers or manually update snapshot JSON/hash values. Investigate the source records, reopen through the API when correction is approved, and close again after readiness returns zero blockers.
 
+After closure, verify the revision in **PMS → Reports → Financial close reports** before distributing evidence. CSV and JSON exports require `REPORTS_VIEW` plus `ACCOUNTING_VIEW`, are blocked on hash/version/contract failure, and create `PMS_FINANCIAL_PERIOD_CLOSE_EXPORTED` audit events. Keep exported files private and under the finance retention policy. See `docs/pms-financial-close-reporting.md`.
+
 ### Owner statement workflow
 
 Owner statements are persistent currency-specific snapshots:

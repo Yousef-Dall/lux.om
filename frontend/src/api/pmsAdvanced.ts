@@ -257,6 +257,66 @@ export type PmsFinancialPeriod = {
   events?: PmsFinancialPeriodEvent[];
   closes?: PmsFinancialPeriodClose[];
 };
+export type PmsFinancialCloseReportListItem = PmsFinancialPeriodClose & {
+  createdAt: string;
+  period: {
+    id: string;
+    status: PmsFinancialPeriodStatus;
+    periodStart: string;
+    periodEnd: string;
+    currency: string;
+    propertyId?: string | null;
+    property?: { id: string; name: string } | null;
+  };
+};
+export type PmsFinancialCloseReportSnapshot = {
+  snapshotVersion: 1;
+  generatedAt: string;
+  period: {
+    id?: string | null;
+    companyId: string;
+    propertyId?: string | null;
+    currency: string;
+    periodStart: string;
+    periodEnd: string;
+  };
+  review: { eventId: string; reason?: string | null; reviewedAt: string; reviewedById: string };
+  close: { reason: string; closedAt: string; closedById: string };
+  readiness: PmsFinancialPeriodReadiness;
+  totals: {
+    rentPayments: { count: number; amount: string };
+    accountingLedgerByType: Array<{ key: string; count: number; amount: string }>;
+    accountingLedgerBySource: Array<{ key: string; count: number; amount: string }>;
+    paidVendorInvoices: { count: number; amount: string };
+    paidOwnerPayouts: { count: number; amount: string };
+    reconciliation: Array<{ key: string; count: number; amount: string }>;
+    postedDepositTransactions: Array<{ key: string; count: number; amount: string }>;
+  };
+  recordIds: {
+    rentPaymentIds: string[];
+    accountingLedgerEntryIds: string[];
+    vendorInvoiceIds: string[];
+    ownerPayoutBatchIds: string[];
+    ownerPayoutLineIds: string[];
+    ownerPayoutReconciliationItemIds: string[];
+    reconciliationItemIds: string[];
+    securityDepositTransactionIds: string[];
+  };
+};
+export type PmsFinancialCloseReport = {
+  close: Omit<PmsFinancialPeriodClose, 'snapshotHash' | 'snapshotVersion'> & { createdAt: string };
+  period: PmsFinancialCloseReportListItem['period'];
+  integrity: {
+    status: 'VERIFIED' | 'HASH_MISMATCH' | 'UNSUPPORTED_VERSION' | 'INVALID_SNAPSHOT';
+    message: string;
+    snapshotVersion: number;
+    storedHash: string;
+    computedHash: string;
+  };
+  snapshot?: PmsFinancialCloseReportSnapshot | null;
+  rawSnapshot: unknown;
+};
+
 export type PmsFinancialPeriodReadiness = {
   canClose: boolean;
   blockerTotal: number;
@@ -718,6 +778,29 @@ export function listPmsFinancialPeriods(token: string, params: {
 export function getPmsFinancialPeriodReadiness(token: string, periodId: string, companyId?: string, signal?: AbortSignal) {
   return apiClient.get<{ period: PmsFinancialPeriod; readiness: PmsFinancialPeriodReadiness }>(`/api/pms/accounting/periods/${periodId}/readiness`, { token, params: companyParams(companyId), signal });
 }
+export function listPmsFinancialCloseReports(token: string, params: {
+  companyId?: string;
+  propertyId?: string;
+  currency?: string;
+  closeStatus?: 'ACTIVE' | 'REOPENED';
+  closedFrom?: string;
+  closedTo?: string;
+  sortBy?: 'closedAt' | 'revision' | 'periodStart';
+  direction?: 'asc' | 'desc';
+  take?: number;
+  skip?: number;
+  signal?: AbortSignal;
+} = {}) {
+  const { signal, ...query } = params;
+  return apiClient.get<{ closes: PmsFinancialCloseReportListItem[]; pagination: PmsFinancePagination }>('/api/pms/accounting/close-reports', { token, params: query, signal });
+}
+export function getPmsFinancialCloseReport(token: string, closeId: string, companyId?: string, signal?: AbortSignal) {
+  return apiClient.get<{ report: PmsFinancialCloseReport }>(`/api/pms/accounting/close-reports/${closeId}`, { token, params: companyParams(companyId), signal });
+}
+export function downloadPmsFinancialCloseReport(token: string, closeId: string, format: 'csv' | 'json', companyId?: string) {
+  return apiClient.download(`/api/pms/accounting/close-reports/${closeId}/export`, { token, params: { companyId, format } });
+}
+
 export function createPmsFinancialPeriod(token: string, payload: { companyId: string; propertyId?: string | null; currency: string; periodStart: string; periodEnd: string }) {
   return apiClient.post<{ period: PmsFinancialPeriod }>('/api/pms/accounting/periods', payload, { token });
 }

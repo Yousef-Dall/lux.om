@@ -548,6 +548,81 @@ describe('PMS Stage 21G financial and portal operations', () => {
     expect(await prisma.pmsFinancialPeriodClose.count({ where: { periodId } })).toBe(2);
     expect(await prisma.pmsFinancialPeriodClose.count({ where: { periodId, reopenedAt: null } })).toBe(1);
 
+    const activeCloseReports = await request(app)
+      .get(`/api/pms/accounting/close-reports?companyId=${fixture.company.id}&propertyId=${fixture.propertyA.id}&closeStatus=ACTIVE&take=1&skip=0`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200);
+    expect(activeCloseReports.body.pagination).toMatchObject({ take: 1, skip: 0, count: 1, total: 1 });
+    expect(activeCloseReports.body.closes[0]).toMatchObject({
+      id: reclosed.body.close.id,
+      revision: 2,
+      period: { id: periodId, propertyId: fixture.propertyA.id, currency: 'OMR' },
+    });
+
+    const reopenedCloseReports = await request(app)
+      .get(`/api/pms/accounting/close-reports?companyId=${fixture.company.id}&closeStatus=REOPENED`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200);
+    expect(reopenedCloseReports.body.closes).toEqual([
+      expect.objectContaining({ id: firstClose.id, revision: 1, reopenedAt: expect.any(String) }),
+    ]);
+
+    const closeReport = await request(app)
+      .get(`/api/pms/accounting/close-reports/${reclosed.body.close.id}?companyId=${fixture.company.id}`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200);
+    expect(closeReport.body.report).toMatchObject({
+      close: { id: reclosed.body.close.id, revision: 2 },
+      period: { id: periodId, propertyId: fixture.propertyA.id, currency: 'OMR' },
+      integrity: {
+        status: 'VERIFIED',
+        storedHash: reclosed.body.close.snapshotHash,
+        computedHash: reclosed.body.close.snapshotHash,
+      },
+      snapshot: {
+        snapshotVersion: 1,
+        readiness: { canClose: true, blockerTotal: 0 },
+        period: { id: periodId, companyId: fixture.company.id, propertyId: fixture.propertyA.id, currency: 'OMR' },
+      },
+    });
+
+    const csvExport = await request(app)
+      .get(`/api/pms/accounting/close-reports/${reclosed.body.close.id}/export?companyId=${fixture.company.id}&format=csv`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200)
+      .expect('Content-Type', /text\/csv/)
+      .expect('Content-Disposition', /pms-close-report-2026-07-01-omr-stage-21g-property-a-r2\.csv/);
+    expect(csvExport.text).toContain('"integrity","status"');
+    expect(csvExport.text).toContain(reclosed.body.close.snapshotHash);
+    expect(csvExport.text).toContain('"recordId","reconciliationItem"');
+
+    const jsonExport = await request(app)
+      .get(`/api/pms/accounting/close-reports/${reclosed.body.close.id}/export?companyId=${fixture.company.id}&format=json`)
+      .set('Authorization', `Bearer ${fixture.managerToken}`)
+      .expect(200)
+      .expect('Content-Type', /application\/json/)
+      .expect('Content-Disposition', /pms-close-report-2026-07-01-omr-stage-21g-property-a-r2\.json/);
+    expect(jsonExport.body.integrity).toMatchObject({ status: 'VERIFIED', storedHash: reclosed.body.close.snapshotHash });
+    expect(await prisma.domainAuditEvent.count({
+      where: {
+        companyId: fixture.company.id,
+        entityType: 'PmsFinancialPeriodClose',
+        entityId: reclosed.body.close.id,
+        action: 'PMS_FINANCIAL_PERIOD_CLOSE_EXPORTED',
+      },
+    })).toBe(2);
+
+    const scopedCloseReports = await request(app)
+      .get(`/api/pms/accounting/close-reports?companyId=${fixture.company.id}`)
+      .set('Authorization', `Bearer ${fixture.scopedToken}`)
+      .expect(200);
+    expect(scopedCloseReports.body.closes).toHaveLength(2);
+    expect(scopedCloseReports.body.closes.every((close: { period: { propertyId: string | null } }) => close.period.propertyId === fixture.propertyA.id)).toBe(true);
+    await request(app)
+      .get(`/api/pms/accounting/close-reports/${reclosed.body.close.id}?companyId=${fixture.company.id}`)
+      .set('Authorization', `Bearer ${fixture.outsiderToken}`)
+      .expect(403);
+
     const depositList = await request(app)
       .get(`/api/pms/accounting/deposits?companyId=${fixture.company.id}&status=PARTIALLY_REFUNDED&take=1&skip=0`)
       .set('Authorization', `Bearer ${fixture.managerToken}`)

@@ -139,6 +139,7 @@ import {
   type PmsWorkOrderPayload,
 } from "../api/pms";
 import { hasPmsPermission } from "../features/pms/access";
+import PmsFinancialCloseReports from "../features/pms/reports/PmsFinancialCloseReports";
 import { useAuth } from "../auth/AuthContext";
 import MapLocationPanel from "../components/MapLocationPanel";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -4410,11 +4411,20 @@ export default function PmsPortal() {
             ) : null}
 
             {section === "reports" ? (
-              <ReportsSummaryPanel
-                copy={copy}
-                summary={reportsSummary}
-                language={language}
-              />
+              <>
+                <ReportsSummaryPanel
+                  copy={copy}
+                  summary={reportsSummary}
+                  language={language}
+                />
+                {overview && token && canSeeAccounting ? (
+                  <PmsFinancialCloseReports
+                    companyId={overview.workspace.company.id}
+                    language={language}
+                    token={token}
+                  />
+                ) : null}
+              </>
             ) : null}
 
             {section === "settings" ? (

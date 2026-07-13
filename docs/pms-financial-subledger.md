@@ -63,3 +63,5 @@ Supported exact-match targets are confirmed rent payments for credits, paid vend
 Payout batches and lines calculate owner payable amounts by property and currency with management fees and reserved amounts separated. Linked statements must be published, match the property, currency, and exact payout period, and cannot be reused by another active payout. Manual lines require an explanatory note. Statuses include draft, approved, processing, manually paid, failed, and cancelled.
 
 `PAID_MANUAL` requires a payout reference and evidence; it means an operator recorded external completion. lux.om does not claim to initiate or confirm a bank transfer. Future provider integration must add immutable provider references and webhook verification rather than reusing manual status.
+
+Governed reporting reads the immutable close revision rather than recalculating historical totals from current operational rows. Integrity-verified CSV and JSON exports include the snapshot evidence and are audited. See `docs/pms-financial-close-reporting.md`.

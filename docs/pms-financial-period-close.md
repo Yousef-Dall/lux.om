@@ -51,3 +51,7 @@ Existing closed periods created before Stage 21I-K may not have a close pack. Th
 7. Reopen only for an approved correction. Reconcile the correction, review again, and create the next close revision.
 
 Never edit a close-pack JSON value or hash directly. A hash mismatch or trigger failure indicates evidence tampering or an unsupported database write and must be investigated rather than bypassed.
+
+## Close reporting
+
+Authorized users can browse, verify, and export every close revision from the reports workspace. Reports are rendered only from the immutable close pack, and exports are blocked unless the stored snapshot hash and supported version contract verify successfully. See `docs/pms-financial-close-reporting.md`.

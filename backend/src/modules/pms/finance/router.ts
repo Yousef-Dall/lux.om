@@ -11,6 +11,7 @@ import {
   assertCanCollectPmsRent,
   assertCanManagePmsAccounting,
   assertCanViewPmsAccounting,
+  assertCanViewPmsReports,
 } from '../access';
 import { AppError } from '../../../utils/http';
 import {
@@ -25,6 +26,11 @@ import {
   getFinancialPeriodReadiness,
 } from './periodClose';
 import { buildTreasuryImportPreview } from './treasuryImports';
+import {
+  buildFinancialPeriodCloseReport,
+  financialPeriodCloseReportCsv,
+  financialPeriodCloseReportFilename,
+} from './periodReports';
 import { assertPositiveMoney, assertSameCurrency, money } from './money';
 import {
   allocatePayment,
@@ -123,6 +129,19 @@ const depositListQuery = companyQuery.extend({
   propertyId: z.string().trim().min(1).optional(),
   sortBy: z.enum(['updatedAt', 'createdAt', 'expectedAmount', 'liabilityBalance', 'status']).default('updatedAt'),
   direction: z.enum(['asc', 'desc']).default('desc'),
+});
+const closeReportListQuery = companyQuery.extend({
+  ...financeListPagination,
+  propertyId: z.string().trim().min(1).optional(),
+  currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(),
+  closeStatus: z.enum(['ACTIVE', 'REOPENED']).optional(),
+  closedFrom: z.coerce.date().optional(),
+  closedTo: z.coerce.date().optional(),
+  sortBy: z.enum(['closedAt', 'revision', 'periodStart']).default('closedAt'),
+  direction: z.enum(['asc', 'desc']).default('desc'),
+});
+const closeReportExportQuery = companyQuery.extend({
+  format: z.enum(['csv', 'json']).default('csv'),
 });
 const periodListQuery = companyQuery.extend({
   ...financeListPagination,
@@ -406,6 +425,37 @@ const financialPeriodCloseSelect = {
   reviewedBy: { select: { id: true, name: true } },
   closedBy: { select: { id: true, name: true } },
   reopenedBy: { select: { id: true, name: true } },
+} satisfies Prisma.PmsFinancialPeriodCloseSelect;
+
+
+const financialPeriodCloseReportSelect = {
+  id: true,
+  revision: true,
+  snapshot: true,
+  snapshotHash: true,
+  snapshotVersion: true,
+  reviewEventId: true,
+  reviewReason: true,
+  closeReason: true,
+  reviewedAt: true,
+  closedAt: true,
+  reopenedAt: true,
+  reopenReason: true,
+  createdAt: true,
+  reviewedBy: { select: { id: true, name: true } },
+  closedBy: { select: { id: true, name: true } },
+  reopenedBy: { select: { id: true, name: true } },
+  period: {
+    select: {
+      id: true,
+      status: true,
+      periodStart: true,
+      periodEnd: true,
+      currency: true,
+      propertyId: true,
+      property: { select: { id: true, name: true } },
+    },
+  },
 } satisfies Prisma.PmsFinancialPeriodCloseSelect;
 
 
@@ -1210,6 +1260,163 @@ pmsFinanceRouter.post('/deposits/:id/transactions/:transactionId/transition', re
     await audit(req, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsSecurityDepositTransaction', entityId: transaction.id, action: `PMS_DEPOSIT_TRANSACTION_${data.action}`, actorId: req.user!.id, changedFields: ['status'], metadata: { accountId: params.id, reason: data.reason } });
     res.json({ transaction });
   } catch (error) { next(error); }
+});
+
+
+function closeReportOrderBy(
+  sortBy: z.infer<typeof closeReportListQuery>['sortBy'],
+  direction: SortDirection,
+): Prisma.PmsFinancialPeriodCloseOrderByWithRelationInput[] {
+  if (sortBy === 'revision') return [{ revision: direction }, { id: 'desc' }];
+  if (sortBy === 'periodStart') return [{ period: { periodStart: direction } }, { revision: 'desc' }, { id: 'desc' }];
+  return [{ closedAt: direction }, { revision: 'desc' }, { id: 'desc' }];
+}
+
+function closeReportScopeWhere(
+  access: Awaited<ReturnType<typeof requirePmsRouteAccess>>,
+  propertyId?: string,
+  currency?: string,
+): Prisma.PmsFinancialPeriodWhereInput {
+  return {
+    ...(!access.member.propertyScope.allProperties
+      ? { propertyId: { in: access.member.propertyScope.propertyIds } }
+      : {}),
+    ...(propertyId ? { propertyId } : {}),
+    ...(currency ? { currency } : {}),
+  };
+}
+
+async function loadFinancialCloseReport(
+  closeId: string,
+  access: Awaited<ReturnType<typeof requirePmsRouteAccess>>,
+) {
+  const close = await prisma.pmsFinancialPeriodClose.findFirst({
+    where: {
+      id: closeId,
+      companyId: access.company.id,
+      period: { is: closeReportScopeWhere(access) },
+    },
+    select: financialPeriodCloseReportSelect,
+  });
+  if (!close) throw new AppError(404, 'Financial close report not found.');
+  if (close.period.propertyId) assertPmsPropertyScope(access, close.period.propertyId);
+  return buildFinancialPeriodCloseReport(close);
+}
+
+pmsFinanceRouter.get('/close-reports', requireAuth(), async (req, res, next) => {
+  try {
+    const query = closeReportListQuery.parse(req.query);
+    const access = await requirePmsRouteAccess(req, query.companyId);
+    assertCanViewPmsAccounting(access.member);
+    assertCanViewPmsReports(access.member);
+    if (query.propertyId) assertPmsPropertyScope(access, query.propertyId);
+
+    const where: Prisma.PmsFinancialPeriodCloseWhereInput = {
+      companyId: access.company.id,
+      period: { is: closeReportScopeWhere(access, query.propertyId, query.currency) },
+      ...(query.closeStatus === 'ACTIVE'
+        ? { reopenedAt: null }
+        : query.closeStatus === 'REOPENED'
+          ? { reopenedAt: { not: null } }
+          : {}),
+      ...((query.closedFrom || query.closedTo)
+        ? {
+            closedAt: {
+              ...(query.closedFrom ? { gte: query.closedFrom } : {}),
+              ...(query.closedTo ? { lte: query.closedTo } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const [closes, total] = await prisma.$transaction([
+      prisma.pmsFinancialPeriodClose.findMany({
+        where,
+        select: {
+          ...financialPeriodCloseSelect,
+          createdAt: true,
+          period: {
+            select: {
+              id: true,
+              status: true,
+              periodStart: true,
+              periodEnd: true,
+              currency: true,
+              propertyId: true,
+              property: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: closeReportOrderBy(query.sortBy, query.direction),
+        take: query.take,
+        skip: query.skip,
+      }),
+      prisma.pmsFinancialPeriodClose.count({ where }),
+    ]);
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({
+      closes,
+      pagination: { take: query.take, skip: query.skip, count: closes.length, total },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsFinanceRouter.get('/close-reports/:id', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParams.parse(req.params);
+    const query = companyQuery.parse(req.query);
+    const access = await requirePmsRouteAccess(req, query.companyId);
+    assertCanViewPmsAccounting(access.member);
+    assertCanViewPmsReports(access.member);
+    const report = await loadFinancialCloseReport(id, access);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ report });
+  } catch (error) {
+    next(error);
+  }
+});
+
+pmsFinanceRouter.get('/close-reports/:id/export', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParams.parse(req.params);
+    const query = closeReportExportQuery.parse(req.query);
+    const access = await requirePmsRouteAccess(req, query.companyId);
+    assertCanViewPmsAccounting(access.member);
+    assertCanViewPmsReports(access.member);
+    const report = await loadFinancialCloseReport(id, access);
+    if (report.integrity.status !== 'VERIFIED') {
+      throw new AppError(409, 'Close-pack integrity verification failed; evidence export is blocked.');
+    }
+
+    const filename = financialPeriodCloseReportFilename(report, query.format);
+    await audit(req, {
+      companyId: access.company.id,
+      domain: DomainAuditDomain.PMS,
+      entityType: 'PmsFinancialPeriodClose',
+      entityId: report.close.id,
+      action: 'PMS_FINANCIAL_PERIOD_CLOSE_EXPORTED',
+      actorId: req.user!.id,
+      metadata: {
+        format: query.format,
+        revision: report.close.revision,
+        periodId: report.period.id,
+        snapshotHash: report.integrity.storedHash,
+      },
+    });
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    if (query.format === 'json') {
+      return res.status(200).type('application/json').send(`${JSON.stringify(report, null, 2)}
+`);
+    }
+    return res.status(200).type('text/csv').send(financialPeriodCloseReportCsv(report));
+  } catch (error) {
+    next(error);
+  }
 });
 
 pmsFinanceRouter.get('/periods', requireAuth(), async (req, res, next) => {
