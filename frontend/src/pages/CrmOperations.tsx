@@ -45,6 +45,9 @@ import {
   type CrmAccountSummary,
   type CrmCommunicationPolicy,
   type CrmContactDetail,
+  type CrmContactMergePreview,
+  type CrmContactMergeResolution,
+  type CrmContactMergeResult,
   type CrmDeal,
   type CrmDuplicateCandidate,
   type CrmForecastResponse,
@@ -52,6 +55,7 @@ import {
   type CrmScoreSnapshot
 } from '../api/crmAdvanced';
 import { useAuth } from '../auth/AuthContext';
+import CrmContactMergeDialog from '../features/crm/contacts/CrmContactMergeDialog';
 import CrmDealStageTransitionDialog, {
   type CrmDealTransitionValues
 } from '../features/crm/deals/CrmDealStageTransitionDialog';
@@ -140,6 +144,12 @@ export default function CrmOperations({ section }: { section: CrmOperationsSecti
   const [transitionBusy, setTransitionBusy] = useState(false);
   const [transitionError, setTransitionError] = useState('');
   const dealTransitionTriggerRef = useRef<HTMLSelectElement>(null);
+  const [pendingContactMerge, setPendingContactMerge] = useState<CrmDuplicateCandidate | null>(null);
+  const [contactMergePreview, setContactMergePreview] = useState<CrmContactMergePreview | null>(null);
+  const [contactMergeResult, setContactMergeResult] = useState<CrmContactMergeResult | null>(null);
+  const [contactMergeBusy, setContactMergeBusy] = useState(false);
+  const [contactMergeError, setContactMergeError] = useState('');
+  const contactMergeTriggerRef = useRef<HTMLButtonElement>(null);
   const [communicationPolicy, setCommunicationPolicy] = useState<CrmCommunicationPolicy | null>(null);
   const activeChoice = choices.find((item) => item.workspaceId === workspaceId);
   const canManage = Boolean(activeChoice?.canManage);
@@ -417,15 +427,34 @@ export default function CrmOperations({ section }: { section: CrmOperationsSecti
     }
   }
 
-  async function runMerge(candidate: CrmDuplicateCandidate) {
+  async function requestContactMerge(candidate: CrmDuplicateCandidate, trigger: HTMLButtonElement) {
     if (!token || !selectedContact) return;
+    contactMergeTriggerRef.current = trigger;
+    setPendingContactMerge(candidate);
+    setContactMergePreview(null);
+    setContactMergeResult(null);
+    setContactMergeError('');
     try {
-      await previewCrmContactMerge(token, selectedContact.id, candidate.id);
-      await mergeCrmContacts(token, selectedContact.id, candidate.id);
-      setSuccess(`Merged ${candidate.fullName} into ${selectedContact.fullName}.`);
-      await selectContact(selectedContact.id);
-      await load();
-    } catch (cause) { setError(message(cause)); }
+      const result = await previewCrmContactMerge(token, selectedContact.id, candidate.id);
+      setContactMergePreview(result.preview);
+    } catch (cause) {
+      setContactMergeError(message(cause));
+    }
+  }
+
+  async function confirmContactMerge(resolutions: CrmContactMergeResolution) {
+    if (!token || !selectedContact || !pendingContactMerge || contactMergeBusy) return;
+    setContactMergeBusy(true);
+    setContactMergeError('');
+    try {
+      const result = await mergeCrmContacts(token, selectedContact.id, pendingContactMerge.id, resolutions);
+      setContactMergeResult(result);
+      await Promise.all([selectContact(selectedContact.id, false), load()]);
+    } catch (cause) {
+      setContactMergeError(message(cause));
+    } finally {
+      setContactMergeBusy(false);
+    }
   }
 
   async function setEmailConsent(status: 'CONSENTED' | 'LEGITIMATE_INTEREST' | 'OPTED_OUT') {
@@ -477,7 +506,7 @@ export default function CrmOperations({ section }: { section: CrmOperationsSecti
               <h3>Channel preferences</h3>
               {selectedContact.channelPreferences.length === 0 ? <p>No channel preferences recorded.</p> : selectedContact.channelPreferences.map((preference) => <p key={preference.id}>{preference.channel}: <strong>{preference.status}</strong></p>)}
               <h3>Duplicate safeguards</h3>
-              <p>{duplicates.length === 0 ? 'No duplicate candidates detected.' : `${duplicates.length} duplicate candidate(s) require controlled review.`}</p>
+              {duplicates.length === 0 ? <p>No duplicate candidates detected.</p> : duplicates.map((candidate) => <article className="crm-duplicate-row" key={candidate.id}><div><strong>{candidate.fullName}</strong><small>{candidate.email || candidate.phone || 'No channel'} · {candidate.reasons.join(', ')}</small></div>{canManage ? <button type="button" onClick={(event) => void requestContactMerge(candidate, event.currentTarget)}>{language === 'ar' ? 'مراجعة الدمج' : 'Review merge'}</button> : null}</article>)}
             </> : selectedAccount ? <>
               <header><div><p className="eyebrow">Account contacts</p><h2>{selectedAccount.name}</h2></div></header>
               {canManage ? <button className="button-link button-link--ghost" type="button" onClick={() => setShowContactForm((value) => !value)}><Plus size={14} /> Add contact</button> : null}
@@ -502,7 +531,7 @@ export default function CrmOperations({ section }: { section: CrmOperationsSecti
           <Link className="button-link button-link--secondary" to="/crm/leads">Review lead scoring</Link>
         </section> : null}
 
-        {tab === 'governance' ? <section className="crm-operations__grid"><div className="crm-operations__panel"><header><div><p className="eyebrow"><MailCheck size={15} /> Consent and suppression</p><h2>Contact governance</h2></div></header><p>Select a contact from an account to review normalized identities, duplicate warnings, and lawful-contact state.</p>{selectedContact ? <><h3>{selectedContact.fullName}</h3><p>{selectedContact.email || 'No email'} · {selectedContact.phone || 'No phone'}</p>{selectedContact.channelPreferences.map((preference) => <p key={preference.id}>{preference.channel}: <strong>{preference.status}</strong>{preference.lawfulBasis ? ` · ${preference.lawfulBasis}` : ''}</p>)}{selectedContact.suppressions?.map((suppression) => <p key={suppression.id}>Suppressed {suppression.channel}: <strong>{suppression.reason}</strong></p>)}{canManage ? <div className="crm-governance-actions"><button type="button" onClick={() => void setEmailConsent('CONSENTED')}>Consent</button><button type="button" onClick={() => void setEmailConsent('LEGITIMATE_INTEREST')}>Legitimate interest</button><button type="button" onClick={() => void setEmailConsent('OPTED_OUT')}>Opt out</button></div> : null}</> : null}</div><div className="crm-operations__panel"><header><div><p className="eyebrow"><GitMerge size={15} /> Controlled merge</p><h2>Duplicate warnings</h2></div></header>{!selectedContact ? <p>Select a contact first.</p> : duplicates.length === 0 ? <p>No duplicate candidates detected.</p> : duplicates.map((candidate) => <article className="crm-duplicate-row" key={candidate.id}><div><strong>{candidate.fullName}</strong><small>{candidate.email || candidate.phone || 'No channel'} · {candidate.reasons.join(', ')}</small></div>{canManage ? <button type="button" onClick={() => void runMerge(candidate)}>Preview and merge</button> : null}</article>)}</div>{canConfigure && communicationPolicy ? <div className="crm-operations__panel"><header><div><p className="eyebrow"><Clock3 size={15} /> Workspace policy</p><h2>Quiet hours and retention</h2></div></header><form className="crm-form-grid" onSubmit={submitCommunicationPolicy}><label><span>Timezone</span><input name="timezone" defaultValue={communicationPolicy.timezone} required /></label><label><span>Quiet start (minute)</span><input name="quietHoursStart" type="number" min="0" max="1439" defaultValue={communicationPolicy.quietHoursStart} /></label><label><span>Quiet end (minute)</span><input name="quietHoursEnd" type="number" min="0" max="1439" defaultValue={communicationPolicy.quietHoursEnd} /></label><label><span>Hourly limit</span><input name="hourlyRateLimit" type="number" min="1" max="1000" defaultValue={communicationPolicy.hourlyRateLimit} /></label><label><span>Retention days</span><input name="retentionDays" type="number" min="30" max="3650" defaultValue={communicationPolicy.retentionDays} /></label><button className="button-link button-link--primary" type="submit">Save policy</button></form></div> : null}</section> : null}
+        {tab === 'governance' ? <section className="crm-operations__grid"><div className="crm-operations__panel"><header><div><p className="eyebrow"><MailCheck size={15} /> Consent and suppression</p><h2>Contact governance</h2></div></header><p>Select a contact from an account to review normalized identities, duplicate warnings, and lawful-contact state.</p>{selectedContact ? <><h3>{selectedContact.fullName}</h3><p>{selectedContact.email || 'No email'} · {selectedContact.phone || 'No phone'}</p>{selectedContact.channelPreferences.map((preference) => <p key={preference.id}>{preference.channel}: <strong>{preference.status}</strong>{preference.lawfulBasis ? ` · ${preference.lawfulBasis}` : ''}</p>)}{selectedContact.suppressions?.map((suppression) => <p key={suppression.id}>Suppressed {suppression.channel}: <strong>{suppression.reason}</strong></p>)}{canManage ? <div className="crm-governance-actions"><button type="button" onClick={() => void setEmailConsent('CONSENTED')}>Consent</button><button type="button" onClick={() => void setEmailConsent('LEGITIMATE_INTEREST')}>Legitimate interest</button><button type="button" onClick={() => void setEmailConsent('OPTED_OUT')}>Opt out</button></div> : null}</> : null}</div><div className="crm-operations__panel"><header><div><p className="eyebrow"><GitMerge size={15} /> Controlled merge</p><h2>Duplicate warnings</h2></div></header>{!selectedContact ? <p>Select a contact first.</p> : duplicates.length === 0 ? <p>No duplicate candidates detected.</p> : duplicates.map((candidate) => <article className="crm-duplicate-row" key={candidate.id}><div><strong>{candidate.fullName}</strong><small>{candidate.email || candidate.phone || 'No channel'} · {candidate.reasons.join(', ')}</small></div>{canManage ? <button type="button" onClick={(event) => void requestContactMerge(candidate, event.currentTarget)}>{language === 'ar' ? 'مراجعة الدمج' : 'Review merge'}</button> : null}</article>)}</div>{canConfigure && communicationPolicy ? <div className="crm-operations__panel"><header><div><p className="eyebrow"><Clock3 size={15} /> Workspace policy</p><h2>Quiet hours and retention</h2></div></header><form className="crm-form-grid" onSubmit={submitCommunicationPolicy}><label><span>Timezone</span><input name="timezone" defaultValue={communicationPolicy.timezone} required /></label><label><span>Quiet start (minute)</span><input name="quietHoursStart" type="number" min="0" max="1439" defaultValue={communicationPolicy.quietHoursStart} /></label><label><span>Quiet end (minute)</span><input name="quietHoursEnd" type="number" min="0" max="1439" defaultValue={communicationPolicy.quietHoursEnd} /></label><label><span>Hourly limit</span><input name="hourlyRateLimit" type="number" min="1" max="1000" defaultValue={communicationPolicy.hourlyRateLimit} /></label><label><span>Retention days</span><input name="retentionDays" type="number" min="30" max="3650" defaultValue={communicationPolicy.retentionDays} /></label><button className="button-link button-link--primary" type="submit">Save policy</button></form></div> : null}</section> : null}
       </main>
 
       {showAccountForm ? <div className="crm-modal-backdrop"><form className="crm-modal" onSubmit={submitAccount}><header><h2>Create account</h2><button type="button" onClick={() => setShowAccountForm(false)}>×</button></header><div className="crm-form-grid"><label><span>Type</span><select name="type" defaultValue="COMPANY"><option value="INDIVIDUAL">Individual</option><option value="COMPANY">Company</option><option value="DEVELOPER">Developer</option><option value="TRAVEL_AGENCY">Travel agency</option><option value="ACTIVITY_PROVIDER">Activity provider</option><option value="PROPERTY_OWNER">Property owner</option><option value="INVESTOR">Investor</option><option value="VENDOR">Vendor</option></select></label><label><span>Name</span><input name="name" required /></label><label><span>Legal name</span><input name="legalName" /></label><label><span>Registration number</span><input name="registrationNumber" /></label></div><button className="button-link button-link--primary" type="submit">Create account</button></form></div> : null}
@@ -510,6 +539,30 @@ export default function CrmOperations({ section }: { section: CrmOperationsSecti
       {showPipelineForm ? <div className="crm-modal-backdrop"><form className="crm-modal" onSubmit={submitPipeline}><header><h2>Create configurable pipeline</h2><button type="button" onClick={() => setShowPipelineForm(false)}>×</button></header><div className="crm-form-grid"><label><span>Name</span><input name="name" required /></label><label><span>Description</span><input name="description" /></label><label><span><input name="isDefault" type="checkbox" /> Make default</span></label></div><p>The pipeline starts with configurable Discovery, Qualified, Proposal, Won, and Lost stages.</p><button className="button-link button-link--primary" type="submit">Create pipeline</button></form></div> : null}
 
       {showDealForm ? <div className="crm-modal-backdrop"><form className="crm-modal" onSubmit={submitDeal}><header><h2>Create deal</h2><button type="button" onClick={() => setShowDealForm(false)}>×</button></header><div className="crm-form-grid"><label><span>Name</span><input name="name" required /></label><label><span>Account</span><select name="accountId" required>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label><label><span>Pipeline</span><select name="pipelineId" defaultValue={defaultPipeline?.id}>{pipelines.map((pipeline) => <option key={pipeline.id} value={pipeline.id}>{pipeline.name}</option>)}</select></label><label><span>Stage</span><select name="stageId" defaultValue={defaultPipeline?.stages[0]?.id}>{defaultPipeline?.stages.filter((stage) => stage.type === 'OPEN').map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}</select></label><label><span>Expected value</span><input name="expectedValue" type="number" min="0" step="0.001" /></label><label><span>Currency</span><input name="currency" defaultValue="OMR" pattern="[A-Za-z]{3}" /></label></div><button className="button-link button-link--primary" type="submit">Create deal</button></form></div> : null}
+
+      <CrmContactMergeDialog
+        busy={contactMergeBusy}
+        candidate={pendingContactMerge}
+        error={contactMergeError}
+        language={language}
+        onClose={() => {
+          if (contactMergeBusy) return;
+          if (contactMergeResult && contactMergePreview) {
+            setSuccess(language === 'ar'
+              ? `تم دمج ${contactMergePreview.duplicate.fullName} في ${contactMergePreview.primary.fullName}.`
+              : `${contactMergePreview.duplicate.fullName} was merged into ${contactMergePreview.primary.fullName}.`);
+          }
+          setPendingContactMerge(null);
+          setContactMergePreview(null);
+          setContactMergeResult(null);
+          setContactMergeError('');
+        }}
+        onConfirm={confirmContactMerge}
+        open={Boolean(pendingContactMerge)}
+        preview={contactMergePreview}
+        result={contactMergeResult}
+        returnFocusRef={contactMergeTriggerRef}
+      />
 
       <CrmDealStageTransitionDialog
         busy={transitionBusy}

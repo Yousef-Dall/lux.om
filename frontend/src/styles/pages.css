@@ -22072,3 +22072,287 @@ transition: none;
     grid-template-columns: 1fr;
   }
 }
+
+/* Stage 21I: governed CRM contact merge workflow */
+.crm-contact-merge {
+  display: grid;
+  gap: 1rem;
+}
+
+.crm-contact-merge__loading,
+.crm-contact-merge__complete {
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+  padding: 1.5rem 0;
+  text-align: center;
+}
+
+.crm-contact-merge__loading svg,
+.crm-contact-merge__complete > svg {
+  color: var(--primary-color);
+}
+
+.crm-contact-merge__complete dl,
+.crm-contact-merge__confirm-summary,
+.crm-contact-merge__references {
+  display: grid;
+  gap: .65rem;
+  width: 100%;
+  margin: 0;
+}
+
+.crm-contact-merge__complete dl > div,
+.crm-contact-merge__confirm-summary > div,
+.crm-contact-merge__references > div {
+  display: grid;
+  grid-template-columns: minmax(8rem, .65fr) minmax(0, 1fr);
+  gap: .75rem;
+  align-items: start;
+  padding: .75rem;
+  border: 1px solid var(--border-color);
+  border-radius: .75rem;
+  background: var(--surface-color);
+}
+
+.crm-contact-merge__complete dt,
+.crm-contact-merge__confirm-summary dt,
+.crm-contact-merge__references dt {
+  color: var(--muted-text-color);
+  font-weight: 700;
+}
+
+.crm-contact-merge__complete dd,
+.crm-contact-merge__confirm-summary dd,
+.crm-contact-merge__references dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.crm-contact-merge__parties {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .85rem;
+}
+
+.crm-contact-merge__parties article {
+  display: grid;
+  gap: .35rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: .9rem;
+  background: var(--surface-color);
+}
+
+.crm-contact-merge__parties article > span {
+  color: var(--primary-color);
+  font-size: .78rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.crm-contact-merge__parties h3,
+.crm-contact-merge__parties h4,
+.crm-contact-merge__parties p {
+  margin: 0;
+}
+
+.crm-contact-merge__parties h4 {
+  margin-top: .55rem;
+  font-size: .9rem;
+}
+
+.crm-contact-merge__parties small {
+  display: block;
+  min-width: 0;
+  color: var(--muted-text-color);
+  overflow-wrap: anywhere;
+}
+
+.crm-contact-merge__section {
+  display: grid;
+  gap: .8rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: .9rem;
+}
+
+.crm-contact-merge__section > header {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  align-items: center;
+}
+
+.crm-contact-merge__section > header > div {
+  display: flex;
+  gap: .55rem;
+  align-items: center;
+}
+
+.crm-contact-merge__section h3,
+.crm-contact-merge__section h4,
+.crm-contact-merge__section p {
+  margin: 0;
+}
+
+.crm-contact-merge__section > header > span {
+  display: inline-grid;
+  min-width: 2rem;
+  min-height: 2rem;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--color-surface-soft, #f7f2e9);
+  font-weight: 800;
+}
+
+.crm-contact-merge__conflict {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+  margin: 0;
+  padding: .85rem;
+  border: 1px solid var(--border-color);
+  border-radius: .8rem;
+}
+
+.crm-contact-merge__conflict legend {
+  padding: 0 .35rem;
+  font-weight: 800;
+}
+
+.crm-contact-merge__conflict > p {
+  grid-column: 1 / -1;
+  color: var(--muted-text-color);
+}
+
+.crm-contact-merge__conflict > label {
+  display: flex;
+  gap: .6rem;
+  align-items: flex-start;
+  padding: .75rem;
+  border: 1px solid var(--border-color);
+  border-radius: .7rem;
+  cursor: pointer;
+}
+
+.crm-contact-merge__conflict > label.is-selected {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 1px var(--primary-color);
+}
+
+.crm-contact-merge__conflict > label span {
+  display: grid;
+  min-width: 0;
+  gap: .25rem;
+}
+
+.crm-contact-merge__conflict > label small {
+  color: var(--muted-text-color);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.crm-contact-merge__counts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: .6rem;
+  margin: 0;
+}
+
+.crm-contact-merge__counts > div {
+  display: grid;
+  gap: .2rem;
+  padding: .7rem;
+  border-radius: .7rem;
+  background: var(--color-surface-soft, #f7f2e9);
+}
+
+.crm-contact-merge__counts dt {
+  color: var(--muted-text-color);
+  font-size: .78rem;
+}
+
+.crm-contact-merge__counts dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.crm-contact-merge__blocked,
+.crm-contact-merge__warning {
+  display: flex;
+  gap: .75rem;
+  align-items: flex-start;
+  padding: .9rem;
+  border: 1px solid var(--warning-border-color, var(--border-color));
+  border-radius: .8rem;
+  background: var(--warning-background-color, var(--color-surface-soft, #f7f2e9));
+}
+
+.crm-contact-merge__blocked p,
+.crm-contact-merge__blocked small,
+.crm-contact-merge__warning p,
+.crm-contact-merge__warning h3 {
+  margin: 0;
+}
+
+.crm-contact-merge__blocked > div {
+  display: grid;
+  gap: .3rem;
+}
+
+.crm-contact-merge__warning--strong {
+  border-color: var(--color-danger, #a12323);
+}
+
+.crm-contact-merge__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+
+.crm-contact-merge__acknowledgement {
+  display: flex;
+  gap: .65rem;
+  align-items: flex-start;
+  padding: .9rem;
+  border: 1px solid var(--border-color);
+  border-radius: .8rem;
+  cursor: pointer;
+}
+
+.crm-contact-merge__acknowledgement input {
+  margin-top: .2rem;
+}
+
+@media (max-width: 720px) {
+  .crm-contact-merge__parties,
+  .crm-contact-merge__conflict {
+    grid-template-columns: 1fr;
+  }
+
+  .crm-contact-merge__counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .crm-contact-merge__complete dl > div,
+  .crm-contact-merge__confirm-summary > div,
+  .crm-contact-merge__references > div {
+    grid-template-columns: 1fr;
+    gap: .25rem;
+  }
+
+  .crm-contact-merge__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .crm-contact-merge__actions .button-link {
+    justify-content: center;
+    width: 100%;
+  }
+}

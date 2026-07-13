@@ -118,6 +118,66 @@ export type CrmDuplicateCandidate = {
   reasons: string[];
 };
 
+export type CrmContactMergeField = 'fullName' | 'email' | 'phone' | 'notes' | 'accountId' | 'userId' | 'pmsTenantId';
+
+export type CrmContactMergeParty = {
+  id: string;
+  workspaceId: string;
+  fullName: string;
+  email?: string | null;
+  phone?: string | null;
+  notes?: string | null;
+  accountId?: string | null;
+  userId?: string | null;
+  pmsTenantId?: string | null;
+  identities: Array<{ id: string; type: 'EMAIL' | 'PHONE'; normalizedValue: string; verifiedAt?: string | null }>;
+  channelPreferences: CrmContactDetail['channelPreferences'];
+  _count: {
+    leads: number;
+    primaryDeals: number;
+    activities: number;
+    sourceEvents: number;
+    deliveryAttempts: number;
+  };
+};
+
+export type CrmContactMergePreview = {
+  primary: CrmContactMergeParty;
+  duplicate: CrmContactMergeParty;
+  conflicts: Array<{
+    field: CrmContactMergeField;
+    primary: string;
+    duplicate: string;
+  }>;
+  movedLinks: CrmContactMergeParty['_count'];
+  suggested: {
+    fullName: string;
+    email?: string | null;
+    phone?: string | null;
+    notes?: string | null;
+    accountId?: string | null;
+    userId?: string | null;
+    pmsTenantId?: string | null;
+  };
+};
+
+export type CrmContactMergeResolution = Partial<Pick<CrmContactMergePreview['suggested'], 'fullName' | 'email' | 'phone' | 'notes' | 'accountId'>>;
+
+export type CrmContactMergeResult = {
+  merge: {
+    id: string;
+    workspaceId: string;
+    primaryContactId: string;
+    duplicateContactId: string;
+    status: 'PREVIEWED' | 'COMPLETED' | 'CANCELLED';
+    mergedAt?: string | null;
+    actorId?: string | null;
+    createdAt: string;
+  };
+  contact: Pick<CrmContactDetail, 'id' | 'workspaceId' | 'fullName' | 'email' | 'phone' | 'notes'>;
+  preview: CrmContactMergePreview;
+};
+
 export type CrmScoreSnapshot = {
   id: string;
   score: number;
@@ -180,11 +240,20 @@ export function getCrmContactDetail(token: string, id: string) {
 }
 
 export function previewCrmContactMerge(token: string, primaryContactId: string, duplicateContactId: string) {
-  return apiClient.post<{ preview: unknown }>(`/api/crm/contacts/${primaryContactId}/merge-preview`, { duplicateContactId }, { token });
+  return apiClient.post<{ preview: CrmContactMergePreview }>(`/api/crm/contacts/${primaryContactId}/merge-preview`, { duplicateContactId }, { token });
 }
 
-export function mergeCrmContacts(token: string, primaryContactId: string, duplicateContactId: string) {
-  return apiClient.post<{ contact: CrmContactDetail }>(`/api/crm/contacts/${primaryContactId}/merge`, { duplicateContactId }, { token });
+export function mergeCrmContacts(
+  token: string,
+  primaryContactId: string,
+  duplicateContactId: string,
+  resolutions: CrmContactMergeResolution = {}
+) {
+  return apiClient.post<CrmContactMergeResult>(
+    `/api/crm/contacts/${primaryContactId}/merge`,
+    { duplicateContactId, resolutions },
+    { token }
+  );
 }
 
 export function listCrmPipelines(token: string, workspaceId: string) {
