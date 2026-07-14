@@ -139,6 +139,19 @@ async function mockMergeApi(
     const method = request.method();
     calls.push(`${method} ${url.pathname}`);
 
+    if (url.pathname === '/api/crm/contacts' && method === 'GET') return fulfill(route, {
+      contacts: [{
+        ...primary,
+        archivedAt: null,
+        createdAt: '2026-07-01T00:00:00.000Z',
+        updatedAt: '2026-07-13T14:00:00.000Z',
+        normalizedEmail: primary.email,
+        normalizedPhone: primary.phone,
+        _count: { leads: 1, primaryDeals: 1, activities: 1, deliveryAttempts: 0 }
+      }],
+      summary: { total: 1, active: 1, archived: 0 },
+      pagination: { total: 1, count: 1, take: 25, skip: 0 }
+    });
     if (url.pathname === '/api/crm/accounts' && method === 'GET') return fulfill(route, { accounts: [account], pagination: { total: 1, count: 1, take: 100, skip: 0 } });
     if (url.pathname === '/api/crm/deals' && method === 'GET') return fulfill(route, { deals: [], pagination: { total: 0, count: 0, take: 200, skip: 0 } });
     if (url.pathname === '/api/crm/pipelines' && method === 'GET') return fulfill(route, { pipelines: [] });

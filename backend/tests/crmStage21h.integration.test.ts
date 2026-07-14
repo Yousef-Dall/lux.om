@@ -267,6 +267,120 @@ describe('CRM Stage 21H revenue operations', () => {
     expect(detail.body.account.activities.some((activity: { subject: string; body?: string }) => activity.subject === 'Account restored' && activity.body === 'Relationship activity resumed')).toBe(true);
   });
 
+  it('provides paginated contact browsing and governed archive lifecycle inside property scope', async () => {
+    const [portfolioManager, propertyManager] = await Promise.all([
+      createUser('crm21h-contact-portfolio@lux.test'),
+      createUser('crm21h-contact-property@lux.test')
+    ]);
+    const fixture = await createCompanyWorkspace({
+      slug: 'contact-center',
+      members: [
+        { userId: portfolioManager.id, allProperties: true },
+        { userId: propertyManager.id, propertyIndex: 0 }
+      ]
+    });
+    const portfolioToken = signToken(portfolioManager);
+    const propertyToken = signToken(propertyManager);
+
+    const harbourAccount = await request(app)
+      .post('/api/crm/accounts')
+      .set('Authorization', `Bearer ${portfolioToken}`)
+      .send({
+        workspaceId: fixture.workspace.id,
+        type: 'COMPANY',
+        name: 'Harbour Contact Account',
+        pmsPropertyId: fixture.properties[0].id,
+        teamUserIds: []
+      })
+      .expect(201);
+    const outsideAccount = await request(app)
+      .post('/api/crm/accounts')
+      .set('Authorization', `Bearer ${portfolioToken}`)
+      .send({
+        workspaceId: fixture.workspace.id,
+        type: 'COMPANY',
+        name: 'Outside Contact Account',
+        pmsPropertyId: fixture.properties[1].id,
+        teamUserIds: []
+      })
+      .expect(201);
+
+    const harbour = await request(app)
+      .post(`/api/crm/accounts/${harbourAccount.body.account.id}/contacts`)
+      .set('Authorization', `Bearer ${portfolioToken}`)
+      .send({ fullName: 'Harbour Relationship Contact', email: 'harbour-contact@lux.test', notes: 'Priority relationship' })
+      .expect(201);
+    const outside = await request(app)
+      .post(`/api/crm/accounts/${outsideAccount.body.account.id}/contacts`)
+      .set('Authorization', `Bearer ${portfolioToken}`)
+      .send({ fullName: 'Outside Relationship Contact', email: 'outside-contact@lux.test' })
+      .expect(201);
+
+    await prisma.crmContactChannelPreference.create({
+      data: {
+        workspaceId: fixture.workspace.id,
+        contactId: harbour.body.contact.id,
+        channel: 'EMAIL',
+        status: 'CONSENTED',
+        lawfulBasis: 'Explicit relationship consent',
+        updatedById: portfolioManager.id
+      }
+    });
+
+    const paginated = await request(app)
+      .get(`/api/crm/contacts?workspaceId=${fixture.workspace.id}&search=Harbour&accountId=${harbourAccount.body.account.id}&consentStatus=CONSENTED&status=ACTIVE&sortBy=updatedAt&direction=desc&take=1&skip=0`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .expect(200);
+    expect(paginated.body.contacts).toHaveLength(1);
+    expect(paginated.body.contacts[0]).toMatchObject({ id: harbour.body.contact.id, fullName: 'Harbour Relationship Contact' });
+    expect(paginated.body.contacts[0]._count).toMatchObject({ leads: 0, primaryDeals: 0, activities: 1, deliveryAttempts: 0 });
+    expect(paginated.body.pagination).toMatchObject({ total: 1, take: 1, skip: 0, count: 1 });
+    expect(paginated.body.summary).toMatchObject({ total: 1, active: 1, archived: 0 });
+
+    await request(app)
+      .patch(`/api/crm/contacts/${outside.body.contact.id}/archive`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ archived: true, reason: 'Attempt outside property scope' })
+      .expect(403);
+
+    const archived = await request(app)
+      .patch(`/api/crm/contacts/${harbour.body.contact.id}/archive`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ archived: true, reason: 'Relationship is temporarily inactive' })
+      .expect(200);
+    expect(archived.body.contact.archivedAt).toBeTruthy();
+    expect(archived.body.idempotent).toBe(false);
+
+    const idempotentArchive = await request(app)
+      .patch(`/api/crm/contacts/${harbour.body.contact.id}/archive`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ archived: true, reason: 'Relationship remains inactive' })
+      .expect(200);
+    expect(idempotentArchive.body.idempotent).toBe(true);
+
+    const archivedList = await request(app)
+      .get(`/api/crm/contacts?workspaceId=${fixture.workspace.id}&status=ARCHIVED&take=25&skip=0`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .expect(200);
+    expect(archivedList.body.contacts.map((contact: { id: string }) => contact.id)).toEqual([harbour.body.contact.id]);
+    expect(archivedList.body.summary).toMatchObject({ total: 1, active: 0, archived: 1 });
+
+    await request(app)
+      .patch(`/api/crm/contacts/${harbour.body.contact.id}/archive`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ archived: false, reason: 'Relationship activity resumed' })
+      .expect(200);
+
+    const activities = await prisma.crmActivity.findMany({
+      where: { contactId: harbour.body.contact.id, subject: { in: ['Contact archived', 'Contact restored'] } },
+      orderBy: { createdAt: 'asc' }
+    });
+    expect(activities.map((activity) => ({ subject: activity.subject, body: activity.body }))).toEqual([
+      { subject: 'Contact archived', body: 'Relationship is temporarily inactive' },
+      { subject: 'Contact restored', body: 'Relationship activity resumed' }
+    ]);
+  });
+
   it('keeps new account, contact, deal, source, and analytics reads inside property scope', async () => {
     const [portfolioManager, propertyAManager] = await Promise.all([
       createUser('crm21h-portfolio@lux.test'),

@@ -483,58 +483,74 @@ crmStage21hRouter.get('/contacts', async (req, res, next) => {
     const query = z.object({
       workspaceId: id,
       search: z.string().trim().max(160).optional(),
-      sortBy: z.enum(['fullName', 'updatedAt']).default('fullName'),
+      accountId: id.optional(),
+      consentStatus: z.enum(crmContactConsentStatuses).optional(),
+      status: z.enum(['ACTIVE', 'ARCHIVED', 'ALL']).default('ACTIVE'),
+      sortBy: z.enum(['fullName', 'updatedAt', 'createdAt']).default('fullName'),
       direction: z.enum(['asc', 'desc']).default('asc'),
       take: z.coerce.number().int().min(1).max(200).default(50),
       skip: z.coerce.number().int().min(0).default(0)
     }).parse(req.query);
     const { access } = await resolveWorkspaceAccess(req.user!, query.workspaceId, 'view');
-    const where: Prisma.CrmContactWhereInput = {
+    const baseWhere: Prisma.CrmContactWhereInput = {
       AND: [
         contactScopeWhere(access, query.workspaceId),
-        { mergedIntoContactId: null, archivedAt: null },
+        { mergedIntoContactId: null },
+        ...(query.accountId ? [{ accountId: query.accountId }] : []),
+        ...(query.consentStatus ? [{ channelPreferences: { some: { status: query.consentStatus } } }] : []),
         ...(query.search ? [{
           OR: [
             { fullName: { contains: query.search, mode: 'insensitive' as const } },
             { email: { contains: query.search, mode: 'insensitive' as const } },
             { phone: { contains: query.search, mode: 'insensitive' as const } },
+            { notes: { contains: query.search, mode: 'insensitive' as const } },
             { account: { name: { contains: query.search, mode: 'insensitive' as const } } }
           ]
         }] : [])
       ]
     };
-    const orderBy: Prisma.CrmContactOrderByWithRelationInput = query.sortBy === 'updatedAt'
-      ? { updatedAt: query.direction }
-      : { fullName: query.direction };
-    const [contacts, total] = await prisma.$transaction([
-      prisma.crmContact.findMany({
-        where,
-        select: {
-          id: true,
-          workspaceId: true,
-          fullName: true,
-          email: true,
-          phone: true,
-          normalizedEmail: true,
-          normalizedPhone: true,
-          updatedAt: true,
-          account: { select: { id: true, name: true, type: true } },
-          identities: {
-            where: { active: true },
-            select: { id: true, type: true, normalizedValue: true, verifiedAt: true },
-            orderBy: { type: 'asc' }
-          },
-          channelPreferences: {
-            select: { id: true, channel: true, status: true, lawfulBasis: true, preferred: true, timezone: true }
-          }
-        },
-        orderBy: [orderBy, { id: 'asc' }],
-        take: query.take,
-        skip: query.skip
-      }),
-      prisma.crmContact.count({ where })
+    const where: Prisma.CrmContactWhereInput = {
+      ...baseWhere,
+      ...(query.status === 'ACTIVE' ? { archivedAt: null } : query.status === 'ARCHIVED' ? { archivedAt: { not: null } } : {})
+    };
+    const orderBy: Prisma.CrmContactOrderByWithRelationInput[] = query.sortBy === 'fullName'
+      ? [{ archivedAt: 'asc' }, { fullName: query.direction }]
+      : query.sortBy === 'updatedAt'
+        ? [{ updatedAt: query.direction }, { fullName: 'asc' }]
+        : [{ createdAt: query.direction }, { fullName: 'asc' }];
+    const selection = {
+      id: true,
+      workspaceId: true,
+      fullName: true,
+      email: true,
+      phone: true,
+      normalizedEmail: true,
+      normalizedPhone: true,
+      archivedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      account: { select: { id: true, name: true, type: true } },
+      identities: {
+        where: { active: true },
+        select: { id: true, type: true, normalizedValue: true, verifiedAt: true },
+        orderBy: { type: 'asc' as const }
+      },
+      channelPreferences: {
+        select: { id: true, channel: true, status: true, lawfulBasis: true, preferred: true, timezone: true }
+      },
+      _count: { select: { leads: true, primaryDeals: true, activities: true, deliveryAttempts: true } }
+    } satisfies Prisma.CrmContactSelect;
+    const [contacts, total, active, archived] = await prisma.$transaction([
+      prisma.crmContact.findMany({ where, select: selection, orderBy, take: query.take, skip: query.skip }),
+      prisma.crmContact.count({ where }),
+      prisma.crmContact.count({ where: { ...baseWhere, archivedAt: null } }),
+      prisma.crmContact.count({ where: { ...baseWhere, archivedAt: { not: null } } })
     ]);
-    res.json({ contacts, pagination: { total, take: query.take, skip: query.skip, count: contacts.length } });
+    res.json({
+      contacts,
+      summary: { total, active, archived },
+      pagination: { total, take: query.take, skip: query.skip, count: contacts.length }
+    });
   } catch (error) { next(error); }
 });
 
@@ -572,6 +588,62 @@ crmStage21hRouter.get('/contacts/:id', async (req, res, next) => {
       ? await prisma.crmSuppressionEntry.findMany({ where: { workspaceId: contact.workspaceId, normalizedDestination: { in: destinations }, active: true } })
       : [];
     res.json({ contact, duplicates, suppressions });
+  } catch (error) { next(error); }
+});
+
+crmStage21hRouter.patch('/contacts/:id/archive', async (req, res, next) => {
+  try {
+    const contactId = id.parse(req.params.id);
+    const data = z.object({
+      archived: z.boolean(),
+      reason: z.string().trim().min(3).max(1000)
+    }).strict().parse(req.body);
+    const current = await prisma.crmContact.findUnique({ where: { id: contactId } });
+    if (!current) throw new AppError(404, 'CRM contact not found.');
+    const { access } = await resolveWorkspaceAccess(req.user!, current.workspaceId, 'manage');
+    const scoped = await prisma.crmContact.findFirst({
+      where: { id: contactId, ...contactScopeWhere(access, current.workspaceId) },
+      select: { id: true, accountId: true, mergedIntoContactId: true, archivedAt: true }
+    });
+    if (!scoped) throw new AppError(403, 'CRM contact is outside your workspace or property scope.');
+    if (scoped.mergedIntoContactId) throw new AppError(409, 'Merged CRM contacts cannot be archived or restored independently.');
+    const alreadyInState = data.archived ? Boolean(scoped.archivedAt) : !scoped.archivedAt;
+    const contact = alreadyInState
+      ? await prisma.crmContact.findUniqueOrThrow({
+          where: { id: contactId },
+          include: {
+            account: { select: { id: true, name: true, type: true } },
+            identities: { where: { active: true }, orderBy: { type: 'asc' } },
+            channelPreferences: true,
+            _count: { select: { leads: true, primaryDeals: true, activities: true, deliveryAttempts: true } }
+          }
+        })
+      : await prisma.crmContact.update({
+          where: { id: contactId },
+          data: {
+            archivedAt: data.archived ? new Date() : null,
+            activities: {
+              create: {
+                workspaceId: current.workspaceId,
+                accountId: scoped.accountId,
+                type: 'NOTE',
+                status: 'COMPLETED',
+                subject: data.archived ? 'Contact archived' : 'Contact restored',
+                body: data.reason,
+                completedAt: new Date(),
+                createdById: req.user!.id,
+                updatedById: req.user!.id
+              }
+            }
+          },
+          include: {
+            account: { select: { id: true, name: true, type: true } },
+            identities: { where: { active: true }, orderBy: { type: 'asc' } },
+            channelPreferences: true,
+            _count: { select: { leads: true, primaryDeals: true, activities: true, deliveryAttempts: true } }
+          }
+        });
+    res.json({ contact, idempotent: alreadyInState });
   } catch (error) { next(error); }
 });
 

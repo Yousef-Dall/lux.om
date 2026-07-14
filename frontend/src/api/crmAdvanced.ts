@@ -105,6 +105,10 @@ export type CrmContactDetail = {
   email?: string | null;
   phone?: string | null;
   notes?: string | null;
+  archivedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  mergedIntoContactId?: string | null;
   account?: { id: string; name: string; type: CrmAccountType } | null;
   identities: Array<{ id: string; type: 'EMAIL' | 'PHONE'; normalizedValue: string; verifiedAt?: string | null }>;
   channelPreferences: Array<{
@@ -117,7 +121,20 @@ export type CrmContactDetail = {
   }>;
   leads: Array<{ id: string; title: string; status: string; score: number; scoreBand: CrmScoreBand }>;
   primaryDeals: Array<{ id: string; name: string; outcome: CrmDealOutcome; currency: string; expectedValue?: string | null; stage: CrmPipelineStage }>;
+  sourceEvents?: Array<{ id: string; type: string; occurredAt: string; ruleKey: string }>;
+  primaryMergeRecords?: Array<{ id: string; status: string; duplicateContactId: string; createdAt: string; mergedAt?: string | null }>;
+  duplicateMergeRecords?: Array<{ id: string; status: string; primaryContactId: string; createdAt: string; mergedAt?: string | null }>;
   suppressions?: Array<{ id: string; channel: CrmCommunicationChannel; normalizedDestination: string; reason: string; active: boolean; expiresAt?: string | null }>;
+};
+
+export type CrmContactStatus = 'ACTIVE' | 'ARCHIVED' | 'ALL';
+export type CrmContactSortBy = 'fullName' | 'updatedAt' | 'createdAt';
+export type CrmContactDirection = 'asc' | 'desc';
+
+export type CrmContactRegisterItem = Pick<CrmContactDetail, 'id' | 'workspaceId' | 'fullName' | 'email' | 'phone' | 'archivedAt' | 'createdAt' | 'updatedAt' | 'account' | 'identities' | 'channelPreferences'> & {
+  normalizedEmail?: string | null;
+  normalizedPhone?: string | null;
+  _count: { leads: number; primaryDeals: number; activities: number; deliveryAttempts: number };
 };
 
 export type CrmDuplicateCandidate = {
@@ -287,6 +304,36 @@ export function getCrmAccount(token: string, id: string) {
 export function archiveCrmAccount(token: string, id: string, archived: boolean, reason: string) {
   return apiClient.patch<{ account: CrmAccountSummary; idempotent: boolean }>(
     `/api/crm/accounts/${id}/archive`,
+    { archived, reason },
+    { token }
+  );
+}
+
+
+export function listCrmContactRegister(
+  token: string,
+  params: {
+    workspaceId: string;
+    search?: string;
+    accountId?: string;
+    consentStatus?: CrmContactConsentStatus;
+    status?: CrmContactStatus;
+    sortBy?: CrmContactSortBy;
+    direction?: CrmContactDirection;
+    take?: number;
+    skip?: number;
+  }
+) {
+  return apiClient.get<{
+    contacts: CrmContactRegisterItem[];
+    summary: { total: number; active: number; archived: number };
+    pagination: { total: number; take: number; skip: number; count: number };
+  }>('/api/crm/contacts', { token, params });
+}
+
+export function archiveCrmContact(token: string, id: string, archived: boolean, reason: string) {
+  return apiClient.patch<{ contact: CrmContactRegisterItem; idempotent: boolean }>(
+    `/api/crm/contacts/${id}/archive`,
     { archived, reason },
     { token }
   );
