@@ -19,6 +19,15 @@ export type CrmAccountSummary = {
   name: string;
   legalName?: string | null;
   registrationNumber?: string | null;
+  taxNumber?: string | null;
+  website?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  industry?: string | null;
+  notes?: string | null;
+  pmsPropertyId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
   ownerUser?: { id: string; name: string; email: string } | null;
   parentAccount?: { id: string; name: string } | null;
   archivedAt?: string | null;
@@ -217,6 +226,37 @@ export type CrmForecastResponse = {
   rules: { currenciesCombined: false; historicalOutcomesPreservedAfterArchive: true; truncatedResultSetsUsed: false };
 };
 
+export type CrmAccountStatus = 'ACTIVE' | 'ARCHIVED' | 'ALL';
+export type CrmAccountSortBy = 'name' | 'updatedAt' | 'createdAt';
+export type CrmAccountDirection = 'asc' | 'desc';
+
+export type CrmAccountRegisterFilters = {
+  workspaceId: string;
+  search?: string;
+  type?: CrmAccountType;
+  status?: CrmAccountStatus;
+  sortBy?: CrmAccountSortBy;
+  direction?: CrmAccountDirection;
+  take?: number;
+  skip?: number;
+};
+
+export type CrmAccountContactSummary = Pick<CrmContactDetail, 'id' | 'workspaceId' | 'fullName' | 'email' | 'phone' | 'notes'>;
+export type CrmAccountDealSummary = Pick<CrmDeal, 'id' | 'name' | 'currency' | 'outcome' | 'archivedAt' | 'expectedValue' | 'probability'> & {
+  pipeline: { id: string; name: string };
+  stage: CrmPipelineStage;
+};
+export type CrmChildAccountSummary = Pick<CrmAccountSummary, 'id' | 'name' | 'type' | 'archivedAt'>;
+
+export type CrmAccountDetail = CrmAccountSummary & {
+  contacts: CrmAccountContactSummary[];
+  deals: CrmAccountDealSummary[];
+  childAccounts: CrmChildAccountSummary[];
+  teamMembers?: Array<{ id: string; role: string; user: { id: string; name: string; email: string } }>;
+  activities?: Array<{ id: string; subject: string; body?: string | null; createdAt: string }>;
+  sourceEvents?: Array<{ id: string; type: string; occurredAt: string; ruleKey: string }>;
+};
+
 export function listCrmAccounts(token: string, workspaceId: string, search?: string) {
   return apiClient.get<{ accounts: CrmAccountSummary[]; pagination: { total: number } }>('/api/crm/accounts', {
     token,
@@ -224,16 +264,32 @@ export function listCrmAccounts(token: string, workspaceId: string, search?: str
   });
 }
 
+export function listCrmAccountRegister(token: string, filters: CrmAccountRegisterFilters) {
+  return apiClient.get<{
+    accounts: CrmAccountSummary[];
+    summary: { total: number; active: number; archived: number };
+    pagination: { total: number; take: number; skip: number; count: number };
+  }>('/api/crm/accounts', { token, params: filters });
+}
+
 export function createCrmAccount(token: string, payload: Record<string, unknown>) {
   return apiClient.post<{ account: CrmAccountSummary }>('/api/crm/accounts', payload, { token });
 }
 
 export function createCrmAccountContact(token: string, accountId: string, payload: Record<string, unknown>) {
-  return apiClient.post<{ contact: CrmContactDetail }>(`/api/crm/accounts/${accountId}/contacts`, payload, { token });
+  return apiClient.post<{ contact: CrmAccountContactSummary }>(`/api/crm/accounts/${accountId}/contacts`, payload, { token });
 }
 
 export function getCrmAccount(token: string, id: string) {
-  return apiClient.get<{ account: CrmAccountSummary & { contacts: CrmContactDetail[]; deals: CrmDeal[]; childAccounts: CrmAccountSummary[] } }>(`/api/crm/accounts/${id}`, { token });
+  return apiClient.get<{ account: CrmAccountDetail }>(`/api/crm/accounts/${id}`, { token });
+}
+
+export function archiveCrmAccount(token: string, id: string, archived: boolean, reason: string) {
+  return apiClient.patch<{ account: CrmAccountSummary; idempotent: boolean }>(
+    `/api/crm/accounts/${id}/archive`,
+    { archived, reason },
+    { token }
+  );
 }
 
 export function getCrmContactDetail(token: string, id: string) {

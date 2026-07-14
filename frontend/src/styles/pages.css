@@ -24798,3 +24798,326 @@ transition: none;
     padding: 0.35rem 0;
   }
 }
+
+.crm-accounts {
+  display: grid;
+  gap: 1rem;
+}
+
+.crm-accounts__hero,
+.crm-accounts__hero-actions,
+.crm-accounts__toolbar,
+.crm-accounts__filter-actions,
+.crm-accounts__pagination,
+.crm-account-detail section > header,
+.crm-account-detail__actions,
+.crm-accounts__dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.crm-accounts__hero,
+.crm-accounts__pagination,
+.crm-account-detail section > header {
+  justify-content: space-between;
+}
+
+.crm-accounts__hero h2,
+.crm-account-detail h3,
+.crm-accounts__hero p,
+.crm-account-detail p {
+  margin: 0;
+}
+
+.crm-accounts__toolbar,
+.crm-accounts__readonly,
+.crm-accounts__metrics article,
+.crm-accounts__filters,
+.crm-accounts__results,
+.crm-account-detail > section,
+.crm-account-detail > dl {
+  border: 1px solid var(--border-color, var(--color-border));
+  border-radius: 1rem;
+  background: var(--surface-color, var(--color-surface));
+}
+
+.crm-accounts__toolbar,
+.crm-accounts__filters,
+.crm-accounts__results,
+.crm-account-detail > section,
+.crm-account-detail > dl {
+  padding: 1rem;
+}
+
+.crm-accounts__toolbar label {
+  min-width: min(22rem, 100%);
+}
+
+.crm-accounts__readonly {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+}
+
+.crm-accounts__readonly p {
+  margin: 0.25rem 0 0;
+}
+
+.crm-accounts__metrics,
+.crm-account-detail__summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.crm-accounts__metrics article,
+.crm-account-detail__summary article {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.9rem;
+}
+
+.crm-accounts__metrics strong,
+.crm-account-detail__summary strong {
+  font-size: 1.45rem;
+}
+
+.crm-accounts__filters {
+  display: grid;
+  grid-template-columns: minmax(15rem, 2fr) repeat(4, minmax(9rem, 1fr));
+  gap: 0.8rem;
+  align-items: end;
+}
+
+.crm-accounts__filters label,
+.crm-accounts__dialog-form label,
+.crm-account-archive label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.crm-accounts__search > span:last-child {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--border-color, var(--color-border));
+  border-radius: 0.75rem;
+  padding-inline: 0.65rem;
+}
+
+.crm-accounts__search input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  padding-inline: 0;
+}
+
+.crm-accounts__filter-actions {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
+.crm-accounts__table-wrap {
+  overflow-x: auto;
+}
+
+.crm-accounts__table-wrap table {
+  width: 100%;
+  min-width: 62rem;
+  border-collapse: collapse;
+}
+
+.crm-accounts__table-wrap th,
+.crm-accounts__table-wrap td {
+  padding: 0.85rem;
+  border-bottom: 1px solid var(--border-color, var(--color-border));
+  text-align: start;
+  vertical-align: top;
+}
+
+.crm-accounts__table-wrap tbody tr:last-child th,
+.crm-accounts__table-wrap tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.crm-accounts__table-wrap th strong,
+.crm-accounts__table-wrap th small,
+.crm-accounts__table-wrap th span {
+  display: block;
+}
+
+.crm-accounts__table-wrap th span {
+  width: fit-content;
+  margin-top: 0.3rem;
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  background: var(--surface-subtle-color, var(--color-surface-soft));
+  font-size: 0.72rem;
+}
+
+.crm-accounts__table-wrap tr.is-archived {
+  opacity: 0.72;
+}
+
+.crm-accounts__pagination button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.crm-accounts__dialog-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.crm-accounts__dialog-wide,
+.crm-accounts__dialog-actions {
+  grid-column: 1 / -1;
+}
+
+.crm-accounts__dialog-actions {
+  justify-content: flex-end;
+}
+
+.crm-account-detail {
+  display: grid;
+  gap: 1rem;
+}
+
+.crm-account-detail > dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.crm-account-detail > dl div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.crm-account-detail dt {
+  font-size: 0.78rem;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.crm-account-detail dd {
+  margin: 0;
+}
+
+.crm-account-detail section > header h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.crm-account-detail ul {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.crm-account-detail li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--border-color, var(--color-border));
+  padding-top: 0.55rem;
+}
+
+.crm-account-detail__actions {
+  justify-content: flex-end;
+}
+
+.crm-account-archive {
+  display: grid;
+  gap: 1rem;
+}
+
+.crm-account-archive__ack {
+  display: flex !important;
+  grid-template-columns: auto 1fr;
+  align-items: flex-start;
+}
+
+.crm-account-archive__ack input {
+  min-height: auto;
+  margin-top: 0.25rem;
+}
+
+@media (max-width: 900px) {
+  .crm-accounts__hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .crm-accounts__filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .crm-accounts__hero-actions,
+  .crm-accounts__filter-actions,
+  .crm-accounts__pagination,
+  .crm-account-detail section > header,
+  .crm-account-detail li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .crm-accounts__hero-actions > *,
+  .crm-accounts__filter-actions > *,
+  .crm-accounts__pagination > button {
+    width: 100%;
+  }
+
+  .crm-accounts__metrics,
+  .crm-account-detail__summary,
+  .crm-accounts__filters,
+  .crm-accounts__dialog-form,
+  .crm-account-detail > dl {
+    grid-template-columns: 1fr;
+  }
+
+  .crm-accounts__table-wrap {
+    overflow: visible;
+  }
+
+  .crm-accounts__table-wrap table,
+  .crm-accounts__table-wrap tbody,
+  .crm-accounts__table-wrap tr,
+  .crm-accounts__table-wrap th,
+  .crm-accounts__table-wrap td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .crm-accounts__table-wrap thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .crm-accounts__table-wrap tr {
+    margin-bottom: 0.85rem;
+    border: 1px solid var(--border-color, var(--color-border));
+    border-radius: 0.9rem;
+    padding: 0.75rem;
+  }
+
+  .crm-accounts__table-wrap th,
+  .crm-accounts__table-wrap td {
+    border: 0;
+    padding: 0.3rem 0;
+  }
+}

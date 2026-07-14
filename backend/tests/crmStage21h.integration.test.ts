@@ -173,6 +173,100 @@ describe('CRM Stage 21H revenue operations', () => {
       .expect(403);
   });
 
+  it('provides paginated account browsing and governed archive lifecycle inside property scope', async () => {
+    const [portfolioManager, propertyManager] = await Promise.all([
+      createUser('crm21h-account-portfolio@lux.test'),
+      createUser('crm21h-account-property@lux.test')
+    ]);
+    const fixture = await createCompanyWorkspace({
+      slug: 'account-center',
+      members: [
+        { userId: portfolioManager.id, allProperties: true },
+        { userId: propertyManager.id, propertyIndex: 0 }
+      ]
+    });
+    const portfolioToken = signToken(portfolioManager);
+    const propertyToken = signToken(propertyManager);
+
+    const harbour = await request(app)
+      .post('/api/crm/accounts')
+      .set('Authorization', `Bearer ${portfolioToken}`)
+      .send({
+        workspaceId: fixture.workspace.id,
+        type: 'COMPANY',
+        name: 'Harbour Holdings',
+        legalName: 'Harbour Holdings LLC',
+        email: 'accounts@harbour.test',
+        industry: 'Real estate',
+        pmsPropertyId: fixture.properties[0].id,
+        teamUserIds: []
+      })
+      .expect(201);
+
+    await request(app)
+      .post('/api/crm/accounts')
+      .set('Authorization', `Bearer ${portfolioToken}`)
+      .send({
+        workspaceId: fixture.workspace.id,
+        type: 'INVESTOR',
+        name: 'Seeb Capital',
+        email: 'capital@seeb.test',
+        pmsPropertyId: fixture.properties[1].id,
+        teamUserIds: []
+      })
+      .expect(201);
+
+    const paginated = await request(app)
+      .get(`/api/crm/accounts?workspaceId=${fixture.workspace.id}&search=Harbour&type=COMPANY&status=ACTIVE&sortBy=updatedAt&direction=desc&take=1&skip=0`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .expect(200);
+    expect(paginated.body.accounts).toHaveLength(1);
+    expect(paginated.body.accounts[0]).toMatchObject({ id: harbour.body.account.id, name: 'Harbour Holdings' });
+    expect(paginated.body.pagination).toMatchObject({ total: 1, take: 1, skip: 0, count: 1 });
+    expect(paginated.body.summary).toMatchObject({ total: 1, active: 1, archived: 0 });
+
+    const archived = await request(app)
+      .patch(`/api/crm/accounts/${harbour.body.account.id}/archive`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ archived: true, reason: 'Relationship is temporarily inactive' })
+      .expect(200);
+    expect(archived.body.account.archivedAt).toBeTruthy();
+    expect(archived.body.idempotent).toBe(false);
+
+    const idempotentArchive = await request(app)
+      .patch(`/api/crm/accounts/${harbour.body.account.id}/archive`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ archived: true, reason: 'Relationship remains inactive' })
+      .expect(200);
+    expect(idempotentArchive.body.idempotent).toBe(true);
+
+    const archivedList = await request(app)
+      .get(`/api/crm/accounts?workspaceId=${fixture.workspace.id}&status=ARCHIVED&take=25&skip=0`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .expect(200);
+    expect(archivedList.body.accounts.map((account: { id: string }) => account.id)).toEqual([harbour.body.account.id]);
+    expect(archivedList.body.summary).toMatchObject({ total: 1, active: 0, archived: 1 });
+
+    await request(app)
+      .post(`/api/crm/accounts/${harbour.body.account.id}/contacts`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ fullName: 'Archived Account Contact', email: 'archived-contact@lux.test' })
+      .expect(403);
+
+    await request(app)
+      .patch(`/api/crm/accounts/${harbour.body.account.id}/archive`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ archived: false, reason: 'Relationship activity resumed' })
+      .expect(200);
+
+    const detail = await request(app)
+      .get(`/api/crm/accounts/${harbour.body.account.id}`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .expect(200);
+    expect(detail.body.account.activities.some((activity: { subject: string; body?: string }) => activity.subject === 'Account archived' && activity.body === 'Relationship is temporarily inactive')).toBe(true);
+    expect(detail.body.account.activities.some((activity: { subject: string; body?: string }) => activity.subject === 'Account restored' && activity.body === 'Relationship activity resumed')).toBe(true);
+  });
+
   it('keeps new account, contact, deal, source, and analytics reads inside property scope', async () => {
     const [portfolioManager, propertyAManager] = await Promise.all([
       createUser('crm21h-portfolio@lux.test'),

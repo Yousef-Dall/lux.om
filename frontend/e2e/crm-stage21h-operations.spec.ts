@@ -111,7 +111,8 @@ async function mockRevenueOperations(
       transitionBodies.push(route.request().postDataJSON() as Record<string, unknown>);
       return route.fulfill({ json: { deal: dealRows.find((deal) => url.pathname.includes(deal.id)) ?? dealRows[0] } });
     }
-    if (url.pathname.endsWith('/api/crm/accounts')) return route.fulfill({ json: { accounts: [account], pagination: { total: 1, take: 100, skip: 0, count: 1 } } });
+    if (url.pathname.endsWith('/api/crm/accounts')) return route.fulfill({ json: { accounts: [account], summary: { total: 1, active: 1, archived: 0 }, pagination: { total: 1, take: 25, skip: 0, count: 1 } } });
+    if (url.pathname.endsWith('/api/crm/properties')) return route.fulfill({ json: { properties: [] } });
     if (url.pathname.endsWith('/api/crm/deals')) return route.fulfill({ json: { deals: dealRows, pagination: { total: dealRows.length, take: 200, skip: 0, count: dealRows.length } } });
     if (url.pathname.endsWith('/api/crm/pipelines')) return route.fulfill({ json: { pipelines: [pipeline] } });
     if (url.pathname.endsWith('/api/crm/analytics/forecast')) return route.fulfill({ json: forecast });
@@ -134,15 +135,15 @@ test('direct CRM operations URL blocks users without CRM access before loading i
   expect(internalRequests).toEqual([]);
 });
 
-test('CRM revenue operations links to dedicated currency-separated analytics', async ({ page }) => {
+test('CRM account center links to dedicated currency-separated analytics', async ({ page }) => {
   await authenticate(page);
   const requests: string[] = [];
   await mockRevenueOperations(page, requests);
 
   await page.goto('/crm/operations');
-  await expect(page.getByRole('heading', { name: 'CRM accounts, deals, pipelines, and governance' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'CRM account center' })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Workspace', exact: true })).toHaveValue(workspace.workspaceId);
-  await expect(page.getByRole('button', { name: /Atlas Development Group/ })).toContainText('2 contacts · 2 deals');
+  await expect(page.getByRole('rowheader', { name: /Atlas Development Group/ })).toBeVisible();
 
   await page.getByRole('navigation', { name: 'CRM sections' }).getByRole('link', { name: 'Deals', exact: true }).click();
   await expect(page.getByText('Enterprise onboarding')).toBeVisible();
@@ -158,13 +159,13 @@ test('CRM revenue operations links to dedicated currency-separated analytics', a
   expect(requests.some((request) => request.includes('/api/crm/analytics/forecast?workspaceId=workspace-crm-21h'))).toBe(true);
 });
 
-test('CRM revenue operations remains usable on a narrow mobile viewport', async ({ page }) => {
+test('CRM account center remains usable on a narrow mobile viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await authenticate(page);
   await mockRevenueOperations(page);
 
   await page.goto('/crm/operations');
-  await expect(page.getByRole('heading', { name: 'CRM accounts, deals, pipelines, and governance' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'CRM account center' })).toBeVisible();
   await page.getByRole('navigation', { name: 'CRM sections' }).getByRole('link', { name: 'Analytics', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'CRM analytics and source attribution' })).toBeVisible();
   const forecastPanel = page.getByRole('region', { name: 'Currency-separated forecast', exact: true });

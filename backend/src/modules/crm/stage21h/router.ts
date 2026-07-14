@@ -247,19 +247,63 @@ crmStage21hRouter.use(requireAuth());
 
 crmStage21hRouter.get('/accounts', async (req, res, next) => {
   try {
-    const query = z.object({ workspaceId: id, search: z.string().trim().max(160).optional(), type: z.enum(accountTypes).optional(), includeArchived: z.enum(['true', 'false']).transform((v) => v === 'true').default(false), take: z.coerce.number().int().min(1).max(100).default(50), skip: z.coerce.number().int().min(0).default(0) }).parse(req.query);
+    const query = z.object({
+      workspaceId: id,
+      search: z.string().trim().max(160).optional(),
+      type: z.enum(accountTypes).optional(),
+      status: z.enum(['ACTIVE', 'ARCHIVED', 'ALL']).optional(),
+      includeArchived: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+      sortBy: z.enum(['name', 'updatedAt', 'createdAt']).default('name'),
+      direction: z.enum(['asc', 'desc']).default('asc'),
+      take: z.coerce.number().int().min(1).max(100).default(50),
+      skip: z.coerce.number().int().min(0).default(0)
+    }).parse(req.query);
     const { access } = await resolveWorkspaceAccess(req.user!, query.workspaceId, 'view');
-    const where: Prisma.CrmAccountWhereInput = {
+    const status = query.status ?? (query.includeArchived ? 'ALL' : 'ACTIVE');
+    const baseWhere: Prisma.CrmAccountWhereInput = {
       ...accountScopeWhere(access, query.workspaceId),
       ...(query.type ? { type: query.type } : {}),
-      ...(!query.includeArchived ? { archivedAt: null } : {}),
-      ...(query.search ? { OR: [{ name: { contains: query.search, mode: 'insensitive' } }, { legalName: { contains: query.search, mode: 'insensitive' } }, { registrationNumber: { contains: query.search, mode: 'insensitive' } }] } : {})
+      ...(query.search ? {
+        OR: [
+          { name: { contains: query.search, mode: 'insensitive' } },
+          { legalName: { contains: query.search, mode: 'insensitive' } },
+          { registrationNumber: { contains: query.search, mode: 'insensitive' } },
+          { email: { contains: query.search, mode: 'insensitive' } },
+          { phone: { contains: query.search, mode: 'insensitive' } },
+          { industry: { contains: query.search, mode: 'insensitive' } }
+        ]
+      } : {})
     };
-    const [accounts, total] = await prisma.$transaction([
-      prisma.crmAccount.findMany({ where, include: { ownerUser: { select: { id: true, name: true, email: true } }, parentAccount: { select: { id: true, name: true } }, _count: { select: { contacts: true, deals: true, activities: true } } }, orderBy: [{ archivedAt: 'asc' }, { name: 'asc' }], take: query.take, skip: query.skip }),
-      prisma.crmAccount.count({ where })
+    const where: Prisma.CrmAccountWhereInput = {
+      ...baseWhere,
+      ...(status === 'ACTIVE' ? { archivedAt: null } : status === 'ARCHIVED' ? { archivedAt: { not: null } } : {})
+    };
+    const orderBy: Prisma.CrmAccountOrderByWithRelationInput[] = query.sortBy === 'name'
+      ? [{ archivedAt: 'asc' }, { name: query.direction }]
+      : query.sortBy === 'updatedAt'
+        ? [{ updatedAt: query.direction }, { name: 'asc' }]
+        : [{ createdAt: query.direction }, { name: 'asc' }];
+    const [accounts, total, active, archived] = await prisma.$transaction([
+      prisma.crmAccount.findMany({
+        where,
+        include: {
+          ownerUser: { select: { id: true, name: true, email: true } },
+          parentAccount: { select: { id: true, name: true } },
+          _count: { select: { contacts: true, deals: true, activities: true } }
+        },
+        orderBy,
+        take: query.take,
+        skip: query.skip
+      }),
+      prisma.crmAccount.count({ where }),
+      prisma.crmAccount.count({ where: { ...baseWhere, archivedAt: null } }),
+      prisma.crmAccount.count({ where: { ...baseWhere, archivedAt: { not: null } } })
     ]);
-    res.json({ accounts, pagination: { total, take: query.take, skip: query.skip, count: accounts.length } });
+    res.json({
+      accounts,
+      summary: { total, active, archived },
+      pagination: { total, take: query.take, skip: query.skip, count: accounts.length }
+    });
   } catch (error) { next(error); }
 });
 
@@ -319,11 +363,61 @@ crmStage21hRouter.get('/accounts/:id', async (req, res, next) => {
         deals: { where: dealScopeWhere(access, summary.workspaceId), include: { stage: true, pipeline: { select: { id: true, name: true } }, ownerUser: { select: { id: true, name: true, email: true } } }, orderBy: { updatedAt: 'desc' } },
         teamMembers: { where: { active: true }, include: { user: { select: { id: true, name: true, email: true } } } },
         activities: { orderBy: { createdAt: 'desc' }, take: 100 },
-        sourceEvents: { where: sourceEventScopeWhere(access, summary.workspaceId), orderBy: { occurredAt: 'desc' }, take: 100 }
+        sourceEvents: { where: sourceEventScopeWhere(access, summary.workspaceId), orderBy: { occurredAt: 'desc' }, take: 100 },
+        _count: { select: { contacts: true, deals: true, activities: true } }
       }
     });
     if (!account) throw new AppError(403, 'CRM account is outside your workspace or property scope.');
     res.json({ account });
+  } catch (error) { next(error); }
+});
+
+crmStage21hRouter.patch('/accounts/:id/archive', async (req, res, next) => {
+  try {
+    const accountId = id.parse(req.params.id);
+    const data = z.object({
+      archived: z.boolean(),
+      reason: z.string().trim().min(3).max(1000)
+    }).strict().parse(req.body);
+    const current = await prisma.crmAccount.findUnique({ where: { id: accountId } });
+    if (!current) throw new AppError(404, 'CRM account not found.');
+    const { access } = await resolveWorkspaceAccess(req.user!, current.workspaceId, 'manage');
+    assertPropertyScope(access, current, 'manage');
+    const alreadyInState = data.archived ? Boolean(current.archivedAt) : !current.archivedAt;
+    const account = alreadyInState
+      ? await prisma.crmAccount.findUniqueOrThrow({
+          where: { id: accountId },
+          include: {
+            ownerUser: { select: { id: true, name: true, email: true } },
+            parentAccount: { select: { id: true, name: true } },
+            _count: { select: { contacts: true, deals: true, activities: true } }
+          }
+        })
+      : await prisma.crmAccount.update({
+          where: { id: accountId },
+          data: {
+            archivedAt: data.archived ? new Date() : null,
+            updatedById: req.user!.id,
+            activities: {
+              create: {
+                workspaceId: current.workspaceId,
+                type: 'NOTE',
+                status: 'COMPLETED',
+                subject: data.archived ? 'Account archived' : 'Account restored',
+                body: data.reason,
+                completedAt: new Date(),
+                createdById: req.user!.id,
+                updatedById: req.user!.id
+              }
+            }
+          },
+          include: {
+            ownerUser: { select: { id: true, name: true, email: true } },
+            parentAccount: { select: { id: true, name: true } },
+            _count: { select: { contacts: true, deals: true, activities: true } }
+          }
+        });
+    res.json({ account, idempotent: alreadyInState });
   } catch (error) { next(error); }
 });
 
