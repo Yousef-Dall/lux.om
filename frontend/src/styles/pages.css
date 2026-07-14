@@ -24052,3 +24052,412 @@ transition: none;
     display: none;
   }
 }
+
+/* Stage 21I-S: operational CRM analytics and source attribution */
+.crm-analytics-workspace {
+  display: grid;
+  gap: 1rem;
+  padding-bottom: 3rem;
+}
+
+.crm-analytics-workspace__hero,
+.crm-analytics-workspace__panel,
+.crm-analytics-workspace__scope,
+.crm-analytics-workspace__governance,
+.crm-analytics-workspace__state {
+  border: 1px solid var(--border-color);
+  border-radius: 1.25rem;
+  background: var(--surface-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.crm-analytics-workspace__hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1.25rem;
+}
+
+.crm-analytics-workspace__hero h2,
+.crm-analytics-workspace__hero p,
+.crm-analytics-workspace__panel h3,
+.crm-analytics-workspace__panel p {
+  margin-block: 0.25rem;
+}
+
+.crm-analytics-workspace__hero > div:first-child > p:last-child,
+.crm-analytics-workspace__panel header p,
+.crm-analytics-workspace__scope p,
+.crm-analytics-workspace__governance p,
+.crm-analytics-workspace__state p {
+  color: var(--muted-text-color);
+}
+
+.crm-analytics-workspace__hero-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  min-width: min(100%, 31rem);
+}
+
+.crm-analytics-workspace__hero-actions label {
+  flex: 1;
+}
+
+.crm-analytics-workspace__hero-actions label span,
+.crm-analytics-workspace__filters label > span {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-weight: 800;
+}
+
+.crm-analytics-workspace__hero-actions select,
+.crm-analytics-workspace__filters input,
+.crm-analytics-workspace__filters select {
+  width: 100%;
+}
+
+.crm-analytics-workspace__scope,
+.crm-analytics-workspace__governance,
+.crm-analytics-workspace__state {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+}
+
+.crm-analytics-workspace__scope {
+  border-color: color-mix(in srgb, var(--color-primary) 30%, var(--border-color));
+}
+
+.crm-analytics-workspace__governance {
+  background: color-mix(in srgb, var(--surface-color) 88%, var(--color-primary) 12%);
+}
+
+.crm-analytics-workspace__governance p,
+.crm-analytics-workspace__scope p,
+.crm-analytics-workspace__state p {
+  margin: 0;
+}
+
+.crm-analytics-workspace__metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.crm-analytics-workspace__metrics article,
+.crm-analytics-workspace__conversion article {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  background: var(--surface-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.crm-analytics-workspace__metrics svg {
+  color: var(--color-primary);
+}
+
+.crm-analytics-workspace__metrics span,
+.crm-analytics-workspace__conversion span {
+  color: var(--muted-text-color);
+  font-size: 0.86rem;
+}
+
+.crm-analytics-workspace__metrics strong,
+.crm-analytics-workspace__conversion strong {
+  font-size: clamp(1.25rem, 2.4vw, 1.9rem);
+}
+
+.crm-analytics-workspace__conversion {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.crm-analytics-workspace__panel {
+  min-width: 0;
+  padding: 1.15rem;
+}
+
+.crm-analytics-workspace__panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.crm-analytics-workspace__currencies {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.8rem;
+}
+
+.crm-analytics-workspace__currencies article {
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+}
+
+.crm-analytics-workspace__currencies article > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.crm-analytics-workspace__currencies article > header strong {
+  font-size: 1.25rem;
+}
+
+.crm-analytics-workspace__currencies dl,
+.crm-analytics-workspace__events dl {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.crm-analytics-workspace__currencies dl > div,
+.crm-analytics-workspace__events dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.crm-analytics-workspace__currencies dt,
+.crm-analytics-workspace__events dt {
+  color: var(--muted-text-color);
+}
+
+.crm-analytics-workspace__currencies dd,
+.crm-analytics-workspace__events dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-align: end;
+  font-weight: 750;
+}
+
+.crm-analytics-workspace__dimensions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.crm-analytics-workspace__table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.crm-analytics-workspace table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.crm-analytics-workspace th,
+.crm-analytics-workspace td {
+  padding: 0.65rem 0.55rem;
+  border-bottom: 1px solid var(--border-color);
+  text-align: start;
+  white-space: nowrap;
+}
+
+.crm-analytics-workspace th:not(:first-child),
+.crm-analytics-workspace td:not(:first-child) {
+  text-align: end;
+}
+
+.crm-analytics-workspace tbody th {
+  font-weight: 700;
+}
+
+.crm-analytics-workspace__reasons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.crm-analytics-workspace__reasons .crm-analytics-workspace__panel > p {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 0.55rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.crm-analytics-workspace__filters {
+  display: grid;
+  grid-template-columns: minmax(16rem, 2fr) repeat(5, minmax(9rem, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  background: var(--background-subtle, rgba(7, 56, 62, 0.025));
+}
+
+.crm-analytics-workspace__search > div {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 44px;
+  padding-inline: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  background: var(--surface-color);
+}
+
+.crm-analytics-workspace__search input {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.crm-analytics-workspace__filter-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.crm-analytics-workspace__total {
+  display: grid;
+  min-width: 7rem;
+  text-align: end;
+}
+
+.crm-analytics-workspace__total span {
+  color: var(--muted-text-color);
+  font-size: 0.8rem;
+}
+
+.crm-analytics-workspace__total strong {
+  font-size: 1.5rem;
+}
+
+.crm-analytics-workspace__events {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.crm-analytics-workspace__events article {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+}
+
+.crm-analytics-workspace__events article > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.crm-analytics-workspace__events h4 {
+  margin-block: 0.55rem 0;
+  overflow-wrap: anywhere;
+}
+
+.crm-analytics-workspace__events time {
+  flex: 0 0 auto;
+  color: var(--muted-text-color);
+  font-size: 0.8rem;
+  text-align: end;
+}
+
+.crm-analytics-workspace__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.crm-analytics-workspace__empty-inline {
+  padding: 1rem;
+  border: 1px dashed var(--border-color);
+  border-radius: 0.9rem;
+}
+
+[dir='rtl'] .crm-analytics-workspace__pagination svg {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 1180px) {
+  .crm-analytics-workspace__metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .crm-analytics-workspace__dimensions {
+    grid-template-columns: 1fr;
+  }
+
+  .crm-analytics-workspace__filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .crm-analytics-workspace__search {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 760px) {
+  .crm-analytics-workspace__hero,
+  .crm-analytics-workspace__hero-actions {
+    flex-direction: column;
+  }
+
+  .crm-analytics-workspace__hero-actions,
+  .crm-analytics-workspace__hero-actions label,
+  .crm-analytics-workspace__hero-actions .button-link {
+    width: 100%;
+  }
+
+  .crm-analytics-workspace__metrics,
+  .crm-analytics-workspace__conversion,
+  .crm-analytics-workspace__reasons,
+  .crm-analytics-workspace__events,
+  .crm-analytics-workspace__filters {
+    grid-template-columns: 1fr;
+  }
+
+  .crm-analytics-workspace__search,
+  .crm-analytics-workspace__filter-actions {
+    grid-column: auto;
+  }
+
+  .crm-analytics-workspace__filter-actions,
+  .crm-analytics-workspace__pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .crm-analytics-workspace__filter-actions .button-link,
+  .crm-analytics-workspace__pagination .button-link {
+    width: 100%;
+  }
+
+  .crm-analytics-workspace__pagination span {
+    text-align: center;
+  }
+
+  .crm-analytics-workspace__events article > header,
+  .crm-analytics-workspace__panel > header {
+    flex-direction: column;
+  }
+
+  .crm-analytics-workspace__total {
+    text-align: start;
+  }
+}

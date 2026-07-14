@@ -448,6 +448,7 @@ describe('CRM Stage 21H revenue operations', () => {
   it('ingests canonical source events idempotently and advances stronger signals without duplicating leads', async () => {
     const manager = await createUser('crm21h-ingestion@lux.test');
     const fixture = await createCompanyWorkspace({ slug: 'ingestion', members: [{ userId: manager.id, allProperties: true }] });
+    const token = signToken(manager);
 
     const first = await prisma.$transaction((tx) => ingestCrmRelationshipSignal(tx, {
       workspaceId: fixture.workspace.id,
@@ -498,6 +499,27 @@ describe('CRM Stage 21H revenue operations', () => {
     }));
     expect(passive.lead).toBeNull();
     expect(await prisma.crmSourceEvent.count({ where: { sourceRecordId: 'passive-search-1' } })).toBe(1);
+
+    const paginated = await request(app)
+      .get(`/api/crm/source-events?workspaceId=${fixture.workspace.id}&sortBy=occurredAt&direction=desc&take=1&skip=0`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(paginated.body.pagination).toEqual({ total: 2, take: 1, skip: 0, count: 1 });
+    expect(paginated.body.rules).toEqual({ propertyScopeApplied: true, completeCountUsed: true });
+
+    const filtered = await request(app)
+      .get(`/api/crm/source-events?workspaceId=${fixture.workspace.id}&search=Canonical&type=MANUAL&consentStatus=LEGITIMATE_INTEREST&linkedTo=LEAD&sortBy=type&direction=asc&take=25&skip=0`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(filtered.body.pagination).toEqual({ total: 1, take: 25, skip: 0, count: 1 });
+    expect(filtered.body.events[0]).toMatchObject({
+      type: 'MANUAL',
+      sourceRecordId: 'canonical-signal-1',
+      ruleKey: 'explicit-high-intent',
+      consentStatus: 'LEGITIMATE_INTEREST',
+      contact: { fullName: 'Canonical Contact' },
+      lead: { title: 'Canonical source lead' }
+    });
   });
 
   it('enforces communication consent and suppression and requires provider confirmation for delivery', async () => {

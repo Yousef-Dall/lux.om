@@ -67,6 +67,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Crm = lazy(() => import('./pages/Crm'));
 const CrmOperations = lazy(() => import('./pages/CrmOperations'));
 const CrmCommunicationsWorkspace = lazy(() => import('./features/crm/communications/CrmCommunicationsWorkspace'));
+const CrmAnalyticsWorkspace = lazy(() => import('./features/crm/analytics/CrmAnalyticsWorkspace'));
 const DeveloperProjectDetails = lazy(() => import('./pages/DeveloperProjectDetails'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Notifications = lazy(() => import('./pages/Notifications'));
@@ -931,7 +932,7 @@ export default function App() {
             <Route path="deals" element={<CrmOperations section="deals" />} />
             <Route path="deals/:dealId" element={<CrmOperations section="deals" />} />
             <Route path="communications" element={<CrmCommunicationsWorkspace />} />
-            <Route path="analytics" element={<CrmOperations section="analytics" />} />
+            <Route path="analytics" element={<CrmAnalyticsWorkspace />} />
             <Route path="settings/pipelines" element={<CrmOperations section="pipelines" />} />
             <Route path="settings/scoring" element={<CrmOperations section="scoring" />} />
             <Route path="settings/communications" element={<CrmOperations section="communication-settings" />} />

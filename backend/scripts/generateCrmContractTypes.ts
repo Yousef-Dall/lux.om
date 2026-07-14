@@ -14,6 +14,7 @@ import {
   crmPipelineStageTypes,
   crmScoreBands,
   crmScoreTrends,
+  crmSourceEventTypes,
   crmCommunicationDirections,
   crmCommunicationOutcomes,
   crmContractVersion,
@@ -41,6 +42,7 @@ export type CrmScoreTrend = ${literal(crmScoreTrends)};
 export type CrmCommunicationChannel = ${literal(crmCommunicationChannels)};
 export type CrmContactConsentStatus = ${literal(crmContactConsentStatuses)};
 export type CrmDeliveryStatus = ${literal(crmDeliveryStatuses)};
+export type CrmSourceEventType = ${literal(crmSourceEventTypes)};
 `;
 }
 
@@ -59,6 +61,22 @@ async function main() {
   ) {
     throw new Error(
       `CrmContactConsentStatus drift detected. Prisma defines [${prismaConsentStatuses.join(', ')}], but the CRM contract defines [${crmContactConsentStatuses.join(', ')}].`
+    );
+  }
+
+  const prismaSourceEventTypes = await readPrismaEnumValues(
+    schemaPath,
+    'CrmSourceEventType'
+  );
+
+  if (
+    prismaSourceEventTypes.length !== crmSourceEventTypes.length ||
+    prismaSourceEventTypes.some(
+      (value, index) => value !== crmSourceEventTypes[index]
+    )
+  ) {
+    throw new Error(
+      `CrmSourceEventType drift detected. Prisma defines [${prismaSourceEventTypes.join(', ')}], but the CRM contract defines [${crmSourceEventTypes.join(', ')}].`
     );
   }
 

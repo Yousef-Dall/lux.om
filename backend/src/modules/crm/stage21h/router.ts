@@ -12,7 +12,7 @@ import { prisma } from '../../../lib/prisma';
 import { requireAuth } from '../../../middleware/auth';
 import { getCrmAccess, assertCrmWorkspaceAccess, assertHasAnyCrmAccess } from '../../workspaces/access';
 import { AppError } from '../../../utils/http';
-import { crmContactConsentStatuses } from '../contracts';
+import { crmContactConsentStatuses, crmSourceEventTypes } from '../contracts';
 import { createCrmDeliveryAttempt, confirmCrmDeliveryFromProvider, normalizeCommunicationDestination } from './communications';
 import { buildContactMergePreview, findCrmContactDuplicates, mergeCrmContacts, normalizeCrmEmail, normalizeCrmPhone, syncCrmContactIdentities, upsertCrmContact } from './identity';
 import { ensureDefaultCrmPipeline } from './provisioning';
@@ -1092,11 +1092,66 @@ crmStage21hRouter.post('/delivery-attempts/:id/retry', async (req, res, next) =>
 
 crmStage21hRouter.get('/source-events', async (req, res, next) => {
   try {
-    const query = z.object({ workspaceId: id, take: z.coerce.number().int().min(1).max(200).default(100), skip: z.coerce.number().int().min(0).default(0) }).parse(req.query);
+    const query = z.object({
+      workspaceId: id,
+      search: z.string().trim().max(120).optional(),
+      type: z.enum(crmSourceEventTypes).optional(),
+      consentStatus: z.enum(crmContactConsentStatuses).optional(),
+      linkedTo: z.enum(['ANY', 'CONTACT', 'LEAD', 'ACCOUNT', 'DEAL', 'UNLINKED']).default('ANY'),
+      sortBy: z.enum(['occurredAt', 'type', 'consentStatus']).default('occurredAt'),
+      direction: z.enum(['asc', 'desc']).default('desc'),
+      take: z.coerce.number().int().min(1).max(200).default(100),
+      skip: z.coerce.number().int().min(0).default(0)
+    }).parse(req.query);
     const { access } = await resolveWorkspaceAccess(req.user!, query.workspaceId, 'view');
-    const where = sourceEventScopeWhere(access, query.workspaceId);
-    const [events, total] = await prisma.$transaction([prisma.crmSourceEvent.findMany({ where, include: { contact: { select: { id: true, fullName: true } }, lead: { select: { id: true, title: true } }, account: { select: { id: true, name: true } }, deal: { select: { id: true, name: true } } }, orderBy: { occurredAt: 'desc' }, take: query.take, skip: query.skip }), prisma.crmSourceEvent.count({ where })]);
-    res.json({ events, pagination: { total, take: query.take, skip: query.skip, count: events.length } });
+    const filters: Prisma.CrmSourceEventWhereInput[] = [sourceEventScopeWhere(access, query.workspaceId)];
+    if (query.search) {
+      filters.push({
+        OR: [
+          { sourceRecordId: { contains: query.search, mode: 'insensitive' } },
+          { ruleKey: { contains: query.search, mode: 'insensitive' } },
+          { contact: { is: { fullName: { contains: query.search, mode: 'insensitive' } } } },
+          { lead: { is: { title: { contains: query.search, mode: 'insensitive' } } } },
+          { account: { is: { name: { contains: query.search, mode: 'insensitive' } } } },
+          { deal: { is: { name: { contains: query.search, mode: 'insensitive' } } } }
+        ]
+      });
+    }
+    if (query.type) filters.push({ type: query.type });
+    if (query.consentStatus) filters.push({ consentStatus: query.consentStatus });
+    if (query.linkedTo === 'CONTACT') filters.push({ contactId: { not: null } });
+    if (query.linkedTo === 'LEAD') filters.push({ leadId: { not: null } });
+    if (query.linkedTo === 'ACCOUNT') filters.push({ accountId: { not: null } });
+    if (query.linkedTo === 'DEAL') filters.push({ dealId: { not: null } });
+    if (query.linkedTo === 'UNLINKED') {
+      filters.push({ contactId: null, leadId: null, accountId: null, dealId: null });
+    }
+    const where: Prisma.CrmSourceEventWhereInput = { AND: filters };
+    const orderBy: Prisma.CrmSourceEventOrderByWithRelationInput = query.sortBy === 'type'
+      ? { type: query.direction }
+      : query.sortBy === 'consentStatus'
+        ? { consentStatus: query.direction }
+        : { occurredAt: query.direction };
+    const [events, total] = await prisma.$transaction([
+      prisma.crmSourceEvent.findMany({
+        where,
+        include: {
+          contact: { select: { id: true, fullName: true } },
+          lead: { select: { id: true, title: true } },
+          account: { select: { id: true, name: true } },
+          deal: { select: { id: true, name: true } }
+        },
+        orderBy: [orderBy, { id: query.direction }],
+        take: query.take,
+        skip: query.skip
+      }),
+      prisma.crmSourceEvent.count({ where })
+    ]);
+    res.json({
+      events,
+      pagination: { total, take: query.take, skip: query.skip, count: events.length },
+      rules: { propertyScopeApplied: true, completeCountUsed: true }
+    });
   } catch (error) { next(error); }
 });
 

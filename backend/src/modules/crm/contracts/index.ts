@@ -20,6 +20,7 @@ export const crmScoreTrends = ['RISING', 'STABLE', 'FALLING'] as const;
 export const crmCommunicationChannels = ['EMAIL', 'WHATSAPP', 'PHONE'] as const;
 export const crmContactConsentStatuses = ['UNKNOWN', 'CONSENTED', 'LEGITIMATE_INTEREST', 'OPTED_OUT', 'BLOCKED'] as const;
 export const crmDeliveryStatuses = ['DRAFT', 'QUEUED', 'PROCESSING', 'SUBMITTED', 'DELIVERED', 'FAILED', 'BOUNCED', 'BLOCKED', 'CANCELLED'] as const;
+export const crmSourceEventTypes = ['LISTING_INQUIRY', 'PROJECT_INQUIRY', 'DEVELOPER_PROFILE_INQUIRY', 'TRAVEL_AGENCY_INQUIRY', 'ACTIVITY_INQUIRY', 'BOOKING_APPROVED', 'BOOKING_CONFIRMED', 'BOOKING_PAID', 'VALUATION_REQUEST', 'INVESTOR_WATCHLIST', 'HIGH_INTENT_SAVED_SEARCH', 'PMS_OWNER_ONBOARDING', 'PMS_TENANT_ONBOARDING', 'PMS_VENDOR_ONBOARDING', 'MANUAL'] as const;
 
 export const crmWorkspaceSummarySchema = z.object({
   workspaceId: z.string().min(1),

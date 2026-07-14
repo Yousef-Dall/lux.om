@@ -8,7 +8,8 @@ import type {
   CrmForecastCategory,
   CrmPipelineStageType,
   CrmScoreBand,
-  CrmScoreTrend
+  CrmScoreTrend,
+  CrmSourceEventType as GeneratedCrmSourceEventType
 } from '../generated/crmContract';
 
 export type CrmAccountSummary = {
@@ -298,6 +299,47 @@ export function getCrmLeadScoreHistory(token: string, id: string) {
 
 export function getCrmForecast(token: string, workspaceId: string) {
   return apiClient.get<CrmForecastResponse>('/api/crm/analytics/forecast', { token, params: { workspaceId } });
+}
+
+
+export type CrmSourceEventType = GeneratedCrmSourceEventType;
+
+export type CrmSourceEvent = {
+  id: string;
+  workspaceId: string;
+  type: CrmSourceEventType;
+  sourceRecordId: string;
+  ruleKey: string;
+  occurredAt: string;
+  consentStatus: CrmContactConsentStatus;
+  metadata?: Record<string, unknown> | null;
+  contact?: { id: string; fullName: string } | null;
+  lead?: { id: string; title: string } | null;
+  account?: { id: string; name: string } | null;
+  deal?: { id: string; name: string } | null;
+};
+
+export type CrmSourceEventLinkedTo = 'ANY' | 'CONTACT' | 'LEAD' | 'ACCOUNT' | 'DEAL' | 'UNLINKED';
+
+export function listCrmSourceEvents(
+  token: string,
+  params: {
+    workspaceId: string;
+    search?: string;
+    type?: CrmSourceEventType;
+    consentStatus?: CrmContactConsentStatus;
+    linkedTo?: CrmSourceEventLinkedTo;
+    sortBy?: 'occurredAt' | 'type' | 'consentStatus';
+    direction?: 'asc' | 'desc';
+    take?: number;
+    skip?: number;
+  }
+) {
+  return apiClient.get<{
+    events: CrmSourceEvent[];
+    pagination: { total: number; take: number; skip: number; count: number };
+    rules: { propertyScopeApplied: true; completeCountUsed: true };
+  }>('/api/crm/source-events', { token, params });
 }
 
 export function getCrmCommunicationGovernance(token: string, contactId: string) {
