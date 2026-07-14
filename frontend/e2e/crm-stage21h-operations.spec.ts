@@ -115,6 +115,7 @@ async function mockRevenueOperations(
     if (url.pathname.endsWith('/api/crm/deals')) return route.fulfill({ json: { deals: dealRows, pagination: { total: dealRows.length, take: 200, skip: 0, count: dealRows.length } } });
     if (url.pathname.endsWith('/api/crm/pipelines')) return route.fulfill({ json: { pipelines: [pipeline] } });
     if (url.pathname.endsWith('/api/crm/analytics/forecast')) return route.fulfill({ json: forecast });
+    if (url.pathname.endsWith('/api/crm/source-events')) return route.fulfill({ json: { events: [], pagination: { total: 0, take: 25, skip: 0, count: 0 } } });
     if (url.pathname.endsWith('/api/crm/communication-policy')) return route.fulfill({ json: { policy: { workspaceId: workspace.workspaceId, timezone: 'Asia/Muscat', quietHoursStart: 1200, quietHoursEnd: 480, hourlyRateLimit: 50, retentionDays: 365 } } });
     return route.fulfill({ status: 404, json: { message: `Unhandled Stage 21H test route: ${url.pathname}` } });
   });
@@ -133,7 +134,7 @@ test('direct CRM operations URL blocks users without CRM access before loading i
   expect(internalRequests).toEqual([]);
 });
 
-test('CRM revenue operations renders accounts, configurable stages, and currency-separated forecasts', async ({ page }) => {
+test('CRM revenue operations links to dedicated currency-separated analytics', async ({ page }) => {
   await authenticate(page);
   const requests: string[] = [];
   await mockRevenueOperations(page, requests);
@@ -149,10 +150,11 @@ test('CRM revenue operations renders accounts, configurable stages, and currency
   await expect(page.getByText('Qualified', { exact: true }).first()).toBeVisible();
 
   await page.getByRole('navigation', { name: 'CRM sections' }).getByRole('link', { name: 'Analytics', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Conversion and forecast' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'OMR' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'USD' })).toBeVisible();
-  await expect(page.getByText('Currencies are intentionally separated. Historical won/lost outcomes remain counted after archival.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'CRM analytics and source attribution' })).toBeVisible();
+  const forecastPanel = page.getByRole('region', { name: 'Currency-separated forecast', exact: true });
+  await expect(forecastPanel.getByText('OMR', { exact: true })).toBeVisible();
+  await expect(forecastPanel.getByText('USD', { exact: true })).toBeVisible();
+  await expect(page.getByText('Different currencies are never combined into a misleading total.')).toBeVisible();
   expect(requests.some((request) => request.includes('/api/crm/analytics/forecast?workspaceId=workspace-crm-21h'))).toBe(true);
 });
 
@@ -164,8 +166,10 @@ test('CRM revenue operations remains usable on a narrow mobile viewport', async 
   await page.goto('/crm/operations');
   await expect(page.getByRole('heading', { name: 'CRM accounts, deals, pipelines, and governance' })).toBeVisible();
   await page.getByRole('navigation', { name: 'CRM sections' }).getByRole('link', { name: 'Analytics', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'OMR' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'USD' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'CRM analytics and source attribution' })).toBeVisible();
+  const forecastPanel = page.getByRole('region', { name: 'Currency-separated forecast', exact: true });
+  await expect(forecastPanel.getByText('OMR', { exact: true })).toBeVisible();
+  await expect(forecastPanel.getByText('USD', { exact: true })).toBeVisible();
   await expect(page.locator('body')).not.toHaveCSS('overflow-x', 'scroll');
 });
 

@@ -281,7 +281,7 @@ export default function Crm({ section = 'overview' }: { section?: CrmSection }) 
   }
 
   useEffect(() => {
-    const requested = searchParams.get('workspace');
+    const requested = latestSearchParamsRef.current.get('workspace');
     setWorkspaceKey((current) => {
       if (requested && workspaceChoices.some((item) => item.key === requested)) return requested;
       if (workspaceChoices.some((item) => item.key === current)) return current;
