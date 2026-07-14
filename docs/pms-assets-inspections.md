@@ -47,3 +47,13 @@ Maintenance managers can create and edit one-time or interval plans, link only i
 The workspace supports English and Arabic, RTL and narrow layouts, keyboard-operated dialogs, URL-persisted filters, and read-only permission states. One-time plans complete after generation; interval plans advance from the locked due date. The UI does not claim offline support or fabricate generated work.
 
 Offline inspection execution is not implemented. Operators must remain connected while saving asset and inspection changes; offline queueing and conflict resolution are future capabilities and must not be implied by the current UI.
+
+## Stage 21I structured-inspection workspace
+
+The inspection-run register uses database-backed pagination, search, property/status/type/date filters, and deterministic sorting. List responses separate the visible page count from scoped totals and return summary counts for scheduled runs, runs needing action, and open defects. A dedicated detail endpoint loads the immutable template version, ordered checklist items, recorded results, evidence references, and linked defects only after the operator opens a run.
+
+Maintenance managers can schedule an active template against an in-scope property and optional unit, cancel only a still-scheduled run with an audited reason, and execute the captured template checklist from a keyboard- and mobile-friendly dialog. Required checklist items, duplicate item submissions, failure-photo requirements, and defect eligibility are enforced by the backend. Completion records acknowledgement metadata only when the operator supplies a real acknowledgement name; the system never fabricates a signature.
+
+Failed or observation results may create defects with severity and photo references. Open defects can be converted explicitly to a vendor/asset work order. Conversion remains transactionally idempotent, and unit-scoped defects can link only to property-wide assets or assets assigned to the same unit. Repeating conversion returns the existing work order rather than creating a duplicate.
+
+The workspace supports English and Arabic, RTL and narrow layouts, URL-persisted filters, localized dates, accessible dialogs, cancellation warnings, and read-only permission states. Evidence is currently captured as validated online photo URLs. Direct camera upload, offline execution, conflict resolution, template administration, and calendar/kanban planning remain future controlled batches and are not implied by this implementation.

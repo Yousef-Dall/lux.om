@@ -23207,3 +23207,374 @@ transition: none;
     justify-content: space-between;
   }
 }
+
+/* Stage 21I-Q: operational structured-inspection runs */
+.pms-inspection-workspace {
+  display: grid;
+  gap: 1rem;
+  margin-block: 1.25rem;
+  padding: clamp(1rem, 2vw, 1.5rem);
+  border: 1px solid var(--border-color);
+  border-radius: 1.4rem;
+  background: var(--surface-color);
+  color: var(--text-color);
+  box-shadow: 0 18px 48px rgb(15 23 42 / 12%);
+}
+
+.pms-inspection-workspace__header,
+.pms-inspection-filters__actions,
+.pms-inspection-card__actions,
+.pms-inspection-pagination,
+.pms-inspection-form__actions,
+.pms-inspection-detail__actions {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  flex-wrap: wrap;
+}
+
+.pms-inspection-workspace__header {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.pms-inspection-workspace__header h2,
+.pms-inspection-workspace__header p,
+.pms-inspection-card h3,
+.pms-inspection-card p,
+.pms-inspection-detail h3,
+.pms-inspection-detail p,
+.pms-inspection-section h5,
+.pms-inspection-section p {
+  margin: 0;
+}
+
+.pms-inspection-workspace__header p:not(.eyebrow) {
+  max-width: 58rem;
+  margin-top: .35rem;
+  color: var(--text-muted);
+}
+
+.pms-inspection-workspace__permission,
+.pms-inspection-workspace__offline,
+.pms-inspection-workspace__state {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: .9rem;
+}
+
+.pms-inspection-workspace__offline {
+  padding: .75rem .9rem;
+  border-inline-start: 3px solid var(--warning-color, #a15c00);
+  border-radius: .5rem;
+  background: color-mix(in srgb, var(--warning-color, #a15c00) 8%, transparent);
+}
+
+.pms-inspection-filters,
+.pms-inspection-form,
+.pms-inspection-execution__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .85rem;
+}
+
+.pms-inspection-filters {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  background: var(--surface-muted, #f7f7f7);
+}
+
+.pms-inspection-filters label,
+.pms-inspection-form label,
+.pms-inspection-execution label {
+  display: grid;
+  min-width: 0;
+  gap: .4rem;
+  font-weight: 700;
+}
+
+.pms-inspection-filters label > span,
+.pms-inspection-form label > span,
+.pms-inspection-execution label > span {
+  font-size: .85rem;
+}
+
+.pms-inspection-filters input,
+.pms-inspection-filters select,
+.pms-inspection-form input,
+.pms-inspection-form select,
+.pms-inspection-form textarea,
+.pms-inspection-execution input,
+.pms-inspection-execution select,
+.pms-inspection-execution textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border-color);
+  border-radius: .7rem;
+  background: var(--surface-color);
+  color: var(--text-color);
+  padding: .7rem .75rem;
+  font: inherit;
+}
+
+.pms-inspection-form textarea,
+.pms-inspection-execution textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.pms-inspection-search {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  padding-inline: .7rem;
+  border: 1px solid var(--border-color);
+  border-radius: .7rem;
+  background: var(--surface-color);
+}
+
+.pms-inspection-search input {
+  border: 0;
+  padding-inline: 0;
+  outline: 0;
+}
+
+.pms-inspection-filters__actions,
+.pms-inspection-form__actions {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  align-self: end;
+}
+
+.pms-inspection-form__wide {
+  grid-column: 1 / -1;
+}
+
+.pms-inspection-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.pms-inspection-summary article {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: .65rem;
+  padding: .9rem;
+  border: 1px solid var(--border-color);
+  border-radius: .9rem;
+  background: var(--surface-muted, #f7f7f7);
+}
+
+.pms-inspection-summary strong {
+  font-size: 1.25rem;
+}
+
+.pms-inspection-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .9rem;
+}
+
+.pms-inspection-card {
+  display: grid;
+  gap: .9rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  background: var(--surface-color);
+}
+
+.pms-inspection-card > header,
+.pms-inspection-detail > header,
+.pms-inspection-records article > header,
+.pms-inspection-defects article > header,
+.pms-inspection-execution__item > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.pms-inspection-card > header > div,
+.pms-inspection-detail > header > div,
+.pms-inspection-defects article > header > div,
+.pms-inspection-execution__item > header > div {
+  display: grid;
+  min-width: 0;
+  gap: .3rem;
+}
+
+.pms-inspection-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .6rem;
+  margin: 0;
+}
+
+.pms-inspection-card dl > div {
+  display: grid;
+  gap: .2rem;
+  padding: .65rem;
+  border-radius: .7rem;
+  background: var(--surface-muted, #f7f7f7);
+}
+
+.pms-inspection-card dt {
+  color: var(--text-muted);
+  font-size: .78rem;
+}
+
+.pms-inspection-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.pms-inspection-card__actions,
+.pms-inspection-pagination {
+  justify-content: flex-end;
+}
+
+.pms-inspection-pagination {
+  justify-content: space-between;
+  padding-top: .25rem;
+}
+
+.pms-inspection-detail,
+.pms-inspection-execution {
+  display: grid;
+  gap: 1rem;
+}
+
+.pms-inspection-detail > section,
+.pms-inspection-execution fieldset {
+  display: grid;
+  gap: .75rem;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: .9rem;
+}
+
+.pms-inspection-detail > section > h4,
+.pms-inspection-execution legend {
+  margin: 0;
+  font-weight: 800;
+}
+
+.pms-inspection-section {
+  display: grid;
+  gap: .45rem;
+  padding: .8rem;
+  border-radius: .75rem;
+  background: var(--surface-muted, #f7f7f7);
+}
+
+.pms-inspection-section ul,
+.pms-inspection-records ul {
+  margin: 0;
+  padding-inline-start: 1.2rem;
+}
+
+.pms-inspection-records,
+.pms-inspection-defects {
+  display: grid;
+  gap: .75rem;
+}
+
+.pms-inspection-records article,
+.pms-inspection-defects article,
+.pms-inspection-execution__item {
+  display: grid;
+  gap: .7rem;
+  padding: .85rem;
+  border: 1px solid var(--border-color);
+  border-radius: .8rem;
+  background: var(--surface-color);
+}
+
+.pms-inspection-records small,
+.pms-inspection-execution__item small,
+.pms-inspection-defects article span {
+  color: var(--text-muted);
+}
+
+.pms-inspection-records a {
+  overflow-wrap: anywhere;
+}
+
+.pms-inspection-execution__defect {
+  display: grid;
+  gap: .75rem;
+  padding: .75rem;
+  border-radius: .75rem;
+  background: color-mix(in srgb, var(--warning-color, #a15c00) 8%, transparent);
+}
+
+.pms-inspection-check {
+  display: flex !important;
+  grid-template-columns: none;
+  align-items: flex-start;
+  gap: .55rem !important;
+}
+
+.pms-inspection-check input {
+  width: auto;
+  margin-top: .2rem;
+}
+
+@media (max-width: 1000px) {
+  .pms-inspection-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .pms-inspection-workspace__header,
+  .pms-inspection-detail > header {
+    flex-direction: column;
+  }
+
+  .pms-inspection-filters,
+  .pms-inspection-form,
+  .pms-inspection-execution__grid,
+  .pms-inspection-summary,
+  .pms-inspection-results {
+    grid-template-columns: 1fr;
+  }
+
+  .pms-inspection-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .pms-inspection-filters__actions,
+  .pms-inspection-form__actions,
+  .pms-inspection-card__actions,
+  .pms-inspection-detail__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .pms-inspection-filters__actions .button-link,
+  .pms-inspection-form__actions .button-link,
+  .pms-inspection-card__actions .button-link,
+  .pms-inspection-detail__actions .button-link,
+  .pms-inspection-workspace__header .button-link {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .pms-inspection-pagination {
+    align-items: stretch;
+  }
+
+  .pms-inspection-pagination .button-link {
+    flex: 1;
+    justify-content: center;
+  }
+}

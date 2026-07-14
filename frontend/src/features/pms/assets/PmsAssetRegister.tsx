@@ -333,11 +333,18 @@ export default function PmsAssetRegister({ token, companyId, language, canManage
   const firstFieldRef = useRef<HTMLInputElement>(null);
   const eventTypeRef = useRef<HTMLSelectElement>(null);
 
+  const pendingSearchParamsRef = useRef(new URLSearchParams(searchParams));
+
+  useEffect(() => {
+    pendingSearchParamsRef.current = new URLSearchParams(searchParams);
+  }, [searchParams]);
+
   const replaceQuery = useCallback((updates: Record<string, string | null>) => {
-    const next = new URLSearchParams(searchParams);
+    const next = new URLSearchParams(pendingSearchParamsRef.current);
     Object.entries(updates).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key));
+    pendingSearchParamsRef.current = next;
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
+  }, [setSearchParams]);
 
   useEffect(() => setSearchInput(query), [query]);
 

@@ -132,6 +132,13 @@ export const apiClient = {
       body: body instanceof FormData ? body : JSON.stringify(body)
     }),
 
+  put: <T>(path: string, body: unknown, options?: RequestOptions) =>
+    request<T>(path, {
+      ...options,
+      method: 'PUT',
+      body: body instanceof FormData ? body : JSON.stringify(body)
+    }),
+
   delete: <T>(path: string, options?: RequestOptions) =>
     request<T>(path, {
       ...options,

@@ -1,4 +1,4 @@
-import { DomainAuditDomain } from '@prisma/client';
+import { DomainAuditDomain, Prisma } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -13,12 +13,15 @@ export const pmsStructuredInspectionsRouter = Router();
 
 const idParams = z.object({ id: z.string().trim().min(1) });
 const querySchema = z.object({ companyId: z.string().trim().min(1).optional(), propertyId: z.string().trim().min(1).optional() });
+const inspectionTypes = ['GENERAL', 'MOVE_IN', 'MOVE_OUT', 'PERIODIC', 'SAFETY'] as const;
+const inspectionStatuses = ['SCHEDULED', 'COMPLETED', 'NEEDS_ACTION', 'CANCELLED'] as const;
+const inspectionResults = ['PASS', 'FAIL', 'NOT_APPLICABLE', 'OBSERVATION'] as const;
 const templateSchema = z.object({
   companyId: z.string().trim().min(1).optional(),
   propertyId: z.string().trim().min(1).nullable().optional(),
   name: z.string().trim().min(1).max(250),
   description: z.string().trim().max(3000).nullable().optional(),
-  type: z.enum(['GENERAL', 'MOVE_IN', 'MOVE_OUT', 'PERIODIC', 'SAFETY']).default('GENERAL'),
+  type: z.enum(inspectionTypes).default('GENERAL'),
   sections: z.array(z.object({
     title: z.string().trim().min(1).max(250),
     description: z.string().trim().max(2000).nullable().optional(),
@@ -29,6 +32,18 @@ const templateSchema = z.object({
       requiresPhotoOnFailure: z.boolean().default(false),
     })).min(1).max(200),
   })).min(1).max(50),
+});
+const runQuerySchema = querySchema.extend({
+  unitId: z.string().trim().min(1).optional(),
+  type: z.enum(inspectionTypes).optional(),
+  status: z.enum(inspectionStatuses).optional(),
+  search: z.string().trim().max(120).optional(),
+  scheduledFrom: z.coerce.date().optional(),
+  scheduledTo: z.coerce.date().optional(),
+  sortBy: z.enum(['scheduledFor', 'completedAt', 'title', 'status', 'type', 'updatedAt', 'createdAt']).default('scheduledFor'),
+  direction: z.enum(['asc', 'desc']).default('desc'),
+  take: z.coerce.number().int().min(1).max(100).default(25),
+  skip: z.coerce.number().int().min(0).default(0),
 });
 const runSchema = z.object({
   companyId: z.string().trim().min(1).optional(),
@@ -46,7 +61,7 @@ const resultSchema = z.object({
   acknowledgement: z.record(z.string(), z.unknown()).nullable().optional(),
   results: z.array(z.object({
     templateItemId: z.string().trim().min(1),
-    result: z.enum(['PASS', 'FAIL', 'NOT_APPLICABLE', 'OBSERVATION']),
+    result: z.enum(inspectionResults),
     valueText: z.string().trim().max(1000).nullable().optional(),
     notes: z.string().trim().max(3000).nullable().optional(),
     photoUrls: z.array(z.string().trim().url()).max(20).default([]),
@@ -66,6 +81,81 @@ const conversionSchema = z.object({
   scheduledFor: z.coerce.date().nullable().optional(),
   targetDate: z.coerce.date().nullable().optional(),
 });
+const cancelSchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  reason: z.string().trim().min(3).max(1000),
+});
+
+const runListInclude = {
+  property: { select: { id: true, name: true } },
+  unit: { select: { id: true, unitNumber: true } },
+  template: { select: { id: true, name: true, version: true, type: true } },
+  defects: {
+    orderBy: { createdAt: 'desc' as const },
+    take: 5,
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      severity: true,
+      status: true,
+      photoUrls: true,
+      workOrderId: true,
+      createdAt: true,
+    },
+  },
+  _count: { select: { results: true, defects: true, pmsDocuments: true } },
+} satisfies Prisma.PmsInspectionInclude;
+
+const runDetailInclude = {
+  property: { select: { id: true, name: true } },
+  unit: { select: { id: true, unitNumber: true } },
+  template: {
+    include: {
+      property: { select: { id: true, name: true } },
+      sections: {
+        orderBy: { position: 'asc' as const },
+        include: { items: { orderBy: { position: 'asc' as const } } },
+      },
+    },
+  },
+  results: {
+    orderBy: { createdAt: 'asc' as const },
+    include: {
+      templateItem: { select: { id: true, label: true, instructions: true, required: true, requiresPhotoOnFailure: true, position: true, sectionId: true } },
+      defects: {
+        include: {
+          workOrder: { select: { id: true, title: true, status: true, priority: true, vendorId: true, assetId: true, targetDate: true, scheduledFor: true, createdAt: true } },
+        },
+      },
+    },
+  },
+  defects: {
+    orderBy: { createdAt: 'asc' as const },
+    include: {
+      workOrder: { select: { id: true, title: true, status: true, priority: true, vendorId: true, assetId: true, targetDate: true, scheduledFor: true, createdAt: true } },
+    },
+  },
+  _count: { select: { results: true, defects: true, pmsDocuments: true } },
+} satisfies Prisma.PmsInspectionInclude;
+
+function runOrderBy(query: z.infer<typeof runQuerySchema>): Prisma.PmsInspectionOrderByWithRelationInput[] {
+  const direction = query.direction;
+  switch (query.sortBy) {
+    case 'title': return [{ title: direction }, { createdAt: 'desc' }];
+    case 'status': return [{ status: direction }, { scheduledFor: 'desc' }, { createdAt: 'desc' }];
+    case 'type': return [{ type: direction }, { scheduledFor: 'desc' }, { createdAt: 'desc' }];
+    case 'completedAt': return [{ completedAt: direction }, { createdAt: 'desc' }];
+    case 'updatedAt': return [{ updatedAt: direction }, { title: 'asc' }];
+    case 'createdAt': return [{ createdAt: direction }, { title: 'asc' }];
+    case 'scheduledFor':
+    default: return [{ scheduledFor: direction }, { createdAt: 'desc' }];
+  }
+}
+
+function runScopeWhere(access: Awaited<ReturnType<typeof requirePmsRouteAccess>>) {
+  return { companyId: access.company.id, ...propertyScopeWhere(access) } satisfies Prisma.PmsInspectionWhereInput;
+}
 
 pmsStructuredInspectionsRouter.get('/templates', requireAuth(), async (req, res, next) => {
   try {
@@ -93,12 +183,48 @@ pmsStructuredInspectionsRouter.post('/templates', requireAuth(), async (req, res
 
 pmsStructuredInspectionsRouter.get('/runs', requireAuth(), async (req, res, next) => {
   try {
-    const query = querySchema.extend({ unitId: z.string().trim().min(1).optional(), type: z.enum(['GENERAL', 'MOVE_IN', 'MOVE_OUT', 'PERIODIC', 'SAFETY']).optional() }).parse(req.query);
+    const query = runQuerySchema.parse(req.query);
     const access = await requirePmsRouteAccess(req, query.companyId);
     assertCanViewPmsMaintenance(access.member);
     if (query.propertyId) assertPmsPropertyScope(access, query.propertyId);
-    const inspections = await prisma.pmsInspection.findMany({ where: { companyId: access.company.id, ...propertyScopeWhere(access), ...(query.propertyId ? { propertyId: query.propertyId } : {}), ...(query.unitId ? { unitId: query.unitId } : {}), ...(query.type ? { type: query.type } : {}) }, include: { property: { select: { id: true, name: true } }, unit: { select: { id: true, unitNumber: true } }, template: { select: { id: true, name: true, version: true } }, results: { include: { templateItem: { select: { id: true, label: true } }, defects: true } }, defects: true }, orderBy: [{ scheduledFor: 'desc' }, { createdAt: 'desc' }] });
-    res.json({ inspections });
+    if (query.scheduledFrom && query.scheduledTo && query.scheduledFrom > query.scheduledTo) throw new AppError(400, 'Scheduled date range is invalid.');
+    const search = query.search?.trim();
+    const where: Prisma.PmsInspectionWhereInput = {
+      ...runScopeWhere(access),
+      ...(query.propertyId ? { propertyId: query.propertyId } : {}),
+      ...(query.unitId ? { unitId: query.unitId } : {}),
+      ...(query.type ? { type: query.type } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.scheduledFrom || query.scheduledTo ? { scheduledFor: { ...(query.scheduledFrom ? { gte: query.scheduledFrom } : {}), ...(query.scheduledTo ? { lte: query.scheduledTo } : {}) } } : {}),
+      ...(search ? { OR: [
+        { title: { contains: search, mode: 'insensitive' } },
+        { notes: { contains: search, mode: 'insensitive' } },
+        { property: { name: { contains: search, mode: 'insensitive' } } },
+        { unit: { unitNumber: { contains: search, mode: 'insensitive' } } },
+        { template: { name: { contains: search, mode: 'insensitive' } } },
+      ] } : {}),
+    };
+    const scopeWhere = runScopeWhere(access);
+    const [inspections, total, scheduled, needsAction, openDefects] = await prisma.$transaction([
+      prisma.pmsInspection.findMany({ where, include: runListInclude, orderBy: runOrderBy(query), take: query.take, skip: query.skip }),
+      prisma.pmsInspection.count({ where }),
+      prisma.pmsInspection.count({ where: { ...scopeWhere, status: 'SCHEDULED' } }),
+      prisma.pmsInspection.count({ where: { ...scopeWhere, status: 'NEEDS_ACTION' } }),
+      prisma.pmsInspectionDefect.count({ where: { companyId: access.company.id, status: 'OPEN', inspection: { ...propertyScopeWhere(access) } } }),
+    ]);
+    res.json({ inspections, pagination: { take: query.take, skip: query.skip, count: inspections.length, total }, summary: { scheduled, needsAction, openDefects } });
+  } catch (error) { next(error); }
+});
+
+pmsStructuredInspectionsRouter.get('/runs/:id', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParams.parse(req.params);
+    const query = querySchema.parse(req.query);
+    const access = await requirePmsRouteAccess(req, query.companyId);
+    assertCanViewPmsMaintenance(access.member);
+    const inspection = await prisma.pmsInspection.findFirst({ where: { id, ...runScopeWhere(access) }, include: runDetailInclude });
+    if (!inspection) throw new AppError(404, 'Structured inspection not found.');
+    res.json({ inspection });
   } catch (error) { next(error); }
 });
 
@@ -110,9 +236,24 @@ pmsStructuredInspectionsRouter.post('/runs', requireAuth(), async (req, res, nex
     await assertPmsScopeLinks({ access, propertyId: data.propertyId, unitId: data.unitId, leaseId: data.leaseId, tenantId: data.tenantId });
     const template = await prisma.pmsInspectionTemplate.findFirst({ where: { id: data.templateId, companyId: access.company.id, active: true, OR: [{ propertyId: null }, { propertyId: data.propertyId }] } });
     if (!template) throw new AppError(400, 'Inspection template is unavailable for this property.');
-    const inspection = await prisma.pmsInspection.create({ data: { companyId: access.company.id, propertyId: data.propertyId, unitId: data.unitId ?? null, leaseId: data.leaseId ?? null, tenantId: data.tenantId ?? null, templateId: template.id, type: template.type, title: data.title, scheduledFor: data.scheduledFor ?? null, notes: data.notes ?? null, createdById: req.user!.id, updatedById: req.user!.id } });
+    const inspection = await prisma.pmsInspection.create({ data: { companyId: access.company.id, propertyId: data.propertyId, unitId: data.unitId ?? null, leaseId: data.leaseId ?? null, tenantId: data.tenantId ?? null, templateId: template.id, type: template.type, title: data.title, scheduledFor: data.scheduledFor ?? null, notes: data.notes ?? null, createdById: req.user!.id, updatedById: req.user!.id }, include: runDetailInclude });
     await recordDomainAuditEvent(prisma, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsInspection', entityId: inspection.id, action: 'PMS_STRUCTURED_INSPECTION_SCHEDULED', actorId: req.user!.id, afterMetadata: { templateId: template.id, propertyId: inspection.propertyId, unitId: inspection.unitId, type: inspection.type }, ...requestAuditContext(req) });
     res.status(201).json({ inspection });
+  } catch (error) { next(error); }
+});
+
+pmsStructuredInspectionsRouter.post('/runs/:id/cancel', requireAuth(), async (req, res, next) => {
+  try {
+    const { id } = idParams.parse(req.params);
+    const data = cancelSchema.parse(req.body);
+    const access = await requirePmsRouteAccess(req, data.companyId);
+    assertCanManagePmsMaintenance(access.member);
+    const current = await prisma.pmsInspection.findFirst({ where: { id, ...runScopeWhere(access) } });
+    if (!current) throw new AppError(404, 'Structured inspection not found.');
+    if (current.status !== 'SCHEDULED') throw new AppError(409, 'Only scheduled inspections can be cancelled.');
+    const inspection = await prisma.pmsInspection.update({ where: { id }, data: { status: 'CANCELLED', updatedById: req.user!.id }, include: runDetailInclude });
+    await recordDomainAuditEvent(prisma, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsInspection', entityId: id, action: 'PMS_STRUCTURED_INSPECTION_CANCELLED', actorId: req.user!.id, changedFields: ['status'], beforeMetadata: { status: current.status }, afterMetadata: { status: inspection.status, reason: data.reason }, ...requestAuditContext(req) });
+    res.json({ inspection });
   } catch (error) { next(error); }
 });
 
@@ -128,10 +269,12 @@ pmsStructuredInspectionsRouter.put('/runs/:id/results', requireAuth(), async (re
     assertPmsPropertyScope(access, inspection.propertyId);
     const allowedItems = new Map(inspection.template.sections.flatMap((section) => section.items).map((item) => [item.id, item]));
     const supplied = new Set(data.results.map((result) => result.templateItemId));
+    if (supplied.size !== data.results.length) throw new AppError(400, 'Each inspection item may be submitted only once.');
     for (const result of data.results) {
       const item = allowedItems.get(result.templateItemId);
       if (!item) throw new AppError(400, 'Inspection result contains an item outside the selected template.');
       if (result.result === 'FAIL' && item.requiresPhotoOnFailure && result.photoUrls.length === 0) throw new AppError(400, `A failure photo is required for ${item.label}.`);
+      if (result.defect && result.result !== 'FAIL' && result.result !== 'OBSERVATION') throw new AppError(400, 'Defects may be created only for failed or observation results.');
     }
     const missingRequired = [...allowedItems.values()].filter((item) => item.required && !supplied.has(item.id));
     if (missingRequired.length > 0) throw new AppError(400, 'All required inspection items must have a result.');
@@ -143,8 +286,8 @@ pmsStructuredInspectionsRouter.put('/runs/:id/results', requireAuth(), async (re
         }
       }
       const hasFailure = data.results.some((result) => result.result === 'FAIL' || Boolean(result.defect));
-      await tx.pmsInspection.update({ where: { id }, data: { status: hasFailure ? 'NEEDS_ACTION' : 'COMPLETED', completedAt: new Date(), acknowledgement: data.acknowledgement as import('@prisma/client').Prisma.InputJsonValue | undefined, acknowledgedAt: data.acknowledgement ? new Date() : null, updatedById: req.user!.id } });
-      return tx.pmsInspection.findUniqueOrThrow({ where: { id }, include: { results: { include: { defects: true } }, defects: true } });
+      await tx.pmsInspection.update({ where: { id }, data: { status: hasFailure ? 'NEEDS_ACTION' : 'COMPLETED', completedAt: new Date(), acknowledgement: data.acknowledgement as Prisma.InputJsonValue | undefined, acknowledgedAt: data.acknowledgement ? new Date() : null, updatedById: req.user!.id } });
+      return tx.pmsInspection.findUniqueOrThrow({ where: { id }, include: runDetailInclude });
     });
     await recordDomainAuditEvent(prisma, { companyId: access.company.id, domain: DomainAuditDomain.PMS, entityType: 'PmsInspection', entityId: id, action: 'PMS_STRUCTURED_INSPECTION_COMPLETED', actorId: req.user!.id, changedFields: ['status', 'completedAt', 'acknowledgement'], afterMetadata: { status: updated.status, resultCount: updated.results.length, defectCount: updated.defects.length }, ...requestAuditContext(req) });
     res.json({ inspection: updated });
@@ -169,8 +312,8 @@ pmsStructuredInspectionsRouter.post('/defects/:id/work-order', requireAuth(), as
       if (!vendor) throw new AppError(400, 'Assigned vendor is not active in this company.');
     }
     if (data.assetId) {
-      const asset = await prisma.pmsAsset.findFirst({ where: { id: data.assetId, companyId: access.company.id, propertyId: defect.propertyId } });
-      if (!asset) throw new AppError(400, 'Asset must belong to the defect property.');
+      const asset = await prisma.pmsAsset.findFirst({ where: { id: data.assetId, companyId: access.company.id, propertyId: defect.propertyId, ...(defect.unitId ? { OR: [{ unitId: null }, { unitId: defect.unitId }] } : {}) } });
+      if (!asset) throw new AppError(400, 'Asset must belong to the defect property and unit scope.');
     }
     const conversion = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "PmsInspectionDefect" WHERE id = ${id} FOR UPDATE`;

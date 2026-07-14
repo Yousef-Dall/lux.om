@@ -80,7 +80,8 @@ async function mockPreventiveApi(page: Page, callbacks: {
     if (path === '/api/pms/properties' && method === 'GET') return fulfillJson(route, { workspace: {}, properties: [{ id: propertyId, companyId, name: 'Harbour Residences', active: true, counts: { units: 1 }, createdAt: '', updatedAt: '' }], pagination: { take: 100, skip: 0, count: 1, total: 1 } });
     if (path === '/api/pms/units' && method === 'GET') return fulfillJson(route, { workspace: {}, units: [{ id: unitId, companyId, propertyId, property: { id: propertyId, companyId, name: 'Harbour Residences' }, unitNumber: 'A-101', status: 'OCCUPIED', occupancyStatus: 'OCCUPIED', operationalStatus: 'AVAILABLE', currency: 'OMR', createdAt: '', updatedAt: '' }], pagination: { take: 100, skip: 0, count: 1, total: 1 } });
     if (path === '/api/pms/vendors' && method === 'GET') return fulfillJson(route, { workspace: {}, vendors: [{ id: vendorId, companyId, name: 'Gulf HVAC Services', trade: 'HVAC', active: true, createdAt: '', updatedAt: '' }], pagination: { take: 100, skip: 0, count: 1, total: 1 } });
-    if (path === '/api/pms/structured-inspections/runs' && method === 'GET') return fulfillJson(route, { inspections: [] });
+    if (path === '/api/pms/structured-inspections/templates' && method === 'GET') return fulfillJson(route, { templates: [] });
+    if (path === '/api/pms/structured-inspections/runs' && method === 'GET') return fulfillJson(route, { inspections: [], pagination: { take: 25, skip: 0, count: 0, total: 0 }, summary: { scheduled: 0, needsAction: 0, openDefects: 0 } });
     return fulfillJson(route, { message: `Unhandled preventive mock: ${method} ${path}` }, 404);
   });
 }

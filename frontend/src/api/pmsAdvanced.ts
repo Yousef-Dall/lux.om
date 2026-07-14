@@ -718,16 +718,121 @@ export type PmsMaintenancePlanPayload = {
 };
 export type PmsMaintenancePlanPagination = { take: number; skip: number; count: number; total: number };
 export type PmsMaintenancePlanSummary = { active: number; due: number };
+export type PmsInspectionType = 'GENERAL' | 'MOVE_IN' | 'MOVE_OUT' | 'PERIODIC' | 'SAFETY';
+export type PmsInspectionStatus = 'SCHEDULED' | 'COMPLETED' | 'NEEDS_ACTION' | 'CANCELLED';
+export type PmsInspectionItemResult = 'PASS' | 'FAIL' | 'NOT_APPLICABLE' | 'OBSERVATION';
+export type PmsInspectionDefectStatus = 'OPEN' | 'WORK_ORDER_CREATED' | 'RESOLVED' | 'WAIVED';
+export type PmsInspectionTemplateItem = {
+  id: string;
+  label: string;
+  instructions?: string | null;
+  position: number;
+  required: boolean;
+  requiresPhotoOnFailure: boolean;
+  sectionId?: string;
+};
+export type PmsInspectionTemplateSection = {
+  id: string;
+  title: string;
+  description?: string | null;
+  position: number;
+  items: PmsInspectionTemplateItem[];
+};
+export type PmsInspectionTemplate = {
+  id: string;
+  name: string;
+  description?: string | null;
+  type: PmsInspectionType;
+  active: boolean;
+  version: number;
+  propertyId?: string | null;
+  property?: { id: string; name: string } | null;
+  sections?: PmsInspectionTemplateSection[];
+};
+export type PmsInspectionWorkOrderReference = {
+  id: string;
+  title: string;
+  status: string;
+  priority: PmsMaintenancePriority;
+  vendorId?: string | null;
+  assetId?: string | null;
+  scheduledFor?: string | null;
+  targetDate?: string | null;
+  createdAt: string;
+};
+export type PmsInspectionDefect = {
+  id: string;
+  title: string;
+  description?: string | null;
+  severity: PmsMaintenancePriority;
+  status: PmsInspectionDefectStatus;
+  photoUrls: string[];
+  workOrderId?: string | null;
+  workOrder?: PmsInspectionWorkOrderReference | null;
+  createdAt: string;
+};
+export type PmsInspectionResultRecord = {
+  id: string;
+  templateItemId: string;
+  templateItem: PmsInspectionTemplateItem;
+  result: PmsInspectionItemResult;
+  valueText?: string | null;
+  notes?: string | null;
+  photoUrls: string[];
+  acknowledgedByName?: string | null;
+  acknowledgedAt?: string | null;
+  defects: PmsInspectionDefect[];
+  createdAt: string;
+  updatedAt: string;
+};
 export type PmsInspectionRun = {
   id: string;
   title: string;
-  type: string;
-  status: string;
+  type: PmsInspectionType;
+  status: PmsInspectionStatus;
   scheduledFor?: string | null;
   completedAt?: string | null;
+  notes?: string | null;
+  acknowledgement?: Record<string, unknown> | null;
+  acknowledgedAt?: string | null;
+  propertyId?: string;
   property: { id: string; name: string };
+  unitId?: string | null;
   unit?: { id: string; unitNumber: string } | null;
-  defects?: Array<{ id: string; title: string; severity: string; status: string }>;
+  templateId?: string | null;
+  template?: PmsInspectionTemplate | null;
+  results?: PmsInspectionResultRecord[];
+  defects: PmsInspectionDefect[];
+  _count?: { results: number; defects: number; pmsDocuments: number };
+  createdAt?: string;
+  updatedAt?: string;
+};
+export type PmsInspectionPagination = { take: number; skip: number; count: number; total: number };
+export type PmsInspectionSummary = { scheduled: number; needsAction: number; openDefects: number };
+export type PmsInspectionRunPayload = {
+  companyId: string;
+  templateId: string;
+  propertyId: string;
+  unitId?: string | null;
+  leaseId?: string | null;
+  tenantId?: string | null;
+  title: string;
+  scheduledFor?: string | null;
+  notes?: string | null;
+};
+export type PmsInspectionResultPayload = {
+  templateItemId: string;
+  result: PmsInspectionItemResult;
+  valueText?: string | null;
+  notes?: string | null;
+  photoUrls: string[];
+  acknowledgedByName?: string | null;
+  defect?: {
+    title: string;
+    description?: string | null;
+    severity: PmsMaintenancePriority;
+    photoUrls: string[];
+  } | null;
 };
 
 function companyParams(companyId?: string) { return { companyId }; }
@@ -1183,6 +1288,39 @@ export function generateDuePmsMaintenanceWorkOrders(token: string, payload: { co
     { token },
   );
 }
-export async function listPmsInspectionRuns(token: string, companyId?: string) {
-  return apiClient.get<{ inspections: PmsInspectionRun[] }>('/api/pms/structured-inspections/runs', { token, params: companyParams(companyId) });
+export function listPmsInspectionTemplates(token: string, params: { companyId?: string; propertyId?: string } = {}) {
+  return apiClient.get<{ templates: PmsInspectionTemplate[] }>('/api/pms/structured-inspections/templates', { token, params });
+}
+export function listPmsInspectionRuns(token: string, params: {
+  companyId?: string;
+  propertyId?: string;
+  unitId?: string;
+  type?: PmsInspectionType;
+  status?: PmsInspectionStatus;
+  search?: string;
+  scheduledFrom?: string;
+  scheduledTo?: string;
+  sortBy?: 'scheduledFor' | 'completedAt' | 'title' | 'status' | 'type' | 'updatedAt' | 'createdAt';
+  direction?: 'asc' | 'desc';
+  take?: number;
+  skip?: number;
+  signal?: AbortSignal;
+} = {}) {
+  const { signal, ...query } = params;
+  return apiClient.get<{ inspections: PmsInspectionRun[]; pagination: PmsInspectionPagination; summary: PmsInspectionSummary }>('/api/pms/structured-inspections/runs', { token, params: query, signal });
+}
+export function getPmsInspectionRun(token: string, inspectionId: string, companyId?: string, signal?: AbortSignal) {
+  return apiClient.get<{ inspection: PmsInspectionRun }>(`/api/pms/structured-inspections/runs/${inspectionId}`, { token, params: companyParams(companyId), signal });
+}
+export function createPmsInspectionRun(token: string, payload: PmsInspectionRunPayload) {
+  return apiClient.post<{ inspection: PmsInspectionRun }>('/api/pms/structured-inspections/runs', payload, { token });
+}
+export function cancelPmsInspectionRun(token: string, inspectionId: string, companyId: string, reason: string) {
+  return apiClient.post<{ inspection: PmsInspectionRun }>(`/api/pms/structured-inspections/runs/${inspectionId}/cancel`, { companyId, reason }, { token });
+}
+export function completePmsInspectionRun(token: string, inspectionId: string, payload: { companyId: string; acknowledgement?: Record<string, unknown> | null; results: PmsInspectionResultPayload[] }) {
+  return apiClient.put<{ inspection: PmsInspectionRun }>(`/api/pms/structured-inspections/runs/${inspectionId}/results`, payload, { token });
+}
+export function convertPmsInspectionDefectToWorkOrder(token: string, defectId: string, payload: { companyId: string; vendorId?: string | null; assetId?: string | null; scheduledFor?: string | null; targetDate?: string | null }) {
+  return apiClient.post<{ workOrder: PmsInspectionWorkOrderReference; idempotent: boolean }>(`/api/pms/structured-inspections/defects/${defectId}/work-order`, payload, { token });
 }
