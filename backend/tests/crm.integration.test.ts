@@ -365,6 +365,12 @@ describe('CRM foundation access and lifecycle', () => {
       .expect(201);
     expect(task.body.activity).toMatchObject({ type: 'TASK', status: 'OPEN', priority: 'URGENT' });
 
+    const futureTask = await request(app)
+      .post(`/api/crm/leads/${leadId}/activities`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ type: 'TASK', subject: 'Prepare property documents', assignedToId: owner.id, priority: 'HIGH', dueAt: '2099-01-01T08:00:00.000Z' })
+      .expect(201);
+
     await request(app)
       .post(`/api/crm/leads/${leadId}/activities`)
       .set('Authorization', `Bearer ${token}`)
@@ -390,10 +396,26 @@ describe('CRM foundation access and lifecycle', () => {
 
     const tasks = await request(app).get('/api/crm/tasks?workspace=personal&overdue=true').set('Authorization', `Bearer ${token}`).expect(200);
     expect(tasks.body.summary).toMatchObject({ total: 1, overdue: 1 });
+    expect(tasks.body.pagination).toMatchObject({ total: 1, take: 25, skip: 0, count: 1 });
     expect(tasks.body.tasks[0]).toMatchObject({ leadId, id: task.body.activity.id, priority: 'URGENT' });
 
+    const firstTaskPage = await request(app)
+      .get('/api/crm/tasks?workspace=personal&search=property&taskStatus=OPEN&sortBy=createdAt&direction=asc&take=1&skip=0')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(firstTaskPage.body.summary).toMatchObject({ total: 2, overdue: 1 });
+    expect(firstTaskPage.body.pagination).toMatchObject({ total: 2, take: 1, skip: 0, count: 1 });
+    expect(firstTaskPage.body.limited).toBe(true);
+
+    const secondTaskPage = await request(app)
+      .get('/api/crm/tasks?workspace=personal&search=property&taskStatus=OPEN&sortBy=createdAt&direction=asc&take=1&skip=1')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(secondTaskPage.body.pagination).toMatchObject({ total: 2, take: 1, skip: 1, count: 1 });
+    expect(secondTaskPage.body.tasks[0].id).not.toBe(firstTaskPage.body.tasks[0].id);
+
     const analytics = await request(app).get('/api/crm/analytics?workspace=personal').set('Authorization', `Bearer ${token}`).expect(200);
-    expect(analytics.body.analytics).toMatchObject({ total: 1, openLeads: 1, overdueFollowUps: 1, openTasks: 1, overdueTasks: 1 });
+    expect(analytics.body.analytics).toMatchObject({ total: 1, openLeads: 1, overdueFollowUps: 1, openTasks: 2, overdueTasks: 1 });
     expect(analytics.body.analytics.bySource).toEqual(expect.arrayContaining([
       expect.objectContaining({ source: 'LISTING_INQUIRY', total: 1, open: 1 })
     ]));
@@ -410,6 +432,7 @@ describe('CRM foundation access and lifecycle', () => {
     ]));
 
     await request(app).patch(`/api/crm/leads/${leadId}/activities/${task.body.activity.id}`).set('Authorization', `Bearer ${token}`).send({ status: 'COMPLETED' }).expect(200);
+    await request(app).patch(`/api/crm/leads/${leadId}/activities/${futureTask.body.activity.id}`).set('Authorization', `Bearer ${token}`).send({ status: 'COMPLETED' }).expect(200);
   });
 
   it('keeps CRM task queues and communication history inside company property scope', async () => {

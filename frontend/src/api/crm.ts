@@ -284,6 +284,19 @@ export function getCrmPipeline(token: string, filters: CrmLeadFilters & { groupB
   return apiClient.get<{ pipeline: { groupBy: CrmPipelineGroupBy; groups: CrmPipelineGroup[]; total: number; limited: boolean } }>('/api/crm/pipeline', { token, params: filters });
 }
 
+export type CrmTaskRecord = CrmActivity & {
+  leadId: string;
+  assignedToId?: string | null;
+  lead: Pick<CrmLead, 'id' | 'title' | 'status' | 'priority' | 'companyId' | 'ownerUserId'> & {
+    pmsPropertyId?: string | null;
+    contact: Pick<CrmLead['contact'], 'id' | 'fullName' | 'email' | 'phone'>;
+    company?: { id: string; nameEn: string; nameAr?: string | null } | null;
+  };
+};
+
+export type CrmTaskSortBy = 'dueAt' | 'priority' | 'createdAt' | 'status';
+export type CrmTaskDirection = 'asc' | 'desc';
+
 export function listCrmTasks(token: string, filters: {
   companyId?: string;
   workspace?: 'personal' | 'all' | 'admin';
@@ -293,11 +306,16 @@ export function listCrmTasks(token: string, filters: {
   overdue?: boolean;
   dueFrom?: string;
   dueTo?: string;
+  search?: string;
+  sortBy?: CrmTaskSortBy;
+  direction?: CrmTaskDirection;
   take?: number;
+  skip?: number;
 } = {}) {
   return apiClient.get<{
-    tasks: Array<CrmActivity & { lead: Pick<CrmLead, 'id' | 'title' | 'status' | 'priority' | 'companyId' | 'ownerUserId'> & { contact: CrmLead['contact']; company?: CrmLead['company'] } }>;
+    tasks: CrmTaskRecord[];
     summary: { total: number; overdue: number };
+    pagination: { take: number; skip: number; total: number; count: number };
     limited: boolean;
   }>('/api/crm/tasks', { token, params: filters });
 }

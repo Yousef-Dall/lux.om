@@ -68,6 +68,7 @@ const Crm = lazy(() => import('./pages/Crm'));
 const CrmOperations = lazy(() => import('./pages/CrmOperations'));
 const CrmCommunicationsWorkspace = lazy(() => import('./features/crm/communications/CrmCommunicationsWorkspace'));
 const CrmAnalyticsWorkspace = lazy(() => import('./features/crm/analytics/CrmAnalyticsWorkspace'));
+const CrmTasksWorkspace = lazy(() => import('./features/crm/tasks/CrmTasksWorkspace'));
 const DeveloperProjectDetails = lazy(() => import('./pages/DeveloperProjectDetails'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Notifications = lazy(() => import('./pages/Notifications'));
@@ -924,7 +925,7 @@ export default function App() {
             <Route path="overview" element={<Crm section="overview" />} />
             <Route path="leads" element={<Crm section="leads" />} />
             <Route path="leads/:leadId" element={<Crm section="leads" />} />
-            <Route path="tasks" element={<Crm section="tasks" />} />
+            <Route path="tasks" element={<CrmTasksWorkspace />} />
             <Route path="accounts" element={<CrmOperations section="accounts" />} />
             <Route path="accounts/:accountId" element={<CrmOperations section="accounts" />} />
             <Route path="contacts" element={<CrmOperations section="contacts" />} />

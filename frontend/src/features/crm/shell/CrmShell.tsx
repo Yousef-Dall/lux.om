@@ -29,7 +29,7 @@ const primaryItems: CrmNavigationItem[] = [
   { key: 'accounts', to: '/crm/accounts', icon: Building2, operationalWorkspace: true },
   { key: 'contacts', to: '/crm/contacts', icon: ContactRound, operationalWorkspace: true },
   { key: 'deals', to: '/crm/deals', icon: Sparkles, operationalWorkspace: true },
-  { key: 'tasks', to: '/crm/tasks', icon: CheckSquare2 },
+  { key: 'tasks', to: '/crm/tasks', icon: CheckSquare2, operationalWorkspace: true },
   { key: 'communications', to: '/crm/communications', icon: MailCheck, operationalWorkspace: true },
   { key: 'analytics', to: '/crm/analytics', icon: BarChart3, operationalWorkspace: true }
 ];

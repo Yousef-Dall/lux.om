@@ -133,7 +133,11 @@ const taskQuerySchema = z
     overdue: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
     dueFrom: z.string().datetime().optional(),
     dueTo: z.string().datetime().optional(),
-    take: z.coerce.number().int().min(1).max(100).default(50)
+    search: z.string().trim().max(160).optional(),
+    sortBy: z.enum(['dueAt', 'priority', 'createdAt', 'status']).default('dueAt'),
+    direction: z.enum(['asc', 'desc']).default('asc'),
+    take: z.coerce.number().int().min(1).max(100).default(25),
+    skip: z.coerce.number().int().min(0).default(0)
   })
   .superRefine((data, context) => {
     if (data.dueFrom && data.dueTo && new Date(data.dueFrom) > new Date(data.dueTo)) {
@@ -822,8 +826,29 @@ crmRouter.get('/tasks', async (req, res, next) => {
       ...(query.overdue ? { status: 'OPEN', dueAt: { lt: now } } : {}),
       ...(query.dueFrom || query.dueTo
         ? { dueAt: { ...(query.dueFrom ? { gte: new Date(query.dueFrom) } : {}), ...(query.dueTo ? { lte: new Date(query.dueTo) } : {}) } }
+        : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { subject: { contains: query.search, mode: 'insensitive' } },
+              { body: { contains: query.search, mode: 'insensitive' } },
+              { lead: { title: { contains: query.search, mode: 'insensitive' } } },
+              { lead: { contact: { fullName: { contains: query.search, mode: 'insensitive' } } } },
+              { lead: { contact: { email: { contains: query.search, mode: 'insensitive' } } } },
+              { lead: { contact: { phone: { contains: query.search, mode: 'insensitive' } } } },
+              { lead: { company: { nameEn: { contains: query.search, mode: 'insensitive' } } } },
+              { lead: { company: { nameAr: { contains: query.search, mode: 'insensitive' } } } }
+            ]
+          }
         : {})
     };
+    const primaryOrder: Prisma.CrmActivityOrderByWithRelationInput = query.sortBy === 'priority'
+      ? { priority: query.direction }
+      : query.sortBy === 'createdAt'
+        ? { createdAt: query.direction }
+        : query.sortBy === 'status'
+          ? { status: query.direction }
+          : { dueAt: query.direction };
     const [tasks, total, overdue] = await prisma.$transaction([
       prisma.crmActivity.findMany({
         where,
@@ -844,13 +869,19 @@ crmRouter.get('/tasks', async (req, res, next) => {
             }
           }
         },
-        orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }, { createdAt: 'desc' }],
-        take: query.take
+        orderBy: [primaryOrder, { id: 'asc' }],
+        take: query.take,
+        skip: query.skip
       }),
       prisma.crmActivity.count({ where }),
       prisma.crmActivity.count({ where: { AND: [where, { status: 'OPEN', dueAt: { lt: now } }] } })
     ]);
-    res.json({ tasks, summary: { total, overdue }, limited: tasks.length === query.take });
+    res.json({
+      tasks,
+      summary: { total, overdue },
+      pagination: { take: query.take, skip: query.skip, total, count: tasks.length },
+      limited: query.skip + tasks.length < total
+    });
   } catch (error) {
     next(error);
   }

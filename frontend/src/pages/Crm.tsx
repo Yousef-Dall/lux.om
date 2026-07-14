@@ -41,7 +41,6 @@ import {
   listCrmTasks,
   updateCrmActivity,
   updateCrmLead,
-  type CrmActivity,
   type CrmActivityPriority,
   type CrmActivityType,
   type CrmAnalytics,
@@ -53,7 +52,8 @@ import {
   type CrmLeadStatus,
   type CrmPerson,
   type CrmPipelineGroup,
-  type CrmPipelineGroupBy
+  type CrmPipelineGroupBy,
+  type CrmTaskRecord
 } from '../api/crm';
 import { WorkspaceSelector, type CrmWorkspaceChoice } from '../features/crm/WorkspaceSelector';
 import { useAuth } from '../auth/AuthContext';
@@ -95,7 +95,7 @@ const communicationOutcomes: CrmCommunicationOutcome[] = ['CONNECTED', 'REPLIED'
 
 type ManualActivityType = Exclude<CrmActivityType, 'STATUS_CHANGE' | 'ASSIGNMENT' | 'SYSTEM_NOTIFICATION'>;
 type WorkspaceChoice = CrmWorkspaceChoice;
-type CrmTask = CrmActivity & { lead: Pick<CrmLead, 'id' | 'title' | 'status' | 'priority' | 'companyId' | 'ownerUserId'> & { contact: CrmLead['contact']; company?: CrmLead['company'] } };
+type CrmTask = CrmTaskRecord;
 
 const emptyAnalytics: CrmAnalytics = {
   total: 0,
