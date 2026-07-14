@@ -66,6 +66,7 @@ const PmsAssetsInspections = lazy(() => import('./pages/PmsAssetsInspections'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Crm = lazy(() => import('./pages/Crm'));
 const CrmOperations = lazy(() => import('./pages/CrmOperations'));
+const CrmCommunicationsWorkspace = lazy(() => import('./features/crm/communications/CrmCommunicationsWorkspace'));
 const DeveloperProjectDetails = lazy(() => import('./pages/DeveloperProjectDetails'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Notifications = lazy(() => import('./pages/Notifications'));
@@ -929,7 +930,7 @@ export default function App() {
             <Route path="contacts/:contactId" element={<CrmOperations section="contacts" />} />
             <Route path="deals" element={<CrmOperations section="deals" />} />
             <Route path="deals/:dealId" element={<CrmOperations section="deals" />} />
-            <Route path="communications" element={<CrmOperations section="communications" />} />
+            <Route path="communications" element={<CrmCommunicationsWorkspace />} />
             <Route path="analytics" element={<CrmOperations section="analytics" />} />
             <Route path="settings/pipelines" element={<CrmOperations section="pipelines" />} />
             <Route path="settings/scoring" element={<CrmOperations section="scoring" />} />

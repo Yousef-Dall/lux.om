@@ -308,15 +308,76 @@ export function updateCrmCommunicationGovernance(token: string, contactId: strin
   return apiClient.patch<{ preference: CrmContactDetail['channelPreferences'][number] }>(`/api/crm/contacts/${contactId}/communication-governance`, payload, { token });
 }
 
-export type CrmDeliveryAttempt = {
+export type CrmDeliveryProvider = 'DRAFT_ONLY' | 'VERIFIED_EMAIL' | 'WHATSAPP_BUSINESS';
+
+export type CrmCommunicationContact = {
   id: string;
-  channel: CrmCommunicationChannel;
-  status: CrmDeliveryStatus;
-  provider: string;
-  destination: string;
-  providerConfirmedAt?: string | null;
+  workspaceId: string;
+  fullName: string;
+  email?: string | null;
+  phone?: string | null;
+  normalizedEmail?: string | null;
+  normalizedPhone?: string | null;
+  updatedAt: string;
+  account?: { id: string; name: string; type: CrmAccountType } | null;
+  identities: Array<{ id: string; type: 'EMAIL' | 'PHONE'; normalizedValue: string; verifiedAt?: string | null }>;
+  channelPreferences: CrmContactDetail['channelPreferences'];
 };
 
+export type CrmCommunicationTemplateVersion = {
+  id: string;
+  templateId: string;
+  version: number;
+  subject?: string | null;
+  body: string;
+  active: boolean;
+  createdAt: string;
+};
+
+export type CrmCommunicationTemplate = {
+  id: string;
+  workspaceId: string;
+  key: string;
+  name: string;
+  channel: CrmCommunicationChannel;
+  active: boolean;
+  versions: CrmCommunicationTemplateVersion[];
+  updatedAt: string;
+};
+
+export type CrmDeliveryAttempt = {
+  id: string;
+  workspaceId: string;
+  contactId: string;
+  leadId?: string | null;
+  dealId?: string | null;
+  activityId?: string | null;
+  templateVersionId?: string | null;
+  channel: CrmCommunicationChannel;
+  status: CrmDeliveryStatus;
+  provider: CrmDeliveryProvider;
+  destination: string;
+  normalizedDestination: string;
+  idempotencyKey: string;
+  providerMessageId?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  metadata?: { subject?: string | null; body?: string } | null;
+  attemptedAt: string;
+  submittedAt?: string | null;
+  providerConfirmedAt?: string | null;
+  deliveredAt?: string | null;
+  failedAt?: string | null;
+  bouncedAt?: string | null;
+  blockedAt?: string | null;
+  contact?: { id: string; fullName: string; email?: string | null; phone?: string | null };
+  lead?: { id: string; title: string } | null;
+  deal?: { id: string; name: string } | null;
+  activity?: { id: string; type: string; subject: string } | null;
+  templateVersion?: (CrmCommunicationTemplateVersion & {
+    template: Pick<CrmCommunicationTemplate, 'id' | 'key' | 'name' | 'channel'>;
+  }) | null;
+};
 
 export type CrmCommunicationPolicy = {
   workspaceId: string;
@@ -333,4 +394,73 @@ export function getCrmCommunicationPolicy(token: string, workspaceId: string) {
 
 export function updateCrmCommunicationPolicy(token: string, payload: CrmCommunicationPolicy) {
   return apiClient.patch<{ policy: CrmCommunicationPolicy }>('/api/crm/communication-policy', payload, { token });
+}
+
+export function listCrmCommunicationContacts(
+  token: string,
+  params: {
+    workspaceId: string;
+    search?: string;
+    sortBy?: 'fullName' | 'updatedAt';
+    direction?: 'asc' | 'desc';
+    take?: number;
+    skip?: number;
+  }
+) {
+  return apiClient.get<{
+    contacts: CrmCommunicationContact[];
+    pagination: { total: number; take: number; skip: number; count: number };
+  }>('/api/crm/contacts', { token, params });
+}
+
+export function listCrmCommunicationTemplates(token: string, workspaceId: string) {
+  return apiClient.get<{ templates: CrmCommunicationTemplate[] }>('/api/crm/communication-templates', {
+    token,
+    params: { workspaceId }
+  });
+}
+
+export function listCrmDeliveryAttempts(
+  token: string,
+  params: {
+    workspaceId: string;
+    contactId?: string;
+    search?: string;
+    channel?: CrmCommunicationChannel;
+    provider?: CrmDeliveryProvider;
+    status?: CrmDeliveryStatus;
+    sortBy?: 'attemptedAt' | 'status' | 'channel';
+    direction?: 'asc' | 'desc';
+    take?: number;
+    skip?: number;
+  }
+) {
+  return apiClient.get<{
+    attempts: CrmDeliveryAttempt[];
+    pagination: { total: number; take: number; skip: number; count: number };
+  }>('/api/crm/delivery-attempts', { token, params });
+}
+
+export function createCrmDeliveryAttempt(
+  token: string,
+  payload: {
+    workspaceId: string;
+    contactId: string;
+    leadId?: string | null;
+    dealId?: string | null;
+    activityId?: string | null;
+    templateVersionId?: string | null;
+    channel: CrmCommunicationChannel;
+    provider: CrmDeliveryProvider;
+    destination: string;
+    subject?: string | null;
+    body: string;
+    idempotencyKey: string;
+  }
+) {
+  return apiClient.post<{ attempt: CrmDeliveryAttempt; deliveryConfirmed: boolean }>(
+    '/api/crm/delivery-attempts',
+    payload,
+    { token }
+  );
 }

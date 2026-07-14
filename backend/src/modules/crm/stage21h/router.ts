@@ -384,6 +384,66 @@ crmStage21hRouter.post('/accounts/:id/contacts', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+crmStage21hRouter.get('/contacts', async (req, res, next) => {
+  try {
+    const query = z.object({
+      workspaceId: id,
+      search: z.string().trim().max(160).optional(),
+      sortBy: z.enum(['fullName', 'updatedAt']).default('fullName'),
+      direction: z.enum(['asc', 'desc']).default('asc'),
+      take: z.coerce.number().int().min(1).max(200).default(50),
+      skip: z.coerce.number().int().min(0).default(0)
+    }).parse(req.query);
+    const { access } = await resolveWorkspaceAccess(req.user!, query.workspaceId, 'view');
+    const where: Prisma.CrmContactWhereInput = {
+      AND: [
+        contactScopeWhere(access, query.workspaceId),
+        { mergedIntoContactId: null, archivedAt: null },
+        ...(query.search ? [{
+          OR: [
+            { fullName: { contains: query.search, mode: 'insensitive' as const } },
+            { email: { contains: query.search, mode: 'insensitive' as const } },
+            { phone: { contains: query.search, mode: 'insensitive' as const } },
+            { account: { name: { contains: query.search, mode: 'insensitive' as const } } }
+          ]
+        }] : [])
+      ]
+    };
+    const orderBy: Prisma.CrmContactOrderByWithRelationInput = query.sortBy === 'updatedAt'
+      ? { updatedAt: query.direction }
+      : { fullName: query.direction };
+    const [contacts, total] = await prisma.$transaction([
+      prisma.crmContact.findMany({
+        where,
+        select: {
+          id: true,
+          workspaceId: true,
+          fullName: true,
+          email: true,
+          phone: true,
+          normalizedEmail: true,
+          normalizedPhone: true,
+          updatedAt: true,
+          account: { select: { id: true, name: true, type: true } },
+          identities: {
+            where: { active: true },
+            select: { id: true, type: true, normalizedValue: true, verifiedAt: true },
+            orderBy: { type: 'asc' }
+          },
+          channelPreferences: {
+            select: { id: true, channel: true, status: true, lawfulBasis: true, preferred: true, timezone: true }
+          }
+        },
+        orderBy: [orderBy, { id: 'asc' }],
+        take: query.take,
+        skip: query.skip
+      }),
+      prisma.crmContact.count({ where })
+    ]);
+    res.json({ contacts, pagination: { total, take: query.take, skip: query.skip, count: contacts.length } });
+  } catch (error) { next(error); }
+});
+
 crmStage21hRouter.get('/contacts/:id', async (req, res, next) => {
   try {
     const contactId = id.parse(req.params.id);
@@ -956,19 +1016,56 @@ crmStage21hRouter.get('/delivery-attempts', async (req, res, next) => {
     const query = z.object({
       workspaceId: id,
       contactId: id.optional(),
+      search: z.string().trim().max(160).optional(),
+      channel: z.enum(channels).optional(),
+      provider: z.enum(deliveryProviders).optional(),
       status: z.enum(['DRAFT', 'QUEUED', 'PROCESSING', 'SUBMITTED', 'DELIVERED', 'FAILED', 'BOUNCED', 'BLOCKED', 'CANCELLED']).optional(),
-      take: z.coerce.number().int().min(1).max(200).default(100),
+      sortBy: z.enum(['attemptedAt', 'status', 'channel']).default('attemptedAt'),
+      direction: z.enum(['asc', 'desc']).default('desc'),
+      take: z.coerce.number().int().min(1).max(200).default(25),
       skip: z.coerce.number().int().min(0).default(0)
     }).parse(req.query);
     const { access } = await resolveWorkspaceAccess(req.user!, query.workspaceId, 'view');
+    const scopedContactWhere = contactScopeWhere(access, query.workspaceId);
     const where: Prisma.CrmDeliveryAttemptWhereInput = {
-      workspaceId: query.workspaceId,
-      contact: contactScopeWhere(access, query.workspaceId),
-      ...(query.contactId ? { contactId: query.contactId } : {}),
-      ...(query.status ? { status: query.status } : {})
+      AND: [
+        { workspaceId: query.workspaceId, contact: scopedContactWhere },
+        ...(query.contactId ? [{ contactId: query.contactId }] : []),
+        ...(query.channel ? [{ channel: query.channel }] : []),
+        ...(query.provider ? [{ provider: query.provider }] : []),
+        ...(query.status ? [{ status: query.status }] : []),
+        ...(query.search ? [{
+          OR: [
+            { destination: { contains: query.search, mode: 'insensitive' as const } },
+            { errorCode: { contains: query.search, mode: 'insensitive' as const } },
+            { errorMessage: { contains: query.search, mode: 'insensitive' as const } },
+            { contact: { fullName: { contains: query.search, mode: 'insensitive' as const } } },
+            { contact: { email: { contains: query.search, mode: 'insensitive' as const } } },
+            { contact: { phone: { contains: query.search, mode: 'insensitive' as const } } },
+            { templateVersion: { template: { name: { contains: query.search, mode: 'insensitive' as const } } } }
+          ]
+        }] : [])
+      ]
+    };
+    const orderBy: Prisma.CrmDeliveryAttemptOrderByWithRelationInput = {
+      [query.sortBy]: query.direction
     };
     const [attempts, total] = await prisma.$transaction([
-      prisma.crmDeliveryAttempt.findMany({ where, orderBy: { attemptedAt: 'desc' }, take: query.take, skip: query.skip }),
+      prisma.crmDeliveryAttempt.findMany({
+        where,
+        include: {
+          contact: { select: { id: true, fullName: true, email: true, phone: true } },
+          lead: { select: { id: true, title: true } },
+          deal: { select: { id: true, name: true } },
+          activity: { select: { id: true, type: true, subject: true } },
+          templateVersion: {
+            include: { template: { select: { id: true, key: true, name: true, channel: true } } }
+          }
+        },
+        orderBy: [orderBy, { id: query.direction }],
+        take: query.take,
+        skip: query.skip
+      }),
       prisma.crmDeliveryAttempt.count({ where })
     ]);
     res.json({ attempts, pagination: { total, take: query.take, skip: query.skip, count: attempts.length } });

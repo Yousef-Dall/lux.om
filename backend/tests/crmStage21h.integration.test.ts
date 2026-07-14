@@ -221,6 +221,13 @@ describe('CRM Stage 21H revenue operations', () => {
       .set('Authorization', `Bearer ${propertyToken}`)
       .expect(403);
 
+    const contacts = await request(app)
+      .get(`/api/crm/contacts?workspaceId=${fixture.workspace.id}&search=Hidden&sortBy=updatedAt&direction=desc&take=25&skip=0`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .expect(200);
+    expect(contacts.body.contacts).toHaveLength(0);
+    expect(contacts.body.pagination).toMatchObject({ total: 0, take: 25, skip: 0, count: 0 });
+
     const sourceEvents = await request(app)
       .get(`/api/crm/source-events?workspaceId=${fixture.workspace.id}`)
       .set('Authorization', `Bearer ${propertyToken}`)
@@ -553,6 +560,43 @@ describe('CRM Stage 21H revenue operations', () => {
       .expect(201);
     expect(draft.body.attempt.status).toBe('DRAFT');
     expect(draft.body.deliveryConfirmed).toBe(false);
+
+    const contacts = await request(app)
+      .get(`/api/crm/contacts?workspaceId=${fixture.workspace.id}&search=Governed&sortBy=fullName&direction=asc&take=25&skip=0`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(contacts.body.pagination).toMatchObject({ total: 1, take: 25, skip: 0, count: 1 });
+    expect(contacts.body.contacts[0]).toMatchObject({
+      id: contactId,
+      fullName: 'Governed Contact',
+      email: 'governed@lux.test',
+      channelPreferences: [expect.objectContaining({ channel: 'EMAIL', status: 'CONSENTED' })]
+    });
+
+    const deliveryRegister = await request(app)
+      .get(`/api/crm/delivery-attempts?workspaceId=${fixture.workspace.id}&search=Relationship&channel=EMAIL&provider=VERIFIED_EMAIL&status=QUEUED&sortBy=attemptedAt&direction=desc&take=25&skip=0`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(deliveryRegister.body.pagination).toMatchObject({ total: 1, take: 25, skip: 0, count: 1 });
+    expect(deliveryRegister.body.attempts[0]).toMatchObject({
+      id: queued.body.attempt.id,
+      status: 'QUEUED',
+      channel: 'EMAIL',
+      provider: 'VERIFIED_EMAIL',
+      contact: { id: contactId, fullName: 'Governed Contact' },
+      templateVersion: {
+        id: templateVersionId,
+        template: { name: 'Relationship follow-up', channel: 'EMAIL' }
+      },
+      metadata: { subject: 'Queued', body: 'Provider submission must happen in the durable worker' }
+    });
+
+    const draftRegister = await request(app)
+      .get(`/api/crm/delivery-attempts?workspaceId=${fixture.workspace.id}&search=governed%40lux.test&channel=EMAIL&provider=DRAFT_ONLY&status=DRAFT&sortBy=status&direction=asc&take=1&skip=0`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(draftRegister.body.pagination).toMatchObject({ total: 1, take: 1, skip: 0, count: 1 });
+    expect(draftRegister.body.attempts[0]).toMatchObject({ id: draft.body.attempt.id, status: 'DRAFT' });
 
     await request(app)
       .post('/api/crm/suppressions')
