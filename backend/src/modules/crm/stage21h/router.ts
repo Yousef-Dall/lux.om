@@ -759,14 +759,88 @@ crmStage21hRouter.patch('/pipeline-stages/:id', async (req, res, next) => {
 
 crmStage21hRouter.get('/deals', async (req, res, next) => {
   try {
-    const query = z.object({ workspaceId: id, pipelineId: id.optional(), stageId: id.optional(), outcome: z.enum(dealOutcomes).optional(), currency: currency.optional(), ownerUserId: id.optional(), search: z.string().trim().max(160).optional(), includeArchived: z.enum(['true', 'false']).transform((v) => v === 'true').default(false), take: z.coerce.number().int().min(1).max(200).default(100), skip: z.coerce.number().int().min(0).default(0) }).parse(req.query);
+    const query = z.object({
+      workspaceId: id,
+      pipelineId: id.optional(),
+      stageId: id.optional(),
+      outcome: z.enum(dealOutcomes).optional(),
+      currency: currency.optional(),
+      ownerUserId: id.optional(),
+      search: z.string().trim().max(160).optional(),
+      status: z.enum(['ACTIVE', 'ARCHIVED', 'ALL']).optional(),
+      includeArchived: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+      expectedCloseFrom: z.string().date().optional(),
+      expectedCloseTo: z.string().date().optional(),
+      sortBy: z.enum(['name', 'expectedCloseDate', 'expectedValue', 'updatedAt', 'createdAt']).default('expectedCloseDate'),
+      direction: z.enum(['asc', 'desc']).default('asc'),
+      take: z.coerce.number().int().min(1).max(100).default(25),
+      skip: z.coerce.number().int().min(0).default(0)
+    }).parse(req.query);
     const { access } = await resolveWorkspaceAccess(req.user!, query.workspaceId, 'view');
-    const where: Prisma.CrmDealWhereInput = { ...dealScopeWhere(access, query.workspaceId), ...(query.pipelineId ? { pipelineId: query.pipelineId } : {}), ...(query.stageId ? { stageId: query.stageId } : {}), ...(query.outcome ? { outcome: query.outcome } : {}), ...(query.currency ? { currency: query.currency } : {}), ...(query.ownerUserId ? { ownerUserId: query.ownerUserId } : {}), ...(!query.includeArchived ? { archivedAt: null } : {}), ...(query.search ? { OR: [{ name: { contains: query.search, mode: 'insensitive' } }, { account: { name: { contains: query.search, mode: 'insensitive' } } }, { primaryContact: { fullName: { contains: query.search, mode: 'insensitive' } } }] } : {}) };
-    const [deals, total] = await prisma.$transaction([
-      prisma.crmDeal.findMany({ where, include: { account: { select: { id: true, name: true, type: true } }, primaryContact: { select: { id: true, fullName: true, email: true, phone: true } }, pipeline: { select: { id: true, name: true } }, stage: true, ownerUser: { select: { id: true, name: true, email: true } }, _count: { select: { activities: true, stageHistory: true } } }, orderBy: [{ archivedAt: 'asc' }, { expectedCloseDate: 'asc' }, { updatedAt: 'desc' }], take: query.take, skip: query.skip }),
-      prisma.crmDeal.count({ where })
+    const status = query.status ?? (query.includeArchived ? 'ALL' : 'ACTIVE');
+    const closeRange = query.expectedCloseFrom || query.expectedCloseTo
+      ? {
+          expectedCloseDate: {
+            ...(query.expectedCloseFrom ? { gte: new Date(`${query.expectedCloseFrom}T00:00:00.000Z`) } : {}),
+            ...(query.expectedCloseTo ? { lte: new Date(`${query.expectedCloseTo}T23:59:59.999Z`) } : {})
+          }
+        }
+      : {};
+    const baseWhere: Prisma.CrmDealWhereInput = {
+      ...dealScopeWhere(access, query.workspaceId),
+      ...(query.pipelineId ? { pipelineId: query.pipelineId } : {}),
+      ...(query.stageId ? { stageId: query.stageId } : {}),
+      ...(query.outcome ? { outcome: query.outcome } : {}),
+      ...(query.currency ? { currency: query.currency } : {}),
+      ...(query.ownerUserId ? { ownerUserId: query.ownerUserId } : {}),
+      ...closeRange,
+      ...(query.search ? {
+        OR: [
+          { name: { contains: query.search, mode: 'insensitive' } },
+          { description: { contains: query.search, mode: 'insensitive' } },
+          { account: { name: { contains: query.search, mode: 'insensitive' } } },
+          { primaryContact: { fullName: { contains: query.search, mode: 'insensitive' } } },
+          { pipeline: { name: { contains: query.search, mode: 'insensitive' } } },
+          { stage: { name: { contains: query.search, mode: 'insensitive' } } }
+        ]
+      } : {})
+    };
+    const where: Prisma.CrmDealWhereInput = {
+      ...baseWhere,
+      ...(status === 'ACTIVE' ? { archivedAt: null } : status === 'ARCHIVED' ? { archivedAt: { not: null } } : {})
+    };
+    const orderBy: Prisma.CrmDealOrderByWithRelationInput[] = query.sortBy === 'name'
+      ? [{ archivedAt: 'asc' }, { name: query.direction }]
+      : query.sortBy === 'expectedValue'
+        ? [{ archivedAt: 'asc' }, { expectedValue: query.direction }, { name: 'asc' }]
+        : query.sortBy === 'updatedAt'
+          ? [{ archivedAt: 'asc' }, { updatedAt: query.direction }, { name: 'asc' }]
+          : query.sortBy === 'createdAt'
+            ? [{ archivedAt: 'asc' }, { createdAt: query.direction }, { name: 'asc' }]
+            : [{ archivedAt: 'asc' }, { expectedCloseDate: query.direction }, { updatedAt: 'desc' }];
+    const selection = {
+      account: { select: { id: true, name: true, type: true } },
+      primaryContact: { select: { id: true, fullName: true, email: true, phone: true } },
+      sourceLead: { select: { id: true, title: true, status: true } },
+      pipeline: { select: { id: true, name: true } },
+      stage: true,
+      ownerUser: { select: { id: true, name: true, email: true } },
+      _count: { select: { activities: true, stageHistory: true } }
+    } satisfies Prisma.CrmDealInclude;
+    const [deals, total, active, archived, open, won, lost] = await prisma.$transaction([
+      prisma.crmDeal.findMany({ where, include: selection, orderBy, take: query.take, skip: query.skip }),
+      prisma.crmDeal.count({ where }),
+      prisma.crmDeal.count({ where: { ...baseWhere, archivedAt: null } }),
+      prisma.crmDeal.count({ where: { ...baseWhere, archivedAt: { not: null } } }),
+      prisma.crmDeal.count({ where: { ...baseWhere, archivedAt: null, outcome: 'OPEN' } }),
+      prisma.crmDeal.count({ where: { ...baseWhere, archivedAt: null, outcome: 'WON' } }),
+      prisma.crmDeal.count({ where: { ...baseWhere, archivedAt: null, outcome: 'LOST' } })
     ]);
-    res.json({ deals, pagination: { total, take: query.take, skip: query.skip, count: deals.length } });
+    res.json({
+      deals,
+      summary: { total, active, archived, open, won, lost },
+      pagination: { total, take: query.take, skip: query.skip, count: deals.length }
+    });
   } catch (error) { next(error); }
 });
 
@@ -898,13 +972,45 @@ crmStage21hRouter.post('/deals/:id/transition', async (req, res, next) => {
 crmStage21hRouter.patch('/deals/:id/archive', async (req, res, next) => {
   try {
     const dealId = id.parse(req.params.id);
-    const data = z.object({ archived: z.boolean(), reason: z.string().trim().max(1000).optional() }).parse(req.body);
+    const data = z.object({ archived: z.boolean(), reason: z.string().trim().min(3).max(1000) }).strict().parse(req.body);
     const current = await prisma.crmDeal.findUnique({ where: { id: dealId } });
     if (!current) throw new AppError(404, 'CRM deal not found.');
     const { access } = await resolveWorkspaceAccess(req.user!, current.workspaceId, 'manage');
     assertPropertyScope(access, current, 'manage');
-    const deal = await prisma.crmDeal.update({ where: { id: dealId }, data: { archivedAt: data.archived ? new Date() : null, updatedById: req.user!.id, activities: { create: { workspaceId: current.workspaceId, type: 'NOTE', status: 'COMPLETED', subject: data.archived ? 'Deal archived' : 'Deal restored', body: data.reason, completedAt: new Date(), createdById: req.user!.id, updatedById: req.user!.id, contactId: current.primaryContactId } } } });
-    res.json({ deal });
+    const alreadyInState = data.archived ? Boolean(current.archivedAt) : !current.archivedAt;
+    const include = {
+      account: { select: { id: true, name: true, type: true } },
+      primaryContact: { select: { id: true, fullName: true, email: true, phone: true } },
+      sourceLead: { select: { id: true, title: true, status: true } },
+      pipeline: { select: { id: true, name: true } },
+      stage: true,
+      ownerUser: { select: { id: true, name: true, email: true } },
+      _count: { select: { activities: true, stageHistory: true } }
+    } satisfies Prisma.CrmDealInclude;
+    const deal = alreadyInState
+      ? await prisma.crmDeal.findUniqueOrThrow({ where: { id: dealId }, include })
+      : await prisma.crmDeal.update({
+          where: { id: dealId },
+          data: {
+            archivedAt: data.archived ? new Date() : null,
+            updatedById: req.user!.id,
+            activities: {
+              create: {
+                workspaceId: current.workspaceId,
+                type: 'NOTE',
+                status: 'COMPLETED',
+                subject: data.archived ? 'Deal archived' : 'Deal restored',
+                body: data.reason,
+                completedAt: new Date(),
+                createdById: req.user!.id,
+                updatedById: req.user!.id,
+                contactId: current.primaryContactId
+              }
+            }
+          },
+          include
+        });
+    res.json({ deal, idempotent: alreadyInState });
   } catch (error) { next(error); }
 });
 

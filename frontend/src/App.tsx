@@ -71,6 +71,7 @@ const CrmAnalyticsWorkspace = lazy(() => import('./features/crm/analytics/CrmAna
 const CrmTasksWorkspace = lazy(() => import('./features/crm/tasks/CrmTasksWorkspace'));
 const CrmAccountsWorkspace = lazy(() => import('./features/crm/accounts/CrmAccountsWorkspace'));
 const CrmContactsWorkspace = lazy(() => import('./features/crm/contacts/CrmContactsWorkspace'));
+const CrmDealsWorkspace = lazy(() => import('./features/crm/deals/CrmDealsWorkspace'));
 const DeveloperProjectDetails = lazy(() => import('./pages/DeveloperProjectDetails'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Notifications = lazy(() => import('./pages/Notifications'));
@@ -932,8 +933,8 @@ export default function App() {
             <Route path="accounts/:accountId" element={<CrmAccountsWorkspace />} />
             <Route path="contacts" element={<CrmContactsWorkspace />} />
             <Route path="contacts/:contactId" element={<CrmContactsWorkspace />} />
-            <Route path="deals" element={<CrmOperations section="deals" />} />
-            <Route path="deals/:dealId" element={<CrmOperations section="deals" />} />
+            <Route path="deals" element={<CrmDealsWorkspace />} />
+            <Route path="deals/:dealId" element={<CrmDealsWorkspace />} />
             <Route path="communications" element={<CrmCommunicationsWorkspace />} />
             <Route path="analytics" element={<CrmAnalyticsWorkspace />} />
             <Route path="settings/pipelines" element={<CrmOperations section="pipelines" />} />

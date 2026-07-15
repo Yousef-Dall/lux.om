@@ -148,7 +148,7 @@ test('CRM account center links to dedicated currency-separated analytics', async
   await page.getByRole('navigation', { name: 'CRM sections' }).getByRole('link', { name: 'Deals', exact: true }).click();
   await expect(page.getByText('Enterprise onboarding')).toBeVisible();
   await expect(page.getByText('International distribution')).toBeVisible();
-  await expect(page.getByText('Qualified', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Move Enterprise onboarding', exact: true })).toHaveValue('stage-open');
 
   await page.getByRole('navigation', { name: 'CRM sections' }).getByRole('link', { name: 'Analytics', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'CRM analytics and source attribution' })).toBeVisible();

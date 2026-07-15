@@ -381,6 +381,115 @@ describe('CRM Stage 21H revenue operations', () => {
     ]);
   });
 
+  it('provides paginated deal browsing and governed archive lifecycle inside property scope', async () => {
+    const [portfolioManager, propertyManager] = await Promise.all([
+      createUser('crm21h-deal-portfolio@lux.test'),
+      createUser('crm21h-deal-property@lux.test')
+    ]);
+    const fixture = await createCompanyWorkspace({
+      slug: 'deal-center',
+      members: [
+        { userId: portfolioManager.id, allProperties: true },
+        { userId: propertyManager.id, propertyIndex: 0 }
+      ]
+    });
+    const portfolioToken = signToken(portfolioManager);
+    const propertyToken = signToken(propertyManager);
+
+    const harbourLead = await createLead({
+      token: portfolioToken,
+      companyId: fixture.company.id,
+      propertyId: fixture.properties[0].id,
+      assignedToId: portfolioManager.id,
+      title: 'Harbour portfolio opportunity',
+      fullName: 'Harbour Decision Maker',
+      email: 'harbour-deal@lux.test',
+      expectedValue: 85000,
+      currency: 'OMR'
+    });
+    const harbour = await convertLead({
+      token: portfolioToken,
+      leadId: harbourLead.body.lead.id,
+      accountName: 'Harbour Holdings',
+      dealName: 'Harbour annual portfolio'
+    });
+    await prisma.crmDeal.update({
+      where: { id: harbour.body.deal.id },
+      data: { expectedCloseDate: new Date('2026-08-15T12:00:00.000Z') }
+    });
+
+    const outsideLead = await createLead({
+      token: portfolioToken,
+      companyId: fixture.company.id,
+      propertyId: fixture.properties[1].id,
+      assignedToId: portfolioManager.id,
+      title: 'Outside property opportunity',
+      fullName: 'Outside Decision Maker',
+      email: 'outside-deal@lux.test',
+      expectedValue: 125000,
+      currency: 'USD'
+    });
+    const outside = await convertLead({
+      token: portfolioToken,
+      leadId: outsideLead.body.lead.id,
+      accountName: 'Outside Property Investor',
+      dealName: 'Outside property mandate'
+    });
+
+    const paginated = await request(app)
+      .get(`/api/crm/deals?workspaceId=${fixture.workspace.id}&search=Harbour&outcome=OPEN&currency=OMR&status=ACTIVE&expectedCloseFrom=2026-08-01&expectedCloseTo=2026-08-31&sortBy=expectedValue&direction=desc&take=1&skip=0`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .expect(200);
+    expect(paginated.body.deals).toHaveLength(1);
+    expect(paginated.body.deals[0]).toMatchObject({ id: harbour.body.deal.id, name: 'Harbour annual portfolio', outcome: 'OPEN', currency: 'OMR' });
+    expect(paginated.body.deals[0]._count).toMatchObject({ activities: 1, stageHistory: 1 });
+    expect(paginated.body.pagination).toMatchObject({ total: 1, take: 1, skip: 0, count: 1 });
+    expect(paginated.body.summary).toMatchObject({ total: 1, active: 1, archived: 0, open: 1, won: 0, lost: 0 });
+
+    await request(app)
+      .patch(`/api/crm/deals/${outside.body.deal.id}/archive`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ archived: true, reason: 'Attempt outside assigned property scope' })
+      .expect(403);
+
+    const archived = await request(app)
+      .patch(`/api/crm/deals/${harbour.body.deal.id}/archive`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ archived: true, reason: 'Commercial review paused this opportunity' })
+      .expect(200);
+    expect(archived.body.deal.archivedAt).toBeTruthy();
+    expect(archived.body.idempotent).toBe(false);
+
+    const idempotentArchive = await request(app)
+      .patch(`/api/crm/deals/${harbour.body.deal.id}/archive`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ archived: true, reason: 'Opportunity remains paused' })
+      .expect(200);
+    expect(idempotentArchive.body.idempotent).toBe(true);
+
+    const archivedList = await request(app)
+      .get(`/api/crm/deals?workspaceId=${fixture.workspace.id}&status=ARCHIVED&take=25&skip=0`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .expect(200);
+    expect(archivedList.body.deals.map((deal: { id: string }) => deal.id)).toEqual([harbour.body.deal.id]);
+    expect(archivedList.body.summary).toMatchObject({ total: 1, active: 0, archived: 1, open: 0, won: 0, lost: 0 });
+
+    await request(app)
+      .patch(`/api/crm/deals/${harbour.body.deal.id}/archive`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ archived: false, reason: 'Commercial engagement resumed' })
+      .expect(200);
+
+    const activities = await prisma.crmActivity.findMany({
+      where: { dealId: harbour.body.deal.id, subject: { in: ['Deal archived', 'Deal restored'] } },
+      orderBy: { createdAt: 'asc' }
+    });
+    expect(activities.map((activity) => ({ subject: activity.subject, body: activity.body }))).toEqual([
+      { subject: 'Deal archived', body: 'Commercial review paused this opportunity' },
+      { subject: 'Deal restored', body: 'Commercial engagement resumed' }
+    ]);
+  });
+
   it('keeps new account, contact, deal, source, and analytics reads inside property scope', async () => {
     const [portfolioManager, propertyAManager] = await Promise.all([
       createUser('crm21h-portfolio@lux.test'),

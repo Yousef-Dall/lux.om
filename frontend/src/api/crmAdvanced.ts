@@ -85,6 +85,10 @@ export type CrmDeal = {
   lostReason?: string | null;
   wonReason?: string | null;
   reopenedCount: number;
+  pmsPropertyId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  _count?: { activities: number; stageHistory: number };
   stageHistory?: Array<{
     id: string;
     fromStage?: { id: string; name: string } | null;
@@ -96,6 +100,26 @@ export type CrmDeal = {
     changedAt: string;
     changedBy?: { id: string; name: string; email: string } | null;
   }>;
+};
+
+export type CrmDealStatus = 'ACTIVE' | 'ARCHIVED' | 'ALL';
+export type CrmDealSortBy = 'name' | 'expectedCloseDate' | 'expectedValue' | 'updatedAt' | 'createdAt';
+export type CrmDealDirection = 'asc' | 'desc';
+
+export type CrmDealRegisterFilters = {
+  workspaceId: string;
+  search?: string;
+  pipelineId?: string;
+  stageId?: string;
+  outcome?: CrmDealOutcome;
+  currency?: string;
+  status?: CrmDealStatus;
+  expectedCloseFrom?: string;
+  expectedCloseTo?: string;
+  sortBy?: CrmDealSortBy;
+  direction?: CrmDealDirection;
+  take?: number;
+  skip?: number;
 };
 
 export type CrmContactDetail = {
@@ -373,7 +397,15 @@ export function updateCrmPipelineStage(token: string, id: string, payload: Recor
 }
 
 export function listCrmDeals(token: string, workspaceId: string) {
-  return apiClient.get<{ deals: CrmDeal[]; pagination: { total: number } }>('/api/crm/deals', { token, params: { workspaceId, take: 200 } });
+  return apiClient.get<{ deals: CrmDeal[]; pagination: { total: number } }>('/api/crm/deals', { token, params: { workspaceId, take: 100 } });
+}
+
+export function listCrmDealRegister(token: string, filters: CrmDealRegisterFilters) {
+  return apiClient.get<{
+    deals: CrmDeal[];
+    summary: { total: number; active: number; archived: number; open: number; won: number; lost: number };
+    pagination: { total: number; take: number; skip: number; count: number };
+  }>('/api/crm/deals', { token, params: filters });
 }
 
 export function createCrmDeal(token: string, payload: Record<string, unknown>) {
@@ -388,8 +420,8 @@ export function transitionCrmDeal(token: string, id: string, stageId: string, op
   return apiClient.post<{ deal: CrmDeal }>(`/api/crm/deals/${id}/transition`, { stageId, ...options }, { token });
 }
 
-export function archiveCrmDeal(token: string, id: string, archived: boolean) {
-  return apiClient.patch<{ deal: CrmDeal }>(`/api/crm/deals/${id}/archive`, { archived }, { token });
+export function archiveCrmDeal(token: string, id: string, archived: boolean, reason: string) {
+  return apiClient.patch<{ deal: CrmDeal; idempotent: boolean }>(`/api/crm/deals/${id}/archive`, { archived, reason }, { token });
 }
 
 export function convertCrmLead(token: string, id: string, payload: Record<string, unknown>) {
