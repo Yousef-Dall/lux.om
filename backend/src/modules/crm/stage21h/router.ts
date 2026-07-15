@@ -682,28 +682,75 @@ crmStage21hRouter.post('/contacts/:id/merge', async (req, res, next) => {
 
 crmStage21hRouter.get('/pipelines', async (req, res, next) => {
   try {
-    const workspaceId = id.parse(req.query.workspaceId);
-    const { access } = await resolveWorkspaceAccess(req.user!, workspaceId, 'view');
-    await prisma.$transaction((tx) => ensureDefaultCrmPipeline(tx, workspaceId));
-    const propertyIds = scopedPropertyIds(access, workspaceId);
-    const pipelines = await prisma.crmPipeline.findMany({
-      where: { workspaceId },
-      include: { stages: { orderBy: { position: 'asc' } } },
-      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }]
-    });
-    if (!propertyIds) {
-      const [dealCounts, leadCounts] = await Promise.all([
-        prisma.crmDeal.groupBy({ by: ['pipelineId'], where: { workspaceId }, _count: { _all: true } }),
-        prisma.crmLead.groupBy({ by: ['pipelineId'], where: { workspaceId }, _count: { _all: true } })
-      ]);
-      res.json({ pipelines: pipelines.map((pipeline) => ({ ...pipeline, _count: { deals: dealCounts.find((item) => item.pipelineId === pipeline.id)?._count._all ?? 0, leads: leadCounts.find((item) => item.pipelineId === pipeline.id)?._count._all ?? 0 } })) });
-      return;
-    }
-    const [dealCounts, leadCounts] = await Promise.all([
-      prisma.crmDeal.groupBy({ by: ['pipelineId'], where: { workspaceId, pmsPropertyId: { in: propertyIds } }, _count: { _all: true } }),
-      prisma.crmLead.groupBy({ by: ['pipelineId'], where: { workspaceId, pmsPropertyId: { in: propertyIds } }, _count: { _all: true } })
+    const query = z.object({
+      workspaceId: id,
+      search: z.string().trim().max(160).optional(),
+      status: z.enum(['ACTIVE', 'ARCHIVED', 'ALL']).default('ALL'),
+      sortBy: z.enum(['name', 'updatedAt', 'createdAt']).default('name'),
+      direction: z.enum(['asc', 'desc']).default('asc'),
+      take: z.coerce.number().int().min(1).max(100).default(100),
+      skip: z.coerce.number().int().min(0).default(0)
+    }).parse(req.query);
+    const { access } = await resolveWorkspaceAccess(req.user!, query.workspaceId, 'view');
+    await prisma.$transaction((tx) => ensureDefaultCrmPipeline(tx, query.workspaceId));
+    const propertyIds = scopedPropertyIds(access, query.workspaceId);
+    const baseWhere: Prisma.CrmPipelineWhereInput = {
+      workspaceId: query.workspaceId,
+      ...(query.search ? {
+        OR: [
+          { name: { contains: query.search, mode: 'insensitive' } },
+          { description: { contains: query.search, mode: 'insensitive' } },
+          { stages: { some: { name: { contains: query.search, mode: 'insensitive' } } } }
+        ]
+      } : {})
+    };
+    const archivedWhere: Prisma.CrmPipelineWhereInput = { OR: [{ active: false }, { archivedAt: { not: null } }] };
+    const where: Prisma.CrmPipelineWhereInput = query.status === 'ACTIVE'
+      ? { ...baseWhere, active: true, archivedAt: null }
+      : query.status === 'ARCHIVED'
+        ? { AND: [baseWhere, archivedWhere] }
+        : baseWhere;
+    const orderBy: Prisma.CrmPipelineOrderByWithRelationInput[] = query.sortBy === 'name'
+      ? [{ isDefault: 'desc' }, { name: query.direction }]
+      : query.sortBy === 'updatedAt'
+        ? [{ updatedAt: query.direction }, { name: 'asc' }]
+        : [{ createdAt: query.direction }, { name: 'asc' }];
+    const countWhere = propertyIds ? { pmsPropertyId: { in: propertyIds } } : {};
+    const [pipelines, total, active, archived, defaults, dealCounts, leadCounts, stageDealCounts, stageLeadCounts] = await prisma.$transaction([
+      prisma.crmPipeline.findMany({
+        where,
+        include: { stages: { orderBy: { position: 'asc' } } },
+        orderBy,
+        take: query.take,
+        skip: query.skip
+      }),
+      prisma.crmPipeline.count({ where }),
+      prisma.crmPipeline.count({ where: { ...baseWhere, active: true, archivedAt: null } }),
+      prisma.crmPipeline.count({ where: { AND: [baseWhere, archivedWhere] } }),
+      prisma.crmPipeline.count({ where: { ...baseWhere, isDefault: true, active: true, archivedAt: null } }),
+      prisma.crmDeal.groupBy({ by: ['pipelineId'], where: { workspaceId: query.workspaceId, ...countWhere }, _count: { _all: true } }),
+      prisma.crmLead.groupBy({ by: ['pipelineId'], where: { workspaceId: query.workspaceId, ...countWhere }, _count: { _all: true } }),
+      prisma.crmDeal.groupBy({ by: ['stageId'], where: { workspaceId: query.workspaceId, ...countWhere }, _count: { _all: true } }),
+      prisma.crmLead.groupBy({ by: ['stageId'], where: { workspaceId: query.workspaceId, ...countWhere }, _count: { _all: true } })
     ]);
-    res.json({ pipelines: pipelines.map((pipeline) => ({ ...pipeline, _count: { deals: dealCounts.find((item) => item.pipelineId === pipeline.id)?._count._all ?? 0, leads: leadCounts.find((item) => item.pipelineId === pipeline.id)?._count._all ?? 0 } })) });
+    res.json({
+      pipelines: pipelines.map((pipeline) => ({
+        ...pipeline,
+        stages: pipeline.stages.map((stage) => ({
+          ...stage,
+          _count: {
+            deals: stageDealCounts.find((item) => item.stageId === stage.id)?._count._all ?? 0,
+            leads: stageLeadCounts.find((item) => item.stageId === stage.id)?._count._all ?? 0
+          }
+        })),
+        _count: {
+          deals: dealCounts.find((item) => item.pipelineId === pipeline.id)?._count._all ?? 0,
+          leads: leadCounts.find((item) => item.pipelineId === pipeline.id)?._count._all ?? 0
+        }
+      })),
+      summary: { total, active, archived, defaults },
+      pagination: { total, take: query.take, skip: query.skip, count: pipelines.length }
+    });
   } catch (error) { next(error); }
 });
 
@@ -724,10 +771,114 @@ crmStage21hRouter.post('/pipelines', async (req, res, next) => {
           updatedById: req.user!.id,
           stages: { create: data.stages.map((stage) => ({ ...stage, requiredFields: stage.requiredFields })) }
         },
-        include: { stages: { orderBy: { position: 'asc' } } }
+        include: { stages: { include: { _count: { select: { deals: true, leads: true } } }, orderBy: { position: 'asc' } } }
       });
     });
-    res.status(201).json({ pipeline });
+    res.status(201).json({ pipeline: { ...pipeline, _count: { deals: 0, leads: 0 } } });
+  } catch (error) { next(error); }
+});
+
+crmStage21hRouter.get('/pipelines/:id', async (req, res, next) => {
+  try {
+    const pipelineId = id.parse(req.params.id);
+    const summary = await prisma.crmPipeline.findUnique({ where: { id: pipelineId }, select: { workspaceId: true } });
+    if (!summary) throw new AppError(404, 'CRM pipeline not found.');
+    const { access } = await resolveWorkspaceAccess(req.user!, summary.workspaceId, 'view');
+    const propertyIds = scopedPropertyIds(access, summary.workspaceId);
+    const countWhere = propertyIds ? { pmsPropertyId: { in: propertyIds } } : {};
+    const [pipeline, deals, leads, stageDealCounts, stageLeadCounts, lifecycleActivities] = await prisma.$transaction([
+      prisma.crmPipeline.findUnique({ where: { id: pipelineId }, include: { stages: { orderBy: { position: 'asc' } } } }),
+      prisma.crmDeal.count({ where: { workspaceId: summary.workspaceId, pipelineId, ...countWhere } }),
+      prisma.crmLead.count({ where: { workspaceId: summary.workspaceId, pipelineId, ...countWhere } }),
+      prisma.crmDeal.groupBy({ by: ['stageId'], where: { workspaceId: summary.workspaceId, pipelineId, ...countWhere }, _count: { _all: true } }),
+      prisma.crmLead.groupBy({ by: ['stageId'], where: { workspaceId: summary.workspaceId, pipelineId, ...countWhere }, _count: { _all: true } }),
+      prisma.crmActivity.findMany({
+        where: { workspaceId: summary.workspaceId, subject: { in: [`CRM pipeline archived:${pipelineId}`, `CRM pipeline restored:${pipelineId}`] } },
+        include: { createdBy: { select: { id: true, name: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 20
+      })
+    ]);
+    if (!pipeline) throw new AppError(404, 'CRM pipeline not found.');
+    res.json({
+      pipeline: {
+        ...pipeline,
+        stages: pipeline.stages.map((stage) => ({
+          ...stage,
+          _count: {
+            deals: stageDealCounts.find((item) => item.stageId === stage.id)?._count._all ?? 0,
+            leads: stageLeadCounts.find((item) => item.stageId === stage.id)?._count._all ?? 0
+          }
+        })),
+        _count: { deals, leads },
+        lifecycleActivities
+      }
+    });
+  } catch (error) { next(error); }
+});
+
+crmStage21hRouter.patch('/pipelines/:id', async (req, res, next) => {
+  try {
+    const pipelineId = id.parse(req.params.id);
+    const data = z.object({
+      name: z.string().trim().min(2).max(160).optional(),
+      description: z.string().trim().max(2000).nullable().optional(),
+      isDefault: z.boolean().optional()
+    }).strict().refine((value) => Object.keys(value).length > 0, { message: 'At least one pipeline field is required.' }).parse(req.body);
+    const current = await prisma.crmPipeline.findUnique({ where: { id: pipelineId } });
+    if (!current) throw new AppError(404, 'CRM pipeline not found.');
+    const { access } = await resolveWorkspaceAccess(req.user!, current.workspaceId, 'manage');
+    assertWorkspaceConfigurationAccess(access, current.workspaceId);
+    if (data.isDefault && (!current.active || current.archivedAt)) throw new AppError(409, 'An archived CRM pipeline cannot become the default pipeline.');
+    if (data.isDefault === false && current.isDefault) throw new AppError(409, 'Choose another default CRM pipeline before removing the current default.');
+    const pipeline = await prisma.$transaction(async (tx) => {
+      if (data.isDefault) await tx.crmPipeline.updateMany({ where: { workspaceId: current.workspaceId, isDefault: true, id: { not: pipelineId } }, data: { isDefault: false, updatedById: req.user!.id } });
+      return tx.crmPipeline.update({
+        where: { id: pipelineId },
+        data: { ...data, updatedById: req.user!.id },
+        include: { stages: { include: { _count: { select: { deals: true, leads: true } } }, orderBy: { position: 'asc' } } }
+      });
+    });
+    res.json({ pipeline });
+  } catch (error) { next(error); }
+});
+
+crmStage21hRouter.patch('/pipelines/:id/archive', async (req, res, next) => {
+  try {
+    const pipelineId = id.parse(req.params.id);
+    const data = z.object({ archived: z.boolean(), reason: z.string().trim().min(3).max(1000) }).strict().parse(req.body);
+    const current = await prisma.crmPipeline.findUnique({ where: { id: pipelineId } });
+    if (!current) throw new AppError(404, 'CRM pipeline not found.');
+    const { access } = await resolveWorkspaceAccess(req.user!, current.workspaceId, 'manage');
+    assertWorkspaceConfigurationAccess(access, current.workspaceId);
+    if (data.archived && current.isDefault) throw new AppError(409, 'The default CRM pipeline cannot be archived. Make another active pipeline the default first.');
+    const alreadyInState = data.archived ? Boolean(current.archivedAt || !current.active) : !current.archivedAt && current.active;
+    const pipeline = alreadyInState
+      ? await prisma.crmPipeline.findUniqueOrThrow({
+          where: { id: pipelineId },
+          include: { stages: { include: { _count: { select: { deals: true, leads: true } } }, orderBy: { position: 'asc' } } }
+        })
+      : await prisma.$transaction(async (tx) => {
+          const updated = await tx.crmPipeline.update({
+            where: { id: pipelineId },
+            data: { active: !data.archived, archivedAt: data.archived ? new Date() : null, updatedById: req.user!.id },
+            include: { stages: { include: { _count: { select: { deals: true, leads: true } } }, orderBy: { position: 'asc' } } }
+          });
+          await tx.crmActivity.create({
+            data: {
+              workspaceId: current.workspaceId,
+              type: 'NOTE',
+              status: 'COMPLETED',
+              subject: data.archived ? `CRM pipeline archived:${pipelineId}` : `CRM pipeline restored:${pipelineId}`,
+              body: data.reason,
+              completedAt: new Date(),
+              createdById: req.user!.id,
+              updatedById: req.user!.id
+            }
+          });
+          return updated;
+        });
+    res.json({ pipeline, idempotent: alreadyInState });
   } catch (error) { next(error); }
 });
 
@@ -735,10 +886,11 @@ crmStage21hRouter.patch('/pipeline-stages/:id', async (req, res, next) => {
   try {
     const stageId = id.parse(req.params.id);
     const data = z.object({ name: z.string().trim().min(2).max(120).optional(), position: z.coerce.number().int().min(1).max(10000).optional(), type: z.enum(stageTypes).optional(), defaultProbability: z.coerce.number().int().min(0).max(100).optional(), requiredFields: z.array(z.enum(dealRequiredFields)).max(dealRequiredFields.length).optional(), slaHours: z.coerce.number().int().min(1).max(24 * 365).nullable().optional(), active: z.boolean().optional() }).strict().parse(req.body);
-    const current = await prisma.crmPipelineStage.findUnique({ where: { id: stageId }, include: { pipeline: { select: { workspaceId: true } }, _count: { select: { deals: true, leads: true } } } });
+    const current = await prisma.crmPipelineStage.findUnique({ where: { id: stageId }, include: { pipeline: { select: { workspaceId: true, active: true, archivedAt: true } }, _count: { select: { deals: true, leads: true } } } });
     if (!current) throw new AppError(404, 'CRM pipeline stage not found.');
     const { access } = await resolveWorkspaceAccess(req.user!, current.pipeline.workspaceId, 'manage');
     assertWorkspaceConfigurationAccess(access, current.pipeline.workspaceId);
+    if (!current.pipeline.active || current.pipeline.archivedAt) throw new AppError(409, 'Archived CRM pipelines cannot be edited.');
     const usedRecords = current._count.deals + current._count.leads;
     if (data.active === false && usedRecords > 0) throw new AppError(409, 'A used CRM stage must remain available for historical records.');
     if (data.type && data.type !== current.type && usedRecords > 0) throw new AppError(409, 'A used CRM stage classification cannot be changed because historical outcomes depend on it.');

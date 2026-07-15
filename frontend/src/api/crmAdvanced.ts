@@ -45,6 +45,8 @@ export type CrmPipelineStage = {
   requiredFields?: string[] | null;
   slaHours?: number | null;
   active: boolean;
+  archivedAt?: string | null;
+  _count?: { deals: number; leads: number };
 };
 
 export type CrmPipeline = {
@@ -54,8 +56,33 @@ export type CrmPipeline = {
   description?: string | null;
   isDefault: boolean;
   active: boolean;
+  archivedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
   stages: CrmPipelineStage[];
   _count: { deals: number; leads: number };
+  lifecycleActivities?: Array<{
+    id: string;
+    subject: string;
+    body?: string | null;
+    createdAt: string;
+    createdBy?: { id: string; name: string; email: string } | null;
+  }>;
+};
+
+
+export type CrmPipelineStatus = 'ACTIVE' | 'ARCHIVED' | 'ALL';
+export type CrmPipelineSortBy = 'name' | 'updatedAt' | 'createdAt';
+export type CrmPipelineDirection = 'asc' | 'desc';
+
+export type CrmPipelineRegisterFilters = {
+  workspaceId: string;
+  search?: string;
+  status?: CrmPipelineStatus;
+  sortBy?: CrmPipelineSortBy;
+  direction?: CrmPipelineDirection;
+  take?: number;
+  skip?: number;
 };
 
 export type CrmDeal = {
@@ -388,8 +415,32 @@ export function listCrmPipelines(token: string, workspaceId: string) {
   return apiClient.get<{ pipelines: CrmPipeline[] }>('/api/crm/pipelines', { token, params: { workspaceId } });
 }
 
+export function listCrmPipelineRegister(token: string, filters: CrmPipelineRegisterFilters) {
+  return apiClient.get<{
+    pipelines: CrmPipeline[];
+    summary: { total: number; active: number; archived: number; defaults: number };
+    pagination: { total: number; take: number; skip: number; count: number };
+  }>('/api/crm/pipelines', { token, params: filters });
+}
+
 export function createCrmPipeline(token: string, payload: Record<string, unknown>) {
   return apiClient.post<{ pipeline: CrmPipeline }>('/api/crm/pipelines', payload, { token });
+}
+
+export function getCrmPipeline(token: string, id: string) {
+  return apiClient.get<{ pipeline: CrmPipeline }>(`/api/crm/pipelines/${id}`, { token });
+}
+
+export function updateCrmPipeline(token: string, id: string, payload: Record<string, unknown>) {
+  return apiClient.patch<{ pipeline: CrmPipeline }>(`/api/crm/pipelines/${id}`, payload, { token });
+}
+
+export function archiveCrmPipeline(token: string, id: string, archived: boolean, reason: string) {
+  return apiClient.patch<{ pipeline: CrmPipeline; idempotent: boolean }>(
+    `/api/crm/pipelines/${id}/archive`,
+    { archived, reason },
+    { token }
+  );
 }
 
 export function updateCrmPipelineStage(token: string, id: string, payload: Record<string, unknown>) {

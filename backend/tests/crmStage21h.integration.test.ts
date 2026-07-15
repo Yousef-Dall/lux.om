@@ -533,6 +533,13 @@ describe('CRM Stage 21H revenue operations', () => {
       .expect(200);
     expect(deals.body.deals).toHaveLength(0);
 
+    const pipelines = await request(app)
+      .get(`/api/crm/pipelines?workspaceId=${fixture.workspace.id}&status=ALL`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .expect(200);
+    expect(pipelines.body.pipelines[0]._count).toEqual({ deals: 0, leads: 0 });
+    expect(pipelines.body.pipelines[0].stages.every((stage: { _count: { deals: number; leads: number } }) => stage._count.deals === 0 && stage._count.leads === 0)).toBe(true);
+
     await request(app)
       .get(`/api/crm/contacts/${converted.body.deal.primaryContact.id}`)
       .set('Authorization', `Bearer ${propertyToken}`)
@@ -557,6 +564,110 @@ describe('CRM Stage 21H revenue operations', () => {
       .expect(200);
     expect(forecast.body.snapshot.leads.total).toBe(0);
     expect(forecast.body.snapshot.deals.forecast).toHaveLength(0);
+  });
+
+  it('provides governed pipeline browsing, default management, and audited archive lifecycle', async () => {
+    const [manager, outsider] = await Promise.all([
+      createUser('crm21i-pipeline-center@lux.test'),
+      createUser('crm21i-pipeline-outsider@lux.test')
+    ]);
+    const fixture = await createCompanyWorkspace({ slug: 'pipeline-center', members: [{ userId: manager.id, allProperties: true }] });
+    const outside = await createCompanyWorkspace({ slug: 'pipeline-outside', members: [{ userId: outsider.id, allProperties: true }] });
+    const token = signToken(manager);
+    const outsiderToken = signToken(outsider);
+
+    const initial = await request(app)
+      .get(`/api/crm/pipelines?workspaceId=${fixture.workspace.id}&status=ACTIVE&take=20&skip=0`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(initial.body.summary).toMatchObject({ active: 1, archived: 0, defaults: 1 });
+    expect(initial.body.pagination).toMatchObject({ total: 1, take: 20, skip: 0, count: 1 });
+    const originalDefault = initial.body.pipelines[0];
+
+    const created = await request(app)
+      .post('/api/crm/pipelines')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        workspaceId: fixture.workspace.id,
+        name: 'Partner revenue pipeline',
+        description: 'Governed partner opportunities',
+        stages: [
+          { key: 'DISCOVERY', name: 'Partner discovery', position: 10, type: 'OPEN', defaultProbability: 20, requiredFields: [] },
+          { key: 'SIGNED', name: 'Signed', position: 20, type: 'WON', defaultProbability: 100, requiredFields: ['expectedValue', 'currency'] },
+          { key: 'DECLINED', name: 'Declined', position: 30, type: 'LOST', defaultProbability: 0, requiredFields: [] }
+        ]
+      })
+      .expect(201);
+    const partnerPipeline = created.body.pipeline;
+    expect(partnerPipeline._count).toEqual({ deals: 0, leads: 0 });
+
+    const filtered = await request(app)
+      .get(`/api/crm/pipelines?workspaceId=${fixture.workspace.id}&search=Partner&status=ACTIVE&sortBy=updatedAt&direction=desc&take=1&skip=0`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(filtered.body.pipelines).toHaveLength(1);
+    expect(filtered.body.pipelines[0].id).toBe(partnerPipeline.id);
+    expect(filtered.body.pipelines[0].stages[0]._count).toEqual({ deals: 0, leads: 0 });
+
+    const madeDefault = await request(app)
+      .patch(`/api/crm/pipelines/${partnerPipeline.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Partner growth pipeline', isDefault: true })
+      .expect(200);
+    expect(madeDefault.body.pipeline).toMatchObject({ id: partnerPipeline.id, name: 'Partner growth pipeline', isDefault: true });
+    expect(await prisma.crmPipeline.findUnique({ where: { id: originalDefault.id }, select: { isDefault: true } })).toEqual({ isDefault: false });
+
+    await request(app)
+      .patch(`/api/crm/pipelines/${partnerPipeline.id}/archive`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ archived: true, reason: 'Attempt to archive the default pipeline' })
+      .expect(409);
+
+    const archived = await request(app)
+      .patch(`/api/crm/pipelines/${originalDefault.id}/archive`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ archived: true, reason: 'Legacy sales workflow retired' })
+      .expect(200);
+    expect(archived.body).toMatchObject({ idempotent: false, pipeline: { id: originalDefault.id, active: false } });
+    expect(archived.body.pipeline.archivedAt).toBeTruthy();
+
+    const idempotentArchive = await request(app)
+      .patch(`/api/crm/pipelines/${originalDefault.id}/archive`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ archived: true, reason: 'Legacy workflow remains retired' })
+      .expect(200);
+    expect(idempotentArchive.body.idempotent).toBe(true);
+
+    const archivedList = await request(app)
+      .get(`/api/crm/pipelines?workspaceId=${fixture.workspace.id}&status=ARCHIVED&take=20&skip=0`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(archivedList.body.pipelines.map((pipeline: { id: string }) => pipeline.id)).toEqual([originalDefault.id]);
+
+    const detail = await request(app)
+      .get(`/api/crm/pipelines/${originalDefault.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(detail.body.pipeline.lifecycleActivities).toEqual(expect.arrayContaining([
+      expect.objectContaining({ body: 'Legacy sales workflow retired' })
+    ]));
+
+    const restored = await request(app)
+      .patch(`/api/crm/pipelines/${originalDefault.id}/archive`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ archived: false, reason: 'Legacy workflow reopened for controlled review' })
+      .expect(200);
+    expect(restored.body).toMatchObject({ idempotent: false, pipeline: { active: true, archivedAt: null } });
+
+    await request(app)
+      .get(`/api/crm/pipelines?workspaceId=${outside.workspace.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(403);
+    await request(app)
+      .patch(`/api/crm/pipelines/${partnerPipeline.id}`)
+      .set('Authorization', `Bearer ${outsiderToken}`)
+      .send({ name: 'Outside mutation' })
+      .expect(403);
   });
 
   it('configures pipelines, preserves outcome after archival, and records immutable stage history', async () => {
