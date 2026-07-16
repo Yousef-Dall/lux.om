@@ -608,6 +608,7 @@ export type CrmCommunicationTemplateVersion = {
   body: string;
   active: boolean;
   createdAt: string;
+  _count?: { deliveryAttempts: number };
 };
 
 export type CrmCommunicationTemplate = {
@@ -618,6 +619,7 @@ export type CrmCommunicationTemplate = {
   channel: CrmCommunicationChannel;
   active: boolean;
   versions: CrmCommunicationTemplateVersion[];
+  createdAt: string;
   updatedAt: string;
 };
 
@@ -664,6 +666,47 @@ export type CrmCommunicationPolicy = {
   retentionDays: number;
 };
 
+export type CrmSuppressionReason = 'OPT_OUT' | 'BOUNCE' | 'COMPLAINT' | 'INVALID_DESTINATION' | 'MANUAL' | 'LEGAL';
+export type CrmSuppressionStatus = 'ACTIVE' | 'INACTIVE' | 'ALL';
+export type CrmCommunicationTemplateStatus = 'ACTIVE' | 'ARCHIVED' | 'ALL';
+
+export type CrmSuppressionEntry = {
+  id: string;
+  workspaceId: string;
+  channel: CrmCommunicationChannel;
+  normalizedDestination: string;
+  reason: CrmSuppressionReason;
+  active: boolean;
+  source?: string | null;
+  notes?: string | null;
+  expiresAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CrmSuppressionRegisterFilters = {
+  workspaceId: string;
+  search?: string;
+  channel?: CrmCommunicationChannel;
+  reason?: CrmSuppressionReason;
+  status?: CrmSuppressionStatus;
+  sortBy?: 'updatedAt' | 'normalizedDestination' | 'reason';
+  direction?: 'asc' | 'desc';
+  take?: number;
+  skip?: number;
+};
+
+export type CrmCommunicationTemplateRegisterFilters = {
+  workspaceId: string;
+  search?: string;
+  channel?: CrmCommunicationChannel;
+  status?: CrmCommunicationTemplateStatus;
+  sortBy?: 'name' | 'updatedAt' | 'createdAt';
+  direction?: 'asc' | 'desc';
+  take?: number;
+  skip?: number;
+};
+
 export function getCrmCommunicationPolicy(token: string, workspaceId: string) {
   return apiClient.get<{ policy: CrmCommunicationPolicy }>('/api/crm/communication-policy', { token, params: { workspaceId } });
 }
@@ -689,11 +732,76 @@ export function listCrmCommunicationContacts(
   }>('/api/crm/contacts', { token, params });
 }
 
-export function listCrmCommunicationTemplates(token: string, workspaceId: string) {
-  return apiClient.get<{ templates: CrmCommunicationTemplate[] }>('/api/crm/communication-templates', {
-    token,
-    params: { workspaceId }
-  });
+export function listCrmCommunicationTemplates(
+  token: string,
+  workspaceIdOrFilters: string | CrmCommunicationTemplateRegisterFilters
+) {
+  const params = typeof workspaceIdOrFilters === 'string'
+    ? { workspaceId: workspaceIdOrFilters }
+    : workspaceIdOrFilters;
+  return apiClient.get<{
+    templates: CrmCommunicationTemplate[];
+    summary: { total: number; active: number; archived: number; versions: number };
+    pagination: { total: number; take: number; skip: number; count: number };
+  }>('/api/crm/communication-templates', { token, params });
+}
+
+export function createCrmCommunicationTemplate(
+  token: string,
+  payload: {
+    workspaceId: string;
+    key: string;
+    name: string;
+    channel: CrmCommunicationChannel;
+    subject?: string | null;
+    body: string;
+  }
+) {
+  return apiClient.post<{ template: CrmCommunicationTemplate }>('/api/crm/communication-templates', payload, { token });
+}
+
+export function createCrmCommunicationTemplateVersion(
+  token: string,
+  templateId: string,
+  payload: { subject?: string | null; body: string }
+) {
+  return apiClient.post<{ version: CrmCommunicationTemplateVersion }>(
+    `/api/crm/communication-templates/${templateId}/versions`,
+    payload,
+    { token }
+  );
+}
+
+export function archiveCrmCommunicationTemplate(token: string, templateId: string, archived: boolean, reason: string) {
+  return apiClient.patch<{ template: CrmCommunicationTemplate; idempotent: boolean }>(
+    `/api/crm/communication-templates/${templateId}/archive`,
+    { archived, reason },
+    { token }
+  );
+}
+
+export function listCrmSuppressions(token: string, filters: CrmSuppressionRegisterFilters) {
+  return apiClient.get<{
+    suppressions: CrmSuppressionEntry[];
+    summary: { total: number; active: number; inactive: number };
+    pagination: { total: number; take: number; skip: number; count: number };
+  }>('/api/crm/suppressions', { token, params: filters });
+}
+
+export function upsertCrmSuppression(
+  token: string,
+  payload: {
+    workspaceId: string;
+    channel: CrmCommunicationChannel;
+    normalizedDestination: string;
+    reason: CrmSuppressionReason;
+    active: boolean;
+    source?: string;
+    notes?: string;
+    expiresAt?: string | null;
+  }
+) {
+  return apiClient.post<{ suppression: CrmSuppressionEntry }>('/api/crm/suppressions', payload, { token });
 }
 
 export function listCrmDeliveryAttempts(

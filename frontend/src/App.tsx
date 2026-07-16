@@ -65,7 +65,6 @@ const PmsFinancialOperations = lazy(() => import('./pages/PmsFinancialOperations
 const PmsAssetsInspections = lazy(() => import('./pages/PmsAssetsInspections'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Crm = lazy(() => import('./pages/Crm'));
-const CrmOperations = lazy(() => import('./pages/CrmOperations'));
 const CrmCommunicationsWorkspace = lazy(() => import('./features/crm/communications/CrmCommunicationsWorkspace'));
 const CrmAnalyticsWorkspace = lazy(() => import('./features/crm/analytics/CrmAnalyticsWorkspace'));
 const CrmTasksWorkspace = lazy(() => import('./features/crm/tasks/CrmTasksWorkspace'));
@@ -74,6 +73,7 @@ const CrmContactsWorkspace = lazy(() => import('./features/crm/contacts/CrmConta
 const CrmDealsWorkspace = lazy(() => import('./features/crm/deals/CrmDealsWorkspace'));
 const CrmPipelinesWorkspace = lazy(() => import('./features/crm/pipelines/CrmPipelinesWorkspace'));
 const CrmScoringWorkspace = lazy(() => import('./features/crm/scoring/CrmScoringWorkspace'));
+const CrmCommunicationSettingsWorkspace = lazy(() => import('./features/crm/communicationSettings/CrmCommunicationSettingsWorkspace'));
 const DeveloperProjectDetails = lazy(() => import('./pages/DeveloperProjectDetails'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Notifications = lazy(() => import('./pages/Notifications'));
@@ -943,7 +943,7 @@ export default function App() {
             <Route path="settings/pipelines/:pipelineId" element={<CrmPipelinesWorkspace />} />
             <Route path="settings/scoring" element={<CrmScoringWorkspace />} />
             <Route path="settings/scoring/:leadId" element={<CrmScoringWorkspace />} />
-            <Route path="settings/communications" element={<CrmOperations section="communication-settings" />} />
+            <Route path="settings/communications" element={<CrmCommunicationSettingsWorkspace />} />
             <Route path="operations" element={<CrmLegacyOperationsRedirect />} />
             <Route path=":leadId" element={<CrmLegacyLeadRedirect />} />
           </Route>

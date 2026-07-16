@@ -1419,11 +1419,55 @@ crmStage21hRouter.patch('/contacts/:id/communication-governance', async (req, re
 
 crmStage21hRouter.get('/suppressions', async (req, res, next) => {
   try {
-    const workspaceId = id.parse(req.query.workspaceId);
-    const { access } = await resolveWorkspaceAccess(req.user!, workspaceId, 'view');
-    assertWorkspaceConfigurationAccess(access, workspaceId);
-    const suppressions = await prisma.crmSuppressionEntry.findMany({ where: { workspaceId }, orderBy: { updatedAt: 'desc' }, take: 500 });
-    res.json({ suppressions });
+    const query = z.object({
+      workspaceId: id,
+      search: z.string().trim().max(320).optional(),
+      channel: z.enum(channels).optional(),
+      reason: z.enum(suppressionReasons).optional(),
+      status: z.enum(['ACTIVE', 'INACTIVE', 'ALL']).default('ALL'),
+      sortBy: z.enum(['updatedAt', 'normalizedDestination', 'reason']).default('updatedAt'),
+      direction: z.enum(['asc', 'desc']).default('desc'),
+      take: z.coerce.number().int().min(1).max(100).default(100),
+      skip: z.coerce.number().int().min(0).default(0)
+    }).parse(req.query);
+    const { access } = await resolveWorkspaceAccess(req.user!, query.workspaceId, 'view');
+    assertWorkspaceConfigurationAccess(access, query.workspaceId);
+    const now = new Date();
+    const baseWhere: Prisma.CrmSuppressionEntryWhereInput = {
+      workspaceId: query.workspaceId,
+      ...(query.channel ? { channel: query.channel } : {}),
+      ...(query.reason ? { reason: query.reason } : {}),
+      ...(query.search ? {
+        OR: [
+          { normalizedDestination: { contains: query.search, mode: 'insensitive' } },
+          { source: { contains: query.search, mode: 'insensitive' } },
+          { notes: { contains: query.search, mode: 'insensitive' } }
+        ]
+      } : {})
+    };
+    const activeWhere: Prisma.CrmSuppressionEntryWhereInput = {
+      AND: [baseWhere, { active: true }, { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }]
+    };
+    const inactiveWhere: Prisma.CrmSuppressionEntryWhereInput = {
+      AND: [baseWhere, { OR: [{ active: false }, { expiresAt: { lte: now } }] }]
+    };
+    const where = query.status === 'ACTIVE' ? activeWhere : query.status === 'INACTIVE' ? inactiveWhere : baseWhere;
+    const orderBy: Prisma.CrmSuppressionEntryOrderByWithRelationInput[] = query.sortBy === 'normalizedDestination'
+      ? [{ normalizedDestination: query.direction }, { updatedAt: 'desc' }]
+      : query.sortBy === 'reason'
+        ? [{ reason: query.direction }, { updatedAt: 'desc' }]
+        : [{ updatedAt: query.direction }, { normalizedDestination: 'asc' }];
+    const [suppressions, total, active, inactive] = await prisma.$transaction([
+      prisma.crmSuppressionEntry.findMany({ where, orderBy, take: query.take, skip: query.skip }),
+      prisma.crmSuppressionEntry.count({ where }),
+      prisma.crmSuppressionEntry.count({ where: activeWhere }),
+      prisma.crmSuppressionEntry.count({ where: inactiveWhere })
+    ]);
+    res.json({
+      suppressions,
+      summary: { total: active + inactive, active, inactive },
+      pagination: { total, take: query.take, skip: query.skip, count: suppressions.length }
+    });
   } catch (error) { next(error); }
 });
 
@@ -1441,10 +1485,59 @@ crmStage21hRouter.post('/suppressions', async (req, res, next) => {
 
 crmStage21hRouter.get('/communication-templates', async (req, res, next) => {
   try {
-    const workspaceId = id.parse(req.query.workspaceId);
-    await resolveWorkspaceAccess(req.user!, workspaceId, 'view');
-    const templates = await prisma.crmCommunicationTemplate.findMany({ where: { workspaceId }, include: { versions: { orderBy: { version: 'desc' } } }, orderBy: { name: 'asc' } });
-    res.json({ templates });
+    const query = z.object({
+      workspaceId: id,
+      search: z.string().trim().max(160).optional(),
+      channel: z.enum(channels).optional(),
+      status: z.enum(['ACTIVE', 'ARCHIVED', 'ALL']).default('ALL'),
+      sortBy: z.enum(['name', 'updatedAt', 'createdAt']).default('name'),
+      direction: z.enum(['asc', 'desc']).default('asc'),
+      take: z.coerce.number().int().min(1).max(100).default(100),
+      skip: z.coerce.number().int().min(0).default(0)
+    }).parse(req.query);
+    await resolveWorkspaceAccess(req.user!, query.workspaceId, 'view');
+    const baseWhere: Prisma.CrmCommunicationTemplateWhereInput = {
+      workspaceId: query.workspaceId,
+      ...(query.channel ? { channel: query.channel } : {}),
+      ...(query.search ? {
+        OR: [
+          { key: { contains: query.search, mode: 'insensitive' } },
+          { name: { contains: query.search, mode: 'insensitive' } },
+          { versions: { some: { OR: [
+            { subject: { contains: query.search, mode: 'insensitive' } },
+            { body: { contains: query.search, mode: 'insensitive' } }
+          ] } } }
+        ]
+      } : {})
+    };
+    const where: Prisma.CrmCommunicationTemplateWhereInput = query.status === 'ACTIVE'
+      ? { ...baseWhere, active: true }
+      : query.status === 'ARCHIVED'
+        ? { ...baseWhere, active: false }
+        : baseWhere;
+    const orderBy: Prisma.CrmCommunicationTemplateOrderByWithRelationInput[] = query.sortBy === 'updatedAt'
+      ? [{ updatedAt: query.direction }, { name: 'asc' }]
+      : query.sortBy === 'createdAt'
+        ? [{ createdAt: query.direction }, { name: 'asc' }]
+        : [{ name: query.direction }, { updatedAt: 'desc' }];
+    const [templates, total, active, archived, versions] = await prisma.$transaction([
+      prisma.crmCommunicationTemplate.findMany({
+        where,
+        include: { versions: { include: { _count: { select: { deliveryAttempts: true } } }, orderBy: { version: 'desc' } } },
+        orderBy,
+        take: query.take,
+        skip: query.skip
+      }),
+      prisma.crmCommunicationTemplate.count({ where }),
+      prisma.crmCommunicationTemplate.count({ where: { ...baseWhere, active: true } }),
+      prisma.crmCommunicationTemplate.count({ where: { ...baseWhere, active: false } }),
+      prisma.crmCommunicationTemplateVersion.count({ where: { template: baseWhere } })
+    ]);
+    res.json({
+      templates,
+      summary: { total: active + archived, active, archived, versions },
+      pagination: { total, take: query.take, skip: query.skip, count: templates.length }
+    });
   } catch (error) { next(error); }
 });
 
@@ -1453,7 +1546,7 @@ crmStage21hRouter.post('/communication-templates', async (req, res, next) => {
     const data = z.object({ workspaceId: id, key: z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{1,79}$/), name: z.string().trim().min(2).max(160), channel: z.enum(channels), subject: z.string().trim().max(240).nullable().optional(), body: z.string().trim().min(1).max(20000) }).strict().parse(req.body);
     const { access } = await resolveWorkspaceAccess(req.user!, data.workspaceId, 'manage');
     assertWorkspaceConfigurationAccess(access, data.workspaceId);
-    const template = await prisma.crmCommunicationTemplate.create({ data: { workspaceId: data.workspaceId, key: data.key, name: data.name, channel: data.channel, createdById: req.user!.id, updatedById: req.user!.id, versions: { create: { version: 1, subject: data.subject, body: data.body, createdById: req.user!.id } } }, include: { versions: true } });
+    const template = await prisma.crmCommunicationTemplate.create({ data: { workspaceId: data.workspaceId, key: data.key, name: data.name, channel: data.channel, createdById: req.user!.id, updatedById: req.user!.id, versions: { create: { version: 1, subject: data.subject, body: data.body, createdById: req.user!.id } } }, include: { versions: { include: { _count: { select: { deliveryAttempts: true } } } } } });
     res.status(201).json({ template });
   } catch (error) { next(error); }
 });
@@ -1462,16 +1555,55 @@ crmStage21hRouter.post('/communication-templates/:id/versions', async (req, res,
   try {
     const templateId = id.parse(req.params.id);
     const data = z.object({ subject: z.string().trim().max(240).nullable().optional(), body: z.string().trim().min(1).max(20000) }).strict().parse(req.body);
-    const template = await prisma.crmCommunicationTemplate.findUnique({ where: { id: templateId }, select: { workspaceId: true } });
+    const template = await prisma.crmCommunicationTemplate.findUnique({ where: { id: templateId }, select: { workspaceId: true, active: true } });
     if (!template) throw new AppError(404, 'CRM communication template not found.');
     const { access } = await resolveWorkspaceAccess(req.user!, template.workspaceId, 'manage');
     assertWorkspaceConfigurationAccess(access, template.workspaceId);
+    if (!template.active) throw new AppError(409, 'Archived CRM communication templates cannot receive new versions.');
     const version = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`crm-template-version:${templateId}`}))`;
       const latest = await tx.crmCommunicationTemplateVersion.aggregate({ where: { templateId }, _max: { version: true } });
-      return tx.crmCommunicationTemplateVersion.create({ data: { templateId, version: (latest._max.version ?? 0) + 1, subject: data.subject, body: data.body, createdById: req.user!.id } });
+      return tx.crmCommunicationTemplateVersion.create({ data: { templateId, version: (latest._max.version ?? 0) + 1, subject: data.subject, body: data.body, createdById: req.user!.id }, include: { _count: { select: { deliveryAttempts: true } } } });
     }, { isolationLevel: 'Serializable' });
     res.status(201).json({ version });
+  } catch (error) { next(error); }
+});
+
+crmStage21hRouter.patch('/communication-templates/:id/archive', async (req, res, next) => {
+  try {
+    const templateId = id.parse(req.params.id);
+    const data = z.object({ archived: z.boolean(), reason: z.string().trim().min(3).max(1000) }).strict().parse(req.body);
+    const current = await prisma.crmCommunicationTemplate.findUnique({ where: { id: templateId } });
+    if (!current) throw new AppError(404, 'CRM communication template not found.');
+    const { access } = await resolveWorkspaceAccess(req.user!, current.workspaceId, 'manage');
+    assertWorkspaceConfigurationAccess(access, current.workspaceId);
+    const alreadyInState = data.archived ? !current.active : current.active;
+    const template = alreadyInState
+      ? await prisma.crmCommunicationTemplate.findUniqueOrThrow({
+          where: { id: templateId },
+          include: { versions: { include: { _count: { select: { deliveryAttempts: true } } }, orderBy: { version: 'desc' } } }
+        })
+      : await prisma.$transaction(async (tx) => {
+          const updated = await tx.crmCommunicationTemplate.update({
+            where: { id: templateId },
+            data: { active: !data.archived, updatedById: req.user!.id },
+            include: { versions: { include: { _count: { select: { deliveryAttempts: true } } }, orderBy: { version: 'desc' } } }
+          });
+          await tx.crmActivity.create({
+            data: {
+              workspaceId: current.workspaceId,
+              type: 'NOTE',
+              status: 'COMPLETED',
+              subject: data.archived ? `CRM communication template archived:${templateId}` : `CRM communication template restored:${templateId}`,
+              body: data.reason,
+              completedAt: new Date(),
+              createdById: req.user!.id,
+              updatedById: req.user!.id
+            }
+          });
+          return updated;
+        });
+    res.json({ template, idempotent: alreadyInState });
   } catch (error) { next(error); }
 });
 

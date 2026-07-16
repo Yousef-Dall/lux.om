@@ -1050,6 +1050,159 @@ describe('CRM Stage 21H revenue operations', () => {
     });
   });
 
+  it('provides governed communication policy, suppression browsing, and immutable template lifecycle', async () => {
+    const [manager, propertyViewer] = await Promise.all([
+      createUser('crm21h-governance-manager@lux.test'),
+      createUser('crm21h-governance-viewer@lux.test')
+    ]);
+    const fixture = await createCompanyWorkspace({
+      slug: 'communication-governance',
+      members: [
+        { userId: manager.id, allProperties: true, role: 'OWNER' },
+        { userId: propertyViewer.id, allProperties: false, propertyIndex: 0, role: 'VIEWER' }
+      ]
+    });
+    const token = signToken(manager);
+    const viewerToken = signToken(propertyViewer);
+
+    const policy = await request(app)
+      .patch('/api/crm/communication-policy')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        workspaceId: fixture.workspace.id,
+        timezone: 'Asia/Muscat',
+        quietHoursStart: 1260,
+        quietHoursEnd: 420,
+        hourlyRateLimit: 75,
+        retentionDays: 730
+      })
+      .expect(200);
+    expect(policy.body.policy).toMatchObject({
+      workspaceId: fixture.workspace.id,
+      timezone: 'Asia/Muscat',
+      quietHoursStart: 1260,
+      quietHoursEnd: 420,
+      hourlyRateLimit: 75,
+      retentionDays: 730
+    });
+
+    await request(app)
+      .get(`/api/crm/communication-policy?workspaceId=${fixture.workspace.id}`)
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .expect(403);
+
+    await request(app)
+      .post('/api/crm/suppressions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        workspaceId: fixture.workspace.id,
+        channel: 'EMAIL',
+        normalizedDestination: 'Blocked.Person@Lux.Test',
+        reason: 'OPT_OUT',
+        active: true,
+        source: 'Contact preference center',
+        notes: 'Explicit opt-out'
+      })
+      .expect(201);
+    await request(app)
+      .post('/api/crm/suppressions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        workspaceId: fixture.workspace.id,
+        channel: 'PHONE',
+        normalizedDestination: '+968 9000 0000',
+        reason: 'MANUAL',
+        active: false,
+        source: 'Operations review'
+      })
+      .expect(201);
+
+    const suppressions = await request(app)
+      .get(`/api/crm/suppressions?workspaceId=${fixture.workspace.id}&search=blocked&channel=EMAIL&reason=OPT_OUT&status=ACTIVE&sortBy=normalizedDestination&direction=asc&take=1&skip=0`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(suppressions.body.pagination).toEqual({ total: 1, take: 1, skip: 0, count: 1 });
+    expect(suppressions.body.summary).toEqual({ total: 1, active: 1, inactive: 0 });
+    expect(suppressions.body.suppressions[0]).toMatchObject({
+      channel: 'EMAIL',
+      normalizedDestination: 'blocked.person@lux.test',
+      reason: 'OPT_OUT',
+      active: true
+    });
+    await request(app)
+      .get(`/api/crm/suppressions?workspaceId=${fixture.workspace.id}`)
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .expect(403);
+
+    const created = await request(app)
+      .post('/api/crm/communication-templates')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        workspaceId: fixture.workspace.id,
+        key: 'governed-follow-up',
+        name: 'Governed follow-up',
+        channel: 'EMAIL',
+        subject: 'Follow-up',
+        body: 'Version one'
+      })
+      .expect(201);
+    const templateId = created.body.template.id;
+
+    await request(app)
+      .post(`/api/crm/communication-templates/${templateId}/versions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ subject: 'Follow-up reviewed', body: 'Version two' })
+      .expect(201);
+
+    const templates = await request(app)
+      .get(`/api/crm/communication-templates?workspaceId=${fixture.workspace.id}&search=governed&channel=EMAIL&status=ACTIVE&sortBy=updatedAt&direction=desc&take=1&skip=0`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(templates.body.pagination).toEqual({ total: 1, take: 1, skip: 0, count: 1 });
+    expect(templates.body.summary).toEqual({ total: 1, active: 1, archived: 0, versions: 2 });
+    expect(templates.body.templates[0].versions.map((version: { version: number }) => version.version)).toEqual([2, 1]);
+
+    await request(app)
+      .patch(`/api/crm/communication-templates/${templateId}/archive`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ archived: true, reason: 'Retired after campaign review' })
+      .expect(200);
+    await request(app)
+      .post(`/api/crm/communication-templates/${templateId}/versions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ subject: 'Unsafe update', body: 'Archived templates cannot receive versions' })
+      .expect(409);
+    const idempotentArchive = await request(app)
+      .patch(`/api/crm/communication-templates/${templateId}/archive`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ archived: true, reason: 'Repeated archive request' })
+      .expect(200);
+    expect(idempotentArchive.body.idempotent).toBe(true);
+
+    await request(app)
+      .patch(`/api/crm/communication-templates/${templateId}/archive`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ archived: false, reason: 'Approved for reuse' })
+      .expect(200);
+    await request(app)
+      .post(`/api/crm/communication-templates/${templateId}/versions`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ subject: 'Follow-up restored', body: 'Version three' })
+      .expect(201);
+
+    const lifecycleActivities = await prisma.crmActivity.findMany({
+      where: {
+        workspaceId: fixture.workspace.id,
+        subject: { in: [`CRM communication template archived:${templateId}`, `CRM communication template restored:${templateId}`] }
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+    expect(lifecycleActivities.map((activity) => activity.body)).toEqual([
+      'Retired after campaign review',
+      'Approved for reuse'
+    ]);
+  });
+
   it('enforces communication consent and suppression and requires provider confirmation for delivery', async () => {
     const manager = await createUser('crm21h-comms@lux.test');
     const fixture = await createCompanyWorkspace({ slug: 'communications', members: [{ userId: manager.id, allProperties: true }] });
