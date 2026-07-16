@@ -316,14 +316,92 @@ describe('CRM Stage 21H revenue operations', () => {
       .send({ fullName: 'Outside Relationship Contact', email: 'outside-contact@lux.test' })
       .expect(201);
 
-    await prisma.crmContactChannelPreference.create({
-      data: {
-        workspaceId: fixture.workspace.id,
-        contactId: harbour.body.contact.id,
+    await request(app)
+      .patch(`/api/crm/contacts/${outside.body.contact.id}/communication-governance`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ channel: 'EMAIL', status: 'CONSENTED', lawfulBasis: 'Attempt outside property scope', preferred: true })
+      .expect(403);
+
+    await request(app)
+      .patch(`/api/crm/contacts/${harbour.body.contact.id}/communication-governance`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ channel: 'EMAIL', status: 'CONSENTED', preferred: true })
+      .expect(400);
+
+    const consent = await request(app)
+      .patch(`/api/crm/contacts/${harbour.body.contact.id}/communication-governance`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({
         channel: 'EMAIL',
         status: 'CONSENTED',
         lawfulBasis: 'Explicit relationship consent',
-        updatedById: portfolioManager.id
+        preferred: true,
+        timezone: 'Asia/Muscat',
+        quietHoursStart: 1200,
+        quietHoursEnd: 480
+      })
+      .expect(200);
+    expect(consent.body.preference).toMatchObject({
+      contactId: harbour.body.contact.id,
+      channel: 'EMAIL',
+      status: 'CONSENTED',
+      lawfulBasis: 'Explicit relationship consent',
+      preferred: true,
+      timezone: 'Asia/Muscat',
+      quietHoursStart: 1200,
+      quietHoursEnd: 480
+    });
+
+    const preferredPhone = await request(app)
+      .patch(`/api/crm/contacts/${harbour.body.contact.id}/communication-governance`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({
+        channel: 'PHONE',
+        status: 'LEGITIMATE_INTEREST',
+        lawfulBasis: 'Documented existing relationship',
+        preferred: true
+      })
+      .expect(200);
+    expect(preferredPhone.body.preference).toMatchObject({
+      channel: 'PHONE',
+      status: 'LEGITIMATE_INTEREST',
+      preferred: true
+    });
+
+    const governance = await request(app)
+      .get(`/api/crm/contacts/${harbour.body.contact.id}/communication-governance`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .expect(200);
+    expect(governance.body.preferences).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        channel: 'EMAIL',
+        status: 'CONSENTED',
+        lawfulBasis: 'Explicit relationship consent',
+        preferred: false
+      }),
+      expect.objectContaining({
+        channel: 'PHONE',
+        status: 'LEGITIMATE_INTEREST',
+        lawfulBasis: 'Documented existing relationship',
+        preferred: true
+      })
+    ]));
+
+    const consentActivity = await prisma.crmActivity.findFirstOrThrow({
+      where: {
+        contactId: harbour.body.contact.id,
+        subject: 'Communication preference updated:EMAIL'
+      }
+    });
+    expect(JSON.parse(consentActivity.body ?? '{}')).toMatchObject({
+      previous: null,
+      next: {
+        status: 'CONSENTED',
+        lawfulBasis: 'Explicit relationship consent',
+        preferred: true,
+        quietHoursStart: 1200,
+        quietHoursEnd: 480,
+        timezone: 'Asia/Muscat'
       }
     });
 
@@ -333,7 +411,7 @@ describe('CRM Stage 21H revenue operations', () => {
       .expect(200);
     expect(paginated.body.contacts).toHaveLength(1);
     expect(paginated.body.contacts[0]).toMatchObject({ id: harbour.body.contact.id, fullName: 'Harbour Relationship Contact' });
-    expect(paginated.body.contacts[0]._count).toMatchObject({ leads: 0, primaryDeals: 0, activities: 1, deliveryAttempts: 0 });
+    expect(paginated.body.contacts[0]._count).toMatchObject({ leads: 0, primaryDeals: 0, activities: 3, deliveryAttempts: 0 });
     expect(paginated.body.pagination).toMatchObject({ total: 1, take: 1, skip: 0, count: 1 });
     expect(paginated.body.summary).toMatchObject({ total: 1, active: 1, archived: 0 });
 
@@ -350,6 +428,17 @@ describe('CRM Stage 21H revenue operations', () => {
       .expect(200);
     expect(archived.body.contact.archivedAt).toBeTruthy();
     expect(archived.body.idempotent).toBe(false);
+
+    await request(app)
+      .patch(`/api/crm/contacts/${harbour.body.contact.id}/communication-governance`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({
+        channel: 'EMAIL',
+        status: 'LEGITIMATE_INTEREST',
+        lawfulBasis: 'Attempt while archived',
+        preferred: true
+      })
+      .expect(409);
 
     const idempotentArchive = await request(app)
       .patch(`/api/crm/contacts/${harbour.body.contact.id}/archive`)

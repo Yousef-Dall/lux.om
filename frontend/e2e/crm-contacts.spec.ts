@@ -104,10 +104,12 @@ async function mockContactApi(
   page: Page,
   queries: URL[],
   createBodies: Array<Record<string, unknown>>,
-  archiveBodies: Array<Record<string, unknown>>
+  archiveBodies: Array<Record<string, unknown>>,
+  consentBodies: Array<Record<string, unknown>> = []
 ) {
   let archivedAt: string | null = null;
   let createdContact: typeof detailContact | null = null;
+  let channelPreferences = [...listContact.channelPreferences];
   await page.route(crmApiPattern, async (route: Route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -118,7 +120,7 @@ async function mockContactApi(
     }
     if (url.pathname === '/api/crm/contacts' && method === 'GET') {
       queries.push(url);
-      const records = [{ ...listContact, archivedAt }, ...(createdContact ? [createdContact] : [])];
+      const records = [{ ...listContact, archivedAt, channelPreferences }, ...(createdContact ? [createdContact] : [])];
       return route.fulfill({
         json: {
           contacts: records,
@@ -146,7 +148,7 @@ async function mockContactApi(
       return route.fulfill({ status: 201, json: { contact: createdContact } });
     }
     if (url.pathname === `/api/crm/contacts/${contactId}` && method === 'GET') {
-      return route.fulfill({ json: { contact: { ...detailContact, archivedAt }, duplicates: archivedAt ? [] : [duplicate], suppressions: [{ id: 'suppression-contact', channel: 'EMAIL', normalizedDestination: 'noor@harbour.test', reason: 'MANUAL', active: true }] } });
+      return route.fulfill({ json: { contact: { ...detailContact, archivedAt, channelPreferences }, duplicates: archivedAt ? [] : [duplicate], suppressions: [{ id: 'suppression-contact', channel: 'EMAIL', normalizedDestination: 'noor@harbour.test', reason: 'MANUAL', active: true }] } });
     }
     if (url.pathname === '/api/crm/contacts/created-contact-21i' && method === 'GET' && createdContact) {
       return route.fulfill({ json: { contact: createdContact, duplicates: [], suppressions: [] } });
@@ -163,6 +165,21 @@ async function mockContactApi(
           }
         }
       });
+    }
+    if (url.pathname === `/api/crm/contacts/${contactId}/communication-governance` && method === 'PATCH') {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      consentBodies.push(body);
+      channelPreferences = [{
+        id: 'preference-contact-email',
+        channel: String(body.channel),
+        status: String(body.status),
+        lawfulBasis: body.lawfulBasis as string | null,
+        preferred: Boolean(body.preferred),
+        timezone: body.timezone as string | null,
+        quietHoursStart: body.quietHoursStart as number | null,
+        quietHoursEnd: body.quietHoursEnd as number | null
+      }];
+      return route.fulfill({ json: { preference: channelPreferences[0] } });
     }
     if (url.pathname === `/api/crm/contacts/${contactId}/archive` && method === 'PATCH') {
       const body = request.postDataJSON() as Record<string, unknown>;
@@ -215,8 +232,9 @@ test('contact register uses server pagination and persists browsing filters in t
 test('contact creation, duplicate review, and archival use governed accessible flows', async ({ page }) => {
   const createBodies: Array<Record<string, unknown>> = [];
   const archiveBodies: Array<Record<string, unknown>> = [];
+  const consentBodies: Array<Record<string, unknown>> = [];
   await authenticate(page);
-  await mockContactApi(page, [], createBodies, archiveBodies);
+  await mockContactApi(page, [], createBodies, archiveBodies, consentBodies);
 
   await page.goto(`/crm/contacts?workspaceId=${workspaceId}`);
   const createTrigger = page.getByRole('button', { name: 'Add contact', exact: true });
@@ -234,8 +252,33 @@ test('contact creation, duplicate review, and archival use governed accessible f
   await expect(page.getByRole('heading', { name: 'Salma Marina', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Back to contact register', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/crm/contacts\\?workspaceId=${workspaceId}$`));
+  await expect(page.getByRole('heading', { name: 'Salma Marina', exact: true })).toBeHidden();
   await page.getByRole('button', { name: 'Review contact', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: listContact.fullName, exact: true })).toBeVisible();
+
+  const consentTrigger = page.getByRole('button', { name: 'Manage communication consent', exact: true });
+  await consentTrigger.click();
+  dialog = page.getByRole('dialog', { name: 'Review contact communication preference', exact: true });
+  await expect(dialog.getByRole('combobox', { name: 'Communication channel', exact: true })).toBeFocused();
+  await expect(dialog.getByText('Active communication suppressions remain authoritative after a consent update.', { exact: true })).toBeVisible();
+  await dialog.getByRole('combobox', { name: 'Consent status', exact: true }).selectOption('LEGITIMATE_INTEREST');
+  await dialog.getByRole('textbox', { name: 'Lawful basis', exact: true }).fill('Documented relationship and requested follow-up');
+  await dialog.getByLabel('Quiet-hours start minute', { exact: true }).fill('1200');
+  await dialog.getByLabel('Quiet-hours end minute', { exact: true }).fill('480');
+  await dialog.getByRole('button', { name: 'Save communication preference', exact: true }).click();
+  await expect(page.getByRole('status').getByText('The communication preference was updated and audit evidence was recorded.', { exact: true })).toBeVisible();
+  await expect(consentTrigger).toBeFocused();
+  expect(consentBodies).toEqual([{
+    channel: 'EMAIL',
+    status: 'LEGITIMATE_INTEREST',
+    lawfulBasis: 'Documented relationship and requested follow-up',
+    preferred: true,
+    timezone: 'Asia/Muscat',
+    quietHoursStart: 1200,
+    quietHoursEnd: 480
+  }]);
+
   const mergeTrigger = page.getByRole('button', { name: 'Review merge', exact: true });
   await mergeTrigger.click();
   dialog = page.getByRole('dialog', { name: 'Review contact merge', exact: true });
@@ -268,6 +311,7 @@ test('property-scoped viewers receive a read-only Arabic contact center on narro
   await expect(page.getByRole('button', { name: 'إضافة جهة اتصال', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'مراجعة جهة الاتصال', exact: true }).click();
   await expect(page.getByRole('heading', { name: listContact.fullName, exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'إدارة موافقة التواصل', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'مراجعة الدمج', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'أرشفة جهة الاتصال', exact: true })).toHaveCount(0);
   await expect(page.locator('body')).not.toHaveCSS('overflow-x', 'scroll');

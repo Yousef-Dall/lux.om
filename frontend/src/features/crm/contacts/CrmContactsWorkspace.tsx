@@ -28,6 +28,7 @@ import {
   listCrmContactRegister,
   mergeCrmContacts,
   previewCrmContactMerge,
+  updateCrmCommunicationGovernance,
   type CrmAccountSummary,
   type CrmContactDetail,
   type CrmContactDirection,
@@ -41,7 +42,7 @@ import {
 } from '../../../api/crmAdvanced';
 import { useAuth } from '../../../auth/AuthContext';
 import AccessibleDialog from '../../../components/AccessibleDialog';
-import type { CrmContactConsentStatus } from '../../../generated/crmContract';
+import type { CrmCommunicationChannel, CrmContactConsentStatus } from '../../../generated/crmContract';
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle';
 import { useLanguage } from '../../../i18n/LanguageContext';
 import CrmContactMergeDialog from './CrmContactMergeDialog';
@@ -49,11 +50,30 @@ import { WorkspaceSelector, type CrmWorkspaceChoice } from '../WorkspaceSelector
 
 const PAGE_SIZE = 25;
 const consentStatuses: CrmContactConsentStatus[] = ['UNKNOWN', 'CONSENTED', 'LEGITIMATE_INTEREST', 'OPTED_OUT', 'BLOCKED'];
+const communicationChannels: CrmCommunicationChannel[] = ['EMAIL', 'WHATSAPP', 'PHONE'];
 
 type ContactWorkspaceChoice = CrmWorkspaceChoice & { scope: 'personal' | 'company' | 'admin' };
 type ContactForm = { accountId: string; fullName: string; email: string; phone: string; notes: string };
+type ConsentForm = {
+  channel: CrmCommunicationChannel;
+  status: CrmContactConsentStatus;
+  lawfulBasis: string;
+  preferred: boolean;
+  timezone: string;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+};
 
 const emptyContactForm: ContactForm = { accountId: '', fullName: '', email: '', phone: '', notes: '' };
+const emptyConsentForm: ConsentForm = {
+  channel: 'EMAIL',
+  status: 'UNKNOWN',
+  lawfulBasis: '',
+  preferred: false,
+  timezone: '',
+  quietHoursStart: '',
+  quietHoursEnd: ''
+};
 
 function errorMessage(error: unknown) {
   return error instanceof ApiError
@@ -181,6 +201,11 @@ export default function CrmContactsWorkspace() {
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [archiveError, setArchiveError] = useState('');
 
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [consentForm, setConsentForm] = useState<ConsentForm>(emptyConsentForm);
+  const [consentBusy, setConsentBusy] = useState(false);
+  const [consentError, setConsentError] = useState('');
+
   const [pendingMerge, setPendingMerge] = useState<CrmDuplicateCandidate | null>(null);
   const [mergePreview, setMergePreview] = useState<CrmContactMergePreview | null>(null);
   const [mergeResult, setMergeResult] = useState<CrmContactMergeResult | null>(null);
@@ -191,6 +216,8 @@ export default function CrmContactsWorkspace() {
   const createNameRef = useRef<HTMLInputElement>(null);
   const detailTriggerRef = useRef<HTMLButtonElement>(null);
   const archiveReasonRef = useRef<HTMLTextAreaElement>(null);
+  const consentTriggerRef = useRef<HTMLButtonElement>(null);
+  const consentChannelRef = useRef<HTMLSelectElement>(null);
   const mergeTriggerRef = useRef<HTMLButtonElement>(null);
 
   useDocumentTitle(language === 'ar' ? 'جهات اتصال CRM | lux.om' : 'CRM contacts | lux.om');
@@ -203,7 +230,8 @@ export default function CrmContactsWorkspace() {
         name: 'الاسم', identity: 'الهوية', preferences: 'الموافقات', leads: 'العملاء المحتملون', deals: 'الصفقات', updated: 'آخر تحديث', actions: 'الإجراءات', review: 'مراجعة جهة الاتصال', loading: 'جارٍ تحميل جهات اتصال CRM…', emptyTitle: 'لا توجد جهات اتصال مطابقة', emptyBody: 'عدّل عوامل التصفية أو أضف جهة اتصال إلى حساب نشط.',
         previous: 'السابق', next: 'التالي', page: 'صفحة', of: 'من', ascending: 'تصاعدي', descending: 'تنازلي', fullNameSort: 'الاسم الكامل', createdAt: 'وقت الإنشاء', updatedAt: 'آخر تحديث', activeState: 'نشطة فقط', archivedState: 'مؤرشفة فقط', allStates: 'كل الحالات',
         createTitle: 'إضافة جهة اتصال CRM محكومة', createDescription: 'يجب ربط جهة الاتصال بحساب نشط، وتبقى قواعد الهوية المكررة والنطاق مطبقة في الخادم.', closeCreate: 'إغلاق إضافة جهة الاتصال', fullName: 'الاسم الكامل', email: 'البريد الإلكتروني', phone: 'الهاتف', notes: 'ملاحظات', saveContact: 'حفظ جهة الاتصال', saving: 'جارٍ الحفظ…', created: 'تمت إضافة جهة الاتصال إلى الحساب.', identityRequired: 'أدخل بريداً إلكترونياً أو رقم هاتف.', accountRequired: 'اختر حساباً نشطاً.',
-        details: 'تفاصيل جهة الاتصال', back: 'العودة إلى سجل جهات الاتصال', statusActive: 'نشطة', statusArchived: 'مؤرشفة', identities: 'الهويات النشطة', noIdentities: 'لا توجد هويات نشطة.', communication: 'تفضيلات التواصل', noPreferences: 'لا توجد تفضيلات تواصل مسجلة.', linked: 'السجلات المرتبطة', noLeads: 'لا توجد عملاء محتملون مرتبطون.', noDeals: 'لا توجد صفقات مرتبطة.', suppressions: 'قيود التواصل', noSuppressions: 'لا توجد قيود تواصل نشطة.', duplicates: 'تحذيرات التكرار', noDuplicates: 'لم يتم اكتشاف جهات اتصال مكررة.', reviewMerge: 'مراجعة الدمج',
+        details: 'تفاصيل جهة الاتصال', back: 'العودة إلى سجل جهات الاتصال', statusActive: 'نشطة', statusArchived: 'مؤرشفة', identities: 'الهويات النشطة', noIdentities: 'لا توجد هويات نشطة.', communication: 'تفضيلات التواصل', noPreferences: 'لا توجد تفضيلات تواصل مسجلة.', manageConsent: 'إدارة موافقة التواصل', linked: 'السجلات المرتبطة', noLeads: 'لا توجد عملاء محتملون مرتبطون.', noDeals: 'لا توجد صفقات مرتبطة.', suppressions: 'قيود التواصل', noSuppressions: 'لا توجد قيود تواصل نشطة.', duplicates: 'تحذيرات التكرار', noDuplicates: 'لم يتم اكتشاف جهات اتصال مكررة.', reviewMerge: 'مراجعة الدمج',
+        consentTitle: 'مراجعة تفضيل التواصل', consentDescription: 'يتم حفظ حالة الموافقة والأساس القانوني وساعات الهدوء كسجل محكوم. لا تؤدي هذه العملية إلى إزالة أي قيد تواصل نشط.', closeConsent: 'إغلاق مراجعة الموافقة', channel: 'قناة التواصل', consentState: 'حالة الموافقة', lawfulBasis: 'الأساس القانوني', lawfulBasisPlaceholder: 'مثال: موافقة صريحة أو علاقة قائمة موثقة', preferredChannel: 'استخدام هذه القناة كقناة مفضلة', timezone: 'المنطقة الزمنية', quietStart: 'بداية ساعات الهدوء بالدقائق', quietEnd: 'نهاية ساعات الهدوء بالدقائق', optionalMinutes: 'اختياري، من 0 إلى 1439', suppressionWarning: 'تبقى قيود التواصل النشطة نافذة حتى لو تم تحديث حالة الموافقة.', saveConsent: 'حفظ تفضيل التواصل', consentSaved: 'تم تحديث تفضيل التواصل وتسجيل دليل تدقيق.', lawfulBasisRequired: 'أدخل أساساً قانونياً للموافقة أو المصلحة المشروعة.', preferredRequiresPermission: 'لا يمكن تفضيل القناة إلا عند وجود موافقة أو مصلحة مشروعة.', quietHoursPairRequired: 'أدخل بداية ونهاية ساعات الهدوء معاً.',
         archive: 'أرشفة جهة الاتصال', restore: 'استعادة جهة الاتصال', archiveTitle: 'مراجعة تغيير حالة جهة الاتصال', archiveDescription: 'يتطلب الأرشفة أو الاستعادة سبباً واضحاً ويُسجّل نشاطاً قابلاً للتدقيق.', closeArchive: 'إغلاق مراجعة الحالة', reason: 'سبب التغيير', acknowledge: 'أفهم أن هذا يغيّر ظهور جهة الاتصال التشغيلي دون حذف السجلات المرتبطة.', confirmArchive: 'تأكيد الأرشفة', confirmRestore: 'تأكيد الاستعادة', contactArchived: 'تمت أرشفة جهة الاتصال.', contactRestored: 'تمت استعادة جهة الاتصال.', mergeCompleted: 'اكتمل دمج جهة الاتصال.',
         unknown: 'غير معروف'
       }
@@ -214,7 +242,8 @@ export default function CrmContactsWorkspace() {
         name: 'Name', identity: 'Identity', preferences: 'Consent', leads: 'Leads', deals: 'Deals', updated: 'Updated', actions: 'Actions', review: 'Review contact', loading: 'Loading CRM contacts…', emptyTitle: 'No matching contacts', emptyBody: 'Adjust the filters or add a contact to an active account.',
         previous: 'Previous', next: 'Next', page: 'Page', of: 'of', ascending: 'Ascending', descending: 'Descending', fullNameSort: 'Full name', createdAt: 'Created time', updatedAt: 'Updated time', activeState: 'Active only', archivedState: 'Archived only', allStates: 'All states',
         createTitle: 'Add governed CRM contact', createDescription: 'The contact must be linked to an active account. Server-side duplicate identity and scope rules remain enforced.', closeCreate: 'Close contact creation', fullName: 'Full name', email: 'Email', phone: 'Phone', notes: 'Notes', saveContact: 'Save contact', saving: 'Saving…', created: 'The contact was added to the account.', identityRequired: 'Enter an email address or phone number.', accountRequired: 'Select an active account.',
-        details: 'Contact details', back: 'Back to contact register', statusActive: 'Active', statusArchived: 'Archived', identities: 'Active identities', noIdentities: 'No active identities are recorded.', communication: 'Communication preferences', noPreferences: 'No communication preferences are recorded.', linked: 'Linked records', noLeads: 'No leads are linked.', noDeals: 'No deals are linked.', suppressions: 'Communication restrictions', noSuppressions: 'No active communication restrictions.', duplicates: 'Duplicate warnings', noDuplicates: 'No duplicate contacts were detected.', reviewMerge: 'Review merge',
+        details: 'Contact details', back: 'Back to contact register', statusActive: 'Active', statusArchived: 'Archived', identities: 'Active identities', noIdentities: 'No active identities are recorded.', communication: 'Communication preferences', noPreferences: 'No communication preferences are recorded.', manageConsent: 'Manage communication consent', linked: 'Linked records', noLeads: 'No leads are linked.', noDeals: 'No deals are linked.', suppressions: 'Communication restrictions', noSuppressions: 'No active communication restrictions.', duplicates: 'Duplicate warnings', noDuplicates: 'No duplicate contacts were detected.', reviewMerge: 'Review merge',
+        consentTitle: 'Review contact communication preference', consentDescription: 'Consent status, lawful basis, and quiet hours are stored as governed evidence. This action does not remove an active communication suppression.', closeConsent: 'Close consent review', channel: 'Communication channel', consentState: 'Consent status', lawfulBasis: 'Lawful basis', lawfulBasisPlaceholder: 'For example: explicit consent or a documented existing relationship', preferredChannel: 'Use this as the preferred communication channel', timezone: 'Timezone', quietStart: 'Quiet-hours start minute', quietEnd: 'Quiet-hours end minute', optionalMinutes: 'Optional, from 0 to 1439', suppressionWarning: 'Active communication suppressions remain authoritative after a consent update.', saveConsent: 'Save communication preference', consentSaved: 'The communication preference was updated and audit evidence was recorded.', lawfulBasisRequired: 'Enter a lawful basis for consented or legitimate-interest communication.', preferredRequiresPermission: 'Only a consented or legitimate-interest channel can be preferred.', quietHoursPairRequired: 'Enter both quiet-hours start and end, or leave both empty.',
         archive: 'Archive contact', restore: 'Restore contact', archiveTitle: 'Review contact state change', archiveDescription: 'Archiving or restoring requires a clear reason and records an auditable activity.', closeArchive: 'Close state review', reason: 'Change reason', acknowledge: 'I understand this changes the contact’s operational visibility without deleting linked records.', confirmArchive: 'Confirm archive', confirmRestore: 'Confirm restore', contactArchived: 'The contact was archived.', contactRestored: 'The contact was restored.', mergeCompleted: 'The contact merge was completed.',
         unknown: 'Unknown'
       };
@@ -444,6 +473,73 @@ export default function CrmContactsWorkspace() {
     }
   }
 
+  function consentFormFor(channel: CrmCommunicationChannel): ConsentForm {
+    const preference = selectedContact?.channelPreferences.find((item) => item.channel === channel);
+    return {
+      channel,
+      status: preference?.status ?? 'UNKNOWN',
+      lawfulBasis: preference?.lawfulBasis ?? '',
+      preferred: preference?.preferred ?? false,
+      timezone: preference?.timezone ?? '',
+      quietHoursStart: preference?.quietHoursStart == null ? '' : String(preference.quietHoursStart),
+      quietHoursEnd: preference?.quietHoursEnd == null ? '' : String(preference.quietHoursEnd)
+    };
+  }
+
+  function openConsent(trigger: HTMLButtonElement) {
+    consentTriggerRef.current = trigger;
+    const initialChannel = selectedContact?.channelPreferences[0]?.channel ?? 'EMAIL';
+    setConsentForm(consentFormFor(initialChannel));
+    setConsentError('');
+    setConsentOpen(true);
+  }
+
+  function changeConsentChannel(channel: CrmCommunicationChannel) {
+    setConsentForm(consentFormFor(channel));
+    setConsentError('');
+  }
+
+  async function submitConsent(event: FormEvent) {
+    event.preventDefault();
+    if (!token || !selectedContact) return;
+    const lawfulBasis = consentForm.lawfulBasis.trim();
+    if ((consentForm.status === 'CONSENTED' || consentForm.status === 'LEGITIMATE_INTEREST') && !lawfulBasis) {
+      setConsentError(copy.lawfulBasisRequired);
+      return;
+    }
+    if (consentForm.preferred && consentForm.status !== 'CONSENTED' && consentForm.status !== 'LEGITIMATE_INTEREST') {
+      setConsentError(copy.preferredRequiresPermission);
+      return;
+    }
+    const hasQuietStart = consentForm.quietHoursStart !== '';
+    const hasQuietEnd = consentForm.quietHoursEnd !== '';
+    if (hasQuietStart !== hasQuietEnd) {
+      setConsentError(copy.quietHoursPairRequired);
+      return;
+    }
+
+    setConsentBusy(true);
+    setConsentError('');
+    try {
+      await updateCrmCommunicationGovernance(token, selectedContact.id, {
+        channel: consentForm.channel,
+        status: consentForm.status,
+        lawfulBasis: lawfulBasis || null,
+        preferred: consentForm.preferred,
+        timezone: consentForm.timezone.trim() || null,
+        quietHoursStart: hasQuietStart ? Number(consentForm.quietHoursStart) : null,
+        quietHoursEnd: hasQuietEnd ? Number(consentForm.quietHoursEnd) : null
+      });
+      setConsentOpen(false);
+      setSuccess(copy.consentSaved);
+      await Promise.all([refreshDetail(), loadContacts()]);
+    } catch (submitError) {
+      setConsentError(errorMessage(submitError));
+    } finally {
+      setConsentBusy(false);
+    }
+  }
+
   async function requestMerge(candidate: CrmDuplicateCandidate, trigger: HTMLButtonElement) {
     if (!token || !selectedContact) return;
     mergeTriggerRef.current = trigger;
@@ -527,7 +623,13 @@ export default function CrmContactsWorkspace() {
           <dl className="crm-contact-detail__facts"><div><dt>{copy.email}</dt><dd>{selectedContact.email || '—'}</dd></div><div><dt>{copy.phone}</dt><dd>{selectedContact.phone || '—'}</dd></div><div><dt>{copy.account}</dt><dd>{selectedContact.account?.name || '—'}</dd></div><div><dt>{copy.notes}</dt><dd>{selectedContact.notes || '—'}</dd></div></dl>
           <div className="crm-contact-detail__grid">
             <section aria-labelledby="crm-contact-identities"><h4 id="crm-contact-identities"><Link2 aria-hidden="true" size={17} /> {copy.identities}</h4>{selectedContact.identities.length ? <ul>{selectedContact.identities.map((identity) => <li key={identity.id}><strong>{identity.type}</strong><code>{identity.normalizedValue}</code></li>)}</ul> : <p>{copy.noIdentities}</p>}</section>
-            <section aria-labelledby="crm-contact-preferences"><h4 id="crm-contact-preferences"><MailCheck aria-hidden="true" size={17} /> {copy.communication}</h4>{selectedContact.channelPreferences.length ? <ul>{selectedContact.channelPreferences.map((preference) => <li key={preference.id}><strong>{preference.channel}</strong><span>{humanize(preference.status)}{preference.lawfulBasis ? ` · ${preference.lawfulBasis}` : ''}</span></li>)}</ul> : <p>{copy.noPreferences}</p>}</section>
+            <section aria-labelledby="crm-contact-preferences">
+              <div className="crm-contact-detail__section-header">
+                <h4 id="crm-contact-preferences"><MailCheck aria-hidden="true" size={17} /> {copy.communication}</h4>
+                {canManage && !selectedContact.archivedAt ? <button className="button-link button-link--secondary" onClick={(event) => openConsent(event.currentTarget)} type="button">{copy.manageConsent}</button> : null}
+              </div>
+              {selectedContact.channelPreferences.length ? <ul>{selectedContact.channelPreferences.map((preference) => <li key={preference.id}><strong>{preference.channel}{preference.preferred ? ' · ★' : ''}</strong><span>{humanize(preference.status)}{preference.lawfulBasis ? ` · ${preference.lawfulBasis}` : ''}{preference.timezone ? ` · ${preference.timezone}` : ''}{preference.quietHoursStart != null && preference.quietHoursEnd != null ? ` · ${preference.quietHoursStart}–${preference.quietHoursEnd}` : ''}</span></li>)}</ul> : <p>{copy.noPreferences}</p>}
+            </section>
             <section aria-labelledby="crm-contact-linked"><h4 id="crm-contact-linked"><UsersRound aria-hidden="true" size={17} /> {copy.linked}</h4>{selectedContact.leads.length ? <ul>{selectedContact.leads.map((lead) => <li key={lead.id}><strong>{lead.title}</strong><span>{lead.status} · {lead.score}</span></li>)}</ul> : <p>{copy.noLeads}</p>}{selectedContact.primaryDeals.length ? <ul>{selectedContact.primaryDeals.map((deal) => <li key={deal.id}><strong>{deal.name}</strong><span>{deal.stage.name} · {deal.currency}</span></li>)}</ul> : <p>{copy.noDeals}</p>}</section>
             <section aria-labelledby="crm-contact-suppressions"><h4 id="crm-contact-suppressions"><ShieldCheck aria-hidden="true" size={17} /> {copy.suppressions}</h4>{selectedContact.suppressions?.length ? <ul>{selectedContact.suppressions.map((suppression) => <li key={suppression.id}><strong>{suppression.channel}</strong><span>{suppression.reason}</span></li>)}</ul> : <p>{copy.noSuppressions}</p>}</section>
           </div>
@@ -545,6 +647,29 @@ export default function CrmContactsWorkspace() {
           <label><span>{copy.phone}</span><input value={createForm.phone} onChange={(event) => setCreateForm((current) => ({ ...current, phone: event.target.value }))} /></label>
           <label className="crm-contacts__dialog-wide"><span>{copy.notes}</span><textarea rows={4} value={createForm.notes} onChange={(event) => setCreateForm((current) => ({ ...current, notes: event.target.value }))} /></label>
           <div className="crm-contacts__dialog-actions crm-contacts__dialog-wide"><button className="button-link button-link--primary" disabled={createBusy} type="submit">{createBusy ? copy.saving : copy.saveContact}</button></div>
+        </form>
+      </AccessibleDialog>
+
+      <AccessibleDialog open={consentOpen} title={copy.consentTitle} description={copy.consentDescription} closeLabel={copy.closeConsent} onClose={() => setConsentOpen(false)} initialFocusRef={consentChannelRef} returnFocusRef={consentTriggerRef} size="large">
+        <form className="crm-contacts__dialog-form" onSubmit={submitConsent}>
+          {consentError ? <p className="form-alert form-alert--error crm-contacts__dialog-wide" role="alert">{consentError}</p> : null}
+          <label><span>{copy.channel}</span><select ref={consentChannelRef} value={consentForm.channel} onChange={(event) => changeConsentChannel(event.target.value as CrmCommunicationChannel)}>{communicationChannels.map((channel) => <option key={channel} value={channel}>{humanize(channel)}</option>)}</select></label>
+          <label><span>{copy.consentState}</span><select value={consentForm.status} onChange={(event) => {
+            const statusValue = event.target.value as CrmContactConsentStatus;
+            setConsentForm((current) => ({
+              ...current,
+              status: statusValue,
+              preferred: statusValue === 'CONSENTED' || statusValue === 'LEGITIMATE_INTEREST' ? current.preferred : false
+            }));
+          }}>{consentStatuses.map((statusValue) => <option key={statusValue} value={statusValue}>{humanize(statusValue)}</option>)}</select></label>
+          <label className="crm-contacts__dialog-wide"><span>{copy.lawfulBasis}</span><textarea placeholder={copy.lawfulBasisPlaceholder} rows={3} value={consentForm.lawfulBasis} onChange={(event) => setConsentForm((current) => ({ ...current, lawfulBasis: event.target.value }))} /></label>
+          <label><span>{copy.timezone}</span><input placeholder="Asia/Muscat" value={consentForm.timezone} onChange={(event) => setConsentForm((current) => ({ ...current, timezone: event.target.value }))} /></label>
+          <label className="crm-contact-consent__preferred"><input checked={consentForm.preferred} onChange={(event) => setConsentForm((current) => ({ ...current, preferred: event.target.checked }))} type="checkbox" /><span>{copy.preferredChannel}</span></label>
+          <label><span>{copy.quietStart}</span><input aria-describedby="crm-contact-quiet-hours-help" max={1439} min={0} type="number" value={consentForm.quietHoursStart} onChange={(event) => setConsentForm((current) => ({ ...current, quietHoursStart: event.target.value }))} /></label>
+          <label><span>{copy.quietEnd}</span><input aria-describedby="crm-contact-quiet-hours-help" max={1439} min={0} type="number" value={consentForm.quietHoursEnd} onChange={(event) => setConsentForm((current) => ({ ...current, quietHoursEnd: event.target.value }))} /></label>
+          <p className="crm-contact-consent__help crm-contacts__dialog-wide" id="crm-contact-quiet-hours-help">{copy.optionalMinutes}</p>
+          {selectedContact?.suppressions?.some((suppression) => suppression.active && suppression.channel === consentForm.channel) ? <p className="form-alert crm-contacts__dialog-wide" role="status">{copy.suppressionWarning}</p> : null}
+          <div className="crm-contacts__dialog-actions crm-contacts__dialog-wide"><button className="button-link button-link--primary" disabled={consentBusy} type="submit">{consentBusy ? copy.saving : copy.saveConsent}</button></div>
         </form>
       </AccessibleDialog>
 

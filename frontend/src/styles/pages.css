@@ -25133,6 +25133,7 @@ transition: none;
 .crm-contacts__filter-actions,
 .crm-contacts__pagination,
 .crm-contact-detail > header,
+.crm-contact-detail__section-header,
 .crm-contact-detail__duplicates article,
 .crm-contact-detail__actions,
 .crm-contacts__dialog-actions {
@@ -25145,6 +25146,7 @@ transition: none;
 .crm-contacts__workspace,
 .crm-contacts__pagination,
 .crm-contact-detail > header,
+.crm-contact-detail__section-header,
 .crm-contact-detail__duplicates article {
   justify-content: space-between;
 }
@@ -25303,6 +25305,27 @@ transition: none;
 .crm-contacts__dialog-actions,
 .crm-contact-detail__actions {
   justify-content: flex-end;
+}
+
+.crm-contact-detail__section-header {
+  align-items: flex-start;
+  margin-bottom: 0.7rem;
+}
+
+.crm-contact-detail__section-header h4 {
+  margin-bottom: 0;
+}
+
+.crm-contact-consent__preferred {
+  align-content: center;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.crm-contact-consent__help {
+  margin: -0.35rem 0 0;
+  color: var(--muted-text-color);
+  font-size: 0.82rem;
 }
 
 .crm-contact-detail {

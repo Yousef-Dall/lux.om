@@ -1400,18 +1400,118 @@ crmStage21hRouter.get('/contacts/:id/communication-governance', async (req, res,
 crmStage21hRouter.patch('/contacts/:id/communication-governance', async (req, res, next) => {
   try {
     const contactId = id.parse(req.params.id);
-    const data = z.object({ channel: z.enum(channels), status: z.enum(crmContactConsentStatuses), lawfulBasis: z.string().trim().max(500).nullable().optional(), preferred: z.boolean().default(false), quietHoursStart: z.coerce.number().int().min(0).max(1439).nullable().optional(), quietHoursEnd: z.coerce.number().int().min(0).max(1439).nullable().optional(), timezone: z.string().trim().min(3).max(100).nullable().optional() }).strict().superRefine((value, ctx) => {
-      if (value.timezone && !validIanaTimezone(value.timezone)) ctx.addIssue({ code: 'custom', path: ['timezone'], message: 'A valid IANA timezone is required.' });
+    const data = z.object({
+      channel: z.enum(channels),
+      status: z.enum(crmContactConsentStatuses),
+      lawfulBasis: z.string().trim().max(500).nullable().optional(),
+      preferred: z.boolean().default(false),
+      quietHoursStart: z.coerce.number().int().min(0).max(1439).nullable().optional(),
+      quietHoursEnd: z.coerce.number().int().min(0).max(1439).nullable().optional(),
+      timezone: z.string().trim().min(3).max(100).nullable().optional()
+    }).strict().superRefine((value, ctx) => {
+      if (value.timezone && !validIanaTimezone(value.timezone)) {
+        ctx.addIssue({ code: 'custom', path: ['timezone'], message: 'A valid IANA timezone is required.' });
+      }
+      if ((value.status === 'CONSENTED' || value.status === 'LEGITIMATE_INTEREST') && !value.lawfulBasis) {
+        ctx.addIssue({ code: 'custom', path: ['lawfulBasis'], message: 'A lawful basis is required for consented or legitimate-interest communication.' });
+      }
+      if (value.preferred && value.status !== 'CONSENTED' && value.status !== 'LEGITIMATE_INTEREST') {
+        ctx.addIssue({ code: 'custom', path: ['preferred'], message: 'Only a consented or legitimate-interest channel can be preferred.' });
+      }
+      const hasQuietStart = value.quietHoursStart != null;
+      const hasQuietEnd = value.quietHoursEnd != null;
+      if (hasQuietStart !== hasQuietEnd) {
+        ctx.addIssue({ code: 'custom', path: ['quietHoursEnd'], message: 'Quiet-hour start and end must be supplied together.' });
+      }
     }).parse(req.body);
     const summary = await prisma.crmContact.findUnique({ where: { id: contactId }, select: { workspaceId: true } });
     if (!summary) throw new AppError(404, 'CRM contact not found.');
     const { access } = await resolveWorkspaceAccess(req.user!, summary.workspaceId, 'manage');
-    const contact = await prisma.crmContact.findFirst({ where: { id: contactId, ...contactScopeWhere(access, summary.workspaceId) }, select: { workspaceId: true } });
+    const contact = await prisma.crmContact.findFirst({
+      where: { id: contactId, ...contactScopeWhere(access, summary.workspaceId) },
+      select: { workspaceId: true, archivedAt: true }
+    });
     if (!contact) throw new AppError(403, 'CRM contact is outside your workspace or property scope.');
-    const preference = await prisma.crmContactChannelPreference.upsert({
-      where: { contactId_channel: { contactId, channel: data.channel } },
-      update: { status: data.status, lawfulBasis: data.lawfulBasis, preferred: data.preferred, quietHoursStart: data.quietHoursStart, quietHoursEnd: data.quietHoursEnd, timezone: data.timezone, optedOutAt: data.status === 'OPTED_OUT' ? new Date() : null, updatedById: req.user!.id },
-      create: { workspaceId: contact.workspaceId, contactId, channel: data.channel, status: data.status, lawfulBasis: data.lawfulBasis, preferred: data.preferred, quietHoursStart: data.quietHoursStart, quietHoursEnd: data.quietHoursEnd, timezone: data.timezone, optedOutAt: data.status === 'OPTED_OUT' ? new Date() : null, updatedById: req.user!.id }
+    if (contact.archivedAt) throw new AppError(409, 'Restore the CRM contact before changing communication consent.');
+    const lawfulBasis = data.status === 'CONSENTED' || data.status === 'LEGITIMATE_INTEREST'
+      ? data.lawfulBasis ?? null
+      : null;
+
+    const preference = await prisma.$transaction(async (tx) => {
+      const previous = await tx.crmContactChannelPreference.findUnique({
+        where: { contactId_channel: { contactId, channel: data.channel } },
+        select: {
+          status: true,
+          lawfulBasis: true,
+          preferred: true,
+          quietHoursStart: true,
+          quietHoursEnd: true,
+          timezone: true
+        }
+      });
+      const displacedPreferredChannels = data.preferred
+        ? await tx.crmContactChannelPreference.findMany({
+            where: { contactId, channel: { not: data.channel }, preferred: true },
+            select: { channel: true }
+          })
+        : [];
+      if (data.preferred && displacedPreferredChannels.length) {
+        await tx.crmContactChannelPreference.updateMany({
+          where: { contactId, channel: { not: data.channel }, preferred: true },
+          data: { preferred: false, updatedById: req.user!.id }
+        });
+      }
+      const updated = await tx.crmContactChannelPreference.upsert({
+        where: { contactId_channel: { contactId, channel: data.channel } },
+        update: {
+          status: data.status,
+          lawfulBasis,
+          preferred: data.preferred,
+          quietHoursStart: data.quietHoursStart,
+          quietHoursEnd: data.quietHoursEnd,
+          timezone: data.timezone,
+          optedOutAt: data.status === 'OPTED_OUT' ? new Date() : null,
+          updatedById: req.user!.id
+        },
+        create: {
+          workspaceId: contact.workspaceId,
+          contactId,
+          channel: data.channel,
+          status: data.status,
+          lawfulBasis,
+          preferred: data.preferred,
+          quietHoursStart: data.quietHoursStart,
+          quietHoursEnd: data.quietHoursEnd,
+          timezone: data.timezone,
+          optedOutAt: data.status === 'OPTED_OUT' ? new Date() : null,
+          updatedById: req.user!.id
+        }
+      });
+      await tx.crmActivity.create({
+        data: {
+          workspaceId: contact.workspaceId,
+          contactId,
+          type: 'NOTE',
+          status: 'COMPLETED',
+          subject: `Communication preference updated:${data.channel}`,
+          body: JSON.stringify({
+            previous,
+            next: {
+              status: data.status,
+              lawfulBasis,
+              preferred: data.preferred,
+              displacedPreferredChannels: displacedPreferredChannels.map((item) => item.channel),
+              quietHoursStart: data.quietHoursStart ?? null,
+              quietHoursEnd: data.quietHoursEnd ?? null,
+              timezone: data.timezone ?? null
+            }
+          }),
+          completedAt: new Date(),
+          createdById: req.user!.id,
+          updatedById: req.user!.id
+        }
+      });
+      return updated;
     });
     res.json({ preference });
   } catch (error) { next(error); }

@@ -1,0 +1,15 @@
+{
+  "files": [
+    ".github/workflows/ci.yml",
+    "docs/frontend-quality-tooling.md",
+    "eslint.config.mjs",
+    "frontend/format-baseline.json",
+    "frontend/package.json",
+    "frontend/scripts/checkFormatting.mjs",
+    "frontend/tsconfig.lint.json",
+    "package-lock.json",
+    "package.json",
+    "prettier.config.mjs",
+    "stylelint.config.mjs"
+  ]
+}

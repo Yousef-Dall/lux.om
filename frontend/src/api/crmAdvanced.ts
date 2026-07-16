@@ -168,6 +168,8 @@ export type CrmContactDetail = {
     status: CrmContactConsentStatus;
     lawfulBasis?: string | null;
     preferred: boolean;
+    quietHoursStart?: number | null;
+    quietHoursEnd?: number | null;
     timezone?: string | null;
   }>;
   leads: Array<{ id: string; title: string; status: string; score: number; scoreBand: CrmScoreBand }>;
@@ -576,11 +578,25 @@ export function listCrmSourceEvents(
   }>('/api/crm/source-events', { token, params });
 }
 
+export type CrmContactCommunicationPreferenceInput = {
+  channel: CrmCommunicationChannel;
+  status: CrmContactConsentStatus;
+  lawfulBasis?: string | null;
+  preferred?: boolean;
+  quietHoursStart?: number | null;
+  quietHoursEnd?: number | null;
+  timezone?: string | null;
+};
+
 export function getCrmCommunicationGovernance(token: string, contactId: string) {
   return apiClient.get<{ contact: CrmContactDetail; preferences: CrmContactDetail['channelPreferences']; suppressions: unknown[] }>(`/api/crm/contacts/${contactId}/communication-governance`, { token });
 }
 
-export function updateCrmCommunicationGovernance(token: string, contactId: string, payload: Record<string, unknown>) {
+export function updateCrmCommunicationGovernance(
+  token: string,
+  contactId: string,
+  payload: CrmContactCommunicationPreferenceInput
+) {
   return apiClient.patch<{ preference: CrmContactDetail['channelPreferences'][number] }>(`/api/crm/contacts/${contactId}/communication-governance`, payload, { token });
 }
 

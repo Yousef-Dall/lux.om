@@ -933,8 +933,7 @@ export default function App() {
             <Route path="tasks" element={<CrmTasksWorkspace />} />
             <Route path="accounts" element={<CrmAccountsWorkspace />} />
             <Route path="accounts/:accountId" element={<CrmAccountsWorkspace />} />
-            <Route path="contacts" element={<CrmContactsWorkspace />} />
-            <Route path="contacts/:contactId" element={<CrmContactsWorkspace />} />
+            <Route path="contacts/:contactId?" element={<CrmContactsWorkspace />} />
             <Route path="deals" element={<CrmDealsWorkspace />} />
             <Route path="deals/:dealId" element={<CrmDealsWorkspace />} />
             <Route path="communications" element={<CrmCommunicationsWorkspace />} />
