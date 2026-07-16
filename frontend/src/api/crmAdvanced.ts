@@ -268,6 +268,41 @@ export type CrmScoreSnapshot = {
   calculatedAt: string;
 };
 
+
+export type CrmScoringStatus = 'ACTIVE' | 'ARCHIVED' | 'ALL';
+export type CrmScoringSortBy = 'score' | 'scoreCalculatedAt' | 'updatedAt' | 'title';
+export type CrmScoringDirection = 'asc' | 'desc';
+
+export type CrmScoringRegisterItem = {
+  id: string;
+  workspaceId: string;
+  title: string;
+  status: string;
+  archivedAt?: string | null;
+  score: number;
+  scoreBand: CrmScoreBand;
+  scoringVersion: string;
+  scoreCalculatedAt?: string | null;
+  updatedAt: string;
+  contact: { id: string; fullName: string; email?: string | null; phone?: string | null };
+  assignedTo?: { id: string; name: string; email: string } | null;
+  pipeline?: { id: string; name: string } | null;
+  stage?: { id: string; name: string; position: number; type: CrmPipelineStageType } | null;
+  pmsProperty?: { id: string; name: string; code?: string | null } | null;
+  latestSnapshot?: CrmScoreSnapshot | null;
+};
+
+export type CrmScoringRegisterFilters = {
+  workspaceId: string;
+  search?: string;
+  band?: CrmScoreBand;
+  status?: CrmScoringStatus;
+  sortBy?: CrmScoringSortBy;
+  direction?: CrmScoringDirection;
+  take?: number;
+  skip?: number;
+};
+
 export type CrmForecastResponse = {
   snapshot: {
     leads: { total: number; qualified: number; converted: number; leadToQualifiedRate: number; qualifiedToDealRate: number };
@@ -479,8 +514,21 @@ export function convertCrmLead(token: string, id: string, payload: Record<string
   return apiClient.post<{ account: CrmAccountSummary; deal: CrmDeal; lead: unknown }>(`/api/crm/leads/${id}/convert`, payload, { token });
 }
 
+export function listCrmScoringRegister(token: string, filters: CrmScoringRegisterFilters) {
+  return apiClient.get<{
+    scores: CrmScoringRegisterItem[];
+    summary: { total: number; active: number; archived: number; hot: number; warm: number; cold: number; neverCalculated: number; stale: number };
+    pagination: { total: number; take: number; skip: number; count: number };
+    rules: { currentVersion: string; propertyScopeApplied: true; editableRules: false; immutableSnapshots: true };
+  }>('/api/crm/scores', { token, params: filters });
+}
+
 export function getCrmLeadScoreHistory(token: string, id: string) {
   return apiClient.get<{ snapshots: CrmScoreSnapshot[] }>(`/api/crm/leads/${id}/score-history`, { token });
+}
+
+export function recalculateCrmScores(token: string, payload: { workspaceId: string; version?: string }) {
+  return apiClient.post<{ result: { leads: number; snapshots: number }; version: string }>('/api/crm/scores/recalculate', payload, { token });
 }
 
 export function getCrmForecast(token: string, workspaceId: string) {

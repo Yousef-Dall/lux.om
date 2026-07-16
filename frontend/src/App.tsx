@@ -73,6 +73,7 @@ const CrmAccountsWorkspace = lazy(() => import('./features/crm/accounts/CrmAccou
 const CrmContactsWorkspace = lazy(() => import('./features/crm/contacts/CrmContactsWorkspace'));
 const CrmDealsWorkspace = lazy(() => import('./features/crm/deals/CrmDealsWorkspace'));
 const CrmPipelinesWorkspace = lazy(() => import('./features/crm/pipelines/CrmPipelinesWorkspace'));
+const CrmScoringWorkspace = lazy(() => import('./features/crm/scoring/CrmScoringWorkspace'));
 const DeveloperProjectDetails = lazy(() => import('./pages/DeveloperProjectDetails'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Notifications = lazy(() => import('./pages/Notifications'));
@@ -940,7 +941,8 @@ export default function App() {
             <Route path="analytics" element={<CrmAnalyticsWorkspace />} />
             <Route path="settings/pipelines" element={<CrmPipelinesWorkspace />} />
             <Route path="settings/pipelines/:pipelineId" element={<CrmPipelinesWorkspace />} />
-            <Route path="settings/scoring" element={<CrmOperations section="scoring" />} />
+            <Route path="settings/scoring" element={<CrmScoringWorkspace />} />
+            <Route path="settings/scoring/:leadId" element={<CrmScoringWorkspace />} />
             <Route path="settings/communications" element={<CrmOperations section="communication-settings" />} />
             <Route path="operations" element={<CrmLegacyOperationsRedirect />} />
             <Route path=":leadId" element={<CrmLegacyLeadRedirect />} />

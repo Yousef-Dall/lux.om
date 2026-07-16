@@ -24,7 +24,7 @@ async function createUser(email: string, role: 'ADMIN' | 'USER' | 'OWNER' = 'USE
 
 async function createCompanyWorkspace(input: {
   slug: string;
-  members: Array<{ userId: string; allProperties?: boolean; propertyIndex?: number }>;
+  members: Array<{ userId: string; allProperties?: boolean; propertyIndex?: number; role?: 'OWNER' | 'MANAGER' | 'VIEWER' }>;
 }) {
   fixtureCounter += 1;
   const company = await prisma.developerCompany.create({
@@ -40,7 +40,7 @@ async function createCompanyWorkspace(input: {
   const memberships = [];
   for (const memberInput of input.members) {
     const member = await prisma.workspaceMember.create({
-      data: { workspaceId: workspace.id, userId: memberInput.userId, role: 'MANAGER' }
+      data: { workspaceId: workspace.id, userId: memberInput.userId, role: memberInput.role ?? 'MANAGER' }
     });
     if (!memberInput.allProperties) {
       await prisma.workspacePropertyScope.create({
@@ -776,6 +776,106 @@ describe('CRM Stage 21H revenue operations', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ active: false })
       .expect(409);
+  });
+
+
+  it('provides property-scoped scoring browsing and workspace-governed recalculation', async () => {
+    const [portfolioManager, propertyManager] = await Promise.all([
+      createUser('crm21h-scoring-portfolio@lux.test'),
+      createUser('crm21h-scoring-property@lux.test')
+    ]);
+    const fixture = await createCompanyWorkspace({
+      slug: 'scoring-center',
+      members: [
+        { userId: portfolioManager.id, allProperties: true },
+        { userId: propertyManager.id, propertyIndex: 0, role: 'VIEWER' }
+      ]
+    });
+    const portfolioToken = signToken(portfolioManager);
+    const propertyToken = signToken(propertyManager);
+    const harbour = await createLead({
+      token: portfolioToken,
+      companyId: fixture.company.id,
+      propertyId: fixture.properties[0].id,
+      assignedToId: portfolioManager.id,
+      title: 'Harbour high-intent investor',
+      fullName: 'Harbour Scoring Contact',
+      email: 'harbour-scoring@lux.test'
+    });
+    await createLead({
+      token: portfolioToken,
+      companyId: fixture.company.id,
+      propertyId: fixture.properties[1].id,
+      assignedToId: portfolioManager.id,
+      title: 'Outside cold prospect',
+      fullName: 'Outside Scoring Contact',
+      email: 'outside-scoring@lux.test'
+    });
+
+    const scoringCalculatedAt = new Date(Date.now() + 60_000);
+    await prisma.crmLead.update({
+      where: { id: harbour.body.lead.id },
+      data: { score: 88, scoreBand: 'HOT', scoringVersion: 'crm-deterministic-v1', scoreCalculatedAt: scoringCalculatedAt }
+    });
+    const snapshot = await prisma.crmScoreSnapshot.create({
+      data: {
+        workspaceId: fixture.workspace.id,
+        leadId: harbour.body.lead.id,
+        score: 88,
+        band: 'HOT',
+        version: 'crm-deterministic-v1',
+        reasons: [{ key: 'repeat-engagement', label: 'Repeat engagement', points: 25 }],
+        signals: { repeatEngagementCount: 3, completedCommunications: 2 },
+        previousScore: 55,
+        trend: 'RISING',
+        calculatedAt: scoringCalculatedAt,
+        jobKey: 'scoring-center-fixture'
+      }
+    });
+
+    const register = await request(app)
+      .get(`/api/crm/scores?workspaceId=${fixture.workspace.id}&search=Harbour&band=HOT&status=ACTIVE&sortBy=score&direction=desc&take=1&skip=0`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .expect(200);
+    expect(register.body.scores).toHaveLength(1);
+    expect(register.body.scores[0]).toMatchObject({
+      id: harbour.body.lead.id,
+      title: 'Harbour high-intent investor',
+      score: 88,
+      scoreBand: 'HOT',
+      latestSnapshot: { id: snapshot.id, trend: 'RISING', version: 'crm-deterministic-v1' }
+    });
+    expect(register.body.pagination).toMatchObject({ total: 1, take: 1, skip: 0, count: 1 });
+    expect(register.body.summary).toMatchObject({ total: 1, active: 1, archived: 0, hot: 1, warm: 0, cold: 0, stale: 1 });
+    expect(register.body.rules).toMatchObject({ propertyScopeApplied: true, editableRules: false, immutableSnapshots: true });
+
+    const outside = await request(app)
+      .get(`/api/crm/scores?workspaceId=${fixture.workspace.id}&search=Outside&status=ALL`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .expect(200);
+    expect(outside.body.scores).toHaveLength(0);
+    expect(outside.body.pagination.total).toBe(0);
+
+    await request(app)
+      .post('/api/crm/scores/recalculate')
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .send({ workspaceId: fixture.workspace.id, version: 'crm-deterministic-v3-manual' })
+      .expect(403);
+
+    const recalculated = await request(app)
+      .post('/api/crm/scores/recalculate')
+      .set('Authorization', `Bearer ${portfolioToken}`)
+      .send({ workspaceId: fixture.workspace.id, version: 'crm-deterministic-v3-manual' })
+      .expect(200);
+    expect(recalculated.body).toMatchObject({ version: 'crm-deterministic-v3-manual', result: { leads: 2 } });
+    expect(recalculated.body.result.snapshots).toBeGreaterThanOrEqual(1);
+
+    const history = await request(app)
+      .get(`/api/crm/leads/${harbour.body.lead.id}/score-history`)
+      .set('Authorization', `Bearer ${propertyToken}`)
+      .expect(200);
+    expect(history.body.snapshots.some((item: { version: string }) => item.version === 'crm-deterministic-v3-manual')).toBe(true);
+    await expect(prisma.crmScoreSnapshot.update({ where: { id: snapshot.id }, data: { score: 1 } })).rejects.toThrow();
   });
 
   it('persists explainable score snapshots and controlled scoring-version recalculation', async () => {

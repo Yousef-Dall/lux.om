@@ -17,7 +17,7 @@ import { createCrmDeliveryAttempt, confirmCrmDeliveryFromProvider, normalizeComm
 import { buildContactMergePreview, findCrmContactDuplicates, mergeCrmContacts, normalizeCrmEmail, normalizeCrmPhone, syncCrmContactIdentities, upsertCrmContact } from './identity';
 import { ensureDefaultCrmPipeline } from './provisioning';
 import { persistCrmLeadScore, recalculateWorkspaceScores } from './scoring';
-import { stageTypeToOutcome } from './constants';
+import { CRM_SCORING_VERSION, stageTypeToOutcome } from './constants';
 
 export const crmStage21hRouter = Router();
 export const crmProviderWebhookRouter = Router();
@@ -1241,6 +1241,83 @@ crmStage21hRouter.post('/leads/:id/convert', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+
+crmStage21hRouter.get('/scores', async (req, res, next) => {
+  try {
+    const query = z.object({
+      workspaceId: id,
+      search: z.string().trim().max(160).optional(),
+      band: z.enum(['COLD', 'WARM', 'HOT']).optional(),
+      status: z.enum(['ACTIVE', 'ARCHIVED', 'ALL']).default('ACTIVE'),
+      sortBy: z.enum(['score', 'scoreCalculatedAt', 'updatedAt', 'title']).default('score'),
+      direction: z.enum(['asc', 'desc']).default('desc'),
+      take: z.coerce.number().int().min(1).max(100).default(25),
+      skip: z.coerce.number().int().min(0).default(0)
+    }).parse(req.query);
+    const { access } = await resolveWorkspaceAccess(req.user!, query.workspaceId, 'view');
+    const summaryWhere: Prisma.CrmLeadWhereInput = {
+      ...leadScopeWhere(access, query.workspaceId),
+      ...(query.search ? {
+        OR: [
+          { title: { contains: query.search, mode: 'insensitive' } },
+          { contact: { fullName: { contains: query.search, mode: 'insensitive' } } },
+          { contact: { email: { contains: query.search, mode: 'insensitive' } } },
+          { contact: { phone: { contains: query.search, mode: 'insensitive' } } },
+          { assignedTo: { name: { contains: query.search, mode: 'insensitive' } } },
+          { pipeline: { name: { contains: query.search, mode: 'insensitive' } } },
+          { stage: { name: { contains: query.search, mode: 'insensitive' } } },
+          { scoringVersion: { contains: query.search, mode: 'insensitive' } }
+        ]
+      } : {})
+    };
+    const filteredWhere: Prisma.CrmLeadWhereInput = {
+      ...summaryWhere,
+      ...(query.band ? { scoreBand: query.band } : {})
+    };
+    const where: Prisma.CrmLeadWhereInput = {
+      ...filteredWhere,
+      ...(query.status === 'ACTIVE'
+        ? { archivedAt: null }
+        : query.status === 'ARCHIVED'
+          ? { archivedAt: { not: null } }
+          : {})
+    };
+    const orderBy: Prisma.CrmLeadOrderByWithRelationInput[] = query.sortBy === 'title'
+      ? [{ archivedAt: 'asc' }, { title: query.direction }]
+      : query.sortBy === 'scoreCalculatedAt'
+        ? [{ archivedAt: 'asc' }, { scoreCalculatedAt: query.direction }, { updatedAt: 'desc' }]
+        : query.sortBy === 'updatedAt'
+          ? [{ archivedAt: 'asc' }, { updatedAt: query.direction }, { title: 'asc' }]
+          : [{ archivedAt: 'asc' }, { score: query.direction }, { updatedAt: 'desc' }];
+    const include = {
+      contact: { select: { id: true, fullName: true, email: true, phone: true } },
+      assignedTo: { select: { id: true, name: true, email: true } },
+      pipeline: { select: { id: true, name: true } },
+      stage: { select: { id: true, name: true, position: true, type: true } },
+      pmsProperty: { select: { id: true, name: true, code: true } },
+      scoreSnapshots: { orderBy: { calculatedAt: 'desc' as const }, take: 1 }
+    } satisfies Prisma.CrmLeadInclude;
+    const [leads, filteredTotal, total, active, archived, hot, warm, cold, neverCalculated, stale] = await prisma.$transaction([
+      prisma.crmLead.findMany({ where, include, orderBy, take: query.take, skip: query.skip }),
+      prisma.crmLead.count({ where }),
+      prisma.crmLead.count({ where: summaryWhere }),
+      prisma.crmLead.count({ where: { ...summaryWhere, archivedAt: null } }),
+      prisma.crmLead.count({ where: { ...summaryWhere, archivedAt: { not: null } } }),
+      prisma.crmLead.count({ where: { ...summaryWhere, scoreBand: 'HOT' } }),
+      prisma.crmLead.count({ where: { ...summaryWhere, scoreBand: 'WARM' } }),
+      prisma.crmLead.count({ where: { ...summaryWhere, scoreBand: 'COLD' } }),
+      prisma.crmLead.count({ where: { ...summaryWhere, scoreCalculatedAt: null } }),
+      prisma.crmLead.count({ where: { AND: [summaryWhere, { OR: [{ scoreCalculatedAt: null }, { scoringVersion: { not: CRM_SCORING_VERSION } }] }] } })
+    ]);
+    res.json({
+      scores: leads.map(({ scoreSnapshots, ...lead }) => ({ ...lead, latestSnapshot: scoreSnapshots[0] ?? null })),
+      summary: { total, active, archived, hot, warm, cold, neverCalculated, stale },
+      pagination: { total: filteredTotal, take: query.take, skip: query.skip, count: leads.length },
+      rules: { currentVersion: CRM_SCORING_VERSION, propertyScopeApplied: true, editableRules: false, immutableSnapshots: true }
+    });
+  } catch (error) { next(error); }
+});
+
 crmStage21hRouter.get('/leads/:id/score-history', async (req, res, next) => {
   try {
     const lead = await prisma.crmLead.findUnique({ where: { id: id.parse(req.params.id) }, select: { id: true, workspaceId: true, pmsPropertyId: true } });
@@ -1257,8 +1334,9 @@ crmStage21hRouter.post('/scores/recalculate', async (req, res, next) => {
     const data = z.object({ workspaceId: id, version: z.string().trim().min(2).max(80).optional() }).parse(req.body);
     const { access } = await resolveWorkspaceAccess(req.user!, data.workspaceId, 'manage');
     assertWorkspaceConfigurationAccess(access, data.workspaceId);
-    const result = await prisma.$transaction((tx) => recalculateWorkspaceScores(tx, data.workspaceId, { version: data.version, jobKey: `manual:${req.user!.id}:${Date.now()}` }));
-    res.json({ result });
+    const version = data.version ?? CRM_SCORING_VERSION;
+    const result = await prisma.$transaction((tx) => recalculateWorkspaceScores(tx, data.workspaceId, { version, jobKey: `manual:${req.user!.id}:${Date.now()}` }));
+    res.json({ result, version });
   } catch (error) { next(error); }
 });
 
