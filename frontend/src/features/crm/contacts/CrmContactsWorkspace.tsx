@@ -43,6 +43,7 @@ import {
 } from '../../../api/crmAdvanced';
 import { useAuth } from '../../../auth/AuthContext';
 import AccessibleDialog from '../../../components/AccessibleDialog';
+import SavedViewControls from '../../workspace/SavedViewControls';
 import type { CrmCommunicationChannel, CrmContactConsentStatus } from '../../../generated/crmContract';
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle';
 import { useLanguage } from '../../../i18n/LanguageContext';
@@ -642,8 +643,17 @@ export default function CrmContactsWorkspace() {
         <div className="crm-contacts__filter-actions"><button className="button-link button-link--primary" type="submit">{copy.apply}</button><button className="button-link button-link--ghost" onClick={resetFilters} type="button">{copy.reset}</button></div>
       </form>
 
+      <SavedViewControls
+        columnParam="contactColumns"
+        columns={[{ id: 'account', label: copy.account }, { id: 'identity', label: copy.identity }, { id: 'consent', label: copy.preferences }, { id: 'leads', label: copy.leads }, { id: 'deals', label: copy.deals }, { id: 'updated', label: copy.updated }]}
+        language={language}
+        namespace={`crm-contacts:${workspaceId}`}
+        searchParams={params}
+        setSearchParams={setParams}
+      />
+
       <section className="crm-contacts__results" aria-label={copy.title} aria-busy={loading}>
-        {loading && contacts.length === 0 ? <p className="crm-contacts__loading">{copy.loading}</p> : contacts.length === 0 ? <div className="crm-empty"><ContactRound aria-hidden="true" /><h3>{copy.emptyTitle}</h3><p>{copy.emptyBody}</p></div> : <div className="crm-contacts__table-wrap"><table><thead><tr><th scope="col">{copy.name}</th><th scope="col">{copy.account}</th><th scope="col">{copy.identity}</th><th scope="col">{copy.preferences}</th><th scope="col">{copy.leads}</th><th scope="col">{copy.deals}</th><th scope="col">{copy.updated}</th><th scope="col">{copy.actions}</th></tr></thead><tbody>{contacts.map((contact) => <tr key={contact.id} className={contact.archivedAt ? 'is-archived' : ''}><th scope="row"><strong>{contact.fullName}</strong><span>{contact.archivedAt ? copy.statusArchived : copy.statusActive}</span></th><td>{contact.account?.name || '—'}</td><td><strong>{contact.email || contact.phone || '—'}</strong><small>{contact.identities.length} {copy.identities.toLowerCase()}</small></td><td>{contact.channelPreferences.length ? contact.channelPreferences.map((preference) => `${preference.channel}: ${humanize(preference.status)}`).join(' · ') : copy.unknown}</td><td>{contact._count.leads}</td><td>{contact._count.primaryDeals}</td><td>{formatDate(contact.updatedAt, locale)}</td><td><button className="button-link button-link--secondary" onClick={(event) => openDetail(contact.id, event.currentTarget)} type="button"><Eye aria-hidden="true" size={15} /> {copy.review}</button></td></tr>)}</tbody></table></div>}
+        {loading && contacts.length === 0 ? <p className="crm-contacts__loading">{copy.loading}</p> : contacts.length === 0 ? <div className="crm-empty"><ContactRound aria-hidden="true" /><h3>{copy.emptyTitle}</h3><p>{copy.emptyBody}</p></div> : <div className="crm-contacts__table-wrap" data-hidden-columns={params.get('contactColumns') ?? ''}><table><thead><tr><th scope="col">{copy.name}</th><th scope="col">{copy.account}</th><th scope="col">{copy.identity}</th><th scope="col">{copy.preferences}</th><th scope="col">{copy.leads}</th><th scope="col">{copy.deals}</th><th scope="col">{copy.updated}</th><th scope="col">{copy.actions}</th></tr></thead><tbody>{contacts.map((contact) => <tr key={contact.id} className={contact.archivedAt ? 'is-archived' : ''}><th scope="row"><strong>{contact.fullName}</strong><span>{contact.archivedAt ? copy.statusArchived : copy.statusActive}</span></th><td>{contact.account?.name || '—'}</td><td><strong>{contact.email || contact.phone || '—'}</strong><small>{contact.identities.length} {copy.identities.toLowerCase()}</small></td><td>{contact.channelPreferences.length ? contact.channelPreferences.map((preference) => `${preference.channel}: ${humanize(preference.status)}`).join(' · ') : copy.unknown}</td><td>{contact._count.leads}</td><td>{contact._count.primaryDeals}</td><td>{formatDate(contact.updatedAt, locale)}</td><td><button className="button-link button-link--secondary" onClick={(event) => openDetail(contact.id, event.currentTarget)} type="button"><Eye aria-hidden="true" size={15} /> {copy.review}</button></td></tr>)}</tbody></table></div>}
       </section>
 
       <nav className="crm-contacts__pagination" aria-label={`${copy.page} ${page}`}><button disabled={page <= 1} onClick={() => pageChanged(page - 1)} type="button"><ChevronLeft aria-hidden="true" /> {copy.previous}</button><span>{copy.page} {page} {copy.of} {pageCount}</span><button disabled={page >= pageCount} onClick={() => pageChanged(page + 1)} type="button">{copy.next} <ChevronRight aria-hidden="true" /></button></nav>

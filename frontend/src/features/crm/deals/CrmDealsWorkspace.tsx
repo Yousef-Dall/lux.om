@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   TrendingUp
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
@@ -36,6 +37,7 @@ import {
 } from '../../../api/crmAdvanced';
 import { useAuth } from '../../../auth/AuthContext';
 import AccessibleDialog from '../../../components/AccessibleDialog';
+import SavedViewControls from '../../workspace/SavedViewControls';
 import type { CrmDealOutcome } from '../../../generated/crmContract';
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle';
 import { useLanguage } from '../../../i18n/LanguageContext';
@@ -307,27 +309,10 @@ export default function CrmDealsWorkspace() {
     setDirectionInput(direction);
   }, [closeFrom, closeTo, currency, direction, outcome, pipelineIdFilter, search, sortBy, stageIdFilter, status]);
 
-  async function loadReferenceData() {
-    if (!token || !workspaceId) return;
-    try {
-      const [pipelineResponse, accountResponse] = await Promise.all([
-        listCrmPipelines(token, workspaceId),
-        listCrmAccounts(token, workspaceId)
-      ]);
-      setPipelines(pipelineResponse.pipelines.filter((pipeline) => pipeline.active));
-      setAccounts(accountResponse.accounts.filter((account) => !account.archivedAt));
-    } catch {
-      setPipelines([]);
-      setAccounts([]);
-    }
-  }
-
-  async function loadDeals() {
-    if (!token || !workspaceId) return;
-    setLoading(true);
-    setError('');
-    try {
-      const response = await listCrmDealRegister(token, {
+  const dealsQuery = useQuery({
+    enabled: Boolean(token && workspaceId),
+    queryKey: ['crm', 'deals', workspaceId, search, pipelineIdFilter, stageIdFilter, outcome, currency, status, closeFrom, closeTo, sortBy, direction, page],
+    queryFn: ({ signal }) => listCrmDealRegister(token!, {
         workspaceId,
         search: search || undefined,
         pipelineId: pipelineIdFilter || undefined,
@@ -341,40 +326,71 @@ export default function CrmDealsWorkspace() {
         direction,
         take: PAGE_SIZE,
         skip: (page - 1) * PAGE_SIZE
-      });
-      setDeals(response.deals);
-      setSummary(response.summary ?? {
-        total: response.pagination.total,
-        active: response.deals.filter((deal) => !deal.archivedAt).length,
-        archived: response.deals.filter((deal) => Boolean(deal.archivedAt)).length,
-        open: response.deals.filter((deal) => deal.outcome === 'OPEN' && !deal.archivedAt).length,
-        won: response.deals.filter((deal) => deal.outcome === 'WON' && !deal.archivedAt).length,
-        lost: response.deals.filter((deal) => deal.outcome === 'LOST' && !deal.archivedAt).length
-      });
-    } catch (loadError) {
-      setError(errorMessage(loadError));
-    } finally {
-      setLoading(false);
-    }
-  }
+      }, signal)
+  });
 
-  useEffect(() => { void Promise.all([loadDeals(), loadReferenceData()]); }, [token, workspaceId, search, pipelineIdFilter, stageIdFilter, outcome, currency, status, closeFrom, closeTo, sortBy, direction, page]);
+  const referenceQuery = useQuery({
+    enabled: Boolean(token && workspaceId),
+    queryKey: ['crm', 'deal-options', workspaceId],
+    queryFn: async ({ signal }) => {
+      const [pipelineResponse, accountResponse] = await Promise.all([
+        listCrmPipelines(token!, workspaceId, signal),
+        listCrmAccounts(token!, workspaceId, undefined, signal)
+      ]);
+      return { pipelines: pipelineResponse.pipelines, accounts: accountResponse.accounts };
+    }
+  });
+
+  const detailQuery = useQuery({
+    enabled: Boolean(token && dealId),
+    queryKey: ['crm', 'deal', dealId],
+    queryFn: ({ signal }) => getCrmDeal(token!, dealId!, signal)
+  });
 
   useEffect(() => {
-    if (!token || !dealId) {
+    if (!dealsQuery.data) return;
+    const response = dealsQuery.data;
+    setDeals(response.deals);
+    setSummary(response.summary ?? {
+      total: response.pagination.total,
+      active: response.deals.filter((deal) => !deal.archivedAt).length,
+      archived: response.deals.filter((deal) => Boolean(deal.archivedAt)).length,
+      open: response.deals.filter((deal) => deal.outcome === 'OPEN' && !deal.archivedAt).length,
+      won: response.deals.filter((deal) => deal.outcome === 'WON' && !deal.archivedAt).length,
+      lost: response.deals.filter((deal) => deal.outcome === 'LOST' && !deal.archivedAt).length
+    });
+  }, [dealsQuery.data]);
+
+  useEffect(() => {
+    setLoading(dealsQuery.isPending || dealsQuery.isFetching);
+    setError(dealsQuery.error ? errorMessage(dealsQuery.error) : '');
+  }, [dealsQuery.error, dealsQuery.isFetching, dealsQuery.isPending]);
+
+  useEffect(() => {
+    setPipelines((referenceQuery.data?.pipelines ?? []).filter((pipeline) => pipeline.active));
+    setAccounts((referenceQuery.data?.accounts ?? []).filter((account) => !account.archivedAt));
+  }, [referenceQuery.data]);
+
+  async function loadReferenceData() {
+    if (!token || !workspaceId) return;
+    await referenceQuery.refetch();
+  }
+
+  async function loadDeals() {
+    if (!token || !workspaceId) return;
+    await dealsQuery.refetch();
+  }
+
+  useEffect(() => {
+    if (!dealId) {
       setSelectedDeal(null);
       setDetailError('');
       return;
     }
-    let active = true;
-    setDetailLoading(true);
-    setDetailError('');
-    void getCrmDeal(token, dealId)
-      .then((response) => { if (active) setSelectedDeal(response.deal); })
-      .catch((detailLoadError) => { if (active) setDetailError(errorMessage(detailLoadError)); })
-      .finally(() => { if (active) setDetailLoading(false); });
-    return () => { active = false; };
-  }, [dealId, token]);
+    if (detailQuery.data) setSelectedDeal(detailQuery.data.deal);
+    setDetailLoading(detailQuery.isPending && !detailQuery.data);
+    setDetailError(detailQuery.error ? errorMessage(detailQuery.error) : '');
+  }, [dealId, detailQuery.data, detailQuery.error, detailQuery.isPending]);
 
   function workspaceChanged(nextWorkspaceId: string) {
     setWorkspaceId(nextWorkspaceId);
@@ -620,12 +636,21 @@ export default function CrmDealsWorkspace() {
         <div className="crm-deals__filter-actions"><button className="button-link button-link--primary" type="submit">{copy.apply}</button><button onClick={resetFilters} type="button">{copy.reset}</button></div>
       </form>
 
+      <SavedViewControls
+        columnParam="dealColumns"
+        columns={[{ id: 'account', label: copy.account }, { id: 'pipeline', label: copy.pipelineStage }, { id: 'value', label: copy.value }, { id: 'outcome', label: copy.result }, { id: 'close', label: copy.expectedClose }]}
+        language={language}
+        namespace={`crm-deals:${workspaceId}`}
+        searchParams={params}
+        setSearchParams={setParams}
+      />
+
       <section className="crm-deals__results" aria-label={copy.title}>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
         {loading && deals.length === 0 ? <p>{copy.loading}</p> : null}
         {!loading && !error && deals.length === 0 ? <div className="crm-deals__empty"><BriefcaseBusiness aria-hidden="true" size={26} /><h2>{copy.emptyTitle}</h2><p>{copy.emptyBody}</p></div> : null}
         {deals.length ? (
-          <div className="crm-deals__table-wrap">
+          <div className="crm-deals__table-wrap" data-hidden-columns={params.get('dealColumns') ?? ''}>
             <table>
               <thead><tr><th scope="col">{copy.name}</th><th scope="col">{copy.account}</th><th scope="col">{copy.pipelineStage}</th><th scope="col">{copy.value}</th><th scope="col">{copy.result}</th><th scope="col">{copy.expectedClose}</th><th scope="col">{copy.actions}</th></tr></thead>
               <tbody>{deals.map((deal) => {

@@ -1,4 +1,4 @@
-import { CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Eye, Search, ShieldAlert, Wrench } from 'lucide-react';
+import { CalendarDays, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Columns3, Eye, List, Search, ShieldAlert, Wrench } from 'lucide-react';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -82,6 +82,10 @@ const copy = {
     sort: 'Sort',
     apply: 'Apply filters',
     clear: 'Clear',
+    viewMode: 'Inspection planning view',
+    listView: 'List',
+    calendarView: 'Calendar',
+    kanbanView: 'Kanban',
     loading: 'Loading inspection runs…',
     failed: 'Inspection runs could not be loaded.',
     noRuns: 'No inspection runs match this view',
@@ -173,6 +177,10 @@ const copy = {
     sort: 'الترتيب',
     apply: 'تطبيق المرشحات',
     clear: 'مسح',
+    viewMode: 'طريقة عرض تخطيط الفحوصات',
+    listView: 'قائمة',
+    calendarView: 'تقويم',
+    kanbanView: 'لوحة',
     loading: 'جارٍ تحميل جولات الفحص…',
     failed: 'تعذر تحميل جولات الفحص.',
     noRuns: 'لا توجد جولات مطابقة',
@@ -369,6 +377,7 @@ export default function PmsInspectionWorkspace({ token, companyId, language, can
   const appliedFrom = searchParams.get('inspectionFrom') ?? '';
   const appliedTo = searchParams.get('inspectionTo') ?? '';
   const appliedSort = (searchParams.get('inspectionSort') ?? 'scheduledFor:desc') as SortValue;
+  const viewMode = searchParams.get('inspectionView') === 'calendar' || searchParams.get('inspectionView') === 'kanban' ? searchParams.get('inspectionView')! : 'list';
   const [sortBy, direction] = appliedSort.split(':') as ['scheduledFor' | 'updatedAt' | 'title' | 'status', 'asc' | 'desc'];
   const [searchDraft, setSearchDraft] = useState(appliedSearch);
   const [propertyDraft, setPropertyDraft] = useState(appliedProperty);
@@ -413,6 +422,7 @@ export default function PmsInspectionWorkspace({ token, companyId, language, can
 
   function rememberTrigger(target: EventTarget | null) { returnFocusRef.current = target instanceof HTMLElement ? target : null; }
   function setPage(nextPage: number) { const next = new URLSearchParams(searchParams); if (nextPage <= 1) next.delete('inspectionPage'); else next.set('inspectionPage', String(nextPage)); setSearchParams(next); }
+  function setViewMode(mode: 'list' | 'calendar' | 'kanban') { const next = new URLSearchParams(searchParams); if (mode === 'list') next.delete('inspectionView'); else next.set('inspectionView', mode); setSearchParams(next, { replace: true }); }
   function applyFilters(event: FormEvent) {
     event.preventDefault();
     const next = new URLSearchParams(searchParams);
@@ -521,10 +531,17 @@ export default function PmsInspectionWorkspace({ token, companyId, language, can
       <div className="pms-inspection-filters__actions"><button className="button-link" type="submit">{text.apply}</button><button className="button-link button-link--secondary" type="button" onClick={clearFilters}>{text.clear}</button></div>
     </form>
     <div className="pms-inspection-summary" aria-label={text.title}><article><CalendarPlus aria-hidden="true" size={18} /><span>{enumLabel('SCHEDULED', language)}</span><strong>{summary.scheduled}</strong></article><article><ShieldAlert aria-hidden="true" size={18} /><span>{enumLabel('NEEDS_ACTION', language)}</span><strong>{summary.needsAction}</strong></article><article><Wrench aria-hidden="true" size={18} /><span>{text.openDefects}</span><strong>{summary.openDefects}</strong></article></div>
+    <div className="pms-inspection-view-switcher" role="group" aria-label={text.viewMode}>
+      <button aria-pressed={viewMode === 'list'} type="button" onClick={() => setViewMode('list')}><List aria-hidden="true" size={17} />{text.listView}</button>
+      <button aria-pressed={viewMode === 'calendar'} type="button" onClick={() => setViewMode('calendar')}><CalendarDays aria-hidden="true" size={17} />{text.calendarView}</button>
+      <button aria-pressed={viewMode === 'kanban'} type="button" onClick={() => setViewMode('kanban')}><Columns3 aria-hidden="true" size={17} />{text.kanbanView}</button>
+    </div>
     {loading ? <p className="pms-inspection-workspace__state">{text.loading}</p> : null}
     {error ? <p className="form-alert form-alert--error" role="alert">{error}</p> : null}
     {!loading && !error && runs.length === 0 ? <PortalEmpty title={text.noRuns} message={text.noRunsMessage} /> : null}
-    {!loading && !error && runs.length > 0 ? <div className="pms-inspection-results" aria-label={text.resultsLabel}>{runs.map((run) => <article className="pms-inspection-card" key={run.id}><header><div><span className={`status-pill status-pill--${run.status.toLowerCase()}`}>{enumLabel(run.status, language)}</span><h3>{run.title}</h3><p>{run.template?.name ?? enumLabel(run.type, language)} · {run.property.name}{run.unit ? ` · ${run.unit.unitNumber}` : ''}</p></div><ClipboardCheck aria-hidden="true" size={24} /></header><dl><div><dt>{text.scheduled}</dt><dd>{formatDate(run.scheduledFor, language, true)}</dd></div><div><dt>{text.completed}</dt><dd>{formatDate(run.completedAt, language, true)}</dd></div><div><dt>{text.defects}</dt><dd>{run._count?.defects ?? run.defects.length}</dd></div><div><dt>{text.documents}</dt><dd>{run._count?.pmsDocuments ?? 0}</dd></div></dl><div className="pms-inspection-card__actions"><button className="button-link button-link--secondary" type="button" onClick={(event) => void openDetails(run, event.currentTarget)}><Eye aria-hidden="true" size={17} />{text.view}</button></div></article>)}</div> : null}
+    {!loading && !error && runs.length > 0 && viewMode === 'list' ? <div className="pms-inspection-results" aria-label={text.resultsLabel}>{runs.map((run) => <article className="pms-inspection-card" key={run.id}><header><div><span className={`status-pill status-pill--${run.status.toLowerCase()}`}>{enumLabel(run.status, language)}</span><h3>{run.title}</h3><p>{run.template?.name ?? enumLabel(run.type, language)} · {run.property.name}{run.unit ? ` · ${run.unit.unitNumber}` : ''}</p></div><ClipboardCheck aria-hidden="true" size={24} /></header><dl><div><dt>{text.scheduled}</dt><dd>{formatDate(run.scheduledFor, language, true)}</dd></div><div><dt>{text.completed}</dt><dd>{formatDate(run.completedAt, language, true)}</dd></div><div><dt>{text.defects}</dt><dd>{run._count?.defects ?? run.defects.length}</dd></div><div><dt>{text.documents}</dt><dd>{run._count?.pmsDocuments ?? 0}</dd></div></dl><div className="pms-inspection-card__actions"><button className="button-link button-link--secondary" type="button" onClick={(event) => void openDetails(run, event.currentTarget)}><Eye aria-hidden="true" size={17} />{text.view}</button></div></article>)}</div> : null}
+    {!loading && !error && runs.length > 0 && viewMode === 'calendar' ? <div className="pms-inspection-calendar"><table><caption>{text.calendarView} · {text.resultsLabel}</caption><thead><tr><th scope="col">{text.scheduled}</th><th scope="col">{text.runTitle}</th><th scope="col">{text.property}</th><th scope="col">{text.status}</th><th scope="col">{text.view}</th></tr></thead><tbody>{runs.map((run) => <tr key={run.id}><td>{formatDate(run.scheduledFor, language, true)}</td><th scope="row">{run.title}</th><td>{run.property.name}{run.unit ? ` · ${run.unit.unitNumber}` : ''}</td><td>{enumLabel(run.status, language)}</td><td><button className="button-link button-link--secondary" type="button" onClick={(event) => void openDetails(run, event.currentTarget)}>{text.view}</button></td></tr>)}</tbody></table></div> : null}
+    {!loading && !error && runs.length > 0 && viewMode === 'kanban' ? <div className="pms-inspection-kanban" aria-label={`${text.kanbanView} · ${text.resultsLabel}`}>{statuses.map((status) => <section key={status} aria-labelledby={`inspection-column-${status}`}><header><h3 id={`inspection-column-${status}`}>{enumLabel(status, language)}</h3><span>{runs.filter((run) => run.status === status).length}</span></header>{runs.filter((run) => run.status === status).map((run) => <article key={run.id}><strong>{run.title}</strong><span>{run.property.name}</span><small>{formatDate(run.scheduledFor, language, true)}</small><button className="button-link button-link--secondary" type="button" onClick={(event) => void openDetails(run, event.currentTarget)}>{text.view}</button></article>)}</section>)}</div> : null}
     <nav aria-label={text.resultsLabel} className="pms-inspection-pagination"><button className="button-link button-link--secondary" disabled={page <= 1} type="button" onClick={() => setPage(page - 1)}>{language === 'ar' ? <ChevronRight aria-hidden="true" size={17} /> : <ChevronLeft aria-hidden="true" size={17} />}{text.previous}</button><span>{text.pageRange(from, to, pagination.total)}</span><button className="button-link button-link--secondary" disabled={page >= pageCount} type="button" onClick={() => setPage(page + 1)}>{text.next}{language === 'ar' ? <ChevronLeft aria-hidden="true" size={17} /> : <ChevronRight aria-hidden="true" size={17} />}</button></nav>
 
     <AccessibleDialog open={scheduleOpen} title={text.scheduleTitle} description={text.scheduleDescription} closeLabel={text.close} onClose={() => setScheduleOpen(false)} initialFocusRef={titleRef} returnFocusRef={returnFocusRef} size="large"><form className="pms-inspection-form" onSubmit={submitSchedule}>{scheduleError ? <p className="form-alert form-alert--error" role="alert">{scheduleError}</p> : null}<label><span>{text.runTitle}</span><input ref={titleRef} value={scheduleForm.title} onChange={(event) => setScheduleForm((current) => ({ ...current, title: event.target.value }))} required /></label><label><span>{text.property}</span><select value={scheduleForm.propertyId} onChange={(event) => { const propertyId = event.target.value; const available = templates.filter((template) => !template.propertyId || template.propertyId === propertyId); setScheduleForm((current) => ({ ...current, propertyId, unitId: '', templateId: available.some((template) => template.id === current.templateId) ? current.templateId : available[0]?.id ?? '' })); }} required>{properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label><label><span>{text.template}</span><select value={scheduleForm.templateId} onChange={(event) => setScheduleForm((current) => ({ ...current, templateId: event.target.value }))} required><option value="">{text.chooseTemplate}</option>{scheduleTemplates.map((template) => <option key={template.id} value={template.id}>{template.name} · {text.templateVersion(template.version)}</option>)}</select></label><label><span>{text.unit}</span><select value={scheduleForm.unitId} onChange={(event) => setScheduleForm((current) => ({ ...current, unitId: event.target.value }))}><option value="">{text.propertyWide}</option>{scheduleUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.unitNumber}</option>)}</select></label><label><span>{text.scheduledFor}</span><input type="datetime-local" value={scheduleForm.scheduledFor} onChange={(event) => setScheduleForm((current) => ({ ...current, scheduledFor: event.target.value }))} /></label><label className="pms-inspection-form__wide"><span>{text.notes}</span><textarea value={scheduleForm.notes} onChange={(event) => setScheduleForm((current) => ({ ...current, notes: event.target.value }))} /></label><div className="pms-inspection-form__actions"><button className="button-link button-link--secondary" type="button" onClick={() => setScheduleOpen(false)}>{text.close}</button><button className="button-link" disabled={saving} type="submit">{saving ? text.saving : text.saveSchedule}</button></div></form></AccessibleDialog>

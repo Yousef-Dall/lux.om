@@ -36,7 +36,7 @@ The authenticated asset register uses database-backed pagination, search, filter
 
 Inventory managers may register assets, edit identity and placement, change lifecycle status, and retire or dispose records. Maintenance managers may append service, repair, and warranty events without gaining permission to edit asset identity or perform retirement/disposal actions. Every mutation continues to create domain audit evidence and asset events remain append-only history.
 
-The register supports English and Arabic, RTL layouts, keyboard-operated dialogs, narrow mobile screens, localized dates, and permission-denied/read-only states. Mobile inspection execution, defect conversion, calendar/kanban planning, and attachment capture remain separate controlled Stage 21I batches.
+The register supports English and Arabic, RTL layouts, keyboard-operated dialogs, narrow mobile screens, localized dates, and permission-denied/read-only states. Structured inspection execution, defect conversion, and planning views are available from the companion inspection workspace. Direct binary attachment capture remains adapter-dependent; current evidence uses validated online photo references.
 
 ## Stage 21I preventive-maintenance workspace
 
@@ -56,4 +56,4 @@ Maintenance managers can schedule an active template against an in-scope propert
 
 Failed or observation results may create defects with severity and photo references. Open defects can be converted explicitly to a vendor/asset work order. Conversion remains transactionally idempotent, and unit-scoped defects can link only to property-wide assets or assets assigned to the same unit. Repeating conversion returns the existing work order rather than creating a duplicate.
 
-The workspace supports English and Arabic, RTL and narrow layouts, URL-persisted filters, localized dates, accessible dialogs, cancellation warnings, and read-only permission states. Evidence is currently captured as validated online photo URLs. Direct camera upload, offline execution, conflict resolution, template administration, and calendar/kanban planning remain future controlled batches and are not implied by this implementation.
+The workspace supports English and Arabic, RTL and narrow layouts, URL-persisted filters, localized dates, accessible dialogs, cancellation warnings, and read-only permission states. Operators can switch between list, accessible calendar-table, and status-kanban planning views; the choice persists in the URL. Evidence is currently captured as validated online photo URLs. Direct camera upload, offline execution, and conflict resolution remain future capabilities and are not implied by this implementation. Template administration is governed through the existing structured-template backend and remains restricted to authorized operational setup flows.

@@ -451,8 +451,8 @@ export function mergeCrmContacts(
   );
 }
 
-export function listCrmPipelines(token: string, workspaceId: string) {
-  return apiClient.get<{ pipelines: CrmPipeline[] }>('/api/crm/pipelines', { token, params: { workspaceId } });
+export function listCrmPipelines(token: string, workspaceId: string, signal?: AbortSignal) {
+  return apiClient.get<{ pipelines: CrmPipeline[] }>('/api/crm/pipelines', { token, params: { workspaceId }, signal });
 }
 
 export function listCrmPipelineRegister(token: string, filters: CrmPipelineRegisterFilters) {
@@ -491,20 +491,20 @@ export function listCrmDeals(token: string, workspaceId: string) {
   return apiClient.get<{ deals: CrmDeal[]; pagination: { total: number } }>('/api/crm/deals', { token, params: { workspaceId, take: 100 } });
 }
 
-export function listCrmDealRegister(token: string, filters: CrmDealRegisterFilters) {
+export function listCrmDealRegister(token: string, filters: CrmDealRegisterFilters, signal?: AbortSignal) {
   return apiClient.get<{
     deals: CrmDeal[];
     summary: { total: number; active: number; archived: number; open: number; won: number; lost: number };
     pagination: { total: number; take: number; skip: number; count: number };
-  }>('/api/crm/deals', { token, params: filters });
+  }>('/api/crm/deals', { token, params: filters, signal });
 }
 
 export function createCrmDeal(token: string, payload: Record<string, unknown>) {
   return apiClient.post<{ deal: CrmDeal }>('/api/crm/deals', payload, { token });
 }
 
-export function getCrmDeal(token: string, id: string) {
-  return apiClient.get<{ deal: CrmDeal }>(`/api/crm/deals/${id}`, { token });
+export function getCrmDeal(token: string, id: string, signal?: AbortSignal) {
+  return apiClient.get<{ deal: CrmDeal }>(`/api/crm/deals/${id}`, { token, signal });
 }
 
 export function transitionCrmDeal(token: string, id: string, stageId: string, options: { reason?: string; wonReason?: string; lostReason?: string } = {}) {

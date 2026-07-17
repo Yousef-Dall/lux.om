@@ -241,6 +241,26 @@ test('deal register uses server pagination and persists browsing filters in the 
   await expect(filters.getByRole('combobox', { name: 'Outcome', exact: true })).toHaveValue('OPEN');
 });
 
+test('deal saved views restore scoped filters and column visibility', async ({ page }) => {
+  await authenticate(page);
+  await mockDealApi(page);
+
+  await page.goto(`/crm/deals?workspaceId=${workspaceId}&dealQ=harbour&dealCurrency=OMR`);
+  const views = page.getByRole('region', { name: 'Saved views' });
+  await views.getByLabel('View name').fill('Harbour OMR');
+  await views.getByRole('checkbox', { name: 'Expected close', exact: true }).uncheck();
+  await views.getByRole('button', { name: 'Save current view', exact: true }).click();
+  await expect(page).toHaveURL(/dealColumns=close/);
+
+  await page.getByRole('button', { name: 'Reset filters', exact: true }).click();
+  await expect(page).not.toHaveURL(/dealQ=harbour/);
+  await views.getByRole('combobox', { name: 'Choose a saved view', exact: true }).selectOption({ label: 'Harbour OMR' });
+  await expect(page).toHaveURL(/dealQ=harbour/);
+  await expect(page).toHaveURL(/dealCurrency=OMR/);
+  await expect(page).toHaveURL(/dealColumns=close/);
+  await expect(page.getByRole('columnheader', { name: 'Expected close', exact: true })).toBeHidden();
+});
+
 test('deal creation, stage transition, and archival use governed accessible flows', async ({ page }) => {
   const createBodies: Array<Record<string, unknown>> = [];
   const transitionBodies: Array<Record<string, unknown>> = [];

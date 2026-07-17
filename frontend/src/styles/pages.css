@@ -23270,6 +23270,175 @@ transition: none;
   background: color-mix(in srgb, var(--warning-color, #a15c00) 8%, transparent);
 }
 
+.pms-inspection-view-switcher {
+  display: inline-flex;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.85rem;
+  background: var(--surface-color);
+}
+
+.pms-inspection-view-switcher button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.75rem;
+  border: 0;
+  border-radius: 0.65rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.pms-inspection-view-switcher button[aria-pressed='true'] {
+  background: var(--primary-color);
+  color: #fff;
+}
+
+.pms-inspection-calendar {
+  overflow-x: auto;
+}
+
+.pms-inspection-calendar table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+
+.pms-inspection-calendar caption {
+  padding: 0.75rem 0;
+  font-weight: 700;
+  text-align: start;
+}
+
+.pms-inspection-calendar th,
+.pms-inspection-calendar td {
+  padding: 0.8rem;
+  border-bottom: 1px solid var(--border-color);
+  text-align: start;
+}
+
+.pms-inspection-kanban {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(230px, 1fr));
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.pms-inspection-kanban > section {
+  padding: 0.8rem;
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  background: var(--surface-subtle, #f7f7f7);
+}
+
+.pms-inspection-kanban > section > header,
+.pms-inspection-kanban article {
+  display: flex;
+  gap: 0.55rem;
+}
+
+.pms-inspection-kanban > section > header {
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.7rem;
+}
+
+.pms-inspection-kanban article {
+  flex-direction: column;
+  margin-top: 0.65rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: var(--surface-color);
+}
+
+@media (max-width: 720px) {
+  .pms-inspection-view-switcher {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
+  }
+
+  .pms-inspection-view-switcher button {
+    justify-content: center;
+  }
+}
+
+.saved-view-controls {
+  display: flex;
+  align-items: end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.8rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.9rem;
+  background: var(--surface-color);
+}
+
+.saved-view-controls form,
+.saved-view-controls__saved,
+.saved-view-controls fieldset,
+.saved-view-controls label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.saved-view-controls form label,
+.saved-view-controls__saved label {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.saved-view-controls fieldset {
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.7rem;
+}
+
+.saved-view-controls legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-inline: 0.35rem;
+  font-weight: 700;
+}
+
+.saved-view-controls__saved > button {
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.65rem;
+  background: transparent;
+}
+
+.crm-contacts__table-wrap[data-hidden-columns*='account'] :is(th, td):nth-child(2),
+.crm-contacts__table-wrap[data-hidden-columns*='identity'] :is(th, td):nth-child(3),
+.crm-contacts__table-wrap[data-hidden-columns*='consent'] :is(th, td):nth-child(4),
+.crm-contacts__table-wrap[data-hidden-columns*='leads'] :is(th, td):nth-child(5),
+.crm-contacts__table-wrap[data-hidden-columns*='deals'] :is(th, td):nth-child(6),
+.crm-contacts__table-wrap[data-hidden-columns*='updated'] :is(th, td):nth-child(7),
+.crm-deals__table-wrap[data-hidden-columns*='account'] :is(th, td):nth-child(2),
+.crm-deals__table-wrap[data-hidden-columns*='pipeline'] :is(th, td):nth-child(3),
+.crm-deals__table-wrap[data-hidden-columns*='value'] :is(th, td):nth-child(4),
+.crm-deals__table-wrap[data-hidden-columns*='outcome'] :is(th, td):nth-child(5),
+.crm-deals__table-wrap[data-hidden-columns*='close'] :is(th, td):nth-child(6) {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .saved-view-controls,
+  .saved-view-controls form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .pms-inspection-filters,
 .pms-inspection-form,
 .pms-inspection-execution__grid {

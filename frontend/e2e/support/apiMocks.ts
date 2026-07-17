@@ -38,4 +38,22 @@ export async function mockNotificationsApi(page: Page) {
       }
     });
   });
+
+  // Workspace shells may prefetch selector data before a feature spec installs
+  // its domain-specific routes. Keep those requests deterministic and prevent
+  // harmless Vite proxy ECONNREFUSED noise. Later, more-specific routes win.
+  await page.route(/\/api\/pms\/(properties|units|vendors)(?:\/[^?]*)?(?:\?.*)?$/, (route) => {
+    const request = route.request();
+    if (request.method() !== 'GET') return route.fallback();
+    const segments = new URL(request.url()).pathname.split('/');
+    const resource = segments[segments.indexOf('pms') + 1];
+    const collection = resource === 'properties' ? 'properties' : resource === 'units' ? 'units' : 'vendors';
+    return route.fulfill({
+      json: {
+        workspace: {},
+        [collection]: [],
+        pagination: { total: 0, take: 100, skip: 0, count: 0 }
+      }
+    });
+  });
 }

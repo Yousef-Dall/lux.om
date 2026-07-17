@@ -167,6 +167,29 @@ test('inspection runs use server pagination and URL-persisted browsing filters',
   await expect.poll(() => queries.at(-1)?.searchParams.get('scheduledFrom')).toBe('2026-07-01');
 });
 
+test('inspection planning switches between accessible calendar and kanban views', async ({ page }) => {
+  await authenticate(page);
+  await mockInspectionApi(page);
+
+  await page.goto(`/pms/operations/assets-inspections?companyId=${companyId}`);
+  const switcher = page.getByRole('group', { name: 'Inspection planning view' });
+
+  await switcher.getByRole('button', { name: 'Calendar', exact: true }).click();
+  await expect(page).toHaveURL(/inspectionView=calendar/);
+  await expect(page.getByRole('table', { name: 'Calendar · PMS inspection run results' })).toBeVisible();
+  await expect(page.getByRole('rowheader', { name: listRun.title, exact: true })).toBeVisible();
+
+  await switcher.getByRole('button', { name: 'Kanban', exact: true }).click();
+  await expect(page).toHaveURL(/inspectionView=kanban/);
+  const board = page.getByLabel('Kanban · PMS inspection run results');
+  await expect(board.getByRole('heading', { name: 'Scheduled', exact: true })).toBeVisible();
+  await expect(board.getByText(listRun.title, { exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(page).toHaveURL(/inspectionView=kanban/);
+  await expect(page.getByLabel('Kanban · PMS inspection run results')).toBeVisible();
+});
+
 test('inspection scheduling, mobile checklist execution, and defect conversion use governed dialogs', async ({ page }) => {
   let scheduleBody: Record<string, unknown> | undefined;
   let resultBody: Record<string, unknown> | undefined;
