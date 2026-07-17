@@ -15,8 +15,9 @@ import {
   UserRound,
   UsersRound
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { ApiError } from '../../../api/client';
 import { type CrmWorkspaceAccess } from '../../../api/crm';
@@ -154,6 +155,7 @@ export default function CrmContactsWorkspace() {
   const { token, crmAccess } = useAuth();
   const { language } = useLanguage();
   const locale = language === 'ar' ? 'ar-OM' : 'en-OM';
+  const location = useLocation();
   const navigate = useNavigate();
   const { contactId } = useParams();
   const [params, setParams] = useSearchParams();
@@ -220,6 +222,22 @@ export default function CrmContactsWorkspace() {
   const consentChannelRef = useRef<HTMLSelectElement>(null);
   const mergeTriggerRef = useRef<HTMLButtonElement>(null);
 
+  useEffect(() => {
+    if (location.state?.focusTarget !== 'crm-contact-create') return;
+    const trigger = createTriggerRef.current;
+    if (!trigger || trigger.disabled) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      trigger.focus();
+      if (document.activeElement !== trigger) return;
+      void navigate(
+        { pathname: location.pathname, search: location.search },
+        { replace: true, state: null }
+      );
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [accounts.length, location.pathname, location.search, location.state, navigate]);
+
   useDocumentTitle(language === 'ar' ? 'جهات اتصال CRM | lux.om' : 'CRM contacts | lux.om');
 
   const copy = language === 'ar'
@@ -281,74 +299,86 @@ export default function CrmContactsWorkspace() {
     setDirectionInput(direction);
   }, [accountIdFilter, consentStatus, direction, search, sortBy, status]);
 
-  async function loadAccounts() {
-    if (!token || !workspaceId) return;
-    try {
-      const response = await listCrmAccounts(token, workspaceId);
-      setAccounts(response.accounts.filter((account) => !account.archivedAt));
-    } catch {
-      setAccounts([]);
-    }
-  }
+  const contactsQuery = useQuery({
+    enabled: Boolean(token && workspaceId),
+    queryKey: ['crm', 'contacts', workspaceId, search, accountIdFilter, consentStatus, status, sortBy, direction, page],
+    queryFn: ({ signal }) => listCrmContactRegister(token!, {
+      workspaceId,
+      search: search || undefined,
+      accountId: accountIdFilter || undefined,
+      consentStatus: consentStatus || undefined,
+      status,
+      sortBy,
+      direction,
+      take: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
+      signal
+    })
+  });
 
-  async function loadContacts() {
-    if (!token || !workspaceId) return;
-    setLoading(true);
-    setError('');
-    try {
-      const response = await listCrmContactRegister(token, {
-        workspaceId,
-        search: search || undefined,
-        accountId: accountIdFilter || undefined,
-        consentStatus: consentStatus || undefined,
-        status,
-        sortBy,
-        direction,
-        take: PAGE_SIZE,
-        skip: (page - 1) * PAGE_SIZE
-      });
-      setContacts(response.contacts);
-      setSummary(response.summary ?? {
-        total: response.pagination.total,
-        active: response.contacts.filter((contact) => !contact.archivedAt).length,
-        archived: response.contacts.filter((contact) => Boolean(contact.archivedAt)).length
-      });
-    } catch (loadError) {
-      setError(errorMessage(loadError));
-    } finally {
-      setLoading(false);
-    }
-  }
+  const accountsQuery = useQuery({
+    enabled: Boolean(token && workspaceId),
+    queryKey: ['crm', 'account-options', workspaceId],
+    queryFn: ({ signal }) => listCrmAccounts(token!, workspaceId, undefined, signal)
+  });
 
-  useEffect(() => { void Promise.all([loadContacts(), loadAccounts()]); }, [token, workspaceId, search, accountIdFilter, consentStatus, status, sortBy, direction, page]);
-
-  async function refreshDetail() {
-    if (!token || !contactId) return;
-    const response = await getCrmContactDetail(token, contactId);
-    setSelectedContact({ ...response.contact, suppressions: response.suppressions });
-    setDuplicates(response.duplicates);
-  }
+  const detailQuery = useQuery({
+    enabled: Boolean(token && contactId),
+    queryKey: ['crm', 'contact', contactId],
+    queryFn: ({ signal }) => getCrmContactDetail(token!, contactId!, signal)
+  });
 
   useEffect(() => {
-    if (!token || !contactId) {
+    if (!contactsQuery.data) return;
+    setContacts(contactsQuery.data.contacts);
+    setSummary(contactsQuery.data.summary ?? {
+      total: contactsQuery.data.pagination.total,
+      active: contactsQuery.data.contacts.filter((contact) => !contact.archivedAt).length,
+      archived: contactsQuery.data.contacts.filter((contact) => Boolean(contact.archivedAt)).length
+    });
+  }, [contactsQuery.data]);
+
+  useEffect(() => {
+    setLoading(contactsQuery.isPending || contactsQuery.isFetching);
+    setError(contactsQuery.error ? errorMessage(contactsQuery.error) : '');
+  }, [contactsQuery.error, contactsQuery.isFetching, contactsQuery.isPending]);
+
+  useEffect(() => {
+    setAccounts((accountsQuery.data?.accounts ?? []).filter((account) => !account.archivedAt));
+  }, [accountsQuery.data]);
+
+  useEffect(() => {
+    if (!contactId) {
       setSelectedContact(null);
       setDuplicates([]);
       setDetailError('');
       return;
     }
-    let active = true;
-    setDetailLoading(true);
-    setDetailError('');
-    void getCrmContactDetail(token, contactId)
-      .then((response) => {
-        if (!active) return;
-        setSelectedContact({ ...response.contact, suppressions: response.suppressions });
-        setDuplicates(response.duplicates);
-      })
-      .catch((detailLoadError) => { if (active) setDetailError(errorMessage(detailLoadError)); })
-      .finally(() => { if (active) setDetailLoading(false); });
-    return () => { active = false; };
-  }, [contactId, token]);
+    if (detailQuery.data) {
+      setSelectedContact({ ...detailQuery.data.contact, suppressions: detailQuery.data.suppressions });
+      setDuplicates(detailQuery.data.duplicates);
+    }
+    setDetailLoading(detailQuery.isPending && !detailQuery.data);
+    setDetailError(detailQuery.error ? errorMessage(detailQuery.error) : '');
+  }, [contactId, detailQuery.data, detailQuery.error, detailQuery.isPending]);
+  async function loadAccounts() {
+    if (!token || !workspaceId) return;
+    await accountsQuery.refetch();
+  }
+
+  async function loadContacts() {
+    if (!token || !workspaceId) return;
+    await contactsQuery.refetch();
+  }
+
+  async function refreshDetail() {
+    if (!token || !contactId) return;
+    const response = await detailQuery.refetch().then((result) => result.data);
+    if (!response) return;
+    setSelectedContact({ ...response.contact, suppressions: response.suppressions });
+    setDuplicates(response.duplicates);
+  }
+
 
   function workspaceChanged(nextWorkspaceId: string) {
     setWorkspaceId(nextWorkspaceId);
@@ -424,7 +454,9 @@ export default function CrmContactsWorkspace() {
       setSuccess(copy.created);
       await loadContacts();
       const query = pendingParamsRef.current.toString();
-      navigate(`/crm/contacts/${response.contact.id}${query ? `?${query}` : ''}`);
+      navigate(`/crm/contacts/${response.contact.id}${query ? `?${query}` : ''}`, {
+        state: { focusTarget: 'crm-contact-create' }
+      });
     } catch (submitError) {
       setCreateError(errorMessage(submitError));
     } finally {
@@ -626,7 +658,7 @@ export default function CrmContactsWorkspace() {
             <section aria-labelledby="crm-contact-preferences">
               <div className="crm-contact-detail__section-header">
                 <h4 id="crm-contact-preferences"><MailCheck aria-hidden="true" size={17} /> {copy.communication}</h4>
-                {canManage && !selectedContact.archivedAt ? <button className="button-link button-link--secondary" onClick={(event) => openConsent(event.currentTarget)} type="button">{copy.manageConsent}</button> : null}
+                {canManage && !selectedContact.archivedAt ? <button className="button-link button-link--secondary" onClick={(event) => openConsent(event.currentTarget)} ref={consentTriggerRef} type="button">{copy.manageConsent}</button> : null}
               </div>
               {selectedContact.channelPreferences.length ? <ul>{selectedContact.channelPreferences.map((preference) => <li key={preference.id}><strong>{preference.channel}{preference.preferred ? ' · ★' : ''}</strong><span>{humanize(preference.status)}{preference.lawfulBasis ? ` · ${preference.lawfulBasis}` : ''}{preference.timezone ? ` · ${preference.timezone}` : ''}{preference.quietHoursStart != null && preference.quietHoursEnd != null ? ` · ${preference.quietHoursStart}–${preference.quietHoursEnd}` : ''}</span></li>)}</ul> : <p>{copy.noPreferences}</p>}
             </section>

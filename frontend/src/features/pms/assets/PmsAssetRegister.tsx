@@ -1,4 +1,5 @@
 import { CalendarClock, ChevronLeft, ChevronRight, History, PackagePlus, Pencil, Search, Wrench } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -319,7 +320,6 @@ export default function PmsAssetRegister({ token, companyId, language, canManage
   const [units, setUnits] = useState<PmsUnit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [refreshKey, setRefreshKey] = useState(0);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<PmsAsset | null>(null);
   const [formPropertyId, setFormPropertyId] = useState('');
@@ -348,6 +348,38 @@ export default function PmsAssetRegister({ token, companyId, language, canManage
 
   useEffect(() => setSearchInput(query), [query]);
 
+  const assetQuery = useQuery({
+    enabled: Boolean(token && companyId),
+    queryKey: ['pms', 'assets', companyId, propertyId, status, dueOnly, query, sortBy, direction, page],
+    queryFn: ({ signal }) => listPmsAssets(token, {
+      companyId,
+      propertyId: propertyId || undefined,
+      status: status || undefined,
+      dueOnly: dueOnly || undefined,
+      search: query || undefined,
+      sortBy,
+      direction,
+      take: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
+      signal
+    })
+  });
+
+  useEffect(() => {
+    if (!assetQuery.data) return;
+    setAssets(assetQuery.data.assets);
+    setPagination(assetQuery.data.pagination);
+    onTotalChange?.(assetQuery.data.pagination.total);
+    if (page > 1 && assetQuery.data.assets.length === 0 && assetQuery.data.pagination.total > 0) {
+      replaceQuery({ assetPage: String(Math.ceil(assetQuery.data.pagination.total / PAGE_SIZE)) });
+    }
+  }, [assetQuery.data, onTotalChange, page, replaceQuery]);
+
+  useEffect(() => {
+    setLoading(assetQuery.isPending || assetQuery.isFetching);
+    setError(assetQuery.error ? apiMessage(assetQuery.error, c.failed) : '');
+  }, [assetQuery.error, assetQuery.isFetching, assetQuery.isPending, c.failed]);
+
   useEffect(() => {
     let active = true;
     void Promise.all([loadAllProperties(token, companyId), (canManageRecords || canRecordMaintenance) ? loadAllVendors(token, companyId) : Promise.resolve([])]).then(([propertyRows, vendorRows]) => {
@@ -359,35 +391,6 @@ export default function PmsAssetRegister({ token, companyId, language, canManage
     });
     return () => { active = false; };
   }, [c.failed, canManageRecords, canRecordMaintenance, companyId, token]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError('');
-    void listPmsAssets(token, {
-      companyId,
-      propertyId: propertyId || undefined,
-      status: status || undefined,
-      dueOnly: dueOnly || undefined,
-      search: query || undefined,
-      sortBy,
-      direction,
-      take: PAGE_SIZE,
-      skip: (page - 1) * PAGE_SIZE,
-      signal: controller.signal,
-    }).then((result) => {
-      setAssets(result.assets);
-      setPagination(result.pagination);
-      onTotalChange?.(result.pagination.total);
-      if (page > 1 && result.assets.length === 0 && result.pagination.total > 0) {
-        replaceQuery({ assetPage: String(Math.ceil(result.pagination.total / PAGE_SIZE)) });
-      }
-    }).catch((loadError) => {
-      if (loadError instanceof DOMException && loadError.name === 'AbortError') return;
-      setError(apiMessage(loadError, c.failed));
-    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, [c.failed, companyId, direction, dueOnly, onTotalChange, page, propertyId, query, refreshKey, replaceQuery, sortBy, status, token]);
 
   useEffect(() => {
     if (!formOpen || !formPropertyId) {
@@ -437,7 +440,7 @@ export default function PmsAssetRegister({ token, companyId, language, canManage
       else await createPmsAsset(token, payload);
       setFormOpen(false);
       setEditing(null);
-      setRefreshKey((value) => value + 1);
+      await assetQuery.refetch();
     } catch (saveError) {
       setDialogError(apiMessage(saveError, c.failed));
     } finally {
@@ -478,7 +481,7 @@ export default function PmsAssetRegister({ token, companyId, language, canManage
       });
       setEventOpen(false);
       setEventAsset(null);
-      setRefreshKey((value) => value + 1);
+      await assetQuery.refetch();
     } catch (saveError) {
       setDialogError(apiMessage(saveError, c.failed));
     } finally {

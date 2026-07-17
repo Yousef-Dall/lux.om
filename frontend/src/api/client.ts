@@ -2,6 +2,8 @@ import { API_BASE_URL } from './assets';
 
 type QueryParamValue = string | number | boolean | null | undefined;
 
+export const SESSION_EXPIRED_EVENT = 'lux:session-expired';
+
 type RequestOptions = RequestInit & {
   token?: string | null;
   params?: Record<string, QueryParamValue>;
@@ -92,6 +94,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const payload = await parseResponse(response);
 
   if (!response.ok) {
+    if (response.status === 401 && token) {
+      window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
+    }
     throw new ApiError(getErrorMessage(payload), response.status, payload);
   }
 

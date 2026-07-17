@@ -23,4 +23,19 @@ export async function mockNotificationsApi(page: Page) {
 
     return route.fulfill({ status: 404, json: { message: 'Unhandled notification test route.' } });
   });
+
+  await page.route(/\/api\/dashboard(?:\/[^?]*)?(?:\?.*)?$/, (route) => {
+    if (route.request().method() !== 'GET') {
+      return route.fulfill({ status: 405, json: { message: 'Method not allowed.' } });
+    }
+    return route.fulfill({
+      json: {
+        stats: {},
+        recentListings: [],
+        recentActivities: [],
+        recentBookings: [],
+        notifications: []
+      }
+    });
+  });
 }

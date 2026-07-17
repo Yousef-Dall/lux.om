@@ -362,10 +362,11 @@ export type CrmAccountDetail = CrmAccountSummary & {
   sourceEvents?: Array<{ id: string; type: string; occurredAt: string; ruleKey: string }>;
 };
 
-export function listCrmAccounts(token: string, workspaceId: string, search?: string) {
+export function listCrmAccounts(token: string, workspaceId: string, search?: string, signal?: AbortSignal) {
   return apiClient.get<{ accounts: CrmAccountSummary[]; pagination: { total: number } }>('/api/crm/accounts', {
     token,
-    params: { workspaceId, search, take: 100 }
+    params: { workspaceId, search, take: 100 },
+    signal
   });
 }
 
@@ -410,13 +411,15 @@ export function listCrmContactRegister(
     direction?: CrmContactDirection;
     take?: number;
     skip?: number;
+    signal?: AbortSignal;
   }
 ) {
+  const { signal, ...query } = params;
   return apiClient.get<{
     contacts: CrmContactRegisterItem[];
     summary: { total: number; active: number; archived: number };
     pagination: { total: number; take: number; skip: number; count: number };
-  }>('/api/crm/contacts', { token, params });
+  }>('/api/crm/contacts', { token, params: query, signal });
 }
 
 export function archiveCrmContact(token: string, id: string, archived: boolean, reason: string) {
@@ -427,8 +430,8 @@ export function archiveCrmContact(token: string, id: string, archived: boolean, 
   );
 }
 
-export function getCrmContactDetail(token: string, id: string) {
-  return apiClient.get<{ contact: CrmContactDetail; duplicates: CrmDuplicateCandidate[]; suppressions: CrmContactDetail['suppressions'] }>(`/api/crm/contacts/${id}`, { token });
+export function getCrmContactDetail(token: string, id: string, signal?: AbortSignal) {
+  return apiClient.get<{ contact: CrmContactDetail; duplicates: CrmDuplicateCandidate[]; suppressions: CrmContactDetail['suppressions'] }>(`/api/crm/contacts/${id}`, { token, signal });
 }
 
 export function previewCrmContactMerge(token: string, primaryContactId: string, duplicateContactId: string) {

@@ -14,7 +14,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { ApiError } from '../../../api/client';
 import type { CrmWorkspaceAccess } from '../../../api/crm';
@@ -157,6 +157,7 @@ export default function CrmDealsWorkspace() {
   const { token, crmAccess } = useAuth();
   const { language } = useLanguage();
   const locale = language === 'ar' ? 'ar-OM' : 'en-OM';
+  const location = useLocation();
   const navigate = useNavigate();
   const { dealId } = useParams();
   const [params, setParams] = useSearchParams();
@@ -223,6 +224,23 @@ export default function CrmDealsWorkspace() {
   const transitionTriggerRef = useRef<HTMLSelectElement>(null);
   const archiveTriggerRef = useRef<HTMLButtonElement>(null);
   const archiveReasonRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (location.state?.focusTarget !== 'crm-deal-create') return;
+    const trigger = createTriggerRef.current;
+    if (!trigger || trigger.disabled) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      trigger.focus();
+      if (document.activeElement !== trigger) return;
+      void navigate(
+        { pathname: location.pathname, search: location.search },
+        { replace: true, state: null }
+      );
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.pathname, location.search, location.state, navigate]);
 
   useDocumentTitle(language === 'ar' ? 'صفقات CRM | lux.om' : 'CRM deals | lux.om');
 
@@ -472,8 +490,9 @@ export default function CrmDealsWorkspace() {
       setSuccess(copy.created);
       await loadDeals();
       const query = pendingParamsRef.current.toString();
-      navigate(`/crm/deals/${response.deal.id}${query ? `?${query}` : ''}`);
-      window.requestAnimationFrame(() => createTriggerRef.current?.focus());
+      navigate(`/crm/deals/${response.deal.id}${query ? `?${query}` : ''}`, {
+        state: { focusTarget: 'crm-deal-create' }
+      });
     } catch (submitError) {
       setCreateError(errorMessage(submitError));
     } finally {

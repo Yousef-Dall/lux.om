@@ -19,6 +19,8 @@ import {
   type RegisterPayload,
   type UpdateProfilePayload
 } from '../api/auth';
+import { SESSION_EXPIRED_EVENT } from '../api/client';
+import { queryClient } from '../data/queryClient';
 
 import { getMarketplacePersonaCapabilities } from '../utils/marketplacePersona';
 
@@ -82,11 +84,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [sessionRevision, setSessionRevision] = useState(0);
 
   const logout = useCallback(() => {
+    queryClient.clear();
     removeToken();
     setToken(null);
     setUser(null);
     setLoading(false);
   }, []);
+
+  useEffect(() => {
+    window.addEventListener(SESSION_EXPIRED_EVENT, logout);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, logout);
+  }, [logout]);
 
   const replaceSession = useCallback((nextToken: string, nextUser: AuthUser) => {
     setLoading(true);

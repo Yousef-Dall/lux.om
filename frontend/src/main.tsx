@@ -6,6 +6,7 @@ import App from './App';
 import { AuthProvider } from './auth/AuthContext';
 import { exposeBuildInfo } from './config/buildInfo';
 import { LanguageProvider } from './i18n/LanguageContext';
+import { ApplicationQueryProvider } from './data/queryClient';
 import './styles/legacy.css';
 import './styles/foundation.css';
 import './styles/marketplace.css';
@@ -14,13 +15,15 @@ import './styles/pages.css';
 function Root() {
   return (
     <React.StrictMode>
-      <BrowserRouter>
-        <LanguageProvider>
-          <AuthProvider>
-            <App />
-          </AuthProvider>
-        </LanguageProvider>
-      </BrowserRouter>
+      <ApplicationQueryProvider>
+        <BrowserRouter>
+          <LanguageProvider>
+            <AuthProvider>
+              <App />
+            </AuthProvider>
+          </LanguageProvider>
+        </BrowserRouter>
+      </ApplicationQueryProvider>
     </React.StrictMode>
   );
 }
